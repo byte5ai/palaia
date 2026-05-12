@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.8.0 — 2026-05-12
+
+### Changed
+- **OpenClaw 2026.5.7 compatibility** — Bumped peer dependency from `>=2026.3.22` to `>=2026.5.7`.
+- **ContextEngineFactory** — Factory now receives `ContextEngineFactoryContext` (`workspaceDir`, `agentDir`) from the OpenClaw runtime, enabling reliable workspace resolution without relying on `api.workspace` workarounds.
+- **registerMemoryCapability** — Plugin now uses the v2026.5.7 `registerMemoryCapability` API for memory prompt guidance instead of the deprecated `registerMemoryPromptSection`. Fallback to the legacy API is preserved for hosts running older OpenClaw versions.
+- **assemble() — availableTools guard** — Memory context injection is now skipped automatically on turns where no memory tools (`memory_search`, `memory_get`, `memory_write`) are available, avoiding wasted system prompt budget.
+- **assemble() — citationsMode** — When OpenClaw's citations mode is active, palaia appends citation guidance to the injected memory context, prompting the agent to reference memory IDs in its reply.
+- **Plugin SDK types** — `types.ts` updated to reflect the OpenClaw v2026.5.7 plugin SDK: new `ContextEngineFactoryContext`, `TranscriptRewriteReplacement/Request/Result`, `ContextEngineMaintenanceResult`, `ContextEnginePromptCacheInfo`, `MemoryPluginCapability`, additional hook names (`before_agent_reply`, `model_call_started`, `model_call_ended`), and extended optional fields on existing interfaces.
+
+---
+
 ## v2.7.3 — 2026-04-07
 
 ### Fixed

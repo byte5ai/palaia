@@ -1,6 +1,6 @@
 ---
 name: palaia
-version: "2.7.3"
+version: "2.8.0"
 description: >
   Local, crash-safe persistent memory for OpenClaw agents.
   SQLite-backed by default. Semantic search, projects, scopes, auto-capture.
@@ -25,9 +25,11 @@ metadata:
       - command: "python3 -m pip install --upgrade 'palaia[fastembed]' && openclaw plugins install @byte5ai/palaia && palaia doctor --fix && palaia warmup"
         label: "Upgrade palaia with semantic search + plugin and run health checks"
     postUpdateMessage: >
-      palaia has been updated to v2.7.3. Fixes: ContextEngine compaction conflict
-      with OpenClaw, doctor phantom stale-task warnings, invisible entries with
-      empty scope. Run `palaia doctor --fix` to verify.
+      palaia v2.8.0 is now compatible with OpenClaw 2026.5.7. The OpenClaw plugin
+      uses the new ContextEngineFactoryContext for reliable workspace resolution
+      and registerMemoryCapability for memory prompt guidance. Memory injection
+      now skips turns where no memory tools are available, and respects
+      citationsMode when active. No action required — everything works as before.
     plugin:
       slot: memory
       package: "@byte5ai/palaia"

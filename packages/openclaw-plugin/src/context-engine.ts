@@ -374,7 +374,7 @@ async function runAutoCapture(
 }
 
 /**
- * Create a palaia ContextEngine implementing OpenClaw v2026.3.24 interface.
+ * Create a palaia ContextEngine implementing OpenClaw v2026.5.7 interface.
  */
 export function createPalaiaContextEngine(
   api: OpenClawPluginApi,
@@ -460,6 +460,8 @@ export function createPalaiaContextEngine(
     /**
      * Assemble: recall logic with token budget awareness.
      * Returns memory context via systemPromptAddition.
+     * Respects availableTools (skip prompt if memory tools aren't present)
+     * and citationsMode (adds citation guidance when enabled).
      */
     async assemble(params) {
       _lastRecallOccurred = false;
@@ -469,6 +471,20 @@ export function createPalaiaContextEngine(
           messages: params.messages || [],
           estimatedTokens: 0,
         };
+      }
+
+      // Skip context injection if memory tools aren't available this turn
+      const availableTools = params.availableTools;
+      if (availableTools && availableTools.size > 0) {
+        const hasMemoryTool = availableTools.has("memory_search")
+          || availableTools.has("memory_get")
+          || availableTools.has("memory_write");
+        if (!hasMemoryTool) {
+          return {
+            messages: params.messages || [],
+            estimatedTokens: 0,
+          };
+        }
       }
 
       try {
@@ -509,7 +525,12 @@ export function createPalaiaContextEngine(
           }
         }
 
-        const combined = [briefingText, text].filter(Boolean).join("\n\n");
+        let combined = [briefingText, text].filter(Boolean).join("\n\n");
+
+        // When citationsMode is active, append guidance so the agent cites memory IDs
+        if (combined && params.citationsMode && params.citationsMode !== "off") {
+          combined += "\n\n_When referencing a memory entry in your reply, cite its ID in brackets, e.g. [mem:abc123]._";
+        }
 
         if (!combined) {
           return {
