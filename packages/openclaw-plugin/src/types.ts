@@ -5,7 +5,7 @@
  * They are maintained locally to avoid a build-time dependency on the
  * openclaw package (which is a peerDependency loaded at runtime).
  *
- * Based on OpenClaw v2026.3.28 plugin-sdk.
+ * Based on OpenClaw v2026.5.7 plugin-sdk.
  */
 
 import type { TObject } from "@sinclair/typebox";
@@ -30,10 +30,10 @@ export interface ToolOptions {
 
 export type ToolFactory = ToolDefinition | ((ctx: Record<string, unknown>) => ToolDefinition | ToolDefinition[] | null);
 
-// ── Hook Types ─────────────��────────────────────────────────────────────
+// ── Hook Types ──────────────────────────────────────────────────────────
 
 /**
- * All hook names supported by OpenClaw v2026.3.28.
+ * All hook names supported by OpenClaw v2026.5.7.
  * palaia registers handlers for a subset of these.
  */
 export type HookName =
@@ -44,9 +44,13 @@ export type HookName =
   | "before_model_resolve"
   | "before_prompt_build"
   | "before_agent_start"
+  | "before_agent_reply"
   | "llm_input"
   | "llm_output"
   | "agent_end"
+  // Model telemetry (metadata-only, no prompts/responses)
+  | "model_call_started"
+  | "model_call_ended"
   // Context management
   | "before_compaction"
   | "after_compaction"
@@ -67,6 +71,8 @@ export type HookName =
   | "subagent_delivery_target"
   | "subagent_spawned"
   | "subagent_ended"
+  // Cron
+  | "cron_changed"
   // Gateway
   | "gateway_start"
   | "gateway_stop";
@@ -212,7 +218,7 @@ export type SubagentEndedEvent = {
   error?: string;
 };
 
-// ── Hook Context Types ──────────────��───────────────────────────────────
+// ── Hook Context Types ──────────────────────────────────────────────────
 
 export type AgentContext = {
   agentId?: string;
@@ -251,7 +257,7 @@ export type SubagentContext = {
   requesterSessionKey?: string;
 };
 
-// ── Command Types ───���───────────────────────────────────────────────────
+// ── Command Types ───────────────────────────────────────────────────────
 
 export interface CommandDefinition {
   name: string;
@@ -259,7 +265,7 @@ export interface CommandDefinition {
   handler(args: string): Promise<{ text: string }> | { text: string };
 }
 
-// ── Service Types ─────────────────────────────────────���─────────────────
+// ── Service Types ───────────────────────────────────────────────────────
 
 export interface ServiceContext {
   config: Record<string, unknown>;
@@ -274,7 +280,7 @@ export interface ServiceDefinition {
   stop?(ctx: ServiceContext): Promise<void>;
 }
 
-// ���─ Context Engine Types ────────────���───────────────────────────────────
+// ── Context Engine Types ────────────────────────────────────────────────
 
 /** Opaque message type from OpenClaw's agent runtime. */
 export type AgentMessage = unknown;
@@ -284,6 +290,12 @@ export interface ContextEngineInfo {
   name: string;
   version?: string;
   ownsCompaction?: boolean;
+  /**
+   * Controls how turn-triggered maintenance is executed.
+   * Engines remain compatible by default ("foreground") unless explicitly
+   * opting into background turn maintenance.
+   */
+  turnMaintenanceMode?: "foreground" | "background";
 }
 
 export type BootstrapResult = {
@@ -296,9 +308,22 @@ export type IngestResult = {
   ingested: boolean;
 };
 
+export type IngestBatchResult = {
+  ingestedCount: number;
+};
+
 export type AssembleResult = {
   messages: AgentMessage[];
   estimatedTokens: number;
+  /**
+   * Controls which token estimate the runner treats as authoritative.
+   * - "assembled": only the assembled prompt estimate is used.
+   * - "preassembly_may_overflow": runtime takes the max of assembled and
+   *   pre-assembly estimates (opt-in for engines whose assembled view can
+   *   hide an overflow in the underlying transcript).
+   * Defaults to "assembled".
+   */
+  promptAuthority?: "assembled" | "preassembly_may_overflow";
   systemPromptAddition?: string;
 };
 
@@ -312,7 +337,101 @@ export type CompactResult = {
     tokensBefore: number;
     tokensAfter?: number;
     details?: unknown;
+    /** Session id after compaction, when the runtime rotated transcripts. */
+    sessionId?: string;
+    /** Session file after compaction, when the runtime rotated transcripts. */
+    sessionFile?: string;
   };
+};
+
+// ── Transcript Rewrite Types (v2026.5.7) ──────────────────────────────
+
+export type TranscriptRewriteReplacement = {
+  /** Existing transcript entry id to replace on the active branch. */
+  entryId: string;
+  /** Replacement message content for that entry. */
+  message: AgentMessage;
+};
+
+export type TranscriptRewriteRequest = {
+  replacements: TranscriptRewriteReplacement[];
+};
+
+export type TranscriptRewriteResult = {
+  changed: boolean;
+  bytesFreed: number;
+  rewrittenEntries: number;
+  reason?: string;
+};
+
+export type ContextEngineMaintenanceResult = TranscriptRewriteResult;
+
+// ── Prompt Cache Types (v2026.5.7) ────────────────────────────────────
+
+type ContextEnginePromptCacheRetention = "none" | "short" | "long" | "in_memory" | "24h";
+
+type ContextEnginePromptCacheUsage = {
+  input?: number;
+  output?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  total?: number;
+};
+
+type ContextEnginePromptCacheObservationChangeCode =
+  | "cacheRetention"
+  | "model"
+  | "streamStrategy"
+  | "systemPrompt"
+  | "tools"
+  | "transport";
+
+type ContextEnginePromptCacheObservationChange = {
+  code: ContextEnginePromptCacheObservationChangeCode;
+  detail: string;
+};
+
+type ContextEnginePromptCacheObservation = {
+  broke: boolean;
+  previousCacheRead?: number;
+  cacheRead?: number;
+  changes?: ContextEnginePromptCacheObservationChange[];
+};
+
+export type ContextEnginePromptCacheInfo = {
+  retention?: ContextEnginePromptCacheRetention;
+  lastCallUsage?: ContextEnginePromptCacheUsage;
+  observation?: ContextEnginePromptCacheObservation;
+  lastCacheTouchAt?: number;
+  expiresAt?: number;
+};
+
+// ── Runtime Context (v2026.5.7) ───────────────────────────────────────
+
+export type ContextEngineRuntimeContext = Record<string, unknown> & {
+  allowDeferredCompactionExecution?: boolean;
+  tokenBudget?: number;
+  currentTokenCount?: number;
+  /** Prompt-cache telemetry for cache-aware engines. */
+  promptCache?: ContextEnginePromptCacheInfo;
+  /**
+   * Safe transcript rewrite helper implemented by the runtime.
+   * Engines decide what is safe to rewrite; the runtime owns the DAG update.
+   */
+  rewriteTranscriptEntries?: (request: TranscriptRewriteRequest) => Promise<TranscriptRewriteResult>;
+};
+
+// ── Context Engine Factory Context (v2026.5.7) ───────────────────────
+
+/**
+ * Runtime context passed to context engine factories during resolution.
+ * Provides config and path information so plugins can initialize engines
+ * without fragile workarounds.
+ */
+export type ContextEngineFactoryContext = {
+  config?: Record<string, unknown>;
+  agentDir?: string;
+  workspaceDir?: string;
 };
 
 export type SubagentSpawnPreparation = {
@@ -322,10 +441,7 @@ export type SubagentSpawnPreparation = {
 export type SubagentEndReason = "deleted" | "completed" | "swept" | "released";
 
 /**
- * ContextEngine interface — matches OpenClaw v2026.3.28.
- *
- * This is the full interface. palaia implements a subset;
- * optional methods are marked with `?`.
+ * ContextEngine interface — matches OpenClaw v2026.5.7.
  */
 export interface ContextEngine {
   readonly info: ContextEngineInfo;
@@ -336,12 +452,16 @@ export interface ContextEngine {
     sessionFile: string;
   }): Promise<BootstrapResult>;
 
+  /**
+   * Run transcript maintenance after bootstrap, successful turns, or compaction.
+   * Can use runtimeContext.rewriteTranscriptEntries() for safe transcript rewrites.
+   */
   maintain?(params: {
     sessionId: string;
     sessionKey?: string;
     sessionFile: string;
-    runtimeContext?: Record<string, unknown>;
-  }): Promise<unknown>;
+    runtimeContext?: ContextEngineRuntimeContext;
+  }): Promise<ContextEngineMaintenanceResult>;
 
   ingest(params: {
     sessionId: string;
@@ -355,7 +475,7 @@ export interface ContextEngine {
     sessionKey?: string;
     messages: AgentMessage[];
     isHeartbeat?: boolean;
-  }): Promise<{ ingestedCount: number }>;
+  }): Promise<IngestBatchResult>;
 
   afterTurn?(params: {
     sessionId: string;
@@ -366,7 +486,7 @@ export interface ContextEngine {
     autoCompactionSummary?: string;
     isHeartbeat?: boolean;
     tokenBudget?: number;
-    runtimeContext?: Record<string, unknown>;
+    runtimeContext?: ContextEngineRuntimeContext;
   }): Promise<void>;
 
   assemble(params: {
@@ -374,6 +494,10 @@ export interface ContextEngine {
     sessionKey?: string;
     messages: AgentMessage[];
     tokenBudget?: number;
+    /** Tool names available for this run — allows context engines to adapt prompt guidance. */
+    availableTools?: Set<string>;
+    /** Active memory citation mode — allows engines to adapt context format. */
+    citationsMode?: string;
     model?: string;
     prompt?: string;
   }): Promise<AssembleResult>;
@@ -387,12 +511,17 @@ export interface ContextEngine {
     currentTokenCount?: number;
     compactionTarget?: "budget" | "threshold";
     customInstructions?: string;
-    runtimeContext?: Record<string, unknown>;
+    runtimeContext?: ContextEngineRuntimeContext;
   }): Promise<CompactResult>;
 
   prepareSubagentSpawn?(params: {
     parentSessionKey: string;
     childSessionKey: string;
+    contextMode?: "isolated" | "fork";
+    parentSessionId?: string;
+    parentSessionFile?: string;
+    childSessionId?: string;
+    childSessionFile?: string;
     ttlMs?: number;
   }): Promise<SubagentSpawnPreparation | undefined>;
 
@@ -418,7 +547,13 @@ export interface LegacyContextEngine {
   onSubagentEnded?(result: unknown): Promise<void>;
 }
 
-export type ContextEngineFactory = () => ContextEngine | Promise<ContextEngine>;
+/**
+ * Factory that creates a ContextEngine instance.
+ * Receives a ContextEngineFactoryContext with runtime environment context.
+ * Existing no-arg factories remain backward compatible because TypeScript
+ * permits assigning functions with fewer parameters to wider signatures.
+ */
+export type ContextEngineFactory = (ctx: ContextEngineFactoryContext) => ContextEngine | Promise<ContextEngine>;
 
 // ── Memory Prompt Section ───────────────────────────────────────────────
 
@@ -427,7 +562,31 @@ export type MemoryPromptSectionBuilder = (params: {
   citationsMode?: string;
 }) => string[];
 
-// ── Logger ──────────────���───────────────────────────────────────────────
+// ── Memory Plugin Capability Types (v2026.5.7) ───────────────────────
+
+export type MemoryPluginPublicArtifactContentType = "markdown" | "json" | "text";
+
+export type MemoryPluginPublicArtifact = {
+  kind: string;
+  workspaceDir: string;
+  relativePath: string;
+  absolutePath: string;
+  agentIds: string[];
+  contentType: MemoryPluginPublicArtifactContentType;
+};
+
+export type MemoryPluginPublicArtifactsProvider = {
+  listArtifacts(params: {
+    cfg: Record<string, unknown>;
+  }): Promise<MemoryPluginPublicArtifact[]>;
+};
+
+export type MemoryPluginCapability = {
+  promptBuilder?: MemoryPromptSectionBuilder;
+  publicArtifacts?: MemoryPluginPublicArtifactsProvider;
+};
+
+// ── Logger ──────────────────────────────────────────────────────────────
 
 export interface PluginLogger {
   info(message: string): void;
@@ -436,7 +595,7 @@ export interface PluginLogger {
   debug?(message: string): void;
 }
 
-// ���─ Runtime ───────────────��─────────────────────────────���───────────────
+// ── Runtime ─────────────────────────────────────────────────────────────
 
 export interface PluginRuntime {
   version?: string;
@@ -472,9 +631,17 @@ export interface PluginRuntime {
   events?: {
     onSessionTranscriptUpdate?(handler: (event: unknown) => void): void;
   };
+  /** Task flow and background task management (v2026.4.x+). */
+  tasks?: {
+    list?(params?: { limit?: number }): Promise<{ tasks: unknown[] }>;
+    cancel?(params: { taskId: string }): Promise<{ ok: boolean }>;
+  };
+  taskFlow?: {
+    create?(params: Record<string, unknown>): Promise<{ flowId: string }>;
+  };
 }
 
-// ── Main Plugin API ─────────────────────────────────────────────────────
+// ── Main Plugin API ──────────────────────────────────────────────────────
 
 export interface OpenClawPluginApi {
   id: string;
@@ -487,7 +654,10 @@ export interface OpenClawPluginApi {
   registerCommand(command: CommandDefinition): void;
   registerService(service: ServiceDefinition): void;
   registerContextEngine?(id: string, factory: ContextEngineFactory): void;
+  /** @deprecated Use registerMemoryCapability instead. */
   registerMemoryPromptSection?(builder: MemoryPromptSectionBuilder): void;
+  /** Register memory plugin capabilities (promptBuilder, publicArtifacts). */
+  registerMemoryCapability?(pluginId: string, capability: MemoryPluginCapability): void;
   registerHook?(events: string | string[], handler: HookHandler, opts?: HookOptions): void;
   on(hook: HookName | string, handler: HookHandler, opts?: HookOptions): void;
   logger: PluginLogger;
@@ -497,7 +667,7 @@ export interface OpenClawPluginApi {
   workspace?: { dir: string; agentId?: string } | string;
 }
 
-// ── Plugin Entry ────────���───────────────────────────────────────────────
+// ── Plugin Entry ────────────────────────────────────────────────────────
 
 export interface OpenClawPluginEntry {
   id: string;

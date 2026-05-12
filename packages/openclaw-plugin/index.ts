@@ -54,21 +54,27 @@ const palaiaPlugin: OpenClawPluginEntry = {
     // Register agent tools (memory_search, memory_get, memory_write)
     registerTools(api, config);
 
-    // Register MemoryPromptSection for guided memory tool usage (v3.0)
-    if (api.registerMemoryPromptSection) {
-      api.registerMemoryPromptSection(({ availableTools }) => {
-        const lines: string[] = [];
-        if (availableTools.has("memory_search")) {
-          lines.push("Use `memory_search` to find relevant memories by semantic query.");
-        }
-        if (availableTools.has("memory_get")) {
-          lines.push("Use `memory_get <id>` to retrieve full memory details by ID.");
-        }
-        if (availableTools.has("memory_write")) {
-          lines.push("Use `memory_write` for processes/SOPs and tasks only — conversation knowledge is auto-captured.");
-        }
-        return lines;
-      });
+    // Register memory prompt guidance for agents.
+    // Uses the v2026.5.7 registerMemoryCapability API when available;
+    // falls back to the deprecated registerMemoryPromptSection for older hosts.
+    const memoryPromptBuilder = ({ availableTools }: { availableTools: Set<string>; citationsMode?: string }) => {
+      const lines: string[] = [];
+      if (availableTools.has("memory_search")) {
+        lines.push("Use `memory_search` to find relevant memories by semantic query.");
+      }
+      if (availableTools.has("memory_get")) {
+        lines.push("Use `memory_get <id>` to retrieve full memory details by ID.");
+      }
+      if (availableTools.has("memory_write")) {
+        lines.push("Use `memory_write` for processes/SOPs and tasks only — conversation knowledge is auto-captured.");
+      }
+      return lines;
+    };
+
+    if (api.registerMemoryCapability) {
+      api.registerMemoryCapability("palaia", { promptBuilder: memoryPromptBuilder });
+    } else if (api.registerMemoryPromptSection) {
+      api.registerMemoryPromptSection(memoryPromptBuilder);
     }
 
     // Session lifecycle hooks are always registered (session_start, session_end,
@@ -76,9 +82,17 @@ const palaiaPlugin: OpenClawPluginEntry = {
     // These work independently of the ContextEngine vs legacy hooks choice.
     registerSessionHooks(api, config);
 
-    // Register ContextEngine when available, otherwise use legacy hooks
+    // Register ContextEngine when available, otherwise use legacy hooks.
+    // The factory receives ContextEngineFactoryContext (v2026.5.7+) which
+    // provides workspaceDir / agentDir for reliable workspace resolution.
     if (api.registerContextEngine) {
-      api.registerContextEngine("palaia", () => createPalaiaContextEngine(api, config));
+      api.registerContextEngine("palaia", (ctx) => {
+        const effectiveWorkspace =
+          ctx?.workspaceDir ||
+          config.workspace ||
+          (typeof api.workspace === "string" ? api.workspace : api.workspace?.dir);
+        return createPalaiaContextEngine(api, { ...config, workspace: effectiveWorkspace });
+      });
     } else {
       registerHooks(api, config);  // Legacy fallback
     }
