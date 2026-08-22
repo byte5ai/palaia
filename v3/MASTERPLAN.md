@@ -207,6 +207,12 @@ flowchart LR
   of an observation (e.g. a rule phrased differently for different model families);
   recall resolves the most specific applicable variant for the calling agent and
   drops the rest — deterministic and token-frugal (an mcp-hub invention).
+- **One vault or many — the user's choice:** everything can live in a single vault
+  with scopes, or in multiple fully isolated vaults (e.g. work / personal /
+  project X), each with its own name, purpose statement, storage and git history.
+  Isolation between vaults is physical, not conventional — an unprompted search in
+  one vault can never surface another vault's content. Each vault mounts at the
+  gateway as its own clearly named tool family (see §5.2).
 - **Scopes & attribution:** every entry carries origin (provider, client, session,
   or human) and scope (private / project / shared). Scopes are enforced by the hub —
   clients only ever see what their token allows.
@@ -248,6 +254,17 @@ flowchart LR
 
 - **One endpoint, many tools:** built-ins (memory, stash, messenger) plus everything
   the user adds. Namespaced tool names; conflicts resolved by the hub.
+- **Named surfaces, user-renamable:** palaia ships sensible default names for every
+  tool and connector it exposes, and the user can rename **all of them** in the
+  dashboard. With multiple vaults this is not cosmetic but necessary: each vault
+  mounts as its own tool family whose names carry the vault identity
+  (`work_memory_search`, `personal_memory_write`), and every tool description leads
+  with a user-editable one-line purpose ("use this for …"). An agent must be able to
+  pick the right memory **from the tool surface alone** — disambiguation is
+  declarative, never inferential. (Hard mcp-hub lesson: agents facing several
+  identically named memory tool sets guess, and guess wrong.) Renames are sanitized
+  to the MCP tool-name charset, and the dashboard warns that connected clients may
+  re-prompt for tool approval after a rename.
 - **Per-client tool profiles:** a hundred tools in every context window is how you
   ruin an agent. Each connected client gets a profile (default: sensible core set)
   that the user edits in the dashboard — e.g. "Codex gets memory only; Claude Desktop
@@ -505,7 +522,7 @@ use. Detailed specs + ADRs are written per phase, not upfront.
 | 2 | License for v3 | — | **Decided: MIT** (2026-08-22, [ADR-002](decisions/002-clean-room-licensing.md)) |
 | 3 | Name & versioning | Keep "palaia", version 3.0; product surface named "palaia hub" | Proposed |
 | 4 | Add-on runtime | Phase 1–2: built-ins + external servers only; container add-ons in phase 3 (needs docker-socket ADR) | Proposed |
-| 5 | Memory entry taxonomy | Workshop during phase 0 (types, frontmatter schema, graph markup) | Open |
+| 5 | Memory entry taxonomy | Workshop during phase 0 (types, frontmatter schema, graph markup). Already decided: vault topology (one vs. many) is per-user configurable, and all exposed tool/connector names are user-renamable with vault-carrying defaults (§5.1/§5.2) | Open (narrowed) |
 | 6 | Messenger placement | Built-in pillar, not an add-on | Proposed |
 | 7 | Building in the open | This plan is public in a public repo — accepted implication of in-repo planning | Confirm |
 | 8 | Hosted relay ("palaia cloud") | Defer; design tunnel-first, keep relay possible later | Proposed |
