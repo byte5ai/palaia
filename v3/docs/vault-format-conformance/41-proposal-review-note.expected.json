@@ -1,0 +1,10 @@
+{
+  "title": "Merge duplicate Stash notes", "permalink": "review/merge-duplicate-stash-notes", "type": "proposal",
+  "observations": [
+    {"category": "rationale", "scope": null, "text": "Both notes were created independently after a rename.", "line": 10}
+  ],
+  "relations": [
+    {"type": "supersedes", "target": "Old Stash Note", "implicit": false, "line": 11}
+  ],
+  "warnings": []
+}

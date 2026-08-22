@@ -1,0 +1,10 @@
+{
+  "title": "Café Wärme Übersicht", "permalink": "notes/cafe-waerme-uebersicht", "type": "note",
+  "observations": [
+    {"category": "note", "scope": null, "text": "Serves customers near the 北京 Office.", "line": 6}
+  ],
+  "relations": [
+    {"type": "relates_to", "target": "北京 Office", "implicit": false, "line": 7}
+  ],
+  "warnings": []
+}

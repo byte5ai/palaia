@@ -1,0 +1,10 @@
+{
+  "title": "Relations Quoted And Wikilink Parts", "permalink": "notes/relations-quoted-and-wikilink-parts", "type": "note",
+  "relations": [
+    {"type": "isn't quite right, but—", "target": "Weird Type Target", "implicit": false, "line": 6},
+    {"type": "relates_to", "target": "Doc", "implicit": false, "line": 7},
+    {"type": "links_to", "target": "Something", "implicit": true, "line": 8},
+    {"type": "owned_by", "target": "Future Team", "implicit": false, "line": 9}
+  ],
+  "warnings": []
+}

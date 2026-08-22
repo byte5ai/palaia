@@ -1,0 +1,12 @@
+{
+  "title": "Bullets And Nesting", "permalink": "notes/bullets-and-nesting", "type": "note",
+  "observations": [
+    {"category": "note", "scope": null, "text": "Dash-bullet observation, the usual form.", "line": 6},
+    {"category": "note", "scope": null, "text": "Star-bullet observation works identically.", "line": 7},
+    {"category": "nested", "scope": null, "text": "Indented observation stays semantic; nesting carries no meaning.", "line": 8}
+  ],
+  "relations": [
+    {"type": "relates_to", "target": "Star Bullet Target", "implicit": false, "line": 9}
+  ],
+  "warnings": []
+}

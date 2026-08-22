@@ -1,0 +1,8 @@
+{
+  "title": "Callout Variants", "permalink": "notes/callout-variants", "type": "note",
+  "observations": [
+    {"category": "visible", "scope": null, "text": "a real observation outside any callout", "line": 12}
+  ],
+  "relations": [],
+  "warnings": []
+}

@@ -1,0 +1,9 @@
+{
+  "title": "E2 Code Exclusions", "permalink": "notes/e2-code-exclusions", "type": "note",
+  "tags": [],
+  "observations": [],
+  "relations": [
+    {"type": "links_to", "target": "Real Link", "implicit": true, "line": 16}
+  ],
+  "warnings": []
+}

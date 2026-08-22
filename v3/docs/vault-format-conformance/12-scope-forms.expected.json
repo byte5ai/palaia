@@ -1,0 +1,9 @@
+{
+  "title": "Scope Forms", "permalink": "notes/scope-forms", "type": "rule",
+  "observations": [
+    {"category": "note", "scope": null, "text": "Base line with no scope, so this variant group has a base.", "line": 7},
+    {"category": "note", "scope": "default", "text": "The default-scope keyword form.", "line": 8},
+    {"category": "note", "scope": "anthropic/opus-5.1-2", "text": "Dotted, hyphenated model-id charset.", "line": 9}
+  ],
+  "warnings": []
+}
