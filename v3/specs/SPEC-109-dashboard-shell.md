@@ -16,10 +16,14 @@ component library, navigation, live-state plumbing — so SPEC-110 (and every
 later screen) composes instead of styles.
 
 ## Deliverables
-1. `v3/web`: design tokens as CSS variables (light/dark per SPEC-005), Tailwind
-   config bound to tokens; component library (buttons, cards, nav, tables,
-   badges, empty states, toasts, form fields) with Storybook or an equivalent
-   living style guide.
+1. `v3/web`: **the Lume design system is normative** — tokens lifted from
+   `v3/docs/design/lume/colors_and_type.css` (do not fork values; palaia
+   default accent is `atelier`, mode default follows system preference with
+   manual override), Geist/Geist Mono/Source Serif 4 self-hosted; Tailwind
+   config bound to the Lume tokens; component library (buttons, cards, nav,
+   tables, badges, empty states, toasts, form fields) using the Lume material
+   recipes (surface gradients, directional borders, glow selection/focus),
+   with Storybook or an equivalent living style guide.
 2. App shell: sidebar navigation per the north star, health indicator in the
    chrome, responsive per SPEC-005 breakpoints, theme switch (system default).
 3. **Live-state layer**: SSE client against `/api/events` (hub side: minimal

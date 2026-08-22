@@ -106,10 +106,13 @@ answers "is everything healthy, and what happened?" at a glance; task-oriented
 navigation instead of entity lists; progressive disclosure (advanced settings exist,
 but never in the way); live state everywhere (event-stream-driven UI, no reload
 buttons); and no config-file editing as a required path, ever. Beautiful, calm,
-legible. Prior art studied: samanhappy/MCPHub (group endpoints, per-group
-visibility, semantic tool routing) and ravitemer/mcp-hub (REST management API +
-unified endpoint, SSE live events, registry-backed marketplace — and no dashboard,
-which is exactly palaia's opening).
+legible. **The visual language is Lume** — the owner's light-as-material design
+system (`v3/docs/design/lume/`), with `atelier` as palaia's default accent and
+the Signal single-loud-element rule as binding doctrine. Prior art studied:
+samanhappy/MCPHub (group endpoints, per-group visibility, semantic tool routing)
+and ravitemer/mcp-hub (REST management API + unified endpoint, SSE live events,
+registry-backed marketplace — and no dashboard, which is exactly palaia's
+opening).
 
 ## 4. UX Doctrine
 
