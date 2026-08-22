@@ -291,11 +291,8 @@ flowchart LR
   once, for all tools). Protocol target: **MCP 2026-07-28 (stateless) from day one**,
   with a handshake shim for clients still on 2025-era revisions; streamable HTTP
   only (SSE is deprecated).
-- **Panels inside the clients:** via the **MCP Apps** extension
-  (`io.modelcontextprotocol/ui`, final since 2026-01) palaia can render onboarding,
-  config and memory views directly inside claude.ai, Claude Desktop, ChatGPT,
-  VS Code and others — the dashboard comes to the user's chat window, not only the
-  other way around.
+- **Panels inside the clients:** via the **MCP Apps** extension palaia renders
+  interactive views directly inside the chat clients — the full strategy is §5.7.
 
 ### 5.3 Marketplace & add-ons
 
@@ -407,6 +404,49 @@ all four:
 - Every palaia subsystem emits events — hooks are a platform property, not a
   memory feature (this is a headline differentiator vs. basic-memory).
 
+### 5.7 MCP Apps: palaia inside the chat clients
+
+The MCP Apps extension (`io.modelcontextprotocol/ui`, final 2026-01-26 — the
+"generative UI" of the 2026 press coverage) lets an MCP server ship interactive
+HTML views that hosts render sandboxed inside the conversation. In Claude this
+works **on every plan including Free, on web, desktop and mobile**; ChatGPT,
+VS Code Copilot, M365 Copilot and Goose render the same standard. Two properties
+make it strategic for palaia rather than cosmetic:
+
+- **Bidirectional bridge:** the app can call palaia's tools (through the host,
+  under the same per-client token and scopes — no second auth surface) and the
+  host pushes fresh results in. Live views, forms and action buttons work inline.
+- **Selective context:** the app can update the model's context deliberately.
+  Search results render as a browsable panel and only what the user *picks* enters
+  the context window — instead of dumping twenty notes into the conversation.
+  Token discipline as a UI property.
+
+**Division of labor:** the dashboard (P7) administers the *system*; MCP Apps put
+palaia's *content* where the user already is — including the phone, where no
+dashboard tab is at hand. Apps never become the only path (UX rule 1 still holds:
+everything works in the dashboard too).
+
+Planned apps, by value:
+
+| App | What it renders inline | Why an app (not text) | Phase |
+|---|---|---|---|
+| **Review queue** | Curator proposals as a card stack: diff view, approve / reject / edit buttons | The killer use case — multi-step workflow with actions; approving memory curation from the phone in Claude instead of via Obsidian frontmatter | 2 |
+| **Recall explorer** | Search/recall results as a filterable list + relation-graph drill-down | Explore-then-select: only picked notes enter context (selective context) | 2 |
+| **Hub status ("is everything okay?")** | Health, connected clients, vault overview, doctor findings with one-click fixes | Real-time monitoring; the first-tool-call welcome panel that orients a new user | 2 |
+| **Inbox peek** | Uncurated captures at a glance | Quick trust check on auto-capture | 2–3 |
+| **Marketplace** | Browse/install tools & skills as a card grid | Many-option configuration; install-with-consent flows | 3 |
+| **Session monitor / messenger** | Live agent directory + message flows; structured-message compose form | Real-time monitoring + form-based composing (schema-valid by construction) | 4 |
+| **Stash browser** | Cache entries with TTL/size | Inspection utility | 4 |
+
+Deliberately **not** apps: security-sensitive administration (operating-mode
+changes, token revocation, exposure wizard) stays dashboard-only — a chat-embedded
+iframe is the wrong place for decisions that change the attack surface.
+
+Implementation notes: one shared app shell (design system = the dashboard's, so
+palaia looks like palaia everywhere); apps are versioned resources served by the
+gateway; hosts without the extension get the plain-text tool result — apps are
+progressive enhancement, never a requirement.
+
 ## 6. Client Integration Matrix
 
 > Verified 2026-08-22 against
@@ -514,9 +554,9 @@ use. Detailed specs + ADRs are written per phase, not upfront.
 |---|---|---|---|
 | **0** | Foundation | Masterplan sign-off; stack + license decided (ADRs); UX north-star mockups; v3 scaffolding + CI lane; two spikes: (a) FastMCP gateway aggregating 2 servers behind one authed endpoint, (b) vault+index engine round-trip | Spikes prove the two riskiest assumptions |
 | **1** | Memory core (MVP) | Hub daemon; vault engine (git, watch, reindex); recall/search; MCP endpoint (HTTP, token auth); dashboard v0 (wizard, explorer, connect page); Claude Desktop + Claude Code + Codex connected; v2 + basic-memory importers; doctor v0 | **Two different providers share one memory on day one**, installed without shell beyond one docker command |
-| **2** | Remote & identity | OAuth 2.1 server (DCR, resource metadata); GitHub/Google/OIDC sign-in; claude.ai + ChatGPT + mobile connectors; exposure wizard + tunnel add-ons; stash; event bus + hooks v1; auto-capture skills | **Phone Claude remembers what desktop Codex learned** |
-| **3** | The hub | Gateway aggregation (external servers + registry browse); per-client tool profiles; marketplace v1 (curated index, one-click install, config UIs); MCPB/one-click client bundles; automations editor | **Install a tool once, every AI has it** |
-| **4** | The team | Session directory + messenger; structured-messaging skills; message observability; add-on SDK + community submissions | **Two agents on different providers hand off work through palaia** |
+| **2** | Remote & identity | OAuth 2.1 server (CIMD, resource metadata); GitHub/Google/OIDC sign-in; claude.ai + ChatGPT + mobile connectors; exposure wizard + tunnel add-ons; stash; event bus + hooks v1; auto-capture skills; first MCP Apps (review queue, recall explorer, hub status — §5.7) | **Phone Claude remembers what desktop Codex learned** |
+| **3** | The hub | Gateway aggregation (external servers + registry browse); per-client tool profiles; marketplace v1 (curated index, one-click install, config UIs) incl. marketplace MCP App; MCPB/one-click client bundles; automations editor | **Install a tool once, every AI has it** |
+| **4** | The team | Session directory + messenger; structured-messaging skills; message observability incl. session-monitor MCP App; add-on SDK + community submissions | **Two agents on different providers hand off work through palaia** |
 | **5** | 3.0 launch | App-store/appliance distribution; hardening + external security review; docs site + onboarding page; v2 sunset messaging | **A non-developer completes install → first shared memory unaided** |
 
 ## 13. Success Metrics
