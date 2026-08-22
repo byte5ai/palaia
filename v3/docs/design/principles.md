@@ -8,7 +8,9 @@
 > Companion documents: [`system.md`](system.md) (tokens, components, tone) and the
 > five screens in [`mockups/`](mockups/).
 >
-> Version 1 — 2026-08-22
+> Version 2 — 2026-08-22 — Rule 6 updated for the restyle onto Lume (glow
+> selection instead of a flat tint, the Signal rule); every other rule is
+> unchanged from version 1.
 
 ## 1. The eight rules, applied
 
@@ -79,17 +81,28 @@ An error the user must google is a bug. Findings come with a fix.
 
 ### Rule 6 — Beauty is a feature
 
-The eye eats first. Concretely, for this system: warm-paper light and ink dark
-(both flawless, neither an afterthought), one accent, semantic colour only,
-hairlines over borders-on-borders, serif for the lines that carry meaning, and a
-verdict sentence in plain language instead of a wall of gauges.
+The eye eats first. Concretely, for this system: Lume's light-as-material —
+gradient surfaces, directional borders that catch light from above, glow
+instead of flat tint at selection and focus — rendered in palaia's own accent,
+atelier's studio-lamp warmth, in both light and dark (both flawless, neither an
+afterthought); semantic colour that is always text or icon, never a fill; serif
+for the lines that carry meaning; and a verdict sentence in plain language
+instead of a wall of gauges. One more restraint sits on top of all of this:
+**Signal**, Lume's separate, palette-independent, deliberately loud colour, is
+capped at one element across the *entire currently-visible view* and reserved
+for the single most important one-time commitment on that screen (`system.md`
+§1.1) — not a second accent, not a way to make an ordinary action feel more
+urgent than it is.
 
 | Don't | Do |
 |---|---|
 | A dashboard of dial charts | One sentence: "Everything is healthy." with the numbers underneath |
 | Six differently-shaped cards per screen | One card grammar (head / body / foot) everywhere |
 | Colour as decoration | Colour as state (`system.md` §1.1) |
-| Dark mode as inverted light mode | Its own palette; shadows replaced by hairlines |
+| A flat accent-tinted fill on the selected row or nav item | The Lume glow halo (`colors_and_type.css` §7, `.lume-selected`) — light the surface emits, not paint applied to it |
+| A filled, coloured pill for "healthy" / "needs attention" / "broken" | Text and icon colour only — a status is never a block fill (`system.md` §1.1) |
+| Reaching for Signal because a button feels important | Signal only for the one genuine one-time commitment per view (`onboarding.html`'s "Create vault"); everything else, including a routine "Approve", stays accent |
+| Dark mode as inverted light mode | Its own palette; shadows replaced by hairlines and Lume's directional borders |
 | Fixed pixel widths | Fits 360 / 768 / 1280; primary answer never scrolls away |
 
 ### Rule 7 — Trust through transparency
