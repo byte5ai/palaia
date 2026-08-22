@@ -44,6 +44,13 @@ This repository hosts two strictly separated lines of development:
   `v3/MASTERPLAN.md` is the source of truth for v3 scope and roadmap. Significant v3
   decisions are recorded in `v3/decisions/` as ADRs.
 
+**v3 project conventions:**
+
+- Repository language is **English** — code, comments, docs, ADRs, commit messages.
+- Every user-facing v3 feature must be checked against the standing design question
+  "is an MCP App the right or a sensible surface for this?" — see
+  `v3/MASTERPLAN.md` §4 (rule 8) and §5.7.
+
 **Hard separation rules:**
 
 - Never import/require across the boundary: v2 code must not depend on `v3/` and vice versa.

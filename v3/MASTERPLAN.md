@@ -138,6 +138,12 @@ them are rejected.
    from 2015, it's not done.
 7. **Trust through transparency.** Every automatic action (auto-capture, auto-update,
    agent message) is visible and reversible. Show what the AIs are doing.
+8. **MCP Apps are a standing design question.** For every user-facing feature — now
+   and in the future — the design review asks: is an in-client app surface (§5.7)
+   the right way to deliver this, or at least a sensible addition? The answer may
+   well be "no" (and must be for security-sensitive administration), but the
+   question is mandatory, so the in-chat experience never lags behind the
+   dashboard by accident.
 
 ## 5. System Architecture (draft)
 
