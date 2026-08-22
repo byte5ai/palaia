@@ -1,0 +1,11 @@
+{
+  "title": "Embed queue saturation", "permalink": "inbox/embed-queue-saturation",
+  "type": "capture",
+  "observations": [
+    {"category": "entity", "text": "API Gateway", "line": 13},
+    {"category": "why", "text": "Future work will trip over the cap otherwise.", "line": 14},
+    {"category": "raw", "text": "Ingest capped at 100 req/min; embed queue saturates above that.", "line": 15},
+    {"category": "source", "text": "PR #88 review, 2026-08-22", "line": 16}
+  ],
+  "warnings": []
+}

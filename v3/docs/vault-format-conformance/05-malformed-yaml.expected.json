@@ -1,0 +1,6 @@
+{
+  "title": "05-malformed-yaml", "type": "note",
+  "observations": [],
+  "relations": [{"type": "links_to", "target": "A Link", "implicit": true}],
+  "warnings": [{"code": "frontmatter-malformed"}, {"code": "title-defaulted"}, {"code": "permalink-missing"}]
+}
