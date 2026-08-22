@@ -20,7 +20,10 @@ findings.
 
 ## Deliverables
 1. `v3/docs/vault-format.md` — normative spec v1:
-   - file/folder layout, naming, reserved folders (`inbox/`, `review/`, `meta/`)
+   - file/folder layout, naming, reserved folders (`inbox/`, `review/`, `meta/`);
+     layout guidance informed by SPEC-003: git tree-object cost scales with
+     *directory* size, so the spec favors topic folders (natural sharding) and
+     sets a soft per-directory size guideline instead of flat dumps
    - frontmatter schema (required/optional keys, types, custom-key policy,
      stable permalink rules incl. move behavior)
    - observation grammar (categories, tags, context, per-model variants

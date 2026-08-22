@@ -305,9 +305,13 @@ flowchart LR
   client config file.
 - **Capability adaptation:** clients differ in MCP feature support; the gateway
   degrades gracefully per client (this is also where new spec features get adopted
-  once, for all tools). Protocol target: **MCP 2026-07-28 (stateless) from day one**,
-  with a handshake shim for clients still on 2025-era revisions; streamable HTTP
-  only (SSE is deprecated).
+  once, for all tools). Protocol stance (revised at the Phase-0 gate,
+  per spike SPEC-002): FastMCP 3.x negotiates **MCP 2025-11-25** — 2026-07-28
+  statelessness exists only in FastMCP 4.x (beta). Phase 1 therefore ships on
+  3.x/2025-11-25, **proven end-to-end with a real Claude Code client in the
+  spike**; the move to 2026-07-28 happens when FastMCP 4.x is stable (never a
+  beta pin, per ADR-004), isolated behind the gateway seam. Streamable HTTP only
+  (SSE is deprecated).
 - **Panels inside the clients:** via the **MCP Apps** extension palaia renders
   interactive views directly inside the chat clients — the full strategy is §5.7.
 

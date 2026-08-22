@@ -22,10 +22,14 @@ user's own files has no license implications — ADR-002.)
 2. `palaia-hub import basic-memory <path>`: maps their frontmatter/observations/
    relations to ours per a documented mapping table (`docs/import-mappings.md`);
    unknown custom keys preserved as metadata.
-3. Dry-run mode (report what would be created, collisions, unmappable items);
+3. **Cold-embed as a visible background job:** embedding an imported vault takes
+   minutes to hours at realistic sizes (spike: ~437 ms/note) — imports must
+   complete and be FTS-searchable immediately, with vector embedding running as
+   a progress-visible background job (dashboard + `inbox_status`-style API).
+4. Dry-run mode (report what would be created, collisions, unmappable items);
    idempotent re-run (stable IDs, no duplicates); import runs into a dedicated
    folder + git commit series for easy review/rollback.
-4. Golden fixtures: a frozen mini v2 store and mini basic-memory vault under
+5. Golden fixtures: a frozen mini v2 store and mini basic-memory vault under
    `v3/tests/fixtures/` with expected v3 output checked in.
    *(Fixture creation is a good Sonnet 4 / low sub-task.)*
 

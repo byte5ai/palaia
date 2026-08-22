@@ -23,6 +23,11 @@ in behavior after rebuild.
 2. **Embeddings**: fastembed local default (model per config), chunking with
    fingerprint tracking, sqlite-vec KNN; embedding work runs async off the
    write path (write ack never waits on embeds), with a pending/ready status.
+   **Spike numbers (SPEC-003):** ~437 ms/note embed vs ~0.6 ms/note FTS on 4
+   vCPUs — async is a hard constraint, not a preference. Before locking the
+   default model, run a small model/batch-size benchmark (bge-small-en-v1.5 vs
+   faster alternatives) and record it in the PR. Batch index inserts in one
+   transaction per build (easy 5-10× from the spike).
 3. **Hybrid search API**: modes `fts | vector | hybrid`, scope/type/date
    filters, sub-note addressability in results (observation/relation hits point
    at their synthetic permalinks).
