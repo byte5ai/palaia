@@ -31,8 +31,21 @@ naming rules that are product identity (MASTERPLAN §5.1/§5.2).
    common LLM parameter misses (`folder/dir/path`, `q/query/text`); dual
    text/json output; server `instructions` with an IDENTITY line per vault; an
    `ai_assistant_guide` MCP resource.
-5. MCP protocol target: 2026-07-28 stateless with the compatibility posture
-   from SPEC-002 findings.
+5. MCP protocol: **2025-11-25 via FastMCP 3.x** (gate decision — see MASTERPLAN
+   §5.2 and spike FINDINGS; 2026-07-28 arrives with stable FastMCP 4.x).
+
+## Binding spike findings (SPEC-002, v3/spikes/gateway/FINDINGS.md)
+- Use `fastmcp.server.create_proxy()` — `FastMCP.as_proxy()` is deprecated.
+- Profiles = **one `FastMCP()` instance per profile**, mounted via Starlette
+  `Mount`, lifespans combined with `fastmcp.utilities.lifespan.combine_lifespans`
+  (missing this silently hangs the first request). The `Visibility` transform is
+  session-scoped, NOT path-scoped — do not use it for profiles.
+- `tool_names` renames are applied **pre-namespace** (`foo`→`bar` with
+  namespace `baz` yields `baz_bar`). The rename config/UI must accept the final
+  displayed name and decompose it internally, or renames double-prefix.
+- Real Claude Code clients emit one pre-handshake `400` per connection against
+  FastMCP 3.4.7 before succeeding — capture gateway logs during the e2e test,
+  identify the request, and document (or fix) it.
 
 ## Acceptance criteria
 - [ ] Claude Code connects via `claude mcp add --transport http` and round-trips

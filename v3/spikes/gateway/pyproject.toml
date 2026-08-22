@@ -1,0 +1,10 @@
+[project]
+name = "gateway-spike"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "fastmcp>=3,<4",
+    "httpx>=0.28.1",
+    "mcp>=1.0",
+]

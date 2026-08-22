@@ -1,0 +1,33 @@
+/home/user/palaia/.claude/worktrees/wf_79892aaa-79d-2/v3/spikes/gateway/gateway.py:73: FastMCPDeprecationWarning: FastMCP.as_proxy() is deprecated. Use create_proxy() from fastmcp.server instead: `from fastmcp.server import create_proxy`
+  remote_proxy = FastMCP.as_proxy(REMOTE_UPSTREAM_URL)
+INFO:     Started server process [30864]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8900 (Press CTRL+C to quit)
+INFO:     127.0.0.1:36590 - "GET /mcp/full/ HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:34218 - "POST /mcp/full/ HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:34218 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34218 - "POST /mcp/full/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:34218 - "GET /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34222 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34236 - "POST /mcp/full/ HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:34236 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34236 - "POST /mcp/full/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:34236 - "GET /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34252 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34730 - "POST /mcp/full/ HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:34730 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34730 - "POST /mcp/full/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:34730 - "GET /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34736 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34744 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34752 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51400 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37644 - "POST /mcp/full/ HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:37644 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37644 - "POST /mcp/full/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:37644 - "GET /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37650 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37652 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37654 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37658 - "POST /mcp/full/ HTTP/1.1" 200 OK

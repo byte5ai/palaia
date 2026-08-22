@@ -1,0 +1,30 @@
+# v3 dev commands. Run from v3/, e.g. `just test`.
+# Requires: uv (https://docs.astral.sh/uv/), Node 22+.
+
+# Run every check (python + web): lint, typecheck, tests, build.
+default: lint test
+
+# Install all dependencies (python workspace + web app).
+setup:
+    uv sync --all-packages
+    cd web && npm ci
+
+# Run all tests (pytest + vitest).
+test:
+    uv run pytest
+    cd web && npm test
+
+# Run all linters/type checkers (ruff, mypy, eslint, tsc).
+lint:
+    uv run ruff check .
+    uv run mypy server/src
+    cd web && npm run lint
+    cd web && npm run typecheck
+
+# Run the web dev server (Vite) against a hot-reloading placeholder page.
+dev:
+    cd web && npm run dev
+
+# Build the web app for production.
+build:
+    cd web && npm run build

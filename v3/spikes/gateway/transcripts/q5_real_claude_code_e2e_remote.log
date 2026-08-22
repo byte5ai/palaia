@@ -1,0 +1,8 @@
+{
+  "is_error": false,
+  "subtype": "success",
+  "stop_reason": "end_turn",
+  "num_turns": 3,
+  "duration_ms": 8870,
+  "result": "remote-upstream echo: real-claude-code-e2e"
+}

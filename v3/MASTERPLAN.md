@@ -106,10 +106,13 @@ answers "is everything healthy, and what happened?" at a glance; task-oriented
 navigation instead of entity lists; progressive disclosure (advanced settings exist,
 but never in the way); live state everywhere (event-stream-driven UI, no reload
 buttons); and no config-file editing as a required path, ever. Beautiful, calm,
-legible. Prior art studied: samanhappy/MCPHub (group endpoints, per-group
-visibility, semantic tool routing) and ravitemer/mcp-hub (REST management API +
-unified endpoint, SSE live events, registry-backed marketplace — and no dashboard,
-which is exactly palaia's opening).
+legible. **The visual language is Lume** — the owner's light-as-material design
+system (`v3/docs/design/lume/`), with `atelier` as palaia's default accent and
+the Signal single-loud-element rule as binding doctrine. Prior art studied:
+samanhappy/MCPHub (group endpoints, per-group visibility, semantic tool routing)
+and ravitemer/mcp-hub (REST management API + unified endpoint, SSE live events,
+registry-backed marketplace — and no dashboard, which is exactly palaia's
+opening).
 
 ## 4. UX Doctrine
 
@@ -305,9 +308,13 @@ flowchart LR
   client config file.
 - **Capability adaptation:** clients differ in MCP feature support; the gateway
   degrades gracefully per client (this is also where new spec features get adopted
-  once, for all tools). Protocol target: **MCP 2026-07-28 (stateless) from day one**,
-  with a handshake shim for clients still on 2025-era revisions; streamable HTTP
-  only (SSE is deprecated).
+  once, for all tools). Protocol stance (revised at the Phase-0 gate,
+  per spike SPEC-002): FastMCP 3.x negotiates **MCP 2025-11-25** — 2026-07-28
+  statelessness exists only in FastMCP 4.x (beta). Phase 1 therefore ships on
+  3.x/2025-11-25, **proven end-to-end with a real Claude Code client in the
+  spike**; the move to 2026-07-28 happens when FastMCP 4.x is stable (never a
+  beta pin, per ADR-004), isolated behind the gateway seam. Streamable HTTP only
+  (SSE is deprecated).
 - **Panels inside the clients:** via the **MCP Apps** extension palaia renders
   interactive views directly inside the chat clients — the full strategy is §5.7.
 
@@ -619,7 +626,7 @@ use. Detailed specs + ADRs are written per phase, not upfront.
 
 | # | Decision | Recommendation | Status |
 |---|---|---|---|
-| 1 | Stack | Python core + FastMCP, TS/React dashboard, Docker-first (§8) | **Owner call** after reading §8 |
+| 1 | Stack | Python core + FastMCP, TS/React dashboard, Docker-first (§8) | **Decided: Accepted** (2026-08-22, [ADR-004](decisions/004-stack.md)) |
 | 2 | License for v3 | — | **Decided: MIT** (2026-08-22, [ADR-002](decisions/002-clean-room-licensing.md)) |
 | 3 | Name & versioning | Keep "palaia", version 3.0; product surface named "palaia hub" | Proposed |
 | 4 | Add-on runtime | Phase 1–2: built-ins + external servers only; container add-ons in phase 3 (needs docker-socket ADR) | Proposed |

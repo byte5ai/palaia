@@ -1,0 +1,72 @@
+name: v3 CI
+
+on:
+  push:
+    branches: [main]
+    paths: ['v3/**']
+  pull_request:
+    branches: [main]
+    paths: ['v3/**']
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: v3
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.8.x"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: uv sync
+        run: uv sync --all-packages
+
+      - name: ruff check
+        run: uv run ruff check .
+
+      - name: mypy
+        run: uv run mypy server/src
+
+      - name: pytest
+        run: uv run pytest
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: v3/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: v3/web/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: eslint
+        run: npm run lint
+
+      - name: tsc
+        run: npm run typecheck
+
+      - name: vitest
+        run: npm test
+
+      - name: build
+        run: npm run build
