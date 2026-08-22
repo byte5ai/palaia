@@ -513,8 +513,24 @@ Considered alternatives:
   slower to build, thinner MCP/embedding ecosystems, and it would forfeit the
   Python velocity this scope needs. Escape hatch: hot paths can move into a native
   extension later; the architecture keeps that door open.
-- **TypeScript everywhere** — one language incl. dashboard, but the Python gravity
-  of the MCP/embeddings world and the v2 codebase experience outweigh it.
+- **TypeScript everywhere** — a stronger contender than it first looks: the two hub
+  prior-art projects are TS, the official TS SDK v2 is stable on MCP 2026-07-28, and
+  Node is unavoidable at palaia's edges anyway (dashboard, the MCPB proxy runs in
+  Claude Desktop's bundled Node, MCP Apps). Rejected because the TS ecosystem has
+  **no high-level gateway framework** (the official SDK is low-level; FastMCP-TS
+  trails the spec and lacks proxy/composition) and the local-embedding stack is
+  thinner (community-maintained fastembed-js vs. Qdrant-maintained fastembed) —
+  choosing TS would mean hand-building exactly the two hardest parts of the product.
+
+**Adversarial review (2026-08-22):** the recommendation was re-examined against
+current sources; it stands, with one risk added. **FastMCP dependency risk:** the
+framework is owned by PrefectHQ, whose commercial Horizon product overlaps palaia's
+category — OSS priorities could drift. Mitigations: permissive license (verify exact
+terms in the stack ADR), the official python-sdk as fallback, **all gateway logic
+behind palaia's own interface seam** (SPEC-105) so a framework swap never touches
+tool definitions, and the standing rule of never pinning beta releases. The decisive
+factors for Python remain gateway-framework maturity and the embedding ecosystem —
+both verified, not assumed.
 
 ## 9. Deployment & Distribution
 
