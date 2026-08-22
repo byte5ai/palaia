@@ -63,9 +63,10 @@ decision).
 ### P1 — Memory (the core)
 A shared, human-readable, git-versioned knowledge vault, served to every client via
 MCP. The best concepts of palaia v2 (hybrid search, scopes, decay-ranked recall,
-auto-capture, dedup, doctor) merged with the best of basic-memory (Markdown-first
-knowledge graph, Obsidian compatibility, files as source of truth) — reimplemented
-clean-room (see [ADR-002](decisions/002-clean-room-licensing.md)).
+auto-capture, dedup, doctor), basic-memory (Markdown-first knowledge graph, Obsidian
+compatibility, files as source of truth) and mcp-hub (inbox + curator: agents drop,
+a job curates) — reimplemented clean-room where licensing demands it
+(see [ADR-002](decisions/002-clean-room-licensing.md)).
 
 ### P2 — Gateway ("configure once, use everywhere")
 One MCP endpoint that aggregates everything behind it: palaia's built-in tools,
@@ -206,11 +207,24 @@ flowchart LR
 - **Scopes & attribution:** every entry carries origin (provider, client, session,
   or human) and scope (private / project / shared). Scopes are enforced by the hub —
   clients only ever see what their token allows.
+- **Two write paths — direct and inbox:** agents that know exactly where knowledge
+  belongs write structured entries directly. For everything captured *mid-work*, there
+  is the **inbox** (a proven mcp-hub pattern): a zero-friction drop target. The agent
+  does **not** have to decide where the entry belongs, whether it duplicates or
+  should be merged with existing knowledge, or which structural rules apply to the
+  target memory area — it drops the information and keeps working.
+- **The curator:** an asynchronous, LLM-assisted job that processes the inbox into
+  the curated vault — classifying and placing entries, merging with existing notes,
+  deduplicating, and conforming them to the target area's schemas. Together with the
+  inbox this realizes the promotion ladder (raw → candidate → accepted): agents
+  propose memory, the curator (and, when confidence is low, the user via a dashboard
+  review queue) accepts it. Every curator action is a git commit — inspectable and
+  reversible. Architecturally, the curator is itself a hook-driven automation (§5.6):
+  the first consumer of palaia's own event bus.
 - **Auto-capture:** provider-appropriate mechanisms (skills, hooks, wrapper prompts)
-  let agents save significant knowledge without being told; significance scoring and
-  dedup keep the vault clean. Captured material enters through a **promotion ladder**
-  (raw → candidate → accepted): agents propose memory, they don't silently create
-  it. Always visible, always reversible (git).
+  let agents save significant knowledge without being told — feeding the inbox, with
+  significance scoring and dedup keeping noise down. Always visible, always
+  reversible (git).
 - **Tool ergonomics:** every MCP tool ships behavior annotations
   (read-only/destructive hints), absorbs common LLM parameter-name misses via
   aliases, and the server serves a model-facing usage guide as an MCP resource —
@@ -229,17 +243,30 @@ flowchart LR
   client config file.
 - **Capability adaptation:** clients differ in MCP feature support; the gateway
   degrades gracefully per client (this is also where new spec features get adopted
-  once, for all tools).
+  once, for all tools). Protocol target: **MCP 2026-07-28 (stateless) from day one**,
+  with a handshake shim for clients still on 2025-era revisions; streamable HTTP
+  only (SSE is deprecated).
+- **Panels inside the clients:** via the **MCP Apps** extension
+  (`io.modelcontextprotocol/ui`, final since 2026-01) palaia can render onboarding,
+  config and memory views directly inside claude.ai, Claude Desktop, ChatGPT,
+  VS Code and others — the dashboard comes to the user's chat window, not only the
+  other way around.
 
 ### 5.3 Marketplace & add-ons
 
-- **Three install sources:** (1) the official MCP registry, browsable in the
-  dashboard with one-click connect; (2) the palaia add-on store — curated,
-  containerized local MCP servers with a declarative manifest (config schema →
-  auto-generated settings UI, permission declarations, health checks, update
-  channel); (3) manual entries for anything else.
-- **Skills, too:** the store distributes agent skills (SKILL.md packages) alongside
-  tools, offered to clients that support them.
+- **Three install sources:** (1) the official MCP registry
+  (registry.modelcontextprotocol.io — API-frozen v0.1, built for exactly this kind of
+  consumption), browsable in the dashboard with one-click connect; (2) the palaia
+  add-on store — curated, containerized local MCP servers with a declarative manifest
+  (config schema → auto-generated settings UI, permission declarations, health
+  checks, update channel); (3) manual entries for anything else.
+- **Curation is the product:** the official registry is *minimally moderated by
+  design* and delegates trust to subregistries — palaia's store is that trust layer.
+- **All artifact types:** remote MCP servers, containerized add-ons, **MCPB bundles**
+  (signed; local-only by spec, used as thin proxies to the hub), **Agent Skills**
+  (SKILL.md — open standard, 40+ adopters incl. Claude, ChatGPT/Codex, Gemini,
+  Copilot) and **Agent Plugins** (the 2026 vendor-neutral skills+MCP packaging) —
+  offered to clients that support them.
 - **Security model:** add-ons declare permissions (network, filesystem mounts,
   memory-scope access); containers are sandboxed; the curated index is signed.
   A tool the user installs can be trusted *because* palaia constrains it.
@@ -264,25 +291,32 @@ all four:
   expected-reply flag, and a short body plus **references into the vault** — long
   content is written to memory once and pointed at, not re-serialized into every
   message. Token discipline by design.
-- **Delivery:** pull (MCP tool) as the universal baseline; push adapters
-  (webhooks/wake mechanisms) where platforms allow. Cross-host and cross-provider by
-  construction — the hub is the broker.
+- **Delivery:** pull (MCP tool) as the universal baseline — MCP 2026-07-28 removed
+  server-initiated requests entirely, so polling + the official **Tasks extension**
+  carry the async semantics; push adapters where platforms allow them (Claude Code's
+  `claude/channel` capability is a shipping precedent, webhooks elsewhere).
+  Cross-host and cross-provider by construction — the hub is the broker.
 - **Observability:** the dashboard shows the directory and message flows live; the
   human can read along, join in, or shut a conversation down. Trust rule #7.
 
 ### 5.5 Auth & network posture
 
-- palaia implements the MCP authorization spec (OAuth 2.1: resource server metadata,
-  dynamic client registration) so that claude.ai, ChatGPT and mobile apps can connect
-  as remote connectors with a standard flow.
+- palaia implements the current MCP authorization spec (OAuth 2.1: RFC 9728 resource
+  metadata, OIDC discovery, **CIMD-first client registration** with legacy DCR
+  fallback — DCR is deprecated as of MCP 2026-07-28) so that claude.ai, ChatGPT and
+  mobile apps can connect as remote connectors with a standard flow.
 - **Identity:** local account created in the first-run wizard; GitHub / Google /
   generic OIDC as optional sign-in providers (the mcp-hub prototype's experience
   informs this layer).
 - **Tokens per client** with scopes (toolset + memory scopes); a revocation UI.
-- **Posture:** LAN-only by default. "Expose to the internet" is an explicit wizard
-  with hardening checks; the recommended remote path is a tunnel add-on
-  (Tailscale / cloudflared) rather than an open port. A hosted relay ("palaia
-  cloud") is deliberately out of scope for now — open decision #8.
+- **Posture:** LAN-only by default. "Expose" is an explicit wizard with hardening
+  checks; the recommended path is a tunnel add-on (Tailscale / cloudflared) rather
+  than an open port. **Important reality check:** claude.ai and ChatGPT connect to
+  connectors *from their vendor clouds*, not from the user's device — so for those
+  clients, reachability from the internet is a hard requirement even on the same
+  LAN. The exposure wizard is therefore a core onboarding step, not an advanced
+  option. A hosted relay ("palaia cloud") stays out of scope for now — open
+  decision #8.
 
 ### 5.6 Events, hooks, automations
 
@@ -298,24 +332,26 @@ all four:
 
 ## 6. Client Integration Matrix
 
-> To be verified against [research/mcp-landscape-2026.md](research/mcp-landscape-2026.md)
-> (in progress); mechanisms below reflect the state known as of writing.
+> Verified 2026-08-22 against
+> [research/mcp-landscape-2026.md](research/mcp-landscape-2026.md) (all claims dated
+> and sourced there).
 
 | Client | Connection | Onboarding UX (dashboard "Connect a client" page) |
 |---|---|---|
-| Claude Desktop | Remote/local MCP; MCPB bundle | One-click MCPB download (double-click installs, config UI in Claude) or copy-paste connector URL |
-| Claude Code | `claude mcp add --transport http …` | Copy button for the one-liner **or** paste-prompt: the agent runs setup itself (v2 pattern) |
-| claude.ai web + mobile | Custom connector (remote MCP, OAuth) | Guided flow: expose/tunnel check → copy URL → OAuth dance handled by palaia |
-| ChatGPT | Connectors / developer mode (remote MCP, OAuth) | Same guided flow, ChatGPT-specific steps |
-| Codex (CLI/IDE) | `config.toml` MCP entry | Copy-paste snippet or paste-prompt for the agent |
-| Antigravity | MCP config | Copy-paste snippet |
-| Grok | MCP support where available | Snippet; degrade gracefully (verify current support) |
+| Claude Desktop | Local stdio, in-app directory, or **MCPB bundle** — MCPB is local-only by spec, so palaia ships a signed bundle containing a thin stdio→hub proxy | One-click MCPB download (double-click installs; config UI rendered by Claude from the manifest) |
+| Claude Code | `claude mcp add --transport http …` (SSE deprecated); project-scope `.mcp.json`; ToolSearch handles large tool counts; `claude/channel` capability for push events | Copy button for the one-liner **or** paste-prompt: the agent sets itself up (v2 pattern) |
+| claude.ai web + desktop + **mobile** + Cowork | Custom connector (remote MCP) — **available on all plans incl. Free (1 connector)**; OAuth optional; **Anthropic's cloud connects to the hub**, so the endpoint must be internet-reachable (tunnel wizard) | Guided flow: tunnel/expose check → copy URL → OAuth handled by palaia |
+| ChatGPT | Developer mode / custom connectors (remote MCP); **write-capable custom connectors are gated to Business/Enterprise/Edu** — Plus/Pro read-oriented; since 07/2026 "plugins" (skills+MCP+UI) share one directory with Codex | Same guided flow; plan-gating explained inline so users aren't surprised |
+| Codex (CLI/IDE/desktop) | `codex mcp add`; `config.toml` `[mcp_servers.*]` with **streamable HTTP + OAuth login (CIMD/DCR)**; per-server tool approval modes; config shared across Codex surfaces | Copy-paste snippet or paste-prompt for the agent |
+| Antigravity / Gemini CLI | Shared MCP config (`~/.gemini/…`); Gemini extensions can bundle servers; Agent Skills supported | Copy-paste snippet |
+| Grok | Custom (bring-your-own) MCP connectors, OAuth-based, web/iOS/Android | Guided flow like claude.ai |
 | OpenClaw | v2 plugin keeps working against v2; v3 adapter later | Not a v3 launch target — v2 serves it |
-| Local LLM frontends (LM Studio etc.) | MCP where supported | Snippet |
+| Local LLM frontends | LM Studio: native MCP host; Open WebUI: via MCPO proxy; llama.cpp web UI: native client | Snippet per frontend |
 
 Per-client quirks (auth requirements, plan gating, feature support) are tracked in
 the research dossier and baked into the connect flows — the *user* never needs to
-know them.
+know them. Where clients support **MCP Apps**, the connect flow itself can render as
+an interactive panel inside the client.
 
 ## 7. Heritage: what v3 takes from where
 
@@ -323,19 +359,21 @@ know them.
 |---|---|---|---|
 | palaia v2 | MIT (ours) | Hybrid search, scopes, decay ranking, auto-capture/significance, dedup, doctor, paste-prompt onboarding, projects | Concepts freely; code only where it genuinely fits the new architecture (mostly it won't — see inventory) |
 | basic-memory | AGPL-3.0 | Markdown knowledge graph (entities/observations/relations), files-as-truth + rebuildable index, `memory://` addressing + graph-traversal recall, schema-as-notes, capture promotion ladder, MCP tool ergonomics, Obsidian compatibility | **Concepts only, clean-room; zero code, no runtime dependency** ([ADR-002](decisions/002-clean-room-licensing.md)). v3 additionally fixes its confirmed gaps: no events/hooks, no permissions, no git, no agent awareness. Plus: a vault *importer* |
-| mcp-hub (private prototype) | ours | Auth/wrapper experience for exposing memory over MCP remotely | Direct reuse of learnings; repo access for research pending |
+| mcp-hub (private prototype) | ours | Auth/wrapper experience for exposing memory over MCP remotely; the **inbox + curator** pattern (zero-friction agent capture, asynchronous LLM-assisted curation into structure) | Direct reuse of learnings; repo access for research pending — extract inbox/curator details once available |
 | Home Assistant | Apache-2.0 | The *model*: appliance install, add-on store, automations, `*.local` onboarding, community ecosystem | Inspiration & benchmarks, no code |
 
 ## 8. Stack — options and recommendation (decision pending)
 
 **Recommendation: Python core + TypeScript dashboard, Docker-first.**
 
-- **Hub/core: Python 3.12+** with FastMCP (server framework; composition/proxying
-  and auth support align exactly with the gateway design — version per research
-  dossier) and FastAPI for the dashboard/REST API. Rationale: the MCP server
-  ecosystem's center of gravity is Python; local-embedding libraries are Python;
-  the team's v2 experience is Python; basic-memory-parity features are naturally
-  expressed in it.
+- **Hub/core: Python 3.12+** with **FastMCP 3.x** (GA since 2026-02, PrefectHQ):
+  its ProxyProvider (remote upstreams), FastMCPProvider (mounting/composition),
+  Namespace + per-user Visibility transforms, per-component auth (incl. CIMD) and
+  SkillsProvider map 1:1 onto the gateway design — the gateway is largely assembly,
+  not invention. Adopt FastMCP 4.x (MCP 2026-07-28-native, currently beta) once
+  stable — but never pin a beta in a release build (basic-memory's mistake). FastAPI
+  for the dashboard/REST API. Rationale: the MCP ecosystem's center of gravity is
+  Python; local-embedding libraries are Python; the team's v2 experience is Python.
 - **Dashboard: TypeScript + React + Tailwind**, built to static assets and served
   by the hub — one process, one container. (Team has TS experience from the v2
   OpenClaw plugin.)
@@ -422,6 +460,7 @@ use. Detailed specs + ADRs are written per phase, not upfront.
 | Tool-context bloat (agents drowning in tools) | Per-client profiles by default; curated core set; measure tool-call success |
 | Solo-maintainer bus factor | ADRs + this plan keep context transferable; agent-friendly repo conventions |
 | v2 users stranded | v2 stays installable + hotfix-able (`v2-maintenance`); importer + migration guide in MVP |
+| Commercial gateway competitors (e.g. Prefect Horizon: Deploy/Registry/Gateway/Agents) | Category validation, not a blocker — palaia differentiates on self-hosted + open + **memory-centric** (no MCP-standard memory primitive exists; cross-provider memory stays our moat) |
 
 ## 15. Open Decisions
 
