@@ -14,7 +14,9 @@ status: ready
 The single most consequential design artifact of v3: a **formally specified,
 versioned** vault format. basic-memory's grammar grew by patch-on-patch
 heuristics (research/basic-memory.md §6.6); palaia writes the grammar down
-first and tests against it forever.
+first and tests against it forever. Normative inputs: the decision matrix in
+research/memory-design-comparison.md (dimensions 1-8, 10-12) plus the spike
+findings.
 
 ## Deliverables
 1. `v3/docs/vault-format.md` — normative spec v1:

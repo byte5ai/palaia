@@ -626,6 +626,7 @@ use. Detailed specs + ADRs are written per phase, not upfront.
 - `v3/specs/` — executable SPECs (Phase 0 + 1; later phases spec'd at their gates)
 - `v3/research/palaia2-feature-inventory.md` — v2 capability baseline with verdicts
 - `v3/research/basic-memory.md` — concept dossier (what to adopt/avoid)
+- `v3/research/memory-design-comparison.md` — v2 vs. basic-memory decision matrix feeding SPEC-004
 - `v3/research/mcp-landscape-2026.md` — protocol/client/ecosystem facts, dated + sourced
 - `v3/decisions/` — ADRs (001 two-track repo, 002 clean-room licensing, …)
 
