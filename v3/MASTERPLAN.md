@@ -619,7 +619,7 @@ use. Detailed specs + ADRs are written per phase, not upfront.
 
 | # | Decision | Recommendation | Status |
 |---|---|---|---|
-| 1 | Stack | Python core + FastMCP, TS/React dashboard, Docker-first (§8) | **Owner call** after reading §8 |
+| 1 | Stack | Python core + FastMCP, TS/React dashboard, Docker-first (§8) | **Decided: Accepted** (2026-08-22, [ADR-004](decisions/004-stack.md)) |
 | 2 | License for v3 | — | **Decided: MIT** (2026-08-22, [ADR-002](decisions/002-clean-room-licensing.md)) |
 | 3 | Name & versioning | Keep "palaia", version 3.0; product surface named "palaia hub" | Proposed |
 | 4 | Add-on runtime | Phase 1–2: built-ins + external servers only; container add-ons in phase 3 (needs docker-socket ADR) | Proposed |
