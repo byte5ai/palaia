@@ -606,10 +606,11 @@ use. Detailed specs + ADRs are written per phase, not upfront.
 ## 16. Document Map
 
 - `v3/MASTERPLAN.md` — this file
+- `v3/IMPLEMENTATION.md` — work breakdown, execution protocol, model/effort matrix
+- `v3/specs/` — executable SPECs (Phase 0 + 1; later phases spec'd at their gates)
 - `v3/research/palaia2-feature-inventory.md` — v2 capability baseline with verdicts
 - `v3/research/basic-memory.md` — concept dossier (what to adopt/avoid)
 - `v3/research/mcp-landscape-2026.md` — protocol/client/ecosystem facts, dated + sourced
 - `v3/decisions/` — ADRs (001 two-track repo, 002 clean-room licensing, …)
 
-Next planning artifacts (phase 0): UX north-star mockups, memory format ADR, gateway
-spike report, stack + license ADRs.
+Phase-0 execution starts with SPEC-001..006 (see IMPLEMENTATION.md §4).
