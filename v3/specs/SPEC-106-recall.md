@@ -28,7 +28,11 @@ agents *use* palaia instead of grepping files.
 4. **Per-model variants** (format spec + mcp-hub heritage): `recall` resolves
    `[category | model-scope]` observation variants to the single most specific
    one for the calling model; contract as pure function + table-driven tests.
-5. Wire into SPEC-105 as `recall` + `build_context` tools with the ergonomics
+5. **Value-reference resolution**: embeds (`![[Note#^block]]`, per format spec)
+   are resolved live in recall/read output — referencing notes always show the
+   current source value; cycles detected, missing targets rendered as explicit
+   markers, never silently dropped.
+6. Wire into SPEC-105 as `recall` + `build_context` tools with the ergonomics
    rules.
 
 ## Acceptance criteria
@@ -39,6 +43,8 @@ agents *use* palaia instead of grepping files.
       model → default; no variant → base observation
 - [ ] ranking regression battery on the golden vault (expected top-3 per query
       checked in as fixtures)
+- [ ] value references resolve to the current source value in recall output;
+      cycle and missing-target cases from the conformance corpus behave as spec'd
 - [ ] e2e: Claude Code asks "continue where we left off"-style query and gets
       the seeded context (SPEC-113 scenario)
 

@@ -30,6 +30,13 @@ findings.
    - relation grammar (typed wikilinks, implicit `links_to`, forward
      references, quoted multi-word types)
    - `memory://` addressing incl. sub-note (observation/relation) permalinks
+   - **stable-identity rules**: entity names / link targets must be volatility-free
+     (no versions, dates, statuses); where such data lives instead; rename
+     semantics (all backlinks rewritten atomically)
+   - **value references**: Obsidian-compatible block/field embeds
+     (`![[Note#^block]]`) as the copy-free way to share volatile values across
+     notes; resolution semantics (read/recall time), cycle handling, missing-target
+     behavior
    - entry taxonomy v1 (note types) — the narrowed open decision #5
    - format version marker + evolution/migration policy
 2. `v3/decisions/003-vault-format.md` — ADR: what was adopted from
@@ -40,7 +47,8 @@ findings.
    SPEC-103 implements against.
 
 ## Acceptance criteria
-- [ ] every grammar rule has ≥ 1 golden-corpus case (valid AND invalid)
+- [ ] every grammar rule has ≥ 1 golden-corpus case (valid AND invalid), incl.
+      volatile-name violations and value-reference resolution/cycle/missing cases
 - [ ] Obsidian opens a sample vault without any rendering damage
 - [ ] spike findings (SPEC-002/003) explicitly addressed where relevant
 - [ ] ADR-003 lists rejected alternatives with reasons

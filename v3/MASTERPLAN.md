@@ -206,6 +206,17 @@ flowchart LR
 - **Optional structure:** per-type schemas stored as ordinary notes, validating in
   warn-first mode, with schema *inference* from actual usage — structure emerges,
   it is not imposed.
+- **Stable identity, referenced values** (two field-tested basic-memory pain points,
+  designed out): (a) entity names and link targets must be **volatility-free** —
+  versions, dates, statuses belong in observation fields, never in `[[wikilinks]]`
+  or titles (`[[OpenClaw]]` + `- [version] 2026.5.7`, not `[[OpenClaw 2026.5.7]]`);
+  the format spec enforces it, the doctor flags violations, the curator proposes
+  fixes, and a genuine rename rewrites **all backlinks atomically** in one git
+  commit. (b) Values shared by several notes are **referenced, not copied**: a note
+  embeds another note's field/block (Obsidian-compatible `![[Note#^block]]` syntax,
+  renders natively in Obsidian), resolved live at read/recall time — change the
+  value at its single source and every referencing note is current, with no
+  propagation machinery and no stale copies.
 - **Files are the source of truth.** The database is a derived index (SQLite:
   full-text + vector search) that can be dropped and rebuilt from the vault at any
   time. Writes go through to disk **synchronously** (no accepted-but-not-yet-on-disk

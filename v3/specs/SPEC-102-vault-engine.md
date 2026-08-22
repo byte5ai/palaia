@@ -19,6 +19,9 @@ the SPEC-003 findings. Correctness beats features here.
 1. `palaia_hub.vault` — vault registry (multiple vaults, each: name, purpose,
    path, isolated storage) + per-vault engine with:
    - `write_note / read_note / edit_note / move_note / delete_note / list_dir`
+   - `rename_entity`: renames a note's identity and rewrites all inbound
+     wikilinks/backlinks vault-wide in ONE atomic git commit (format-spec rename
+     semantics)
    - **synchronous write-through**: the call returns only after the file is on
      disk (fsync) — no accepted-but-unwritten states (explicit anti-goal:
      basic-memory's async materialization wart)
@@ -41,6 +44,8 @@ the SPEC-003 findings. Correctness beats features here.
       corruption; same note: second writer gets a checksum-conflict error
 - [ ] external edit → change event within the debounce budget (integration test)
 - [ ] move detection: rename on disk preserves permalink identity
+- [ ] `rename_entity` on the golden vault: zero dangling backlinks afterward,
+      exactly one commit, external (Obsidian) partial renames flagged by doctor
 - [ ] every acknowledged write is a git commit with correct attribution
 - [ ] two vaults never share files, SQLite, or git state (isolation test)
 - [ ] 10k-note vault: write p50 within SPEC-003's measured budget ±20%

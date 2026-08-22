@@ -48,7 +48,11 @@ palaia v2 and mcp-hub are ours — code reuse allowed where it fits.
    inbox's noise gate.
 6. **Where neither had an answer** (v3 must invent): git-native history, outbound
    events/hooks, per-model recall variants (mcp-hub), vault-carrying tool names,
-   token-budgeted graph recall combining decay + traversal.
+   token-budgeted graph recall combining decay + traversal — and two answers to
+   observed basic-memory field pain: the **stable-identity rule** (volatility-free
+   entity names, atomic backlink-rewriting renames) and **referenced values**
+   (Obsidian-compatible embeds instead of copied volatile facts, resolved at read
+   time).
 
 ## Feeding SPEC-004
 
