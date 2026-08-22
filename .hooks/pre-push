@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Pre-push hook: block direct pushes to main/master.
-# Override: ALLOW_PUSH_TO_MAIN=1 git push origin main
+# Pre-push hook: block direct pushes to protected branches (main/master/v2-maintenance).
+# Override: ALLOW_PUSH_TO_MAIN=1 git push origin <branch>
 
 if [ "$ALLOW_PUSH_TO_MAIN" = "1" ]; then
   exit 0
@@ -8,7 +8,7 @@ fi
 
 while read -r _local_ref _local_sha remote_ref _remote_sha; do
   remote_branch="${remote_ref##refs/heads/}"
-  if [[ "$remote_branch" =~ ^(main|master)$ ]]; then
+  if [[ "$remote_branch" =~ ^(main|master|v2-maintenance)$ ]]; then
     echo ""
     echo "  BLOCKED: Direct push to '$remote_branch' is not allowed."
     echo "  Create a feature branch and open a pull request instead."

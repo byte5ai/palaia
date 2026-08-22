@@ -19,6 +19,13 @@ ___________  |  | _____  |__|____
 
 ---
 
+> **palaia v3 is in the making.** A ground-up rewrite — self-hosted infrastructure that
+> unifies memory, MCP tools, and agent communication across AI providers — is being
+> planned under [`v3/`](v3/MASTERPLAN.md). palaia v2 (this README) remains the stable
+> release line; hotfixes continue on the [`v2-maintenance`](https://github.com/byte5ai/palaia/tree/v2-maintenance) branch.
+
+---
+
 ## What palaia Does
 
 AI agents are stateless by default. Every session starts from scratch — no memory of past decisions, no shared knowledge between agents, no context that survives a restart.

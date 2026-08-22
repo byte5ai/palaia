@@ -29,3 +29,25 @@ A `.hooks/pre-push` hook blocks direct pushes to `main`/`master`. Override only 
 ```bash
 ALLOW_PUSH_TO_MAIN=1 git push origin main
 ```
+
+## Two Development Tracks (v2 / v3)
+
+This repository hosts two strictly separated lines of development:
+
+- **v2 (stable, maintenance-only):** the code at the repo root (`palaia/`, `tests/`,
+  `packages/openclaw-plugin/`, `docs/`, `skills/`). Feature development is frozen.
+  Only critical hotfixes (security, data loss, broken release) are made. Hotfix PRs
+  target the **`v2-maintenance`** branch — never `main`. Release tags `v2.x.y` are cut
+  from `v2-maintenance`.
+- **v3 (active development):** lives entirely under **`v3/`** on `main`. Currently in
+  the planning phase; code packages will be added under `v3/` as they are created.
+  `v3/MASTERPLAN.md` is the source of truth for v3 scope and roadmap. Significant v3
+  decisions are recorded in `v3/decisions/` as ADRs.
+
+**Hard separation rules:**
+
+- Never import/require across the boundary: v2 code must not depend on `v3/` and vice versa.
+- No shared build tooling, lockfiles, or configs between the tracks.
+- A PR touches files of exactly one track (the only exception: intentional cross-references
+  in top-level docs such as the README pointer to v3).
+- v3 work must not modify v2 root files (`pyproject.toml`, `palaia/`, `packages/`, …).

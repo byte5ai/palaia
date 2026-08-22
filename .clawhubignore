@@ -9,3 +9,4 @@ docs/
 *.cfg
 requirements*.txt
 Makefile
+v3/
