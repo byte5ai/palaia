@@ -16,6 +16,44 @@ v2 hotfixes happen on the `v2-maintenance` branch.
 | [research/](research/) | Research dossiers the plan is grounded in |
 | [decisions/](decisions/) | Architecture Decision Records (ADRs) for v3 |
 
+## Dev setup
+
+Layout established by SPEC-001:
+
+- `v3/server/` — Python `palaia_hub` package (part of a `uv` workspace rooted
+  at `v3/pyproject.toml`). Python ≥3.12, hatchling, pytest, ruff (line length
+  100), mypy (strict).
+- `v3/web/` — Vite + React + TypeScript + Tailwind dashboard skeleton, tested
+  with vitest and linted with eslint.
+- `v3/spikes/` — self-contained spike code (SPEC-002, SPEC-003). Deliberately
+  **not** a member of the uv workspace, so a spike's throwaway dependencies
+  never affect `v3/server`.
+
+Prerequisites: [`uv`](https://docs.astral.sh/uv/), Node 22+, and
+[`just`](https://github.com/casey/just) (or run the underlying commands
+directly — see `v3/justfile`).
+
+```bash
+cd v3
+just setup   # uv sync --all-packages; npm ci in web/
+just test    # pytest + vitest
+just lint    # ruff, mypy, eslint, tsc
+just dev     # Vite dev server for the web app
+just build   # production build of the web app
+```
+
+Equivalent raw commands, if you don't have `just`:
+
+```bash
+cd v3 && uv sync && uv run pytest
+cd v3/web && npm ci && npm test && npm run build
+```
+
+CI: [`.github/workflows/v3-ci.yml`](../.github/workflows/v3-ci.yml) runs the
+Python and web checks above on any push/PR to `main` that touches `v3/**`.
+It is independent of the v2 `ci.yml` (repo root), which ignores `v3/**`
+changes.
+
 ## Ground rules
 
 - v3 is developed **only** inside `v3/`. No imports or shared tooling with v2 code.
