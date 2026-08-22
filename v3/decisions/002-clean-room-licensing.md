@@ -1,6 +1,6 @@
 # ADR-002: Adopt concepts, never code — licensing guardrail for v3
 
-- **Status:** Proposed (final license choice pending — see MASTERPLAN open decisions)
+- **Status:** Accepted
 - **Date:** 2026-08-22
 - **Deciders:** cwendler
 
@@ -27,9 +27,9 @@ work under AGPL-3.0 and bind all future distribution and hosted use.
    Markdown files is not a license event).
 3. Code and concepts from **palaia v2** (MIT, byte5-owned) and **mcp-hub**
    (byte5/owner-authored) may be reused freely.
-4. v3's own license is a pending decision: MIT (v2 continuity) vs. Apache-2.0
-   (patent grant; the Home Assistant choice). Both keep the options open that AGPL
-   would close. Recommendation in MASTERPLAN: Apache-2.0 for the platform.
+4. **palaia v3 is licensed MIT** (owner decision, 2026-08-22): continuity with v2,
+   maximum simplicity for the add-on ecosystem, and it keeps every option open that
+   AGPL would close.
 
 ## Alternatives considered
 
@@ -38,6 +38,9 @@ work under AGPL-3.0 and bind all future distribution and hosted use.
   asymmetry benefits their cloud, not ours.
 - **Relicense palaia v3 as AGPL** — maximally protective against cloud free-riders,
   but conflicts with a permissive add-on ecosystem and with byte5's plans.
+- **Apache-2.0** — the Home Assistant choice, adds an explicit patent grant; was the
+  initial recommendation. Owner chose MIT for v2 continuity and simplicity; the
+  practical difference for this project is small.
 
 ## Consequences
 
