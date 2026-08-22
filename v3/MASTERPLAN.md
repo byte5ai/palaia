@@ -203,7 +203,10 @@ flowchart LR
   ranking (v2's proven concept, minus physical file moves), token-budget-aware
   context assembly, scope filters — plus **graph traversal**: "continue where we left
   off" resolves a `memory://` reference and walks its relations with depth and
-  timeframe limits, instead of re-searching.
+  timeframe limits, instead of re-searching. Notes can carry **per-model variants**
+  of an observation (e.g. a rule phrased differently for different model families);
+  recall resolves the most specific applicable variant for the calling agent and
+  drops the rest — deterministic and token-frugal (an mcp-hub invention).
 - **Scopes & attribution:** every entry carries origin (provider, client, session,
   or human) and scope (private / project / shared). Scopes are enforced by the hub —
   clients only ever see what their token allows.
@@ -218,9 +221,20 @@ flowchart LR
   deduplicating, and conforming them to the target area's schemas. Together with the
   inbox this realizes the promotion ladder (raw → candidate → accepted): agents
   propose memory, the curator (and, when confidence is low, the user via a dashboard
-  review queue) accepts it. Every curator action is a git commit — inspectable and
-  reversible. Architecturally, the curator is itself a hook-driven automation (§5.6):
-  the first consumer of palaia's own event bus.
+  review queue) accepts it. Proven mechanics from the mcp-hub prototype carry over:
+  a minimal **capture contract** (what it concerns / why keep it / the knowledge
+  verbatim / provenance — the first two mandatory, everything else optional, so a
+  busy agent never has to know vault taxonomy); a hard **two-tier rule** — *adding*
+  knowledge is autonomous, but *rewriting, merging or retiring* existing notes only
+  ever becomes a review proposal, and applying an approved proposal is a
+  deterministic operation with **no model in the loop**; and **verification instead
+  of trust** — every curator write must carry the capture's provenance id, the job
+  afterwards searches the vault for that id to confirm the knowledge actually
+  landed, and only then removes the inbox entry. The curator's limits are enforced
+  in code (its tool surface *is* the policy), not in prompt text. Every curator
+  action is a git commit — inspectable and reversible. Architecturally, the curator
+  is itself a hook-driven automation (§5.6): the first consumer of palaia's own
+  event bus.
 - **Auto-capture:** provider-appropriate mechanisms (skills, hooks, wrapper prompts)
   let agents save significant knowledge without being told — feeding the inbox, with
   significance scoring and dedup keeping noise down. Always visible, always
@@ -305,10 +319,31 @@ all four:
   metadata, OIDC discovery, **CIMD-first client registration** with legacy DCR
   fallback — DCR is deprecated as of MCP 2026-07-28) so that claude.ai, ChatGPT and
   mobile apps can connect as remote connectors with a standard flow.
+- **Topology (production-proven in the mcp-hub prototype):** one authorization
+  server fronting N resources. Tokens are audience-scoped (a token for one tool
+  surface is rejected by every other) and signed; resource components verify them
+  locally against the published public key — no per-call round-trip to the auth
+  layer. Per-tool scopes (`read`/`write`) are enforced fail-closed in the hosting
+  layer: a tool counts as read-only only if it explicitly says so *and* isn't on a
+  known-writes list.
 - **Identity:** local account created in the first-run wizard; GitHub / Google /
-  generic OIDC as optional sign-in providers (the mcp-hub prototype's experience
-  informs this layer).
+  generic OIDC as optional sign-in providers. Sign-in requests zero scopes from the
+  IdP and discards its token after reading the identity. **One door only:** when an
+  IdP is configured, the password fallback is disabled — two doors into the same
+  room mean the weaker one decides how strong the room is.
 - **Tokens per client** with scopes (toolset + memory scopes); a revocation UI.
+  Lifecycle rules learned the hard way (each was a real production failure in the
+  prototype): **grace-windowed refresh rotation** instead of strict single-use —
+  claude.ai fans one connector out over web, phone and desktop, and concurrent
+  refreshes must converge instead of tearing the grant down (strict rotation caused
+  daily re-logins); **registered-client garbage collection** — every reconnect
+  registers a fresh client and nothing cleans them up unless you do; **resource
+  indicators are resolved against the configured canonical audience, never minted
+  verbatim** — clients disagree about trailing path segments, and a verbatim `aud`
+  produces tokens that verify at the AS and fail silently at the resource.
+- **Machine identities** (jobs, automations) are provisioned by the admin — pinned
+  to exactly one audience and scope grant, never obtainable through public client
+  registration, no refresh tokens.
 - **Posture:** LAN-only by default. "Expose" is an explicit wizard with hardening
   checks; the recommended path is a tunnel add-on (Tailscale / cloudflared) rather
   than an open port. **Important reality check:** claude.ai and ChatGPT connect to
@@ -359,7 +394,7 @@ an interactive panel inside the client.
 |---|---|---|---|
 | palaia v2 | MIT (ours) | Hybrid search, scopes, decay ranking, auto-capture/significance, dedup, doctor, paste-prompt onboarding, projects | Concepts freely; code only where it genuinely fits the new architecture (mostly it won't — see inventory) |
 | basic-memory | AGPL-3.0 | Markdown knowledge graph (entities/observations/relations), files-as-truth + rebuildable index, `memory://` addressing + graph-traversal recall, schema-as-notes, capture promotion ladder, MCP tool ergonomics, Obsidian compatibility | **Concepts only, clean-room; zero code, no runtime dependency** ([ADR-002](decisions/002-clean-room-licensing.md)). v3 additionally fixes its confirmed gaps: no events/hooks, no permissions, no git, no agent awareness. Plus: a vault *importer* |
-| mcp-hub (private prototype) | ours | Auth/wrapper experience for exposing memory over MCP remotely; the **inbox + curator** pattern (zero-friction agent capture, asynchronous LLM-assisted curation into structure) | Direct reuse of learnings; repo access for research pending — extract inbox/curator details once available |
+| mcp-hub (private prototype) | ours | One-AS/N-resources auth topology with audience-isolated, locally-verifiable tokens; per-tool scope enforcement; token-lifecycle hardening (grace-windowed rotation, client GC, resolved resource indicators); the **inbox + curator** pattern incl. two-tier INGEST/MAINTENANCE rule, capture contract, provenance-id verification, deterministic apply; per-model recall variants | Direct reuse of learnings and (owner-authored) code where it fits. Research based on a private concept dossier held **outside** this public repo |
 | Home Assistant | Apache-2.0 | The *model*: appliance install, add-on store, automations, `*.local` onboarding, community ecosystem | Inspiration & benchmarks, no code |
 
 ## 8. Stack — options and recommendation (decision pending)
@@ -474,7 +509,7 @@ use. Detailed specs + ADRs are written per phase, not upfront.
 | 6 | Messenger placement | Built-in pillar, not an add-on | Proposed |
 | 7 | Building in the open | This plan is public in a public repo — accepted implication of in-repo planning | Confirm |
 | 8 | Hosted relay ("palaia cloud") | Defer; design tunnel-first, keep relay possible later | Proposed |
-| 9 | mcp-hub research access | Mirror `iret77/mcp-hub` into `byte5ai` org so this environment can read it | **Owner action** |
+| 9 | mcp-hub research access | — | **Resolved** (2026-08-22): concept dossier provided privately; learnings incorporated in §5.1/§5.5/§7. The dossier itself stays out of this public repo |
 | 10 | v2 stale-branch cleanup (113 merged branches) | Delete merged branches; tags preserve history | **Owner call** |
 
 ## 16. Document Map
