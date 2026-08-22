@@ -12,3 +12,4 @@ node_modules/
 palaia-export/
 site/
 WEBSITE-UPDATE-PROMPT.md
+.claude/
