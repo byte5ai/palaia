@@ -1,0 +1,831 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>palaia &middot; Connect a client (mockup)</title>
+<style>
+/* ================================================================
+   palaia design tokens v1 - verbatim mirror of v3/docs/design/system.md
+   Change them there first; every mockup carries the same block.
+   ================================================================ */
+:root{
+  color-scheme: light dark;
+
+  /* Neutrals - warm paper */
+  --p-canvas:#F6F4F0;
+  --p-surface:#FFFFFF;
+  --p-surface-2:#FBF9F6;
+  --p-sunken:#EFEBE4;
+  --p-line:#E4DFD6;
+  --p-line-strong:#CFC8BB;
+  --p-ink:#1E1C19;
+  --p-ink-muted:#6A645B;
+  --p-ink-subtle:#776E63;
+
+  /* Accent - verdigris (brand + everything interactive) */
+  --p-accent:#0B6E6B;
+  --p-accent-hover:#095857;
+  --p-accent-ink:#0A5F5D;
+  --p-accent-soft:#E3F0EE;
+  --p-accent-line:#B9DAD6;
+  --p-on-accent:#FFFFFF;
+
+  /* Semantic - state, never decoration */
+  --p-ok:#377346;   --p-ok-soft:#E7EFE7;   --p-ok-line:#C2DAC4;
+  --p-warn:#8F5D10; --p-warn-soft:#F8EFDC; --p-warn-line:#E4D0A7;
+  --p-risk:#A63929; --p-risk-soft:#F8E8E5; --p-risk-line:#E8C5BE;
+  --p-info:#3A5A85; --p-info-soft:#E8EEF7; --p-info-line:#C5D3E7;
+
+  /* Elevation */
+  --p-shadow-1:0 1px 2px rgba(30,28,25,.06);
+  --p-shadow-2:0 1px 2px rgba(30,28,25,.05), 0 10px 24px -14px rgba(30,28,25,.22);
+  --p-shadow-3:0 2px 4px rgba(30,28,25,.06), 0 24px 48px -20px rgba(30,28,25,.28);
+
+  /* Type */
+  --p-font-sans:ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --p-font-serif:ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  --p-font-mono:ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --p-size-2xs:.6875rem;  /* 11px - overlines only */
+  --p-size-xs:.75rem;     /* 12px - meta, chips */
+  --p-size-sm:.8125rem;   /* 13px - dense UI, table cells */
+  --p-size-md:.9375rem;   /* 15px - body, the default */
+  --p-size-lg:1.0625rem;  /* 17px - lead paragraph, card titles */
+  --p-size-xl:1.3125rem;  /* 21px - section heads */
+  --p-size-2xl:1.625rem;  /* 26px - page titles, metrics */
+  --p-size-3xl:2.0625rem; /* 33px - the one-glance verdict */
+  --p-size-display:2.625rem; /* 42px - onboarding only */
+  --p-leading-tight:1.15;
+  --p-leading-snug:1.35;
+  --p-leading-normal:1.55;
+  --p-leading-loose:1.7;
+  --p-track-tight:-.012em;
+  --p-track-label:.09em;
+
+  /* Space - 4px base */
+  --p-space-1:.25rem;  --p-space-2:.5rem;  --p-space-3:.75rem; --p-space-4:1rem;
+  --p-space-5:1.25rem; --p-space-6:1.5rem; --p-space-8:2rem;   --p-space-10:2.5rem;
+  --p-space-12:3rem;   --p-space-16:4rem;
+
+  /* Radii */
+  --p-radius-sm:6px; --p-radius-md:10px; --p-radius-lg:14px; --p-radius-xl:20px; --p-radius-pill:999px;
+
+  /* Motion - short, eased, always skippable */
+  --p-ease:cubic-bezier(.2,.7,.3,1);
+  --p-dur-1:120ms; --p-dur-2:180ms; --p-dur-3:260ms;
+
+  /* Layout */
+  --p-nav-w:248px; --p-rail-w:64px; --p-topbar-h:60px; --p-content-max:1180px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  /* Neutrals - ink */
+  --p-canvas:#121417;
+  --p-surface:#191C21;
+  --p-surface-2:#1E2228;
+  --p-sunken:#0E1013;
+  --p-line:#282D34;
+  --p-line-strong:#3A4048;
+  --p-ink:#EAE7E1;
+  --p-ink-muted:#9EA4AC;
+  --p-ink-subtle:#8A9099;
+
+  /* Accent */
+  --p-accent:#2E9E97;
+  --p-accent-hover:#3BB3AB;
+  --p-accent-ink:#5FC8BF;
+  --p-accent-soft:#102B2A;
+  --p-accent-line:#22514D;
+  --p-on-accent:#04211F;
+
+  /* Semantic */
+  --p-ok:#79B886;   --p-ok-soft:#13211A;   --p-ok-line:#264430;
+  --p-warn:#DCA85C; --p-warn-soft:#241C0F; --p-warn-line:#4A3A1D;
+  --p-risk:#E0857A; --p-risk-soft:#251411; --p-risk-line:#4E2620;
+  --p-info:#8CB0E2; --p-info-soft:#131C29; --p-info-line:#26364B;
+
+  /* Elevation - dark leans on lines, not shadows */
+  --p-shadow-1:0 1px 2px rgba(0,0,0,.45);
+  --p-shadow-2:0 1px 2px rgba(0,0,0,.45), 0 12px 28px -16px rgba(0,0,0,.75);
+  --p-shadow-3:0 2px 6px rgba(0,0,0,.5), 0 28px 56px -24px rgba(0,0,0,.85);
+}}
+:root[data-theme="dark"]{
+  /* Neutrals - ink */
+  --p-canvas:#121417;
+  --p-surface:#191C21;
+  --p-surface-2:#1E2228;
+  --p-sunken:#0E1013;
+  --p-line:#282D34;
+  --p-line-strong:#3A4048;
+  --p-ink:#EAE7E1;
+  --p-ink-muted:#9EA4AC;
+  --p-ink-subtle:#8A9099;
+
+  /* Accent */
+  --p-accent:#2E9E97;
+  --p-accent-hover:#3BB3AB;
+  --p-accent-ink:#5FC8BF;
+  --p-accent-soft:#102B2A;
+  --p-accent-line:#22514D;
+  --p-on-accent:#04211F;
+
+  /* Semantic */
+  --p-ok:#79B886;   --p-ok-soft:#13211A;   --p-ok-line:#264430;
+  --p-warn:#DCA85C; --p-warn-soft:#241C0F; --p-warn-line:#4A3A1D;
+  --p-risk:#E0857A; --p-risk-soft:#251411; --p-risk-line:#4E2620;
+  --p-info:#8CB0E2; --p-info-soft:#131C29; --p-info-line:#26364B;
+
+  /* Elevation - dark leans on lines, not shadows */
+  --p-shadow-1:0 1px 2px rgba(0,0,0,.45);
+  --p-shadow-2:0 1px 2px rgba(0,0,0,.45), 0 12px 28px -16px rgba(0,0,0,.75);
+  --p-shadow-3:0 2px 6px rgba(0,0,0,.5), 0 28px 56px -24px rgba(0,0,0,.85);
+}
+/* ================ primitives & components ================ */
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--p-canvas);color:var(--p-ink);
+  font-family:var(--p-font-sans);font-size:var(--p-size-md);line-height:var(--p-leading-normal);
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+}
+h1,h2,h3,h4,p{margin:0}
+ul{margin:0;padding:0;list-style:none}
+a{color:var(--p-accent-ink);text-decoration:none}
+a:hover{text-decoration:underline;text-underline-offset:2px}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--p-accent);outline-offset:2px;border-radius:var(--p-radius-sm)}
+svg{display:block}
+.i{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.i--sm{width:16px;height:16px}
+.i--lg{width:28px;height:28px;stroke-width:1.25}
+
+/* ---------- text primitives ---------- */
+.t-over{font-size:var(--p-size-2xs);letter-spacing:var(--p-track-label);text-transform:uppercase;color:var(--p-ink-subtle);font-weight:600}
+.t-serif{font-family:var(--p-font-serif);letter-spacing:var(--p-track-tight);line-height:var(--p-leading-tight);font-weight:600}
+.t-mono{font-family:var(--p-font-mono);font-size:var(--p-size-sm)}
+.t-num{font-variant-numeric:tabular-nums}
+.t-muted{color:var(--p-ink-muted)}
+.t-subtle{color:var(--p-ink-subtle)}
+.t-sm{font-size:var(--p-size-sm)}
+.t-xs{font-size:var(--p-size-xs)}
+.t-lead{font-size:var(--p-size-lg);color:var(--p-ink-muted);line-height:var(--p-leading-snug)}
+
+/* ---------- layout helpers ---------- */
+.row{display:flex;align-items:center;gap:var(--p-space-3)}
+.row--wrap{flex-wrap:wrap}
+.row--between{display:flex;align-items:center;justify-content:space-between;gap:var(--p-space-4)}
+.stack{display:flex;flex-direction:column;gap:var(--p-space-4)}
+.stack--2{gap:var(--p-space-2)}
+.stack--3{gap:var(--p-space-3)}
+.stack--6{gap:var(--p-space-6)}
+.grow{flex:1;min-width:0}
+.scrollpane{overflow:auto;min-height:0;scrollbar-width:thin;scrollbar-color:var(--p-line-strong) transparent}
+.scrollpane::-webkit-scrollbar{width:10px;height:10px}
+.scrollpane::-webkit-scrollbar-thumb{background:var(--p-line-strong);border-radius:var(--p-radius-pill);border:3px solid transparent;background-clip:content-box}
+.scrollpane::-webkit-scrollbar-track{background:transparent}
+.sep{height:1px;background:var(--p-line);border:0;margin:0}
+
+/* ---------- buttons ---------- */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:var(--p-space-2);
+  height:36px;padding:0 var(--p-space-4);border-radius:var(--p-radius-md);
+  border:1px solid var(--p-line-strong);background:var(--p-surface);color:var(--p-ink);
+  font-size:var(--p-size-sm);font-weight:550;cursor:pointer;white-space:nowrap;
+  transition:background var(--p-dur-1) var(--p-ease),border-color var(--p-dur-1) var(--p-ease),transform var(--p-dur-1) var(--p-ease);
+}
+.btn:hover{background:var(--p-surface-2);border-color:var(--p-ink-subtle)}
+.btn:active{transform:translateY(1px)}
+.btn--primary{background:var(--p-accent);border-color:var(--p-accent);color:var(--p-on-accent);box-shadow:var(--p-shadow-1)}
+.btn--primary:hover{background:var(--p-accent-hover);border-color:var(--p-accent-hover)}
+.btn--ghost{background:transparent;border-color:transparent;color:var(--p-ink-muted)}
+.btn--ghost:hover{background:var(--p-sunken);color:var(--p-ink);border-color:transparent}
+.btn--quiet{background:transparent;border-color:var(--p-line);color:var(--p-ink-muted)}
+.btn--risk{background:transparent;border-color:var(--p-risk-line);color:var(--p-risk)}
+.btn--risk:hover{background:var(--p-risk-soft);border-color:var(--p-risk)}
+.btn--sm{height:28px;padding:0 var(--p-space-3);font-size:var(--p-size-xs);border-radius:var(--p-radius-sm)}
+.btn--lg{height:44px;padding:0 var(--p-space-6);font-size:var(--p-size-md)}
+.btn--block{width:100%}
+.btn[aria-disabled="true"]{opacity:.5;cursor:not-allowed}
+.iconbtn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:var(--p-radius-sm);border:1px solid transparent;background:transparent;color:var(--p-ink-muted);cursor:pointer}
+.iconbtn:hover{background:var(--p-sunken);color:var(--p-ink)}
+.kbd{
+  display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;
+  border:1px solid var(--p-line-strong);border-bottom-width:2px;border-radius:5px;
+  background:var(--p-surface);font-family:var(--p-font-mono);font-size:10px;color:var(--p-ink-muted)
+}
+
+/* ---------- surfaces ---------- */
+.card{background:var(--p-surface);border:1px solid var(--p-line);border-radius:var(--p-radius-lg);box-shadow:var(--p-shadow-1)}
+.card--flat{box-shadow:none}
+.card--raised{box-shadow:var(--p-shadow-2)}
+.card__head{display:flex;align-items:center;justify-content:space-between;gap:var(--p-space-3);padding:var(--p-space-4) var(--p-space-5);border-bottom:1px solid var(--p-line)}
+.card__title{font-size:var(--p-size-md);font-weight:600}
+.card__body{padding:var(--p-space-5)}
+.card__body--tight{padding:var(--p-space-3) var(--p-space-4)}
+.card__foot{padding:var(--p-space-4) var(--p-space-5);border-top:1px solid var(--p-line);display:flex;align-items:center;gap:var(--p-space-3);flex-wrap:wrap}
+.card__foot .foot-note{flex-basis:100%;order:9}
+
+/* ---------- badges, dots, chips ---------- */
+.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:var(--p-radius-pill);
+  border:1px solid var(--p-line);background:var(--p-surface-2);color:var(--p-ink-muted);
+  font-size:var(--p-size-xs);font-weight:550;white-space:nowrap}
+.badge .dot{width:6px;height:6px}
+.badge--ok{background:var(--p-ok-soft);border-color:var(--p-ok-line);color:var(--p-ok)}
+.badge--warn{background:var(--p-warn-soft);border-color:var(--p-warn-line);color:var(--p-warn)}
+.badge--risk{background:var(--p-risk-soft);border-color:var(--p-risk-line);color:var(--p-risk)}
+.badge--info{background:var(--p-info-soft);border-color:var(--p-info-line);color:var(--p-info)}
+.badge--accent{background:var(--p-accent-soft);border-color:var(--p-accent-line);color:var(--p-accent-ink)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--p-ink-subtle);flex:none}
+.dot--ok{background:var(--p-ok)}
+.dot--warn{background:var(--p-warn)}
+.dot--risk{background:var(--p-risk)}
+.dot--live{background:var(--p-ok);box-shadow:0 0 0 0 var(--p-ok-line);animation:pulse 2.4s var(--p-ease) infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 var(--p-ok-line)}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
+.chip{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:var(--p-radius-sm);
+  background:var(--p-sunken);color:var(--p-ink-muted);font-size:var(--p-size-xs);white-space:nowrap}
+.chip--mono{font-family:var(--p-font-mono);font-size:11px}
+.chip--accent{background:var(--p-accent-soft);color:var(--p-accent-ink)}
+
+/* ---------- tiles (metrics) ---------- */
+.tiles{display:grid;gap:var(--p-space-4);grid-template-columns:repeat(4,minmax(0,1fr))}
+.tile{background:var(--p-surface);border:1px solid var(--p-line);border-radius:var(--p-radius-lg);padding:var(--p-space-4) var(--p-space-5);
+  display:flex;flex-direction:column;gap:var(--p-space-1);box-shadow:var(--p-shadow-1);position:relative;overflow:hidden}
+.tile__metric{font-family:var(--p-font-serif);font-size:var(--p-size-2xl);line-height:1.1;letter-spacing:var(--p-track-tight);font-weight:600;font-variant-numeric:tabular-nums}
+.tile__unit{font-family:var(--p-font-sans);font-size:var(--p-size-sm);font-weight:500;color:var(--p-ink-muted);letter-spacing:0}
+.tile__sub{font-size:var(--p-size-xs);color:var(--p-ink-muted)}
+.tile--attention{border-color:var(--p-warn-line);background:linear-gradient(180deg,var(--p-warn-soft),var(--p-surface) 62%)}
+.tile__action{margin-top:var(--p-space-2)}
+
+/* ---------- banners / callouts ---------- */
+.banner{display:flex;gap:var(--p-space-3);padding:var(--p-space-4);border-radius:var(--p-radius-md);
+  border:1px solid var(--p-info-line);background:var(--p-info-soft);color:var(--p-ink);font-size:var(--p-size-sm)}
+.banner svg{color:var(--p-info);margin-top:1px}
+.banner--warn{border-color:var(--p-warn-line);background:var(--p-warn-soft)}
+.banner--warn svg{color:var(--p-warn)}
+.banner--ok{border-color:var(--p-ok-line);background:var(--p-ok-soft)}
+.banner--ok svg{color:var(--p-ok)}
+.banner__title{font-weight:600;margin-bottom:2px}
+
+/* ---------- tables ---------- */
+.table{width:100%;border-collapse:collapse;font-size:var(--p-size-sm)}
+.table th{text-align:left;font-size:var(--p-size-2xs);letter-spacing:var(--p-track-label);text-transform:uppercase;
+  color:var(--p-ink-subtle);font-weight:600;padding:0 var(--p-space-3) var(--p-space-2);border-bottom:1px solid var(--p-line)}
+.table td{padding:var(--p-space-3);border-bottom:1px solid var(--p-line);vertical-align:middle}
+.table tr:last-child td{border-bottom:0}
+.table tbody tr:hover{background:var(--p-surface-2)}
+
+/* ---------- lists ---------- */
+.listrow{display:flex;align-items:center;gap:var(--p-space-3);padding:var(--p-space-3) var(--p-space-4);border-bottom:1px solid var(--p-line)}
+.listrow:last-child{border-bottom:0}
+.listrow:hover{background:var(--p-surface-2)}
+.listrow__title{font-size:var(--p-size-sm);font-weight:550}
+.listrow__meta{font-size:var(--p-size-xs);color:var(--p-ink-muted)}
+
+/* ---------- empty states ---------- */
+.empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:var(--p-space-3);padding:var(--p-space-10) var(--p-space-6)}
+.empty__mark{display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:var(--p-radius-lg);
+  background:var(--p-accent-soft);color:var(--p-accent-ink);border:1px solid var(--p-accent-line)}
+.empty__title{font-family:var(--p-font-serif);font-size:var(--p-size-xl);font-weight:600;letter-spacing:var(--p-track-tight)}
+.empty__text{max-width:46ch;color:var(--p-ink-muted);font-size:var(--p-size-sm)}
+
+/* ---------- forms ---------- */
+.field{display:flex;flex-direction:column;gap:6px}
+.field__label{font-size:var(--p-size-sm);font-weight:600}
+.field__hint{font-size:var(--p-size-xs);color:var(--p-ink-muted)}
+.input{height:38px;padding:0 var(--p-space-3);border:1px solid var(--p-line-strong);border-radius:var(--p-radius-md);
+  background:var(--p-surface);color:var(--p-ink);font:inherit;font-size:var(--p-size-sm);width:100%}
+.input::placeholder{color:var(--p-ink-subtle)}
+.input:focus{outline:2px solid var(--p-accent);outline-offset:1px;border-color:var(--p-accent)}
+.input--readonly{background:var(--p-sunken);color:var(--p-ink-muted);font-family:var(--p-font-mono);font-size:var(--p-size-xs)}
+.switchrow{display:flex;align-items:flex-start;gap:var(--p-space-3);padding:var(--p-space-3);border:1px solid var(--p-line);border-radius:var(--p-radius-md);background:var(--p-surface-2)}
+.switch{width:36px;height:20px;border-radius:var(--p-radius-pill);background:var(--p-line-strong);position:relative;flex:none;margin-top:2px}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--p-surface);box-shadow:var(--p-shadow-1)}
+.switch--on{background:var(--p-accent)}
+.switch--on::after{left:auto;right:2px}
+.segmented{display:inline-flex;padding:3px;gap:2px;background:var(--p-sunken);border-radius:var(--p-radius-md);border:1px solid var(--p-line)}
+.segmented__item{padding:5px 12px;border-radius:7px;font-size:var(--p-size-xs);font-weight:550;color:var(--p-ink-muted);cursor:pointer}
+.segmented__item--on{background:var(--p-surface);color:var(--p-ink);box-shadow:var(--p-shadow-1)}
+
+/* ---------- snippet + copy ---------- */
+.snippet{display:flex;align-items:center;gap:var(--p-space-3);padding:var(--p-space-3) var(--p-space-3) var(--p-space-3) var(--p-space-4);
+  background:var(--p-sunken);border:1px solid var(--p-line);border-radius:var(--p-radius-md)}
+.snippet code{font-family:var(--p-font-mono);font-size:var(--p-size-xs);color:var(--p-ink);overflow:auto;white-space:pre;scrollbar-width:none}
+.snippet code::-webkit-scrollbar{display:none}
+.snippet--block{display:block}
+.snippet--block code{display:block;white-space:pre-wrap;line-height:var(--p-leading-normal)}
+
+/* ---------- steps ---------- */
+.steps{display:flex;flex-direction:column;gap:2px}
+.step{display:flex;gap:var(--p-space-3);align-items:flex-start;padding:var(--p-space-3);border-radius:var(--p-radius-md);cursor:pointer}
+.step__num{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;flex:none;
+  border:1px solid var(--p-line-strong);background:var(--p-surface);color:var(--p-ink-subtle);
+  font-size:var(--p-size-xs);font-weight:600;font-variant-numeric:tabular-nums}
+.step__name{font-size:var(--p-size-sm);font-weight:550}
+.step__hint{font-size:var(--p-size-xs);color:var(--p-ink-subtle)}
+.step--done .step__num{background:var(--p-ok-soft);border-color:var(--p-ok-line);color:var(--p-ok)}
+.step--on{background:var(--p-accent-soft)}
+.step--on .step__num{background:var(--p-accent);border-color:var(--p-accent);color:var(--p-on-accent)}
+
+/* ---------- waiting indicator ---------- */
+.waiting{display:inline-flex;align-items:center;gap:8px;font-size:var(--p-size-sm);color:var(--p-ink-muted)}
+.waiting i{width:6px;height:6px;border-radius:50%;background:var(--p-accent);animation:wait 1.4s var(--p-ease) infinite}
+.waiting i:nth-child(2){animation-delay:.18s}
+.waiting i:nth-child(3){animation-delay:.36s}
+@keyframes wait{0%,100%{opacity:.25;transform:translateY(0)}45%{opacity:1;transform:translateY(-2px)}}
+
+/* ---------- compact widths: nothing may push the page sideways ---------- */
+@media (max-width:767px){
+  .chip{height:auto;min-height:20px;white-space:normal;overflow-wrap:anywhere;padding:2px 8px}
+  .segmented{flex-wrap:wrap}
+  .empty .row{flex-wrap:wrap;justify-content:center}
+  .card__foot,.row{flex-wrap:wrap}
+  .snippet{align-items:flex-start;flex-wrap:wrap}
+  .btn{max-width:100%}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important}
+}
+
+/* ---------- app shell ---------- */
+.app{display:grid;grid-template-columns:var(--p-nav-w) minmax(0,1fr);background:var(--p-canvas)}
+.sidebar{display:flex;flex-direction:column;gap:var(--p-space-5);padding:var(--p-space-5) var(--p-space-4);
+  border-right:1px solid var(--p-line);background:var(--p-surface-2);min-height:0}
+.brand{display:flex;align-items:center;gap:10px;color:var(--p-ink);text-decoration:none;padding:0 var(--p-space-2)}
+.brand:hover{text-decoration:none}
+.brand__mark{width:28px;height:28px;border-radius:9px;background:var(--p-accent);color:var(--p-on-accent);
+  display:flex;align-items:center;justify-content:center;font-family:var(--p-font-serif);font-size:15px;font-weight:600;flex:none}
+.brand__name{font-family:var(--p-font-serif);font-size:var(--p-size-lg);font-weight:600;letter-spacing:var(--p-track-tight)}
+.brand__ver{font-size:var(--p-size-2xs);color:var(--p-ink-subtle);border:1px solid var(--p-line);border-radius:var(--p-radius-sm);padding:1px 5px}
+.nav{display:flex;flex-direction:column;gap:var(--p-space-5);flex:1;min-height:0;overflow:auto;scrollbar-width:thin}
+.nav__group{display:flex;flex-direction:column;gap:2px}
+.nav__label{padding:0 var(--p-space-3) var(--p-space-1)}
+.nav__item{display:flex;align-items:center;gap:10px;padding:7px var(--p-space-3);border-radius:var(--p-radius-md);
+  color:var(--p-ink-muted);font-size:var(--p-size-sm);font-weight:500;text-decoration:none}
+.nav__item:hover{background:var(--p-sunken);color:var(--p-ink);text-decoration:none}
+.nav__item--on{background:var(--p-accent-soft);color:var(--p-accent-ink);font-weight:600}
+.nav__item--on svg{color:var(--p-accent)}
+.nav__count{margin-left:auto;font-size:var(--p-size-2xs);font-variant-numeric:tabular-nums;
+  background:var(--p-surface);border:1px solid var(--p-line);border-radius:var(--p-radius-pill);padding:1px 7px;color:var(--p-ink-muted)}
+.nav__count--warn{background:var(--p-warn-soft);border-color:var(--p-warn-line);color:var(--p-warn)}
+.sidebar__foot{display:flex;flex-direction:column;gap:var(--p-space-2);padding:var(--p-space-3);border-top:1px solid var(--p-line)}
+.main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:var(--p-space-4);
+  padding:var(--p-space-4) var(--p-space-6);border-bottom:1px solid var(--p-line);background:var(--p-canvas)}
+.page-title{font-family:var(--p-font-serif);font-size:var(--p-size-xl);font-weight:600;letter-spacing:var(--p-track-tight)}
+.page-sub{font-size:var(--p-size-xs);color:var(--p-ink-muted)}
+.cmdk{display:flex;align-items:center;gap:var(--p-space-2);height:34px;padding:0 var(--p-space-3);
+  border:1px solid var(--p-line);border-radius:var(--p-radius-md);background:var(--p-surface);
+  color:var(--p-ink-subtle);font-size:var(--p-size-sm);cursor:pointer;min-width:200px;white-space:nowrap}
+.avatar{width:30px;height:30px;border-radius:50%;background:var(--p-accent-soft);color:var(--p-accent-ink);
+  border:1px solid var(--p-accent-line);display:flex;align-items:center;justify-content:center;font-size:var(--p-size-xs);font-weight:600}
+.content{padding:var(--p-space-4) var(--p-space-6) var(--p-space-6);display:flex;flex-direction:column;gap:var(--p-space-4)}
+
+@media (min-width:1024px){
+  .app{height:calc(100dvh - var(--mock-h));overflow:hidden}
+  .content{overflow:auto;min-height:0;scrollbar-width:thin;scrollbar-color:var(--p-line-strong) transparent}
+}
+@media (max-width:1023px){
+  .app{grid-template-columns:var(--p-rail-w) minmax(0,1fr)}
+  .sidebar{align-items:center;padding:var(--p-space-4) var(--p-space-2)}
+  .brand__name,.brand__ver,.nav__label,.nav__item span,.sidebar__foot{display:none}
+  .nav__item{justify-content:center;padding:9px}
+  .nav__count{display:none}
+  .content{padding:var(--p-space-4) var(--p-space-4) var(--p-space-8)}
+  .topbar{padding:var(--p-space-4)}
+}
+@media (max-width:767px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .sidebar{flex-direction:row;align-items:center;gap:var(--p-space-2);border-right:0;border-bottom:1px solid var(--p-line);
+    overflow-x:auto;padding:var(--p-space-2) var(--p-space-3);position:sticky;top:0;z-index:5;scrollbar-width:none}
+  .sidebar::-webkit-scrollbar{display:none}
+  .brand{padding:0 var(--p-space-1)}
+  .brand__name{display:block}
+  .nav{flex-direction:row;gap:var(--p-space-2);overflow:visible}
+  .nav__group{flex-direction:row;gap:2px}
+  .nav__item span{display:inline}
+  .nav__item{white-space:nowrap}
+  .topbar{flex-wrap:wrap;gap:var(--p-space-2)}
+  .cmdk{min-width:0;flex:1}
+  .cmdk .kbd{display:none}
+  .tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+/* ---------- mockup scaffolding (not part of the product) ---------- */
+:root{--mock-h:41px}
+.statepick{position:fixed;width:0;height:0;opacity:0;pointer-events:none}
+.mockbar{display:flex;align-items:center;gap:var(--p-space-4);height:var(--mock-h);padding:0 var(--p-space-4);
+  border-bottom:1px dashed var(--p-line-strong);background:var(--p-sunken);
+  font-family:var(--p-font-mono);font-size:11px;color:var(--p-ink-subtle);overflow-x:auto;scrollbar-width:none}
+.mockbar::-webkit-scrollbar{display:none}
+.mockbar__id{white-space:nowrap}
+.mockbar__states{display:flex;gap:4px;margin-left:auto}
+.mockbar label{padding:3px 9px;border-radius:var(--p-radius-pill);cursor:pointer;white-space:nowrap;border:1px solid transparent}
+.mockbar label:hover{color:var(--p-ink)}
+.mockbar__theme{height:23px;padding:0 9px;border-radius:var(--p-radius-pill);border:1px solid var(--p-line-strong);
+  background:transparent;color:var(--p-ink-subtle);font:inherit;cursor:pointer;white-space:nowrap}
+.state{display:none}
+
+/* ---------- connect a client ---------- */
+.connect{display:grid;gap:var(--p-space-4);grid-template-columns:296px minmax(0,1fr);align-items:start}
+.clientlist{display:flex;flex-direction:column}
+.clientrow{display:flex;align-items:center;gap:var(--p-space-3);padding:var(--p-space-3) var(--p-space-4);
+  border-bottom:1px solid var(--p-line);cursor:pointer}
+.clientrow:last-child{border-bottom:0}
+.clientrow:hover{background:var(--p-surface-2)}
+.clientrow--on{background:var(--p-accent-soft)}
+.clientrow--on .clientrow__name{color:var(--p-accent-ink)}
+.clientrow__mark{width:30px;height:30px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;
+  background:var(--p-sunken);color:var(--p-ink-muted)}
+.clientrow--on .clientrow__mark{background:var(--p-surface);color:var(--p-accent)}
+.clientrow__name{font-size:var(--p-size-sm);font-weight:600}
+.clientrow__meta{font-size:var(--p-size-xs);color:var(--p-ink-muted)}
+.numstep{display:flex;gap:var(--p-space-3);padding:var(--p-space-3) var(--p-space-5) var(--p-space-4);border-bottom:1px solid var(--p-line)}
+.numstep:last-child{border-bottom:0}
+.numstep__num{width:24px;height:24px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;
+  background:var(--p-accent);color:var(--p-on-accent);font-size:var(--p-size-xs);font-weight:600}
+.numstep__num--done{background:var(--p-ok-soft);color:var(--p-ok);border:1px solid var(--p-ok-line)}
+.numstep__title{font-size:var(--p-size-md);font-weight:600;margin-bottom:2px}
+.qr{width:72px;height:72px;flex:none;display:grid;grid-template-columns:repeat(11,1fr);grid-template-rows:repeat(11,1fr);
+  gap:2px;padding:8px;background:var(--p-surface);border:1px solid var(--p-line);border-radius:var(--p-radius-md)}
+.qr i{background:var(--p-ink);border-radius:1px}
+.qr i.o{background:transparent}
+.tabs__panel{display:none}
+.tabbar{display:inline-flex;gap:var(--p-space-1);border-bottom:1px solid var(--p-line);width:100%}
+.tabbar label{padding:8px 12px;font-size:var(--p-size-sm);font-weight:550;color:var(--p-ink-muted);cursor:pointer;
+  border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabbar label:hover{color:var(--p-ink)}
+#cc-t1:checked ~ .tabbar label[for="cc-t1"],#cc-t2:checked ~ .tabbar label[for="cc-t2"]{color:var(--p-ink);border-bottom-color:var(--p-accent)}
+#cc-t1:checked ~ .tabs__panel--1,#cc-t2:checked ~ .tabs__panel--2{display:block}
+.kv{display:grid;grid-template-columns:150px minmax(0,1fr);gap:var(--p-space-2) var(--p-space-4);font-size:var(--p-size-sm)}
+.kv dt{color:var(--p-ink-muted);font-size:var(--p-size-xs);padding-top:2px}
+.kv dd{margin:0}
+.snippet--wrap code{white-space:pre-wrap;overflow-wrap:anywhere}
+.tablewrap{overflow-x:auto;padding:0 var(--p-space-4) var(--p-space-2);scrollbar-width:thin}
+.tablewrap .table{min-width:400px}
+@media (min-width:1024px){
+  .clientlist{max-height:356px;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--p-line-strong) transparent}
+}
+@media (max-width:1023px){
+  .connect{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:767px){
+  .kv{grid-template-columns:minmax(0,1fr);gap:0 0}
+  .kv dd{margin-bottom:var(--p-space-3)}
+}
+
+#cn-guided:checked ~ .stage .state--cn-guided{display:block}
+#cn-guided:checked ~ .mockbar label[for="cn-guided"]{background:var(--p-surface);border-color:var(--p-line-strong);color:var(--p-ink)}
+#cn-done:checked ~ .stage .state--cn-done{display:block}
+#cn-done:checked ~ .mockbar label[for="cn-done"]{background:var(--p-surface);border-color:var(--p-line-strong);color:var(--p-ink)}
+#cn-blocked:checked ~ .stage .state--cn-blocked{display:block}
+#cn-blocked:checked ~ .mockbar label[for="cn-blocked"]{background:var(--p-surface);border-color:var(--p-line-strong);color:var(--p-ink)}
+#cn-empty:checked ~ .stage .state--cn-empty{display:block}
+#cn-empty:checked ~ .mockbar label[for="cn-empty"]{background:var(--p-surface);border-color:var(--p-line-strong);color:var(--p-ink)}
+</style>
+</head>
+<body>
+<input class="statepick" type="radio" name="mockstate" id="cn-guided" checked>
+<input class="statepick" type="radio" name="mockstate" id="cn-done">
+<input class="statepick" type="radio" name="mockstate" id="cn-blocked">
+<input class="statepick" type="radio" name="mockstate" id="cn-empty">
+<div class="mockbar">
+  <span class="mockbar__id">palaia v3 mockup &middot; connect-client.html &middot; per-client guided flows</span>
+  <span class="mockbar__id t-subtle">light + dark follow the OS &middot; responsive at 360 / 768 / 1280</span>
+  <span class="mockbar__states"><label for="cn-guided">guided</label>
+<label for="cn-done">connected</label>
+<label for="cn-blocked">blocked by mode</label>
+<label for="cn-empty">first run</label></span>
+  <button class="mockbar__theme" id="themebtn" type="button">theme: system</button>
+</div>
+<div class="stage">
+<div class="state state--cn-guided">
+<div class="app">
+<aside class="sidebar">
+  <a class="brand" href="#"><span class="brand__mark">p</span><span class="brand__name">palaia</span><span class="brand__ver">v3</span></a>
+  <nav class="nav"><div class="nav__group"><span class="nav__label t-over">Overview</span><a class="nav__item" href="#" title="Home"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.6 12 4l9 6.6V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span>Home</span></a></div><div class="nav__group"><span class="nav__label t-over">Memory</span><a class="nav__item" href="#" title="Explorer"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg><span>Explorer</span></a><a class="nav__item" href="#" title="Inbox"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13.5h4l1.2 2.5h5.6l1.2-2.5h4"/><path d="M4 13.5 6.7 5h10.6L20 13.5V20H4z"/></svg><span>Inbox</span><span class="nav__count nav__count--warn">12</span></a><a class="nav__item" href="#" title="Review queue"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2"/><path d="M8.3 12.4l2.7 2.7 4.7-5.2"/></svg><span>Review queue</span><span class="nav__count">3</span></a><a class="nav__item" href="#" title="Vaults"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="4.5" rx="1.2"/><path d="M5.5 9v10.5h13V9"/><path d="M10 13h4"/></svg><span>Vaults</span></a></div><div class="nav__group"><span class="nav__label t-over">Connections</span><a class="nav__item nav__item--on" href="#" title="Clients"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg><span>Clients</span></a><a class="nav__item" href="#" title="Tools &amp; skills"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg><span>Tools &amp; skills</span></a></div><div class="nav__group"><span class="nav__label t-over">System</span><a class="nav__item" href="#" title="Automations"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.2 3 5.5 14h5l-1 7 8.2-11.2h-5.1z"/></svg><span>Automations</span></a><a class="nav__item" href="#" title="Health"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12.5h3.8l2.2-5.5 3.4 11 2.2-5.5H21"/></svg><span>Health</span></a><a class="nav__item" href="#" title="Settings"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2M6.7 6.7l1.4 1.4M15.9 15.9l1.4 1.4M17.3 6.7l-1.4 1.4M8.1 15.9l-1.4 1.4"/></svg><span>Settings</span></a></div></nav>
+  <div class="sidebar__foot">
+    <div class="row t-xs t-muted" style="gap:8px"><span class="dot dot--ok"></span><span><strong style="font-weight:600">Cloud</strong> &middot; via Funnel</span></div>
+    <div class="t-xs t-subtle">2026.9.0 &middot; up to date</div>
+  </div>
+</aside>
+<div class="main">
+<header class="topbar">
+  <div>
+    <h1 class="page-title">Connect a client</h1>
+    <p class="page-sub">One endpoint, one paste. Nothing to edit in a config file.</p>
+  </div>
+  <div class="row">
+    
+    <button class="cmdk" type="button"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.2"/><path d="M15.6 15.6 20 20"/></svg><span>Search or jump to</span><span class="kbd" style="margin-left:auto">&#8984;K</span></button>
+    <span class="badge badge--ok"><span class="dot dot--ok"></span>Healthy</span>
+    <span class="avatar">CW</span>
+  </div>
+</header>
+<div class="content">
+<section class="connect">
+<div class="card">
+  <div class="card__head"><h3 class="card__title">Clients</h3><span class="badge badge--ok">4 connected</span></div>
+  <div class="clientlist"><div class="clientrow clientrow--on"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 4.9 4.9 1.9-4.9 1.9L12 17.1l-1.9-4.9-4.9-1.9 4.9-1.9z"/></svg></span><span class="grow"><span class="clientrow__name">Claude Code</span><br><span class="clientrow__meta">connected &middot; 12 s ago</span></span><span class="dot dot--ok"></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg></span><span class="grow"><span class="clientrow__name">Codex</span><br><span class="clientrow__meta">connected &middot; 4 min ago</span></span><span class="dot dot--ok"></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13.8a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2"/><path d="M14 10.2a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2"/></svg></span><span class="grow"><span class="clientrow__name">claude.ai</span><br><span class="clientrow__meta">web, desktop, iPhone &middot; 2 h ago</span></span><span class="dot dot--ok"></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg></span><span class="grow"><span class="clientrow__name">Claude Desktop</span><br><span class="clientrow__meta">not connected &middot; signed bundle</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13.8a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2"/><path d="M14 10.2a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2"/></svg></span><span class="grow"><span class="clientrow__name">ChatGPT</span><br><span class="clientrow__meta">not connected &middot; plan limits apply</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Antigravity / Gemini CLI</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Grok</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg></span><span class="grow"><span class="clientrow__name">LM Studio</span><br><span class="clientrow__meta">connected &middot; 3 d ago</span></span><span class="dot"></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Any MCP client</span><br><span class="clientrow__meta">endpoint and token</span></span></div></div>
+  <div class="card__foot"><span class="t-xs t-subtle">Every client gets its own token and its own tool profile. Revoking one never touches the others.</span></div>
+</div>
+<div class="stack">
+
+<div class="card">
+  <div class="card__head">
+    <div>
+      <h3 class="card__title">Claude Code</h3>
+      <p class="t-xs t-muted">Streamable HTTP &middot; tool search &middot; push events supported</p>
+    </div>
+    <span class="badge badge--accent">about 1 minute</span>
+  </div>
+
+  <div class="numstep">
+    <span class="numstep__num">1</span>
+    <div class="grow stack--3" style="display:flex;flex-direction:column">
+      <div><p class="numstep__title">Choose what this client may see</p>
+        <p class="t-sm t-muted">A hundred tools in one context window ruins an agent. The profile is part of the URL.</p></div>
+      <div class="row row--wrap">
+        <div class="segmented" role="group">
+          <span class="segmented__item segmented__item--on">Coding &middot; 12</span>
+          <span class="segmented__item">Memory only &middot; 6</span>
+          <span class="segmented__item">Everything &middot; 37</span>
+        </div>
+        <a class="btn btn--ghost btn--sm" href="#">Edit profiles</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="numstep">
+    <span class="numstep__num">2</span>
+    <div class="grow">
+      <p class="numstep__title">Paste one thing</p>
+      <div class="card card--flat" style="margin-top:var(--p-space-3)">
+        <input class="statepick" type="radio" name="cctab" id="cc-t1" checked>
+        <input class="statepick" type="radio" name="cctab" id="cc-t2">
+        <div class="card__head" style="padding:0 var(--p-space-4);border-bottom:0">
+          <div class="tabbar"><label for="cc-t1">Copy the command</label><label for="cc-t2">Or paste a prompt</label></div>
+        </div>
+        <div class="tabs__panel tabs__panel--1"><div class="card__body stack--2" style="display:flex;flex-direction:column">
+          <div class="snippet snippet--wrap"><code>claude mcp add --transport http palaia https://palaia.ts.net/mcp/coding</code>
+            <button class="btn btn--sm" type="button"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="10.5" height="10.5" rx="2"/><path d="M15 9V6.5a2 2 0 0 0-2-2H6.5a2 2 0 0 0-2 2V13a2 2 0 0 0 2 2H9"/></svg>Copy</button></div>
+          <div class="row row--wrap" style="align-items:flex-start;gap:var(--p-space-4)">
+            <div class="stack--2" style="display:flex;flex-direction:column;flex:1;min-width:200px">
+              <span class="t-over">Or take it to your phone</span>
+              <div class="row" style="gap:6px"><span class="chip chip--mono">https://palaia.ts.net/mcp/coding</span><button class="btn btn--sm btn--quiet" type="button"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="10.5" height="10.5" rx="2"/><path d="M15 9V6.5a2 2 0 0 0-2-2H6.5a2 2 0 0 0-2 2V13a2 2 0 0 0 2 2H9"/></svg>URL</button></div>
+            </div>
+            <div class="qr" aria-hidden="true"><i></i><i></i><i></i><i class="o"></i><i class="o"></i><i></i><i class="o"></i><i></i><i></i><i></i><i></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i></i><i class="o"></i><i class="o"></i><i></i><i class="o"></i><i></i><i></i><i></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i></i><i></i><i class="o"></i><i class="o"></i><i class="o"></i><i class="o"></i><i></i><i class="o"></i><i class="o"></i><i></i><i class="o"></i><i class="o"></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i class="o"></i><i></i><i class="o"></i><i></i><i></i><i class="o"></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i><i></i><i class="o"></i><i class="o"></i><i></i><i></i><i></i><i class="o"></i><i class="o"></i><i class="o"></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i class="o"></i><i class="o"></i><i class="o"></i><i></i><i></i><i></i><i class="o"></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i class="o"></i><i></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i></i></div>
+          </div>
+        </div></div>
+        <div class="tabs__panel tabs__panel--2"><div class="card__body stack--3" style="display:flex;flex-direction:column">
+          <div class="snippet snippet--block"><code>Please connect yourself to my palaia hub as an MCP server:
+https://palaia.ts.net/mcp/coding
+Then search my memory for &ldquo;billing service&rdquo; and tell me what you found.</code></div>
+          <div class="row row--wrap"><button class="btn btn--sm" type="button"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="10.5" height="10.5" rx="2"/><path d="M15 9V6.5a2 2 0 0 0-2-2H6.5a2 2 0 0 0-2 2V13a2 2 0 0 0 2 2H9"/></svg>Copy prompt</button>
+            <span class="t-xs t-muted">The agent configures itself and reports back. Nothing for you to edit in a config file.</span></div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="numstep">
+    <span class="numstep__num">3</span>
+    <div class="grow">
+      <p class="numstep__title">palaia watches for the first call</p>
+      <div class="row row--wrap" style="margin-top:var(--p-space-1)">
+        <span class="waiting"><i></i><i></i><i></i> Waiting for the first tool call&hellip;</span>
+        <span class="chip">endpoint reachable</span>
+        <span class="t-xs t-subtle">No refresh needed.</span>
+      </div>
+    </div>
+  </div>
+  <div class="card__foot">
+    <span class="t-xs t-subtle">In-chat panels can render this flow too. Access mode and token changes stay in the dashboard &mdash; not in an embedded frame.</span>
+  </div>
+</div>
+
+</div>
+</section>
+</div>
+</div>
+</div>
+</div><div class="state state--cn-done">
+<div class="app">
+<aside class="sidebar">
+  <a class="brand" href="#"><span class="brand__mark">p</span><span class="brand__name">palaia</span><span class="brand__ver">v3</span></a>
+  <nav class="nav"><div class="nav__group"><span class="nav__label t-over">Overview</span><a class="nav__item" href="#" title="Home"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.6 12 4l9 6.6V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span>Home</span></a></div><div class="nav__group"><span class="nav__label t-over">Memory</span><a class="nav__item" href="#" title="Explorer"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg><span>Explorer</span></a><a class="nav__item" href="#" title="Inbox"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13.5h4l1.2 2.5h5.6l1.2-2.5h4"/><path d="M4 13.5 6.7 5h10.6L20 13.5V20H4z"/></svg><span>Inbox</span><span class="nav__count nav__count--warn">12</span></a><a class="nav__item" href="#" title="Review queue"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2"/><path d="M8.3 12.4l2.7 2.7 4.7-5.2"/></svg><span>Review queue</span><span class="nav__count">3</span></a><a class="nav__item" href="#" title="Vaults"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="4.5" rx="1.2"/><path d="M5.5 9v10.5h13V9"/><path d="M10 13h4"/></svg><span>Vaults</span></a></div><div class="nav__group"><span class="nav__label t-over">Connections</span><a class="nav__item nav__item--on" href="#" title="Clients"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg><span>Clients</span></a><a class="nav__item" href="#" title="Tools &amp; skills"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg><span>Tools &amp; skills</span></a></div><div class="nav__group"><span class="nav__label t-over">System</span><a class="nav__item" href="#" title="Automations"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.2 3 5.5 14h5l-1 7 8.2-11.2h-5.1z"/></svg><span>Automations</span></a><a class="nav__item" href="#" title="Health"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12.5h3.8l2.2-5.5 3.4 11 2.2-5.5H21"/></svg><span>Health</span></a><a class="nav__item" href="#" title="Settings"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2M6.7 6.7l1.4 1.4M15.9 15.9l1.4 1.4M17.3 6.7l-1.4 1.4M8.1 15.9l-1.4 1.4"/></svg><span>Settings</span></a></div></nav>
+  <div class="sidebar__foot">
+    <div class="row t-xs t-muted" style="gap:8px"><span class="dot dot--ok"></span><span><strong style="font-weight:600">Cloud</strong> &middot; via Funnel</span></div>
+    <div class="t-xs t-subtle">2026.9.0 &middot; up to date</div>
+  </div>
+</aside>
+<div class="main">
+<header class="topbar">
+  <div>
+    <h1 class="page-title">Connect a client</h1>
+    <p class="page-sub">One endpoint, one paste. Nothing to edit in a config file.</p>
+  </div>
+  <div class="row">
+    
+    <button class="cmdk" type="button"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.2"/><path d="M15.6 15.6 20 20"/></svg><span>Search or jump to</span><span class="kbd" style="margin-left:auto">&#8984;K</span></button>
+    <span class="badge badge--ok"><span class="dot dot--ok"></span>Healthy</span>
+    <span class="avatar">CW</span>
+  </div>
+</header>
+<div class="content">
+<section class="connect">
+<div class="card">
+  <div class="card__head"><h3 class="card__title">Clients</h3><span class="badge badge--ok">4 connected</span></div>
+  <div class="clientlist"><div class="clientrow clientrow--on"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 4.9 4.9 1.9-4.9 1.9L12 17.1l-1.9-4.9-4.9-1.9 4.9-1.9z"/></svg></span><span class="grow"><span class="clientrow__name">Claude Code</span><br><span class="clientrow__meta">connected &middot; 12 s ago</span></span><span class="dot dot--ok"></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg></span><span class="grow"><span class="clientrow__name">Codex</span><br><span class="clientrow__meta">connected &middot; 4 min ago</span></span><span class="dot dot--ok"></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13.8a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2"/><path d="M14 10.2a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2"/></svg></span><span class="grow"><span class="clientrow__name">claude.ai</span><br><span class="clientrow__meta">web, desktop, iPhone &middot; 2 h ago</span></span><span class="dot dot--ok"></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg></span><span class="grow"><span class="clientrow__name">Claude Desktop</span><br><span class="clientrow__meta">not connected &middot; signed bundle</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13.8a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2"/><path d="M14 10.2a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2"/></svg></span><span class="grow"><span class="clientrow__name">ChatGPT</span><br><span class="clientrow__meta">not connected &middot; plan limits apply</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Antigravity / Gemini CLI</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Grok</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg></span><span class="grow"><span class="clientrow__name">LM Studio</span><br><span class="clientrow__meta">connected &middot; 3 d ago</span></span><span class="dot"></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Any MCP client</span><br><span class="clientrow__meta">endpoint and token</span></span></div></div>
+  <div class="card__foot"><span class="t-xs t-subtle">Every client gets its own token and its own tool profile. Revoking one never touches the others.</span></div>
+</div>
+<div class="stack">
+
+<div class="card">
+  <div class="card__head">
+    <div class="row" style="gap:10px">
+      <span class="empty__mark" style="width:34px;height:34px;border-radius:10px"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 10 18 19.5 6.5"/></svg></span>
+      <div><h3 class="card__title">Claude Code is connected</h3><p class="t-xs t-muted">First tool call 4 minutes ago &middot; last seen 12 seconds ago</p></div>
+    </div>
+    <span class="badge badge--ok"><span class="dot dot--live"></span>live</span>
+  </div>
+  <div class="card__body">
+    <dl class="kv">
+      <dt>Endpoint</dt><dd><span class="chip chip--mono">https://palaia.ts.net/mcp/coding</span></dd>
+      <dt>Tool profile</dt><dd>Coding &middot; 12 tools <a href="#">change</a></dd>
+      <dt>Memory scopes</dt><dd>vault <strong style="font-weight:600">Work</strong> &middot; read + write, private notes excluded</dd>
+      <dt>Token</dt><dd class="row" style="gap:8px"><span class="chip chip--mono">pal_c&hellip;9f21</span><span class="t-xs t-subtle">issued today, rotates automatically</span></dd>
+      <dt>First call</dt><dd><span class="chip chip--mono">work_memory_search</span> <span class="t-xs t-subtle">&ldquo;billing service&rdquo; &middot; 4 notes returned</span></dd>
+    </dl>
+  </div>
+  <div class="card__foot">
+    <button class="btn btn--primary btn--sm" type="button">Send a test recall</button>
+    <button class="btn btn--sm" type="button">Rotate token</button>
+    <button class="btn btn--ghost btn--sm" type="button">Rename client</button>
+    <span class="grow"></span>
+    <button class="btn btn--risk btn--sm" type="button">Revoke access</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card__head"><h3 class="card__title">What this client did with your memory</h3><a class="btn btn--ghost btn--sm" href="#">Full log</a></div>
+  <div class="tablewrap"><table class="table">
+    <thead><tr><th>When</th><th>Tool</th><th>Detail</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td class="t-subtle">12 s ago</td><td><span class="chip chip--mono">work_recall</span></td><td>continue: dunning retries</td><td>7 notes &middot; 1,180 tokens</td></tr>
+      <tr><td class="t-subtle">6 min ago</td><td><span class="chip chip--mono">work_memory_write</span></td><td>Billing service &mdash; 3 observations</td><td><span class="badge badge--ok">committed</span></td></tr>
+      <tr><td class="t-subtle">31 min ago</td><td><span class="chip chip--mono">work_inbox_capture</span></td><td>&ldquo;retry budget missing&rdquo;</td><td><span class="badge">queued for curation</span></td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+</div>
+</section>
+</div>
+</div>
+</div>
+</div><div class="state state--cn-blocked">
+<div class="app">
+<aside class="sidebar">
+  <a class="brand" href="#"><span class="brand__mark">p</span><span class="brand__name">palaia</span><span class="brand__ver">v3</span></a>
+  <nav class="nav"><div class="nav__group"><span class="nav__label t-over">Overview</span><a class="nav__item" href="#" title="Home"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.6 12 4l9 6.6V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span>Home</span></a></div><div class="nav__group"><span class="nav__label t-over">Memory</span><a class="nav__item" href="#" title="Explorer"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg><span>Explorer</span></a><a class="nav__item" href="#" title="Inbox"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13.5h4l1.2 2.5h5.6l1.2-2.5h4"/><path d="M4 13.5 6.7 5h10.6L20 13.5V20H4z"/></svg><span>Inbox</span><span class="nav__count nav__count--warn">12</span></a><a class="nav__item" href="#" title="Review queue"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2"/><path d="M8.3 12.4l2.7 2.7 4.7-5.2"/></svg><span>Review queue</span><span class="nav__count">3</span></a><a class="nav__item" href="#" title="Vaults"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="4.5" rx="1.2"/><path d="M5.5 9v10.5h13V9"/><path d="M10 13h4"/></svg><span>Vaults</span></a></div><div class="nav__group"><span class="nav__label t-over">Connections</span><a class="nav__item nav__item--on" href="#" title="Clients"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg><span>Clients</span></a><a class="nav__item" href="#" title="Tools &amp; skills"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg><span>Tools &amp; skills</span></a></div><div class="nav__group"><span class="nav__label t-over">System</span><a class="nav__item" href="#" title="Automations"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.2 3 5.5 14h5l-1 7 8.2-11.2h-5.1z"/></svg><span>Automations</span></a><a class="nav__item" href="#" title="Health"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12.5h3.8l2.2-5.5 3.4 11 2.2-5.5H21"/></svg><span>Health</span></a><a class="nav__item" href="#" title="Settings"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2M6.7 6.7l1.4 1.4M15.9 15.9l1.4 1.4M17.3 6.7l-1.4 1.4M8.1 15.9l-1.4 1.4"/></svg><span>Settings</span></a></div></nav>
+  <div class="sidebar__foot">
+    <div class="row t-xs t-muted" style="gap:8px"><span class="dot dot--ok"></span><span><strong style="font-weight:600">Locked</strong> &middot; tailnet only</span></div>
+    <div class="t-xs t-subtle">2026.9.0 &middot; up to date</div>
+  </div>
+</aside>
+<div class="main">
+<header class="topbar">
+  <div>
+    <h1 class="page-title">Connect a client</h1>
+    <p class="page-sub">One endpoint, one paste. Nothing to edit in a config file.</p>
+  </div>
+  <div class="row">
+    
+    <button class="cmdk" type="button"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.2"/><path d="M15.6 15.6 20 20"/></svg><span>Search or jump to</span><span class="kbd" style="margin-left:auto">&#8984;K</span></button>
+    <span class="badge badge--warn"><span class="dot dot--warn"></span>1 finding</span>
+    <span class="avatar">CW</span>
+  </div>
+</header>
+<div class="content">
+<section class="connect">
+<div class="card">
+  <div class="card__head"><h3 class="card__title">Clients</h3><span class="badge badge--ok">4 connected</span></div>
+  <div class="clientlist"><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 4.9 4.9 1.9-4.9 1.9L12 17.1l-1.9-4.9-4.9-1.9 4.9-1.9z"/></svg></span><span class="grow"><span class="clientrow__name">Claude Code</span><br><span class="clientrow__meta">connected &middot; 12 s ago</span></span><span class="dot dot--ok"></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg></span><span class="grow"><span class="clientrow__name">Codex</span><br><span class="clientrow__meta">connected &middot; 4 min ago</span></span><span class="dot dot--ok"></span></div><div class="clientrow clientrow--on"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13.8a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2"/><path d="M14 10.2a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2"/></svg></span><span class="grow"><span class="clientrow__name">claude.ai</span><br><span class="clientrow__meta">web, desktop, iPhone &middot; 2 h ago</span></span><span class="dot dot--ok"></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg></span><span class="grow"><span class="clientrow__name">Claude Desktop</span><br><span class="clientrow__meta">not connected &middot; signed bundle</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13.8a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2"/><path d="M14 10.2a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2"/></svg></span><span class="grow"><span class="clientrow__name">ChatGPT</span><br><span class="clientrow__meta">not connected &middot; plan limits apply</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Antigravity / Gemini CLI</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Grok</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg></span><span class="grow"><span class="clientrow__name">LM Studio</span><br><span class="clientrow__meta">connected &middot; 3 d ago</span></span><span class="dot"></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Any MCP client</span><br><span class="clientrow__meta">endpoint and token</span></span></div></div>
+  <div class="card__foot"><span class="t-xs t-subtle">Every client gets its own token and its own tool profile. Revoking one never touches the others.</span></div>
+</div>
+<div class="stack">
+
+<div class="card">
+  <div class="card__head">
+    <div><h3 class="card__title">claude.ai</h3><p class="t-xs t-muted">Web, desktop, mobile and Cowork &middot; custom connector on every plan</p></div>
+    <span class="badge badge--warn">blocked by your access mode</span>
+  </div>
+  <div class="card__body stack">
+    <div class="banner banner--warn">
+      <svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.2 21 20H3z"/><path d="M12 10v4.2M12 17.2h.01"/></svg>
+      <div>
+        <p class="banner__title">Locked mode cannot serve this client &mdash; and no URL will change that</p>
+        <p class="t-sm t-muted">claude.ai connects <em>from Anthropic&rsquo;s cloud</em>, not from this device. Your hub answers only inside your tailnet, so the connector would time out whatever you paste into it.</p>
+      </div>
+    </div>
+    <div class="stack--2" style="display:flex;flex-direction:column">
+      <p class="field__label">Two honest ways forward</p>
+      <div class="switchrow" style="align-items:center">
+        <span class="grow"><span class="field__label">Switch to Cloud mode</span><br>
+          <span class="field__hint">Tunnelled endpoint, mandatory authentication, dashboard still tailnet-only. About a minute.</span></span>
+        <button class="btn btn--primary btn--sm" type="button">Open exposure wizard</button>
+      </div>
+      <div class="switchrow" style="align-items:center">
+        <span class="grow"><span class="field__label">Stay locked, use a local client</span><br>
+          <span class="field__hint">Claude Code, Codex and LM Studio run on your machines and reach the hub as it is.</span></span>
+        <button class="btn btn--sm" type="button">Connect Claude Code</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card__head"><h3 class="card__title">Other limits worth knowing</h3></div>
+  <div>
+    <div class="listrow" style="align-items:flex-start"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2"/><path d="M12 11v5.2M12 7.9h.01"/></svg>
+      <div class="grow"><div class="listrow__title">ChatGPT: writing needs a Business, Enterprise or Edu workspace</div>
+        <div class="listrow__meta">On Plus and Pro, connectors are read-oriented. palaia offers a read-only profile so recall works and writes are not silently dropped.</div></div></div>
+  </div>
+</div>
+
+</div>
+</section>
+</div>
+</div>
+</div>
+</div><div class="state state--cn-empty">
+<div class="app">
+<aside class="sidebar">
+  <a class="brand" href="#"><span class="brand__mark">p</span><span class="brand__name">palaia</span><span class="brand__ver">v3</span></a>
+  <nav class="nav"><div class="nav__group"><span class="nav__label t-over">Overview</span><a class="nav__item" href="#" title="Home"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.6 12 4l9 6.6V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span>Home</span></a></div><div class="nav__group"><span class="nav__label t-over">Memory</span><a class="nav__item" href="#" title="Explorer"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg><span>Explorer</span></a><a class="nav__item" href="#" title="Inbox"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13.5h4l1.2 2.5h5.6l1.2-2.5h4"/><path d="M4 13.5 6.7 5h10.6L20 13.5V20H4z"/></svg><span>Inbox</span></a><a class="nav__item" href="#" title="Review queue"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2"/><path d="M8.3 12.4l2.7 2.7 4.7-5.2"/></svg><span>Review queue</span></a><a class="nav__item" href="#" title="Vaults"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="4.5" rx="1.2"/><path d="M5.5 9v10.5h13V9"/><path d="M10 13h4"/></svg><span>Vaults</span></a></div><div class="nav__group"><span class="nav__label t-over">Connections</span><a class="nav__item nav__item--on" href="#" title="Clients"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg><span>Clients</span></a><a class="nav__item" href="#" title="Tools &amp; skills"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg><span>Tools &amp; skills</span></a></div><div class="nav__group"><span class="nav__label t-over">System</span><a class="nav__item" href="#" title="Automations"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.2 3 5.5 14h5l-1 7 8.2-11.2h-5.1z"/></svg><span>Automations</span></a><a class="nav__item" href="#" title="Health"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12.5h3.8l2.2-5.5 3.4 11 2.2-5.5H21"/></svg><span>Health</span></a><a class="nav__item" href="#" title="Settings"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2M6.7 6.7l1.4 1.4M15.9 15.9l1.4 1.4M17.3 6.7l-1.4 1.4M8.1 15.9l-1.4 1.4"/></svg><span>Settings</span></a></div></nav>
+  <div class="sidebar__foot">
+    <div class="row t-xs t-muted" style="gap:8px"><span class="dot dot--ok"></span><span><strong style="font-weight:600">Locked</strong> &middot; tailnet only</span></div>
+    <div class="t-xs t-subtle">2026.9.0 &middot; up to date</div>
+  </div>
+</aside>
+<div class="main">
+<header class="topbar">
+  <div>
+    <h1 class="page-title">Connect a client</h1>
+    <p class="page-sub">One endpoint, one paste. Nothing to edit in a config file.</p>
+  </div>
+  <div class="row">
+    
+    <button class="cmdk" type="button"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.2"/><path d="M15.6 15.6 20 20"/></svg><span>Search or jump to</span><span class="kbd" style="margin-left:auto">&#8984;K</span></button>
+    <span class="badge badge--ok"><span class="dot dot--ok"></span>Healthy</span>
+    <span class="avatar">CW</span>
+  </div>
+</header>
+<div class="content">
+<section class="connect">
+<div class="card">
+  <div class="card__head"><h3 class="card__title">Clients</h3><span class="badge">none connected</span></div>
+  <div class="clientlist"><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 4.9 4.9 1.9-4.9 1.9L12 17.1l-1.9-4.9-4.9-1.9 4.9-1.9z"/></svg></span><span class="grow"><span class="clientrow__name">Claude Code</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg></span><span class="grow"><span class="clientrow__name">Codex</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13.8a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2"/><path d="M14 10.2a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2"/></svg></span><span class="grow"><span class="clientrow__name">claude.ai</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg></span><span class="grow"><span class="clientrow__name">Claude Desktop</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13.8a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2"/><path d="M14 10.2a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2"/></svg></span><span class="grow"><span class="clientrow__name">ChatGPT</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Antigravity / Gemini CLI</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Grok</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg></span><span class="grow"><span class="clientrow__name">LM Studio</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Any MCP client</span><br><span class="clientrow__meta">not connected</span></span></div></div>
+  <div class="card__foot"><span class="t-xs t-subtle">Every client gets its own token and its own tool profile. Revoking one never touches the others.</span></div>
+</div>
+<div class="stack">
+
+<div class="card">
+  <div class="card__body">
+    <div class="empty">
+      <span class="empty__mark"><svg class="i i--lg" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span>
+      <p class="empty__title">No client has connected yet</p>
+      <p class="empty__text">A client is any AI that should share this memory: an agent in your terminal, a desktop app, a chat on your phone.
+      Pick one on the left &mdash; palaia writes the command, issues the token and tells you when it arrives.</p>
+      <div class="row" style="justify-content:center;margin-top:var(--p-space-2)">
+        <button class="btn btn--primary" type="button"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 4.9 4.9 1.9-4.9 1.9L12 17.1l-1.9-4.9-4.9-1.9 4.9-1.9z"/></svg>Start with Claude Code</button>
+        <button class="btn" type="button">I use something else</button>
+      </div>
+      <p class="t-xs t-subtle" style="margin-top:var(--p-space-2)">Typical time: under two minutes. Nothing to edit in a config file.</p>
+    </div>
+  </div>
+</div>
+
+</div>
+</section>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<script>
+/* Mockup-only: cycles the theme so a reviewer can see both without changing OS settings.
+   The product ships the same contract: prefers-color-scheme by default, data-theme to override. */
+(function(){
+  var root=document.documentElement, btn=document.getElementById('themebtn'), modes=['system','light','dark'], i=0;
+  btn.addEventListener('click',function(){
+    i=(i+1)%modes.length; var m=modes[i];
+    if(m==='system'){root.removeAttribute('data-theme');}else{root.setAttribute('data-theme',m);}
+    btn.textContent='theme: '+m;
+  });
+})();
+</script>
+
+</body>
+</html>
