@@ -100,7 +100,16 @@ gap in every comparable tool (basic-memory has no hooks at all).
 ### P7 — Dashboard
 The face of the product and the primary interface: onboarding wizard, memory explorer
 with graph view, "connect a client" flows, marketplace, session/message observability,
-automations editor, health (doctor) and one-click updates. Beautiful, calm, legible.
+automations editor, health (doctor) and one-click updates. Home-Assistant-inspired,
+but deliberately **smarter, more intuitive and less sprawling**: one home screen that
+answers "is everything healthy, and what happened?" at a glance; task-oriented
+navigation instead of entity lists; progressive disclosure (advanced settings exist,
+but never in the way); live state everywhere (event-stream-driven UI, no reload
+buttons); and no config-file editing as a required path, ever. Beautiful, calm,
+legible. Prior art studied: samanhappy/MCPHub (group endpoints, per-group
+visibility, semantic tool routing) and ravitemer/mcp-hub (REST management API +
+unified endpoint, SSE live events, registry-backed marketplace — and no dashboard,
+which is exactly palaia's opening).
 
 ## 4. UX Doctrine
 
@@ -268,7 +277,12 @@ flowchart LR
 - **Per-client tool profiles:** a hundred tools in every context window is how you
   ruin an agent. Each connected client gets a profile (default: sensible core set)
   that the user edits in the dashboard — e.g. "Codex gets memory only; Claude Desktop
-  gets everything."
+  gets everything." Profiles are **addressable**: each one is its own endpoint path
+  (`/mcp/<profile>`), so the URL a client connects to already selects its tool
+  surface — no client-side filtering required (pattern proven by MCPHub's group
+  endpoints). Optionally, a profile can enable **semantic tool routing** (the client
+  sees a compact search/invoke pair instead of every tool) for very large tool
+  collections.
 - **Central credentials:** upstream servers' API keys and OAuth grants live in
   palaia's encrypted secret store — entered once in the dashboard, never again in a
   client config file.
@@ -361,14 +375,25 @@ all four:
 - **Machine identities** (jobs, automations) are provisioned by the admin — pinned
   to exactly one audience and scope grant, never obtainable through public client
   registration, no refresh tokens.
-- **Posture:** LAN-only by default. "Expose" is an explicit wizard with hardening
-  checks; the recommended path is a tunnel add-on (Tailscale / cloudflared) rather
-  than an open port. **Important reality check:** claude.ai and ChatGPT connect to
-  connectors *from their vendor clouds*, not from the user's device — so for those
-  clients, reachability from the internet is a hard requirement even on the same
-  LAN. The exposure wizard is therefore a core onboarding step, not an advanced
-  option. A hosted relay ("palaia cloud") stays out of scope for now — open
-  decision #8.
+- **Three operating modes**, chosen in the onboarding wizard and changeable later —
+  each with an enforced-in-code auth policy:
+
+  | Mode | MCP endpoints | Admin dashboard | Auth |
+  |---|---|---|---|
+  | **Locked** | VPN/tailnet only (Tailscale or any VPN) | VPN/tailnet only | Optional |
+  | **Cloud** | Public (tunnel or open port) | VPN/tailnet only | **Mandatory** |
+  | **Open** | Public | Public | **Mandatory** + hardening checklist |
+
+  Enforcement is not advisory: the hub refuses to serve a publicly reachable
+  endpoint without auth configured. The wizard translates needs into modes —
+  "I only use CLI/desktop agents on my own machines" → Locked; "I want claude.ai,
+  ChatGPT or my phone to reach my memory" → Cloud (the sweet spot for most users);
+  Open only for users who consciously want the dashboard itself on the internet.
+- **Reality check the wizard states plainly:** claude.ai and ChatGPT connect to
+  connectors *from their vendor clouds*, not from the user's device — in Locked
+  mode those clients simply cannot connect, whatever the LAN looks like. Public MCP
+  reachability (Cloud/Open, ideally via tunnel) is a hard requirement for them.
+  A hosted relay ("palaia cloud") stays out of scope for now — open decision #8.
 
 ### 5.6 Events, hooks, automations
 
@@ -413,6 +438,7 @@ an interactive panel inside the client.
 | basic-memory | AGPL-3.0 | Markdown knowledge graph (entities/observations/relations), files-as-truth + rebuildable index, `memory://` addressing + graph-traversal recall, schema-as-notes, capture promotion ladder, MCP tool ergonomics, Obsidian compatibility | **Concepts only, clean-room; zero code, no runtime dependency** ([ADR-002](decisions/002-clean-room-licensing.md)). v3 additionally fixes its confirmed gaps: no events/hooks, no permissions, no git, no agent awareness. Plus: a vault *importer* |
 | mcp-hub (private prototype) | ours | One-AS/N-resources auth topology with audience-isolated, locally-verifiable tokens; per-tool scope enforcement; token-lifecycle hardening (grace-windowed rotation, client GC, resolved resource indicators); the **inbox + curator** pattern incl. two-tier INGEST/MAINTENANCE rule, capture contract, provenance-id verification, deterministic apply; per-model recall variants | Direct reuse of learnings and (owner-authored) code where it fits. Research based on a private concept dossier held **outside** this public repo |
 | Home Assistant | Apache-2.0 | The *model*: appliance install, add-on store, automations, `*.local` onboarding, community ecosystem | Inspiration & benchmarks, no code |
+| MCPHub (samanhappy) / mcp-hub (ravitemer) | OSS | Group endpoints + per-group visibility, semantic `$smart` tool routing, REST management API + one unified MCP endpoint, SSE-driven live UI, registry-backed marketplace | Inspiration (studied 2026-08-22), no code |
 
 ## 8. Stack — options and recommendation (decision pending)
 
@@ -462,8 +488,10 @@ Considered alternatives:
 
 - Local-first: no data leaves the host unless the user connects something that
   reads it. No telemetry without explicit opt-in.
-- Secure defaults: LAN-only, auth on from day one, encrypted secret store,
-  least-privilege tokens per client, signed add-on index, sandboxed add-ons.
+- Secure defaults: Locked mode unless the user chooses otherwise; auth is
+  **mandatory the moment anything is reachable beyond the private network**
+  (Cloud/Open modes) and merely optional inside a VPN-only setup; encrypted secret
+  store, least-privilege tokens per client, signed add-on index, sandboxed add-ons.
 - Exposure is a ceremony: the "make public" wizard runs hardening checks
   (TLS, rate limits, fail2ban-class protections) and prefers tunnels.
 - A security review gate before 3.0 (external eyes on the auth + gateway surface).
