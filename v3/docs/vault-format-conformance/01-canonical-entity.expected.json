@@ -3,16 +3,66 @@
   "title": "API Gateway",
   "permalink": "projects/api-gateway",
   "type": "note",
-  "tags": ["infra", "api"],
+  "tags": [
+    "infra",
+    "api"
+  ],
   "observations": [
-    {"category": "rate-limit", "scope": null, "text": "100 req/min #infra", "tags": ["infra"], "context": "set in PR #88", "block_id": "rate-limit", "line": 11},
-    {"category": "decision", "scope": null, "text": "We terminate TLS at [[Caddy]] only.", "tags": [], "context": null, "block_id": null, "line": 12}
+    {
+      "category": "rate-limit",
+      "scope": null,
+      "text": "100 req/min #infra",
+      "tags": [
+        "infra"
+      ],
+      "context": "set in PR #88",
+      "block_id": "rate-limit",
+      "line": 12
+    },
+    {
+      "category": "decision",
+      "scope": null,
+      "text": "We terminate TLS at [[Caddy]] only.",
+      "tags": [],
+      "context": null,
+      "block_id": null,
+      "line": 13
+    }
   ],
   "relations": [
-    {"type": "links_to", "target": "Caddy", "implicit": true, "line": 12},
-    {"type": "part_of", "target": "ACME Platform", "implicit": false, "context": null, "line": 13},
-    {"type": "pairs well with", "target": "Stash", "implicit": false, "context": "cache offload", "line": 14}
+    {
+      "type": "links_to",
+      "target": "Caddy",
+      "implicit": true,
+      "line": 13
+    },
+    {
+      "type": "part_of",
+      "target": "ACME Platform",
+      "implicit": false,
+      "context": null,
+      "line": 14
+    },
+    {
+      "type": "pairs well with",
+      "target": "Stash",
+      "implicit": false,
+      "context": "cache offload",
+      "line": 15
+    }
   ],
-  "embeds": [{"target": "Pricing", "anchor": "^base-rate", "line": 16}],
-  "warnings": []
+  "embeds": [
+    {
+      "target": "Pricing",
+      "anchor": "^base-rate",
+      "line": 17
+    }
+  ],
+  "warnings": [],
+  "anchors": [
+    {
+      "id": "rate-limit",
+      "line": 12
+    }
+  ]
 }

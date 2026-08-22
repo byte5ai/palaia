@@ -1,0 +1,7 @@
+{
+  "title": "Onboarding Guide", "permalink": "guides/onboarding", "type": "note",
+  "observations": [{"category": "rate-limit", "scope": null, "text": "100 req/min", "block_id": "rate", "line": 8}],
+  "relations": [], "embeds": [],
+  "anchors": [{"id": "intro", "line": 6}, {"id": "rate", "line": 8}],
+  "warnings": []
+}

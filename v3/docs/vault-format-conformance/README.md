@@ -12,6 +12,8 @@ every case; SPEC-106 additionally passes `resolution/`.
   asserted **whole** — exact length and order — with each element then
   subset-matched. An expected `[]` therefore means "none at all".
 - `line` numbers are 1-based over the raw file.
+- `warnings` array order: sorted by (line ascending, then code alphabetically);
+  warnings without a line sort before all lined ones, alphabetically.
 - Cases numbered 01–09 are the hand-written anchors (design intent); 10+ are
   systematic coverage. Every grammar rule and every warning code needs at
   least one positive and one negative case.

@@ -1,0 +1,6 @@
+{
+  "title": "Server offline", "permalink": "infra/server-offline", "type": "note",
+  "observations": [{"category": "note", "scope": null, "text": "Conceptual volatility without a token pattern is writer/doctor territory, not a parse warning.", "line": 6}],
+  "relations": [], "embeds": [],
+  "warnings": []
+}

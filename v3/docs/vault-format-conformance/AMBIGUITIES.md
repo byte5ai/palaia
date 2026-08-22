@@ -164,3 +164,35 @@ No case was written putting a wikilink inside a checkbox line or a
 blockquote/callout line, since the two readings produce different
 `relations` array lengths and the corpus's whole-array assertion would force
 a guess either way.
+
+---
+
+# Resolutions — spec 1.0-draft.2 (2026-08-22, spec author)
+
+All nine entries above are RESOLVED by spec changes in `../vault-format.md`
+(changelog 1.0-draft.2). Rulings:
+
+1. **Anchor line numbers** — authoring slips in cases 01/03, now fixed to raw
+   1-based lines (01: +1 shift, embed at 17, plus new `anchors` array;
+   03: prose link at 25). The README rule stands unchanged.
+2. **volatile-name scope** — parser checks token patterns ONLY (semver, ISO
+   date, `vX.Y`); conceptual volatility is writer/doctor/curator territory.
+   New case 49.
+3. **Cycle chain** — arrow-separated titles, repeated node written out;
+   self-cycle `⟦cycle: A → A⟧`. Normative example added to §5.3; the
+   resolution scenarios as built are now conformant, not scaffolding.
+4. **Depth cap** — entry note's own embed is hop 1; hops 1–8 resolve, hop 9
+   caps. The 10-note chain scenario is the minimal boundary test, as built.
+5. **Missing frontmatter** — no fence at all (incl. empty/whitespace files)
+   is a plain note WITHOUT `frontmatter-malformed`; only present-but-broken
+   fences warn. Cases 44/45 now assert `permalink-missing` +
+   `title-defaulted`. Warning order rule added to the README.
+6. **Non-canonical permalink** — kept verbatim, new warning
+   `permalink-noncanonical` (added to §9.1 closed list); doctor canonicalizes
+   via rename+alias. New case 51.
+7. **E4 scope** — date shapes, time shapes, and purely-numeric categories are
+   excluded; mixed alphanumeric stays valid. New case 50.
+8. **Anchors on any line** — surfaced in a new top-level `anchors` array
+   (§9); observation `block_id` unchanged. New case 52; case 01 asserts it.
+9. **Wikilinks in excluded lines** — extraction applies on ALL excluded lines
+   except code (E2). New case 53.

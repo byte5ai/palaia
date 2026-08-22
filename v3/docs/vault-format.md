@@ -82,8 +82,12 @@ it is importable but not servable.
 YAML between `---` fences at file start. Parsers MUST apply these
 normalizations (bm-lesson: user YAML is hostile):
 
-- BOM stripped; missing/malformed YAML → the whole file is a plain note
-  (type `note`, title from filename), warning `frontmatter-malformed`.
+- BOM stripped. A file with **no `---` fence at all** (incl. empty and
+  whitespace-only files) is a perfectly ordinary plain note — NO
+  `frontmatter-malformed` warning (warn-first: bare Obsidian notes are normal
+  content); it gets `title-defaulted` and `permalink-missing` like any
+  uncanonical note. `frontmatter-malformed` fires only when a fence is
+  *present but broken*: unparseable YAML, or an opening `---` never closed.
 - Scalars coerced to strings where the schema says string (dates, numbers,
   booleans arriving via YAML native types); list-valued `title` → first item,
   warning `title-coerced`.
@@ -124,6 +128,10 @@ Canonical form is a writer duty, never a read requirement.
 - Assignment: the engine slugifies the title and prefixes the folder path.
   Files arriving without a permalink (imports, hand-created notes) get one
   assigned at first index via an attributed write-back commit.
+- A user-supplied permalink violating the charset is **kept verbatim**
+  (identity is never silently rewritten) with warning `permalink-noncanonical`;
+  the doctor offers canonicalization through the rename machinery (§4.2), so
+  the old value survives as an alias.
 
 ### 3.2 `memory://` URLs
 
@@ -154,10 +162,13 @@ RIGHT:  [[OpenClaw]] with          [[Server]] with         [[Preise]] with
 ```
 
 Enforcement is layered, matching invariant 3: the **writer** (engine tools)
-rejects new titles matching volatility patterns (semver-like tokens, ISO
-dates, `vX.Y` forms — the conformance corpus enumerates them); the **doctor**
-flags existing violations; the **curator** proposes fixes. The parser itself
-only warns (`volatile-name`) — user files are never rejected.
+rejects new titles matching volatility patterns; the **doctor** flags existing
+violations; the **curator** proposes fixes. The parser itself only warns
+(`volatile-name`) — user files are never rejected. **Parser scope is exactly
+the token patterns** (conformance-enumerated): semver-like tokens, ISO dates,
+`vX.Y` forms. Conceptual volatility without such a token (`[[Server offline]]`)
+is NOT a parse-time warning — judging it needs semantics and belongs to the
+writer/doctor/curator layers.
 
 ### 4.2 Rename semantics
 
@@ -277,7 +288,13 @@ embed         = "!" wikilink ;            (* ![[Note]], ![[Note#^rate]], ![[Note
   `⟦missing: <target>⟧` in resolved output plus warning `embed-missing`;
   cycle → resolution stops at the repeated node with `⟦cycle: <chain>⟧` plus
   warning `embed-cycle`. Never silently dropped, never an exception.
-- Depth limit: 8 nested resolutions, then `⟦depth: <target>⟧`.
+  `<chain>` is the note **titles** along the resolution path, arrow-separated,
+  with the repeated node written out at the end: `⟦cycle: Note A → Note B →
+  Note A⟧`; a self-embed renders `⟦cycle: Note A → Note A⟧`. `<target>` in
+  markers is the target as written in the embed.
+- Depth limit: **the entry note's own embed is hop 1**; hops 1–8 resolve,
+  hop 9 renders `⟦depth: <target>⟧` (so a 10-note linear chain is the minimal
+  structure that exercises the cap).
 
 ### 5.4 Block anchors
 
@@ -289,7 +306,10 @@ ANCHOR-ID     = ( ALPHA | DIGIT | "-" ) {1,32} ;
 A block anchor at the end of any line (Obsidian convention) makes that line
 addressable: `memory://<permalink>#^<id>` and `![[Note#^<id>]]`. Anchors on
 observation lines make **fields**: `- [rate-limit] 100 req/min ^rate-limit`
-is the single source other notes embed.
+is the single source other notes embed. **Every** anchor in a note — on
+observation lines and ordinary lines alike — surfaces in the parse result's
+top-level `anchors` array (§9); duplicates within one note warn
+`anchor-duplicate` (first occurrence wins for resolution).
 
 ### 5.5 Exclusions — what is NEVER an observation/relation
 
@@ -302,14 +322,20 @@ A line matching any exclusion is plain Markdown (E1–E7 conformance-tested):
   blocks, inline code spans excluded from link/tag extraction too.
 - **E3 Callouts & quotes:** lines inside blockquotes (`>` prefix), including
   Obsidian callouts `> [!info]`.
-- **E4 Timestamp/date-shaped categories:** `[00:01:23]`, `[2026-08-22]`,
-  `[12:30]` — transcripts and logs stay prose.
+- **E4 Numeric/date/time-shaped categories:** a category matching a date
+  shape (`YYYY-MM-DD`), a time shape (`HH:MM`, `HH:MM:SS`), or consisting
+  **only of digits** (`[2026]`, `[42]`) — transcripts and logs stay prose;
+  a purely numeric token has no value as a category.
 - **E5 Markdown links:** `[text](url)` is never a category; `[text][ref]`
   reference-style links likewise.
 - **E6 Footnotes:** `[^1]` definitions and references.
 - **E7 Tables and headings:** `|`-rows and `#`-prefixed lines carry no
-  observation/relation semantics (wikilinks inside them still yield implicit
-  `links_to`).
+  observation/relation semantics.
+
+Exclusions suppress observation/relation-**line** semantics only. **Wikilink
+extraction (implicit `links_to`) applies on all excluded lines except inside
+code (E2)** — a checkbox task or a quoted line referencing `[[An Entity]]`
+still feeds the graph, exactly as Obsidian's own graph view treats them.
 
 ## 6. Entry taxonomy v1
 
@@ -408,6 +434,9 @@ field order irrelevant, absent optionals omitted):
   "embeds": [
     { "target": "Pricing", "anchor": "^base-rate", "line": 15 }
   ],
+  "anchors": [
+    { "id": "rate-limit", "line": 9 }
+  ],
   "warnings": [ { "code": "volatile-name", "line": 3, "detail": "…" } ]
 }
 ```
@@ -415,8 +444,9 @@ field order irrelevant, absent optionals omitted):
 ### 9.1 Warning codes (closed list for v1)
 
 `frontmatter-malformed`, `title-defaulted`, `title-coerced`, `type-unknown`,
-`permalink-missing`, `volatile-name`, `variant-no-base`, `embed-missing`*,
-`embed-cycle`*, `format-version`, `anchor-duplicate`.
+`permalink-missing`, `permalink-noncanonical`, `volatile-name`,
+`variant-no-base`, `embed-missing`*, `embed-cycle`*, `format-version`,
+`anchor-duplicate`.
 (*emitted at resolution time, not parse time — listed here because the corpus
 covers them.)
 
@@ -457,3 +487,9 @@ derived, never stored in files.
 
 - **1.0-draft (2026-08-22)** — initial specification. Owner sign-off pending;
   becomes 1.0 when ADR-003 is Accepted.
+- **1.0-draft.2 (2026-08-22)** — nine corpus-authoring ambiguities resolved
+  (AMBIGUITIES.md): parser scope of `volatile-name`; cycle-chain and
+  depth-cap worked examples; missing-vs-malformed frontmatter; new
+  `permalink-noncanonical` warning; E4 covers purely numeric categories;
+  top-level `anchors` array; wikilink extraction on excluded lines (except
+  code).

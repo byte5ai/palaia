@@ -1,0 +1,10 @@
+{
+  "title": "Sprint Notes", "permalink": "work/sprint-notes", "type": "note",
+  "observations": [],
+  "relations": [
+    {"type": "links_to", "target": "Gateway", "implicit": true, "line": 6},
+    {"type": "links_to", "target": "Caddy", "implicit": true, "line": 7}
+  ],
+  "embeds": [],
+  "warnings": []
+}
