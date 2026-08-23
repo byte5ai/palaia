@@ -1,0 +1,62 @@
+# Rendered by entrypoint.sh (envsubst) into a writable path at container
+# start — never edited in place inside the image. A full standalone
+# nginx.conf (not a Debian sites-enabled snippet) so the container doesn't
+# depend on nginx-light's packaged defaults.
+#
+# Role: the ONE public entry point. Serves the built dashboard as static
+# files and reverse-proxies API/MCP traffic to the hub process, which binds
+# only to loopback inside the container.
+
+worker_processes 1;
+pid /tmp/nginx/nginx.pid;
+error_log /dev/stderr warn;
+
+events {
+    worker_connections 512;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    access_log /dev/stdout;
+    client_body_temp_path /tmp/nginx/body;
+    proxy_temp_path /tmp/nginx/proxy;
+    fastcgi_temp_path /tmp/nginx/fastcgi;
+    uwsgi_temp_path /tmp/nginx/uwsgi;
+    scgi_temp_path /tmp/nginx/scgi;
+
+    server {
+        listen ${PUBLIC_PORT};
+        server_name _;
+
+        # Everything the hub owns today (SPEC-101: /api/health, /api/info;
+        # SPEC-105 onward: the MCP mount point) is proxied straight through.
+        # Kept as one generic prefix rather than an enumerated list so later
+        # SPECs adding routes under /api or /mcp don't need a packaging
+        # change.
+        location ~ ^/(api|mcp)(/|$) {
+            proxy_pass http://${PALAIA_HOST}:${PALAIA_PORT};
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            # MCP streaming responses (SSE-style) must not be buffered.
+            proxy_buffering off;
+            proxy_read_timeout 300s;
+        }
+
+        # Static dashboard (SPA). Falls back to index.html for client-side
+        # routing; index.html itself is never cached so a new image always
+        # serves the current build's asset references.
+        root /opt/palaia/dashboard;
+
+        location = /index.html {
+            add_header Cache-Control "no-cache";
+        }
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+    }
+}
