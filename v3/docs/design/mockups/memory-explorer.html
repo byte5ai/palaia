@@ -873,7 +873,10 @@ svg{display:block}
 .note{padding:var(--p-space-6) var(--p-space-6) var(--p-space-8);max-width:70ch}
 /* The note title names a subject — it is a heading, so it is Geist (see the
    serif rule in the shared block). The serif belongs to what is below it. */
-.note__title{font-size:var(--p-size-2xl);line-height:32px;font-weight:600;letter-spacing:var(--p-track-tight)}
+/* Owner rule 2026-08-22: serif belongs to memory content ONLY — and then
+   including the entry's own title. Everything outside memory content is sans. */
+.note__title{font-family:var(--p-font-serif);font-size:var(--p-size-2xl);line-height:32px;font-weight:600;
+  font-optical-sizing:auto;letter-spacing:0}
 .note__meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px}
 .note h3{font-family:var(--p-font-mono);font-size:var(--p-size-micro);line-height:14px;font-weight:500;
   letter-spacing:var(--p-track-micro);text-transform:uppercase;color:var(--p-ink-subtle);

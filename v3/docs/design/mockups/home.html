@@ -839,25 +839,18 @@ svg{display:block}
 .greet__meta{font-family:var(--p-font-mono);font-size:var(--p-size-meta);line-height:16px;
   color:var(--p-ink-subtle);font-feature-settings:'tnum';margin-top:5px}
 @media (max-width:900px){.greet__meta .greet__since{display:none}}
-/* This is the ONE place on the home screen that keeps Source Serif, and it
-   survives the serif audit on purpose. The card is an end-to-end prose
-   container — a mono micro-label, then two or three sentences of narration
-   that palaia wrote about its own state — which is exactly `type.prose` plus
-   the rare `type.prose.heading` in visual-spec §2.7, and exactly the "prepared
-   briefing" container in the Lume reference application (Mockup 8), whose
-   title and body are both serif. The opening line is a sentence with a full
-   stop, not a label: it reads as the first line of the passage rather than as
-   a heading over it, which is the test the rule actually asks. Weight stays
-   400 — serif at 600 used as chrome is what the audit removed everywhere else. */
+/* Owner ruling 2026-08-22: the hub verdict is STATUS, not a reading passage —
+   serif is not permitted here. Sans throughout; serif remains reserved for
+   genuine prose content blocks (e.g. a note's body in the explorer). */
 .verdict{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--p-space-8);
   padding:var(--p-space-5) var(--p-space-6) var(--p-space-6);
   border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-lg);
   background:var(--p-surface);
   box-shadow:var(--p-shadow-1), 0 1px 0 var(--top-edge-highlight) inset}
-.verdict__line{font-family:var(--p-font-serif);font-size:var(--p-size-2xl);font-weight:400;
-  line-height:32px;font-optical-sizing:auto;margin:10px 0 8px;max-width:34ch}
-.verdict__sub{font-family:var(--p-font-serif);font-size:var(--p-size-md);line-height:22px;
-  color:var(--p-ink-muted);font-optical-sizing:auto;max-width:62ch}
+.verdict__line{font-family:var(--p-font-sans);font-size:var(--p-size-2xl);font-weight:600;
+  line-height:32px;letter-spacing:-.005em;margin:10px 0 8px;max-width:34ch}
+.verdict__sub{font-family:var(--p-font-sans);font-size:var(--p-size-md);line-height:22px;
+  color:var(--p-ink-muted);max-width:62ch}
 .verdict__sub .t-mono{font-size:var(--p-size-xs)}
 .verdict__aside{display:flex;flex-direction:column;gap:8px;align-items:flex-end;flex:none;padding-top:2px}
 /* neutral bars; only the latest column is accent-tinted (one accent element) */

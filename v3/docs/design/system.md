@@ -262,22 +262,20 @@ question — all chrome, all single lines — while the one genuinely prose-shap
 surface in the product, a note's observations, was set in sans. That inversion
 is what this rule exists to prevent.
 
-**Two tests, both must pass before a run of text may be serif:**
-
-1. **Is it more than one sentence** — a passage someone reads, not a line
-   someone scans?
-2. **Is it the content**, rather than the frame around the content?
+**Owner ruling (2026-08-22), which supersedes the earlier two-test version:
+serif belongs to MEMORY CONTENT and nothing else — and where it applies, it
+applies to the whole entry including the entry's own title.** One question
+decides it: *is this text the content of a memory entry?* Yes → serif (body,
+observations, and the entry's title as one typographic unit). No → Geist.
 
 | Serif — yes | Everything else — Geist |
 |---|---|
-| A note's observations (`.obs__text`) — sentences an agent wrote about the world; the one end-to-end reading surface in the product | The note's **title**, its category tags, its frontmatter, and every explanatory line in the same pane |
-| The home health briefing — a mono micro-label, then two or three sentences palaia wrote about its own state: an end-to-end prose container, the `type.prose` + rare `type.prose.heading` case, and exactly the "prepared briefing" container in the Lume reference application, whose title and body are both serif | The page title above it, the tiles beside it, the fact list under it |
-| A proposal's rationale in the review queue (`.prose--compact`) — why the curator wants this change, in its own words | The proposal's subject line, the `dt` labels, the diff, the buttons |
-| A done-state's closing passage | The done-state **title** |
-| Anything the agent emits with `style: "prose"` (the visual-spec §2.7 protocol) | Anything with no `style` trait — the default is structural |
+| A note's observations and body (`.obs__text`) — the memory content itself | All UI chrome, everywhere |
+| The same note's **title** (`.note__title`) — the entry's heading belongs to its content | Page titles, greetings, card heads, section heads |
+| Memory content quoted inside other screens (e.g. a note excerpt in the review diff context) | The hub status/briefing, done-states, wizard copy — palaia talking is UI, not memory content |
 
 **Never serif, no exceptions:** page titles, greetings, card heads (`card__title`
-*and* `card__subject`), section heads, empty- and done-state titles, note titles,
+*and* `card__subject`), section heads, empty- and done-state titles,
 wizard questions, lead paragraphs, field labels, buttons, badges, chips, nav
 items, the brand mark, keycaps, and metadata of any kind (which is mono anyway,
 §1.2a). A single sentence of instruction under a heading is **not** a reading
