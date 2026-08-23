@@ -11,16 +11,16 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from . import __version__
 from .config import HubConfig, load_config
 from .events import EventBus, build_events_router, start_background_tasks, stop_background_tasks
-from .gateway import GatewayASGI
+from .gateway import GatewayASGI, VaultService
 from .logging import setup_logging
 from .static import mount_dashboard
 
@@ -32,7 +32,12 @@ from .static import mount_dashboard
 _TEST_SLOW_ENDPOINT_ENV = "PALAIA_TEST_SLOW_ENDPOINT_SECONDS"
 
 
-def create_app(config: HubConfig | None = None, *, gateway: GatewayASGI | None = None) -> FastAPI:
+def create_app(
+    config: HubConfig | None = None,
+    *,
+    gateway: GatewayASGI | None = None,
+    vault_services: Mapping[str, VaultService] | None = None,
+) -> FastAPI:
     """Build the hub's ASGI app.
 
     Args:
@@ -44,8 +49,14 @@ def create_app(config: HubConfig | None = None, *, gateway: GatewayASGI | None =
             before this parameter existed. Its lifespan MUST be attached to
             this app's lifespan (done below) or its mounted profile(s) hang
             on their first request — see ``gateway/build.py``'s docstring.
+        vault_services: the same ``{vault_key: VaultService}`` mapping passed
+            to ``build_gateway`` (SPEC-107), used only to back the
+            ``/api/vaults/{vault_key}/inbox_status`` REST endpoint below.
+            Independent of ``gateway`` on purpose: a caller can expose the
+            REST endpoint without an MCP gateway mounted, and vice versa.
     """
     config = config or load_config()
+    vault_services = vault_services or {}
     setup_logging(config)
 
     start_time = time.monotonic()
@@ -90,6 +101,18 @@ def create_app(config: HubConfig | None = None, *, gateway: GatewayASGI | None =
             "mode": config.mode,
             "uptime_seconds": round(time.monotonic() - start_time, 3),
         }
+
+    # SPEC-107: inbox visibility outside the MCP surface (deliverable #3).
+    @app.get("/api/vaults/{vault_key}/inbox_status")
+    async def inbox_status(vault_key: str) -> dict[str, Any]:
+        service = vault_services.get(vault_key)
+        if service is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"no vault {vault_key!r} configured with a backing service",
+            )
+        status = await service.inbox_status()
+        return status.model_dump()
 
     # SPEC-109: the dashboard's live-state layer (health + vault-change
     # events) and, once `npm run build` has produced one, the static

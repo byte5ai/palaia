@@ -14,7 +14,7 @@ from fastmcp import Client
 from palaia_hub.gateway.config import VaultMountConfig
 from palaia_hub.gateway.fake_vault import FakeVaultService
 from palaia_hub.gateway.memory_tools import build_vault_server
-from palaia_hub.gateway.vault_protocol import MEMORY_TOOL_ACTIONS
+from palaia_hub.gateway.vault_protocol import INBOX_TOOL_ACTIONS, MEMORY_TOOL_ACTIONS
 
 
 @pytest.fixture
@@ -36,7 +36,11 @@ async def test_every_action_is_exposed_as_a_tool(server) -> None:  # noqa: ANN00
     async with Client(server) as client:
         tools = await client.list_tools()
     names = {t.name for t in tools}
-    assert names == set(MEMORY_TOOL_ACTIONS)
+    # SPEC-107 adds capture/inbox_status to the same server as the original
+    # eight memory actions (see vault_protocol.INBOX_TOOL_ACTIONS's comment
+    # for why they're a separate tuple rather than folded into
+    # MEMORY_TOOL_ACTIONS).
+    assert names == set(MEMORY_TOOL_ACTIONS) | set(INBOX_TOOL_ACTIONS)
 
 
 @pytest.mark.anyio
@@ -73,9 +77,9 @@ async def test_annotations_lint_every_tool_description_leads_with_purpose(
 async def test_readonly_tools_are_marked_readonly_and_mutators_are_not(server) -> None:  # noqa: ANN001
     async with Client(server) as client:
         tools = {t.name: t for t in await client.list_tools()}
-    for name in ("search", "read", "list", "recent_activity"):
+    for name in ("search", "read", "list", "recent_activity", "inbox_status"):
         assert tools[name].annotations.readOnlyHint is True, name
-    for name in ("write", "edit", "move", "delete"):
+    for name in ("write", "edit", "move", "delete", "capture"):
         assert tools[name].annotations.readOnlyHint is False, name
 
 
