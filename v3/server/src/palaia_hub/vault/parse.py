@@ -548,14 +548,15 @@ def parse_note(text: str, path: str) -> ParsedNote:
         key_lines = {}
 
     warnings: list[Warning] = []
-    fixed_prefix: list[Warning] = []
 
     if parsed_fm.malformed:
-        fixed_prefix = [
-            Warning("frontmatter-malformed"),
-            Warning("title-defaulted"),
-            Warning("permalink-missing"),
-        ]
+        warnings.extend(
+            [
+                Warning("frontmatter-malformed"),
+                Warning("title-defaulted"),
+                Warning("permalink-missing"),
+            ]
+        )
         title = _stem(path)
         permalink_value: str | None = None
         type_value = "note"
@@ -578,7 +579,7 @@ def parse_note(text: str, path: str) -> ParsedNote:
     body_result = _parse_body(body_text, body_start_idx + 1)
     warnings.extend(body_result.warnings)
 
-    final_warnings = fixed_prefix + _sort_warnings(warnings)
+    final_warnings = _sort_warnings(warnings)
     frontmatter_field = _build_frontmatter_field(
         fm_dict_raw, title, type_value, tags, permalink_value
     )
