@@ -29,11 +29,20 @@ the SPEC-003 findings. Correctness beats features here.
 2. **Watcher**: watchfiles-based, debounced per SPEC-003 findings, detects
    external create/edit/move/delete (checksum-based move detection), emits
    typed change events on an internal bus stub (full bus is Phase 2 — define
-   the event dataclasses now).
+   the event dataclasses now). **Spike finding:** `watchfiles` has no rename
+   event — an Obsidian-style rename arrives as `deleted(old)`+`added(new)` in
+   the SAME debounce batch; checksum-based move detection over those pairs is a
+   named requirement, or every rename silently loses the entity's history.
 3. **Git layer**: auto-commit per logical write with attributed message
-   (`agent/client/origin: summary`); batching strategy per SPEC-003 findings;
-   repo auto-init; external edits picked up as their own commits on next write;
-   `vault history <permalink>` API.
+   (`agent/client/origin: summary`); repo auto-init; external edits picked up as
+   their own commits on next write; `vault history <permalink>` API.
+   **Binding spike findings (SPEC-003, v3/spikes/vault/FINDINGS.md):**
+   stage ONLY the changed paths per commit — never index add-all (whole-tree
+   rescan makes per-commit cost grow with vault size); schedule `git gc --auto`
+   (naive one-commit-per-write via libgit2 bloats `.git` ~116× at 10k notes —
+   O(n²) loose objects; gc recovers it ~11×; porcelain git's `gc.auto` is a
+   free safety net libgit2 lacks — the backend choice must include an explicit
+   gc policy either way).
 4. Doctor primitives: `verify()` (file↔index consistency check interface — the
    index side lands in SPEC-104) and `reindex()` hook points.
 
@@ -46,7 +55,12 @@ the SPEC-003 findings. Correctness beats features here.
 - [ ] move detection: rename on disk preserves permalink identity
 - [ ] `rename_entity` on the golden vault: zero dangling backlinks afterward,
       exactly one commit, external (Obsidian) partial renames flagged by doctor
-- [ ] every acknowledged write is a git commit with correct attribution
+- [ ] every acknowledged write is a git commit with correct attribution; commit
+      latency stays flat as the vault grows (changed-paths staging proven)
+- [ ] repo size stays bounded under sustained writes (gc policy test: 10k-write
+      run ends with `.git` within ~2× of content size)
+- [ ] a stale git index.lock (kill mid-commit; observed 2/25 in the spike) is
+      detected and auto-recovered by the doctor primitives
 - [ ] two vaults never share files, SQLite, or git state (isolation test)
 - [ ] 10k-note vault: write p50 within SPEC-003's measured budget ±20%
 

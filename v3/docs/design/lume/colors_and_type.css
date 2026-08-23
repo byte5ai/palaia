@@ -1,0 +1,386 @@
+/* =============================================================
+   Lume — Design tokens for Omadia UI
+   Material: light-as-material
+   Default palette: Lagoon (Petrol + Atelier set up as future-ready)
+   =============================================================
+   This file is the single source of truth for color, type, spacing,
+   radii, elevation and motion. Every renderer references these tokens
+   by name — never raw values.
+   ============================================================= */
+
+/* Fonts via Google Fonts CDN (Geist / Geist Mono / Source Serif 4).
+   In production these become locally-hosted variable WOFF2 files;
+   see fonts/README.md for the substitution plan. */
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap');
+
+/* =============================================================
+   1. Primitive tokens — light mode (default)
+   ============================================================= */
+:root {
+  /* — Spacing (4pt grid) — */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* — Radius (soft corners, editor exception at 0) — */
+  --radius-editor: 0;        /* canvas-region, timeline, vector-path */
+  --radius-sm: 6px;          /* small chips, list-item hover */
+  --radius-md: 8px;          /* buttons, inputs, containers */
+  --radius-lg: 10px;         /* cards, popovers */
+  --radius-xl: 12px;         /* modals, panes, outer window */
+  --radius-pill: 999px;      /* switches, capsules */
+
+  /* — Motion — */
+  --duration-instant: 0ms;        /* @kind other */
+  --duration-quick: 100ms;        /* @kind other */
+  --duration-smooth: 200ms;       /* @kind other */
+  --duration-condense: 300ms;     /* @kind other */ /* contract; full spec is 800ms, see README */
+  --easing-standard: cubic-bezier(0.2, 0, 0, 1);     /* @kind other */
+  --easing-emphasis: cubic-bezier(0.4, 0.0, 0.2, 1.0); /* @kind other */
+
+  /* — Typography — three registers — */
+  --font-sans:  'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:  'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --font-serif: 'Source Serif 4', Charter, 'Iowan Old Style', Georgia, serif;
+
+  /* Type scale — sizes in px / lh / weight */
+  --type-display-size: 32px;       --type-display-lh: 40px;       --type-display-weight: 600;
+  --type-h1-size:      24px;       --type-h1-lh:      32px;       --type-h1-weight:      600;
+  --type-h2-size:      20px;       --type-h2-lh:      28px;       --type-h2-weight:      600;
+  --type-h3-size:      16px;       --type-h3-lh:      24px;       --type-h3-weight:      600;
+  --type-body-size:    14px;       --type-body-lh:    22px;       --type-body-weight:    400;
+  --type-body-sm-size: 13px;       --type-body-sm-lh: 20px;       --type-body-sm-weight: 400;
+  --type-caption-size: 12px;       --type-caption-lh: 18px;       --type-caption-weight: 400;
+  --type-prose-size:   16px;       --type-prose-lh:   26px;       --type-prose-weight:   400;
+  --type-mono-size:    13px;       --type-mono-lh:    20px;       --type-mono-weight:    450;
+  --type-mono-sm-size: 12px;       --type-mono-sm-lh: 18px;       --type-mono-sm-weight: 450;
+}
+
+/* =============================================================
+   2. Surface tokens — directional gradient pairs
+   (top = slightly lit, btm = slightly settled, ~1.5% L delta)
+   ============================================================= */
+:root,
+[data-mode="light"] {
+  --bg-canvas-top:          #F8F9FA;
+  --bg-canvas-btm:          #F4F5F7;
+  --bg-surface-top:         #FFFFFF;
+  --bg-surface-btm:         #FAFBFC;
+  --bg-surface-raised-top:  #FFFFFF;
+  --bg-surface-raised-btm:  #F7F9FB;
+  --bg-surface-sunken-top:  #F4F5F7;
+  --bg-surface-sunken-btm:  #EEF0F2;
+  --bg-modal-surface-top:   #FFFFFF;
+  --bg-modal-surface-btm:   #FBFBFE;
+  --bg-modal-overlay:       rgba(20, 30, 50, 0.40);
+
+  /* directional borders — top is lighter, btm/sides stronger */
+  --border-subtle-top:      #E6E8EB;
+  --border-subtle-btm:      #D9DCDF;
+  --border-strong-top:      #CFD3D7;
+  --border-strong-btm:      #BFC4C8;
+
+  /* text */
+  --text-primary:           #1A1D20;
+  --text-secondary:         #5A6068;
+  --text-tertiary:          #8A9098;
+  --text-disabled:          #B8BDC2;
+  --text-on-accent:         #FFFFFF;
+
+  /* raised-surface top-edge highlight (mandatory on raised, omitted on sunken) */
+  --top-edge-highlight:     rgba(255, 255, 255, 0.60);
+
+  /* semantic states — text-only, never filled pills */
+  --state-error-fg:         #A8443B;
+  --state-error-edge:       #C45A50;
+  --state-success-fg:       #3F7A55;
+  --state-warning-fg:       #8C6A1F;
+  --skeleton-base:          #ECEEF0;
+  --skeleton-hi:            #F4F5F7;
+
+  /* elevation */
+  --shadow-flat:            none;
+  --shadow-raised:          0 1px 2px rgba(20,25,30,0.04), 0 0 0 1px rgba(20,25,30,0.02);
+  --shadow-popover:         0 1px 2px rgba(20,25,30,0.04), 0 8px 24px rgba(20,25,30,0.06);
+  --shadow-modal:           0 4px 16px rgba(20,25,30,0.06),
+                            0 24px 48px rgba(20,25,30,0.12),
+                            0 0 32px var(--accent-glow),
+                            0 0 64px var(--accent-glow-strong);
+  --shadow-drag:            0 8px 24px rgba(20,25,30,0.16);
+}
+
+/* =============================================================
+   3. Dark mode — mirror of light, inverted lightness
+   ============================================================= */
+[data-mode="dark"] {
+  --bg-canvas-top:          #232631;
+  --bg-canvas-btm:          #1B1D24;
+  --bg-surface-top:         #2A2D38;
+  --bg-surface-btm:         #23262F;
+  --bg-surface-raised-top:  #303440;
+  --bg-surface-raised-btm:  #292C37;
+  --bg-surface-sunken-top:  #1D1F26;
+  --bg-surface-sunken-btm:  #16181E;
+  --bg-modal-surface-top:   #303440;
+  --bg-modal-surface-btm:   #292C37;
+  --bg-modal-overlay:       rgba(0, 0, 0, 0.60);
+
+  --border-subtle-top:      rgba(255, 255, 255, 0.06);
+  --border-subtle-btm:      rgba(0, 0, 0, 0.40);
+  --border-strong-top:      rgba(255, 255, 255, 0.18);
+  --border-strong-btm:      rgba(0, 0, 0, 0.60);
+
+  --text-primary:           #EEEFF3;
+  --text-secondary:         #B6B9C3;
+  --text-tertiary:          #888B95;
+  --text-disabled:          #525561;
+  --text-on-accent:         #1F2127;
+
+  --top-edge-highlight:     rgba(255, 255, 255, 0.08);
+
+  --state-error-fg:         #E08577;
+  --state-error-edge:       #C5685A;
+  --state-success-fg:       #88C499;
+  --state-warning-fg:       #D6B468;
+  --skeleton-base:          #3E414C;
+  --skeleton-hi:            #525561;
+
+  --shadow-flat:            none;
+  --shadow-raised:          0 1px 2px rgba(0,0,0,0.30), 0 0 0 1px rgba(0,0,0,0.20);
+  --shadow-popover:         0 1px 2px rgba(0,0,0,0.40), 0 8px 24px rgba(0,0,0,0.45);
+  --shadow-modal:           0 4px 16px rgba(0,0,0,0.55),
+                            0 24px 48px rgba(0,0,0,0.65),
+                            0 0 32px var(--accent-glow),
+                            0 0 64px var(--accent-glow-strong);
+  --shadow-drag:            0 8px 24px rgba(0,0,0,0.55);
+}
+
+/* =============================================================
+   4. Accent palettes — three palettes bind to one slot
+   Lagoon (default) · Petrol · Atelier
+   Values match docs/visual-spec.md §2.5 exactly — OKLCH is the
+   source of truth; the hex/rgba below are mechanically derived.
+   ============================================================= */
+
+/* Lagoon — lit water / bioluminescence (DEFAULT)
+   Values match docs/visual-spec.md §2.5.3 — OKLCH-derived sRGB.
+   Light mode OKLCH 0.58 0.12 200 base; dark mode OKLCH 0.78 0.10 200 base. */
+:root,
+[data-accent="lagoon"] {
+  --accent-fill:         #1F8FA3;
+  --accent-fill-hover:   #197D90;
+  --accent-fill-active:  #146B7C;
+  --accent-subtle:       rgba(31, 143, 163, 0.12);
+  --accent-glow:         rgba(60, 175, 195, 0.32);
+  --accent-glow-strong:  rgba(60, 175, 195, 0.48);
+  --accent-glow-core:    rgba(180, 238, 248, 0.60);
+}
+[data-mode="dark"][data-accent="lagoon"],
+[data-mode="dark"]:root {
+  --accent-fill:         #6FC8D6;
+  --accent-fill-hover:   #88D2DE;
+  --accent-fill-active:  #A1DCE6;
+  --accent-subtle:       rgba(111, 200, 214, 0.20);
+  --accent-glow:         rgba(111, 200, 214, 0.32);
+  --accent-glow-strong:  rgba(111, 200, 214, 0.48);
+  --accent-glow-core:    rgba(210, 245, 250, 0.50);
+}
+
+/* Petrol — computational ambient (set up, not default) */
+[data-accent="petrol"] {
+  --accent-fill:         #0F7AB8;
+  --accent-fill-hover:   #0C6CA8;
+  --accent-fill-active:  #0A5E94;
+  --accent-subtle:       rgba(15, 122, 184, 0.10);
+  --accent-glow:         rgba(15, 122, 184, 0.22);
+  --accent-glow-strong:  rgba(15, 122, 184, 0.36);
+  --accent-glow-core:    rgba(165, 215, 240, 0.55);
+}
+[data-mode="dark"][data-accent="petrol"] {
+  --accent-fill:         #52B0E2;
+  --accent-fill-hover:   #74C0E8;
+  --accent-fill-active:  #90CFEE;
+  --accent-subtle:       rgba(82, 176, 226, 0.16);
+  --accent-glow:         rgba(82, 176, 226, 0.28);
+  --accent-glow-strong:  rgba(82, 176, 226, 0.44);
+  --accent-glow-core:    rgba(197, 229, 245, 0.45);
+}
+
+/* Atelier — studio warmth (set up, not default) */
+[data-accent="atelier"] {
+  --accent-fill:         #B36B2E;
+  --accent-fill-hover:   #9F5C26;
+  --accent-fill-active:  #8A4E1F;
+  --accent-subtle:       rgba(179, 107, 46, 0.10);
+  --accent-glow:         rgba(179, 107, 46, 0.24);
+  --accent-glow-strong:  rgba(179, 107, 46, 0.38);
+  --accent-glow-core:    rgba(245, 215, 175, 0.55);
+}
+[data-mode="dark"][data-accent="atelier"] {
+  --accent-fill:         #E0A26B;
+  --accent-fill-hover:   #E5B080;
+  --accent-fill-active:  #EBBE93;
+  --accent-subtle:       rgba(224, 162, 107, 0.18);
+  --accent-glow:         rgba(224, 162, 107, 0.30);
+  --accent-glow-strong:  rgba(224, 162, 107, 0.46);
+  --accent-glow-core:    rgba(250, 228, 200, 0.45);
+}
+
+/* =============================================================
+   4b. Signal — the loud accent (palette-INDEPENDENT)
+   =============================================================
+   One vivid magenta-pink that pops against all three palettes
+   (complement of Lagoon/Petrol, split-complement of Atelier) and
+   sits in the only open hue gap (270–350°), clearly clear of the
+   red error token (25°). NOT bound to the accent slot — it does
+   not change when the user switches Lagoon/Petrol/Atelier.
+
+   USE SPARINGLY. At most ONE signal element per view. Reserved for:
+   the single most important CTA, a critically-important element or
+   text, and non-UI brand moments (web hero CTAs, video lower-thirds).
+   It is deliberately "loud" — overuse destroys the whole point.
+
+   Destructive actions keep their dedicated treatment (state.error
+   text + 1px edge); signal may elevate a high-stakes CONFIRM, not
+   replace the error semantics. Never use signal as a surface fill
+   for large areas, never two signals in one view, never as a
+   status pill. */
+:root {
+  --signal-fill:         #D6177A;
+  --signal-fill-hover:   #C2126D;
+  --signal-fill-active:  #AD0E60;
+  --signal-subtle:       rgba(214, 23, 122, 0.10);
+  --signal-glow:         rgba(214, 23, 122, 0.24);
+  --signal-glow-strong:  rgba(214, 23, 122, 0.42);
+  --signal-glow-core:    rgba(255, 200, 230, 0.55);
+}
+[data-mode="dark"] {
+  --signal-fill:         #FF5FA8;
+  --signal-fill-hover:   #FF77B6;
+  --signal-fill-active:  #FF90C4;
+  --signal-subtle:       rgba(255, 95, 168, 0.18);
+  --signal-glow:         rgba(255, 95, 168, 0.30);
+  --signal-glow-strong:  rgba(255, 95, 168, 0.46);
+  --signal-glow-core:    rgba(255, 215, 235, 0.50);
+}
+
+/* =============================================================
+   5. Base reset + body
+   ============================================================= */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--font-sans);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-lh) / var(--type-body-size);
+  color: var(--text-primary);
+  background:
+    linear-gradient(180deg, var(--bg-canvas-top) 0%, var(--bg-canvas-btm) 100%);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+/* =============================================================
+   6. Semantic typography
+   ============================================================= */
+.lume-display   { font: var(--type-display-weight) var(--type-display-size)/var(--type-display-lh) var(--font-sans); letter-spacing: -0.01em; }
+.lume-h1, h1.lume { font: var(--type-h1-weight) var(--type-h1-size)/var(--type-h1-lh) var(--font-sans); letter-spacing: -0.005em; }
+.lume-h2, h2.lume { font: var(--type-h2-weight) var(--type-h2-size)/var(--type-h2-lh) var(--font-sans); }
+.lume-h3, h3.lume { font: var(--type-h3-weight) var(--type-h3-size)/var(--type-h3-lh) var(--font-sans); }
+.lume-body      { font: var(--type-body-weight) var(--type-body-size)/var(--type-body-lh) var(--font-sans); }
+.lume-body-sm   { font: var(--type-body-sm-weight) var(--type-body-sm-size)/var(--type-body-sm-lh) var(--font-sans); }
+.lume-caption   { font: var(--type-caption-weight) var(--type-caption-size)/var(--type-caption-lh) var(--font-sans); letter-spacing: 0.005em; }
+.lume-prose     { font: var(--type-prose-weight) var(--type-prose-size)/var(--type-prose-lh) var(--font-serif); font-optical-sizing: auto; }
+.lume-mono      { font: var(--type-mono-weight) var(--type-mono-size)/var(--type-mono-lh) var(--font-mono); font-feature-settings: 'tnum'; }
+.lume-mono-sm   { font: var(--type-mono-sm-weight) var(--type-mono-sm-size)/var(--type-mono-sm-lh) var(--font-mono); font-feature-settings: 'tnum'; }
+
+/* =============================================================
+   7. Lume material recipes — reusable
+   ============================================================= */
+
+/* Surface gradient — every surface uses this */
+.lume-surface         { background: linear-gradient(180deg, var(--bg-surface-top) 0%, var(--bg-surface-btm) 100%); }
+.lume-surface-raised  { background: linear-gradient(180deg, var(--bg-surface-raised-top) 0%, var(--bg-surface-raised-btm) 100%);
+                        box-shadow: 0 1px 0 var(--top-edge-highlight) inset; }
+.lume-surface-sunken  { background: linear-gradient(180deg, var(--bg-surface-sunken-top) 0%, var(--bg-surface-sunken-btm) 100%); }
+
+/* Directional border */
+.lume-border {
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+}
+.lume-border-strong {
+  border: 1px solid var(--border-strong-btm);
+  border-top-color: var(--border-strong-top);
+}
+
+/* Two-stop glow — the default Lume glow */
+.lume-glow {
+  box-shadow:
+    0 0 4px var(--accent-glow-core),
+    0 4px 12px var(--accent-glow);
+}
+.lume-glow-strong {
+  box-shadow:
+    0 0 6px var(--accent-glow-core),
+    0 6px 18px var(--accent-glow-strong);
+}
+
+/* Focus ring — outer corona + inner highlight */
+.lume-focus-ring {
+  outline: none;
+  box-shadow:
+    0 0 0 1px var(--accent-fill),
+    0 0 0 4px var(--accent-glow),
+    0 0 12px var(--accent-glow-core);
+}
+
+/* Selection halo — for list/tree rows */
+.lume-selected {
+  position: relative;
+  background:
+    radial-gradient(ellipse at 30% 50%, var(--accent-glow-core) 0%, var(--accent-glow) 22%, transparent 70%),
+    linear-gradient(180deg, var(--accent-subtle), transparent);
+  box-shadow:
+    0 0 12px -2px var(--accent-glow-core),
+    0 0 24px -6px var(--accent-glow-strong);
+}
+.lume-selected::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 4px; bottom: 4px;
+  width: 2px;
+  background: var(--accent-fill);
+  border-radius: 2px;
+  box-shadow: 0 0 6px var(--accent-glow-strong);
+}
+
+/* Skeleton pulse — loading */
+@keyframes lume-skeleton-pulse {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.lume-skeleton {
+  background: linear-gradient(90deg, var(--skeleton-base) 25%, var(--skeleton-hi) 50%, var(--skeleton-base) 75%);
+  background-size: 200% 100%;
+  animation: lume-skeleton-pulse 1400ms linear infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .lume-skeleton { animation: none; opacity: 0.4; }
+  *, *::before, *::after {
+    animation-duration: 0ms !important;
+    transition-duration: 0ms !important;
+  }
+}

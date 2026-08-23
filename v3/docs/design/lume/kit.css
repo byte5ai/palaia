@@ -1,0 +1,470 @@
+/* Omadia UI kit — kit-specific styles on top of colors_and_type.css */
+
+html, body, #root {
+  height: 100%;
+  min-height: 100vh;
+}
+body {
+  /* The whole viewport is the canvas; no outer OS wallpaper */
+  background: linear-gradient(180deg, var(--bg-canvas-top) 0%, var(--bg-canvas-btm) 100%);
+  overflow: auto;
+  min-width: 1100px;
+  min-height: 720px;
+}
+
+/* ---------- The window frame ---------- */
+.omadia-window {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* macOS traffic lights — visual only */
+.traffic-lights {
+  position: absolute;
+  top: 14px;
+  left: 18px;
+  display: flex;
+  gap: 8px;
+  z-index: 10;
+}
+.traffic-light {
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.08);
+}
+.tl-close   { background: #FF5F57; }
+.tl-min     { background: #FEBC2E; }
+.tl-max     { background: #28C840; }
+
+/* Top status bar — no fill, sits on bg.canvas */
+.status-bar {
+  height: 28px;
+  padding: 0 22px 0 78px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.status-bar .brand {
+  font: 400 13px/16px var(--font-sans);
+  color: var(--text-secondary);
+  letter-spacing: -0.005em;
+}
+.status-bar .indicators {
+  font: 400 13px/16px var(--font-sans);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-left: 24px;
+}
+.status-bar .live-dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--state-success-fg);
+  box-shadow: 0 0 6px var(--state-success-fg);
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+/* Main canvas area — the agent's primitives go here */
+.canvas-area {
+  flex: 1;
+  position: relative;
+  overflow: auto;
+  padding: 14px 32px 92px;
+  min-height: 0;
+}
+
+/* Prompt bar — bottom-centred (fixed to viewport so it survives canvas scroll) */
+.prompt-bar-wrap {
+  position: fixed;
+  bottom: 24px;
+  left: 0; right: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 20;
+}
+.prompt-bar {
+  pointer-events: auto;
+  width: min(640px, 88%);
+  height: 52px;
+  padding: 0 16px 0 18px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  box-shadow:
+    0 1px 0 var(--top-edge-highlight) inset,
+    0 1px 2px rgba(20, 25, 30, 0.04),
+    0 0 0 1px rgba(20,25,30,0.01);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: box-shadow var(--duration-quick) var(--easing-standard);
+}
+.prompt-bar:hover, .prompt-bar:focus-within {
+  box-shadow:
+    0 1px 0 var(--top-edge-highlight) inset,
+    0 0 0 1px var(--accent-glow),
+    0 8px 24px rgba(20,25,30,0.06);
+}
+.prompt-bar input {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font: 400 15px/22px var(--font-serif);
+  color: var(--text-primary);
+}
+.prompt-bar input::placeholder {
+  color: var(--text-tertiary);
+  font-style: normal;
+}
+.prompt-bar .hints {
+  font: 450 12px/16px var(--font-mono);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* ---------- Primitives ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--radius-md);
+  font: 500 13px/16px var(--font-sans);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--duration-quick) var(--easing-standard),
+              box-shadow var(--duration-quick) var(--easing-standard),
+              color var(--duration-quick) var(--easing-standard);
+  white-space: nowrap;
+}
+.btn[disabled], .btn.is-disabled {
+  background: var(--skeleton-base);
+  color: var(--text-disabled);
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+.btn-primary {
+  color: var(--text-on-accent);
+  background: linear-gradient(180deg, var(--accent-fill) 0%, var(--accent-fill-hover) 100%);
+  border: 1px solid var(--accent-fill-hover);
+  border-top-color: rgba(255, 255, 255, 0.22);
+  box-shadow:
+    0 0 4px var(--accent-glow-core),
+    0 4px 12px var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.btn-primary:hover {
+  background: linear-gradient(180deg, var(--accent-fill-hover), var(--accent-fill-active));
+  box-shadow:
+    0 0 6px var(--accent-glow-core),
+    0 6px 18px var(--accent-glow-strong),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.btn-secondary {
+  color: var(--text-primary);
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  box-shadow: 0 1px 0 var(--top-edge-highlight) inset;
+}
+.btn-secondary:hover {
+  background:
+    linear-gradient(180deg, var(--accent-subtle), var(--accent-subtle)),
+    linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+}
+.btn-ghost {
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+}
+.btn-ghost:hover {
+  background: var(--accent-subtle);
+  color: var(--text-primary);
+}
+.btn-danger {
+  color: var(--state-error-fg);
+  background: transparent;
+  border: 1px solid var(--state-error-edge);
+}
+/* Signal — the loud accent. Use sparingly, one per view. */
+.btn-signal {
+  color: #fff;
+  background: linear-gradient(180deg, var(--signal-fill) 0%, var(--signal-fill-hover) 100%);
+  border: 1px solid var(--signal-fill-hover);
+  border-top-color: rgba(255, 255, 255, 0.28);
+  box-shadow:
+    0 0 6px var(--signal-glow-core),
+    0 6px 18px var(--signal-glow-strong),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.btn-signal:hover {
+  background: linear-gradient(180deg, var(--signal-fill-hover), var(--signal-fill-active));
+  box-shadow:
+    0 0 8px var(--signal-glow-core),
+    0 8px 22px var(--signal-glow-strong),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.input {
+  padding: 7px 11px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  box-shadow: 0 1px 0 var(--top-edge-highlight) inset;
+  font: 400 13px/16px var(--font-sans);
+  color: var(--text-primary);
+  outline: none;
+  width: 100%;
+}
+.input::placeholder { color: var(--text-tertiary); }
+.input:focus, .input.focused {
+  border-color: var(--accent-fill);
+  box-shadow:
+    0 1px 0 var(--top-edge-highlight) inset,
+    0 0 0 1px var(--accent-fill),
+    0 0 0 4px var(--accent-glow),
+    0 0 12px var(--accent-glow-core);
+}
+
+.pane {
+  background: linear-gradient(180deg, var(--bg-surface-top), var(--bg-surface-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.pane-raised {
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 0 var(--top-edge-highlight) inset;
+}
+
+.list-row {
+  position: relative;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+  cursor: default;
+  transition: background var(--duration-quick) var(--easing-standard);
+}
+.list-row:hover { background: var(--accent-subtle); }
+.list-row.selected {
+  background:
+    radial-gradient(ellipse at 30% 50%, var(--accent-glow-core) 0%, var(--accent-glow) 22%, transparent 70%),
+    linear-gradient(180deg, var(--accent-subtle), transparent);
+  box-shadow:
+    0 0 12px -2px var(--accent-glow-core),
+    0 0 24px -6px var(--accent-glow-strong);
+}
+.list-row.selected::before {
+  content: '';
+  position: absolute;
+  left: 4px; top: 6px; bottom: 6px;
+  width: 2px;
+  background: var(--accent-fill);
+  border-radius: 2px;
+  box-shadow: 0 0 6px var(--accent-glow-strong);
+}
+
+/* Skeleton */
+@keyframes lume-skeleton-sweep {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--skeleton-base) 25%, var(--skeleton-hi) 50%, var(--skeleton-base) 75%);
+  background-size: 200% 100%;
+  animation: lume-skeleton-sweep 1400ms linear infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* Lucide icon helper */
+.icon {
+  width: 16px; height: 16px;
+  stroke-width: 1.75;
+  color: currentColor;
+  flex-shrink: 0;
+}
+.icon-sm { width: 14px; height: 14px; stroke-width: 1.75; }
+.icon-lg { width: 20px; height: 20px; stroke-width: 1.75; }
+.icon-xl { width: 24px; height: 24px; stroke-width: 1.75; }
+
+/* ---------- Scene picker (demo chrome, NOT part of Omadia UI) ---------- */
+/* Bottom-left, out of the way of both the status bar and the prompt bar. */
+.scene-picker {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.88);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  box-shadow: 0 1px 0 var(--top-edge-highlight) inset, 0 2px 8px rgba(20,25,30,0.05);
+  z-index: 1000;
+  align-items: center;
+}
+.scene-picker::before {
+  content: 'demo';
+  padding: 0 8px 0 10px;
+  font: 450 9px/14px var(--font-mono);
+  color: var(--text-tertiary);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  align-self: center;
+}
+.scene-picker button {
+  background: transparent;
+  border: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font: 500 11px/14px var(--font-mono);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+}
+.scene-picker button:hover { color: var(--text-secondary); }
+.scene-picker button.active {
+  background: var(--accent-fill);
+  color: #fff;
+  box-shadow: 0 0 4px var(--accent-glow-core), 0 4px 12px var(--accent-glow);
+}
+
+/* ---------- Patch-condensation animation ---------- */
+@keyframes lume-condense {
+  0%   { opacity: 0; transform: scale(1.03); filter: blur(2px); }
+  40%  { opacity: 0.9; transform: scale(1.005); filter: blur(0.3px); }
+  100% { opacity: 1; transform: scale(1); filter: blur(0); }
+}
+.condense {
+  animation: lume-condense 800ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* ---------- Spotlight stage ---------- */
+.spotlight-stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 130px;
+  background:
+    radial-gradient(ellipse 800px 600px at 50% 24%, var(--accent-glow), transparent 70%),
+    rgba(20,30,50,0.15);
+  backdrop-filter: blur(2px);
+  z-index: 50;
+}
+.spotlight-card {
+  width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.spotlight-input {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 18px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  box-shadow:
+    0 1px 0 var(--top-edge-highlight) inset,
+    0 0 0 4px var(--accent-glow),
+    0 0 16px var(--accent-glow-core),
+    0 12px 40px var(--accent-glow-strong);
+}
+.spotlight-input input {
+  flex: 1;
+  background: transparent; border: 0; outline: 0;
+  font: 600 20px/28px var(--font-sans);
+  color: var(--text-primary);
+}
+.spotlight-input input::placeholder { color: var(--text-tertiary); font-weight: 400; }
+
+.spotlight-results {
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: 10px;
+  box-shadow:
+    0 1px 0 var(--top-edge-highlight) inset,
+    var(--shadow-popover);
+  padding: 6px;
+}
+.spotlight-result {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.spotlight-result.focused {
+  background:
+    radial-gradient(at 25% 50%, var(--accent-glow-core), var(--accent-glow), transparent 70%),
+    linear-gradient(180deg, var(--accent-subtle), transparent);
+  box-shadow:
+    0 0 12px -2px var(--accent-glow-core),
+    0 0 24px -6px var(--accent-glow-strong);
+}
+.spotlight-result .label { font: 500 14px/22px var(--font-sans); color: var(--text-primary); }
+.spotlight-result .kind  { font: 450 12px/18px var(--font-mono); color: var(--text-tertiary); margin-left: auto; }
+.spotlight-result .icon-wrap {
+  width: 28px; height: 28px;
+  display: grid; place-items: center;
+  border-radius: 6px;
+  background: var(--accent-subtle);
+  color: var(--accent-fill);
+}
+
+/* ---------- Modal scrim ---------- */
+.modal-scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-modal-overlay);
+  display: grid;
+  place-items: center;
+  z-index: 100;
+  animation: scrim-in 200ms cubic-bezier(0.4,0,0.2,1) both;
+}
+@keyframes scrim-in { from { opacity: 0 } to { opacity: 1 } }
+
+.modal-pane {
+  width: 460px;
+  background: linear-gradient(180deg, var(--bg-modal-surface-top), var(--bg-modal-surface-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-xl);
+  padding: 22px 22px 18px;
+  box-shadow:
+    0 1px 0 var(--top-edge-highlight) inset,
+    0 4px 16px rgba(20,25,30,0.06),
+    0 24px 48px rgba(20,25,30,0.12),
+    0 0 32px var(--accent-glow),
+    0 0 64px var(--accent-glow-strong);
+  animation: modal-in 200ms cubic-bezier(0.4,0,0.2,1) both;
+}
+@keyframes modal-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to   { opacity: 1; transform: scale(1); }
+}

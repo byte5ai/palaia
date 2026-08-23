@@ -1,0 +1,45 @@
+/home/user/palaia/.claude/worktrees/wf_79892aaa-79d-2/v3/spikes/gateway/gateway.py:73: FastMCPDeprecationWarning: FastMCP.as_proxy() is deprecated. Use create_proxy() from fastmcp.server instead: `from fastmcp.server import create_proxy`
+  remote_proxy = FastMCP.as_proxy(REMOTE_UPSTREAM_URL)
+INFO:     Started server process [24747]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8900 (Press CTRL+C to quit)
+INFO:     127.0.0.1:58618 - "GET /mcp/full/ HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:58624 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58634 - "POST /mcp/full/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:58648 - "GET /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58658 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58672 - "DELETE /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58688 - "POST /mcp/memory-only/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58694 - "POST /mcp/memory-only/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:58702 - "GET /mcp/memory-only/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58706 - "POST /mcp/memory-only/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58716 - "DELETE /mcp/memory-only/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35762 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35776 - "POST /mcp/full/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:35784 - "GET /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35790 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35800 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35812 - "DELETE /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35820 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35822 - "POST /mcp/full/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:35832 - "GET /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35842 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35854 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35858 - "DELETE /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35866 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35870 - "POST /mcp/full/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:35872 - "GET /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35876 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35886 - "POST /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35902 - "DELETE /mcp/full/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35908 - "POST /mcp/full/ HTTP/1.1" 401 Unauthorized
+[08/22/26 13:16:05] INFO     Auth error returned:              middleware.py:175
+                             invalid_token (status=401)                         
+INFO:     127.0.0.1:35924 - "POST /mcp/memory-only/ HTTP/1.1" 401 Unauthorized
+[08/22/26 13:16:06] INFO     Auth error returned:              middleware.py:175
+                             invalid_token (status=401)                         
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [24747]

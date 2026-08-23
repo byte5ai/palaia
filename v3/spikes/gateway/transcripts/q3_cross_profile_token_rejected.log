@@ -1,0 +1,4 @@
+===== q3_cross_profile_token_rejected =====
+--- connecting to http://127.0.0.1:8900/mcp/memory-only/
+--- AUTH/HTTP REJECTED as expected? status=401 (Client error '401 Unauthorized' for url 'http://127.0.0.1:8900/mcp/memory-only/'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401)
