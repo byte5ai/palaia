@@ -351,7 +351,7 @@ svg{display:block}
    .t-over  uppercase mono micro-label  — the metadata voice, always tertiary
    .t-meta  mono system string          — revisions, ids, timestamps
    .t-count mono tabular counter        — never a pill, never accent
-   .t-serif prose register              — sentence-length content only     */
+   .prose   the prose register          — a reading passage, and only that  */
 .t-over{font-family:var(--p-font-mono);font-size:var(--p-size-micro);line-height:14px;font-weight:500;
   letter-spacing:var(--p-track-micro);text-transform:uppercase;color:var(--p-ink-subtle);
   font-feature-settings:'tnum'}
@@ -359,16 +359,29 @@ svg{display:block}
   color:var(--p-ink-subtle);font-feature-settings:'tnum';white-space:nowrap}
 .t-count{font-family:var(--p-font-mono);font-size:var(--p-size-xs);line-height:16px;
   color:var(--p-ink-muted);font-feature-settings:'tnum'}
-.t-serif{font-family:var(--p-font-serif);font-weight:400;line-height:var(--p-leading-loose);font-optical-sizing:auto}
+/* THE SERIF RULE (visual-spec §2.7, binding).
+   Source Serif is the PROSE register: agent narration, analysis, summary,
+   long-form explanation — a passage the user reads. The spec's own sentence is
+   "Headings always stay structural", so serif never sets a page title, a card
+   head, an empty-state title, a wizard question, a note title, a brand mark,
+   a button, a label or any other lone line of chrome. Two tests before you
+   reach for it: does it run to more than one sentence, and is it the content
+   rather than the frame around the content? Both yes, or it is Geist. */
+.prose{font-family:var(--p-font-serif);font-size:var(--p-size-md);font-weight:400;
+  line-height:26px;font-optical-sizing:auto;color:var(--p-ink)}
+.prose--lg{font-size:var(--p-size-lg);line-height:28px}
+.prose--compact{font-size:var(--p-size-sm);line-height:22px}
+.prose strong{font-weight:600}
+.prose p + p{margin-top:var(--p-space-4)}
 .t-mono{font-family:var(--p-font-mono);font-size:var(--p-size-sm);font-feature-settings:'tnum'}
 .t-num{font-variant-numeric:tabular-nums}
 .t-muted{color:var(--p-ink-muted)}
 .t-subtle{color:var(--p-ink-subtle)}
 .t-sm{font-size:var(--p-size-sm)}
 .t-xs{font-size:var(--p-size-xs)}
-/* Lead paragraph = prose register: a sentence, so it is set in Source Serif */
-.t-lead{font-family:var(--p-font-serif);font-size:var(--p-size-lg);line-height:26px;
-  color:var(--p-ink-muted);font-optical-sizing:auto}
+/* Lead paragraph: the one or two lines that explain a title. Structural — a
+   sentence of instruction is not a reading passage (see the serif rule). */
+.t-lead{font-size:var(--p-size-lg);line-height:26px;color:var(--p-ink-muted)}
 
 /* ---------- layout helpers ---------- */
 .row{display:flex;align-items:center;gap:var(--p-space-3)}
@@ -456,11 +469,42 @@ svg{display:block}
 .btn[aria-disabled="true"]{background:var(--p-sunken);color:var(--text-disabled);box-shadow:none;cursor:not-allowed}
 .iconbtn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:var(--p-radius-sm);border:1px solid transparent;background:none;color:var(--p-ink-subtle);cursor:pointer}
 .iconbtn:hover{background:var(--p-sunken);color:var(--p-ink)}
+/* ---------- keyboard affordance ----------
+   A shortcut is permanent UI, not a tooltip. The cap rides inside the button
+   that owns the action, so the hand learns the key while the eye reads the
+   verb; a screen that is meant to be worked by keyboard also carries a legend
+   (.keys) where a footer would otherwise be empty. Caps stay neutral — a
+   keycap is metadata, so it never borrows the accent, except by inheriting
+   the contrast of the one primary button it sits in. */
 .kbd{
   display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 4px;
   border:1px solid var(--p-line);border-radius:4px;
   background:var(--p-surface);font-family:var(--p-font-mono);font-size:var(--p-size-micro);color:var(--p-ink-subtle)
 }
+.btn .kbd{margin-left:3px}
+.btn--primary .kbd{border-color:rgba(255,255,255,.36);background:rgba(255,255,255,.15);color:var(--p-on-accent)}
+.btn--risk .kbd{border-color:var(--p-risk-line)}
+.keys{display:flex;align-items:center;gap:var(--p-space-4);flex-wrap:wrap;
+  font-family:var(--p-font-mono);font-size:var(--p-size-meta);color:var(--p-ink-subtle)}
+.keys__pair{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+
+/* ---------- queue meter ----------
+   For work you draw DOWN rather than fill up, which is a different component
+   from the `.meter` progress bar in Status (that one fills; this one empties —
+   hence the separate name, and do not merge them). The count that leads is what
+   is LEFT, not what is done: Superhuman's inbox counter shrinks toward zero,
+   and the goal-gradient effect is the reason it works. One hairline cell per
+   remaining item makes the draw-down countable at a glance. Cells are neutral
+   ink; only the cell you are standing on is lit, which spends exactly one
+   accent element, never a coloured bar. */
+.qmeter{display:flex;align-items:center;gap:var(--p-space-4)}
+.qmeter__cells{display:flex;gap:3px;flex:1;min-width:60px}
+.qmeter__cell{height:4px;flex:1;min-width:2px;border-radius:2px;background:var(--p-line)}
+.qmeter__cell--done{background:var(--p-ink-subtle)}
+.qmeter__cell--now{background:var(--accent-fill);
+  box-shadow:0 0 4px var(--accent-glow-core), 0 0 9px var(--accent-glow)}
+.qmeter__left{font-family:var(--p-font-mono);font-size:var(--p-size-xs);color:var(--p-ink-muted);
+  font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
 
 /* ---------- surfaces ----------
    Cards are white floating surfaces on the cool canvas: hairline directional
@@ -531,6 +575,47 @@ svg{display:block}
 .tile--attention .tile__metric{color:var(--p-warn)}
 .tile__action{margin-top:var(--p-space-2)}
 
+/* ---------- fact list ----------
+   The three bulleted facts under a piece of prose: 3px neutral bullets, mono
+   figures, sentence remainder in ink — exactly the "Open tickets: 3 · all
+   assigned" list in the Lume reference application's briefing container. Used
+   wherever a passage needs its numbers stated under it rather than inside it. */
+.factline{display:flex;flex-direction:column;gap:5px}
+.factline li{position:relative;padding-left:11px;font-size:var(--p-size-xs);line-height:18px;color:var(--p-ink)}
+.factline .t-mono{font-size:var(--p-size-meta);color:var(--p-ink)}
+.fact-dot{position:absolute;left:0;top:8px;width:3px;height:3px;border-radius:50%;background:var(--p-ink-subtle)}
+
+/* ---------- tool surface ----------
+   What the connected agents can actually call: palaia's built-ins and every
+   server the user has added, read as one list (MASTERPLAN P2 — "configure
+   once, use everywhere" — made visible instead of implied). Home Assistant's
+   add-on store is the reference: small uniform rows, an icon that identifies
+   the source, and one quiet way to get more. Reachability is text and a dot,
+   never a fill; the tool count is mono metadata. */
+/* Column flow, not row flow, and that is the point: palaia's own tools fill
+   the left column and everything the user added fills the right, so the split
+   between "what palaia is" and "what you gave it" is legible without a single
+   extra label — and the rows still read as one uniform list, which is the
+   claim the gateway makes. */
+.tools{display:grid;gap:2px;grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-rows:repeat(3,auto);grid-auto-flow:column}
+.tool{display:flex;align-items:center;gap:9px;padding:5px 8px;border-radius:var(--p-radius-md);
+  min-width:0;color:var(--p-ink);text-decoration:none}
+.tool:hover{background:var(--p-surface-2);text-decoration:none}
+.tool__mark{width:24px;height:24px;border-radius:7px;flex:none;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--p-surface-raised);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
+  color:var(--p-ink-subtle);box-shadow:0 1px 0 var(--top-edge-highlight) inset}
+.tool__name{font-size:var(--p-size-sm);font-weight:500;min-width:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tool__count{font-family:var(--p-font-mono);font-size:var(--p-size-meta);color:var(--p-ink-subtle);
+  font-variant-numeric:tabular-nums;margin-left:auto;flex:none}
+/* a source that is installed but unreachable: the name goes quiet and the
+   count is replaced by the reason — still no colour on the box */
+.tool--off .tool__name{color:var(--p-ink-muted)}
+.tool--off .tool__mark{color:var(--text-disabled)}
+.tool--off .tool__count{color:var(--p-warn)}
+
 /* ---------- banners / callouts ---------- */
 /* Neutral surface; the state colours the icon and the title only, never the box (§2.6) */
 .banner{display:flex;gap:var(--p-space-3);padding:var(--p-space-4);border-radius:var(--p-radius-md);
@@ -568,8 +653,16 @@ svg{display:block}
 .empty__mark{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:var(--p-radius-lg);
   background:var(--p-surface-raised);color:var(--p-ink-subtle);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
   box-shadow:0 1px 0 var(--top-edge-highlight) inset}
-.empty__title{font-family:var(--p-font-serif);font-size:var(--p-size-xl);font-weight:400;line-height:28px;font-optical-sizing:auto}
+/* An empty-state title is a heading, so it is structural (see the serif rule). */
+.empty__title{font-size:var(--p-size-xl);font-weight:600;line-height:28px;letter-spacing:var(--p-track-tight)}
 .empty__text{max-width:52ch;color:var(--p-ink-muted);font-size:var(--p-size-sm);line-height:20px}
+/* Finishing a queue is an achievement, not an absence. The done variant keeps
+   every restraint — the ring is border-and-icon colour, never a fill — and
+   spends its warmth on the copy and on one drawn mark. */
+.empty--done .empty__mark{border-color:var(--p-ok-line);color:var(--p-ok)}
+.empty--done .empty__title{font-size:var(--p-size-2xl);line-height:32px}
+.empty__recap{display:flex;flex-direction:column;gap:6px;align-items:flex-start;text-align:left;
+  margin-top:var(--p-space-4);padding-top:var(--p-space-4);border-top:1px solid var(--p-line);width:100%;max-width:52ch}
 
 /* ---------- forms ---------- */
 .field{display:flex;flex-direction:column;gap:6px}
@@ -648,11 +741,12 @@ svg{display:block}
   border-right:1px solid var(--p-line);background:var(--p-surface-2);min-height:0}
 .brand{display:flex;align-items:center;gap:9px;color:var(--p-ink);text-decoration:none;padding:0 var(--p-space-2)}
 .brand:hover{text-decoration:none}
-/* neutral raised chip, not an accent tile — the shell spends no accent on branding */
+/* neutral raised chip, not an accent tile — the shell spends no accent on
+   branding, and a single glyph is chrome, so it is Geist (see the serif rule) */
 .brand__mark{width:22px;height:22px;border-radius:7px;background:var(--p-surface-raised);
   border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);color:var(--p-ink);
-  display:flex;align-items:center;justify-content:center;font-family:var(--p-font-serif);font-size:13px;font-weight:600;flex:none;
-  box-shadow:0 1px 0 var(--top-edge-highlight) inset}
+  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex:none;
+  letter-spacing:var(--p-track-tight);box-shadow:0 1px 0 var(--top-edge-highlight) inset}
 .brand__name{font-size:var(--p-size-md);font-weight:600;letter-spacing:var(--p-track-tight)}
 .brand__ver{font-family:var(--p-font-mono);font-size:var(--p-size-micro);color:var(--p-ink-subtle);letter-spacing:.04em}
 .nav{display:flex;flex-direction:column;gap:var(--p-space-5);flex:1;min-height:0;overflow:auto;scrollbar-width:thin}
@@ -740,6 +834,42 @@ svg{display:block}
 /* ---------- review queue ---------- */
 .review{display:grid;gap:var(--p-space-5);grid-template-columns:minmax(0,1fr) 300px;align-items:start}
 .review--solo{grid-template-columns:minmax(0,880px);justify-content:center}
+
+/* ---------- the focus strip ----------
+   This screen has one job at a time, and the strip says which one and how much
+   is left. It is deliberately NOT a card: a card would compete with the
+   proposal underneath it, and the proposal is the decision. So it reads as a
+   line of text on the canvas with the meter beside it — the queue position in
+   words (Linear's triage sweep), the remainder in figures (Superhuman's
+   shrinking counter), and an honest estimate so the end is visible before you
+   start. */
+.focus{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--p-space-8);
+  padding:var(--p-space-1) var(--p-space-1) var(--p-space-2)}
+.focus__line{font-size:15px;line-height:22px;font-weight:600;letter-spacing:var(--p-track-tight);
+  color:var(--p-ink);margin-top:5px}
+.focus__line span{font-weight:400;color:var(--p-ink-muted)}
+.focus__meter{display:flex;flex-direction:column;align-items:flex-end;gap:8px;
+  width:284px;max-width:100%;flex:none}
+.focus__meter .qmeter{width:100%}
+.focus__eta{font-family:var(--p-font-mono);font-size:var(--p-size-meta);color:var(--p-ink-subtle);
+  font-variant-numeric:tabular-nums}
+
+/* The done state's one drawn mark. The ring is stroked, never filled, and the
+   check overshoots its corner very slightly so it reads as made rather than
+   generated — the whole budget for delight on this screen, spent once. */
+.donemark{width:56px;height:56px;color:var(--p-ok)}
+.donemark circle{fill:none;stroke:currentColor;stroke-width:1.25;opacity:.4}
+.donemark path{fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+
+/* The done state centres as a block but reads as a column: one left edge for
+   the passage, the recap and the actions, because four lines of centred serif
+   are pretty in a screenshot and tiring to read. The mark and the title stay
+   centred above it — they are the moment, the rest is the report. */
+.done{max-width:46ch;margin:0 auto;display:flex;flex-direction:column;
+  align-items:stretch;text-align:left;gap:var(--p-space-4)}
+.done__top{display:flex;flex-direction:column;align-items:center;text-align:center;gap:var(--p-space-3)}
+.done .empty__recap{max-width:none}
+.done .empty__text{max-width:none}
 .prop__why{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--p-space-3) var(--p-space-5);font-size:var(--p-size-sm);line-height:20px}
 .prop__why dt{font-family:var(--p-font-mono);font-size:var(--p-size-micro);line-height:14px;font-weight:500;
   letter-spacing:var(--p-track-micro);text-transform:uppercase;color:var(--p-ink-subtle);padding-top:5px;white-space:nowrap}
@@ -783,6 +913,14 @@ svg{display:block}
 .appcard__body{padding:var(--p-space-3);display:flex;flex-direction:column;gap:var(--p-space-3)}
 .appdiff{display:flex;flex-direction:column;border:1px solid var(--p-line);border-radius:var(--p-radius-sm);overflow:hidden}
 @media (max-width:1023px){.review{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:600px){
+  /* the strip stacks rather than shrinks: the position in words stays readable,
+     and the meter takes the full width underneath it instead of being squeezed
+     into cells too thin to count */
+  .focus{flex-direction:column;align-items:stretch;gap:var(--p-space-3)}
+  .focus__meter{width:100%;align-items:flex-start}
+  .focus__meter .qmeter{flex-direction:row-reverse;justify-content:flex-end}
+}
 @media (max-width:767px){
   .diff{grid-template-columns:minmax(0,1fr)}
   .diff__side + .diff__side{border-left:0;border-top:1px solid var(--p-line)}
@@ -825,7 +963,7 @@ svg{display:block}
 <header class="topbar">
   <div>
     <h1 class="page-title">Review queue</h1>
-    <p class="page-sub">Curator proposals. Adding knowledge is autonomous &mdash; changing what exists is your call.</p>
+    <p class="page-sub">The curator adds new knowledge on its own. When it wants to change a note you already have, it asks you first &mdash; and that is this page.</p>
   </div>
   <div class="row">
     
@@ -837,6 +975,25 @@ svg{display:block}
 <div class="content">
 <section class="review">
 <div class="stack">
+<div class="focus">
+  <div>
+    <span class="t-over">working the queue</span>
+    <p class="focus__line">The fourth of twelve. <span>Eight more after this one.</span></p>
+  </div>
+  <div class="focus__meter">
+    <div class="qmeter">
+      <span class="qmeter__cells" role="img" aria-label="4 of 12 reviewed">
+        <span class="qmeter__cell qmeter__cell--done"></span><span class="qmeter__cell qmeter__cell--done"></span>
+        <span class="qmeter__cell qmeter__cell--done"></span><span class="qmeter__cell qmeter__cell--now"></span>
+        <span class="qmeter__cell"></span><span class="qmeter__cell"></span><span class="qmeter__cell"></span>
+        <span class="qmeter__cell"></span><span class="qmeter__cell"></span><span class="qmeter__cell"></span>
+        <span class="qmeter__cell"></span><span class="qmeter__cell"></span>
+      </span>
+      <span class="qmeter__left">8 left</span>
+    </div>
+    <span class="focus__eta">about 4 minutes at this pace</span>
+  </div>
+</div>
 <div class="card card--raised">
   <div class="card__head">
     <div class="row" style="gap:10px">
@@ -845,15 +1002,14 @@ svg{display:block}
     </div>
     <div class="row" style="gap:8px">
       <span class="t-meta">confidence 0.62</span>
-      <span class="t-xs t-subtle t-num">4 of 12</span>
     </div>
   </div>
 
   <div class="card__body stack">
     <dl class="prop__why">
-      <dt>Concerns</dt><dd><a class="wlink" href="./memory-explorer.html">Acme Corp</a> &middot; the note says the renewal date is unknown</dd>
-      <dt>Why keep it</dt><dd>Codex read the signed MSA while preparing the Q4 billing refactor and found the renewal date and the notice period.</dd>
-      <dt>Verbatim</dt><dd class="t-mono t-muted">&ldquo;Renewal 31 March 2027, 60 days notice, auto-renews.&rdquo;</dd>
+      <dt>The note</dt><dd><a class="wlink" href="./memory-explorer.html">Acme Corp</a> &middot; it still says the renewal date is unknown</dd>
+      <dt>Why it asks</dt><dd class="prose prose--compact">Codex read the signed master agreement while preparing the Q4 billing refactor, and found both the renewal date and the notice period. It will not overwrite a note you own without asking.</dd>
+      <dt>Word for word</dt><dd class="t-mono t-muted">&ldquo;Renewal 31 March 2027, 60 days notice, auto-renews.&rdquo;</dd>
     </dl>
 
     <div class="diff">
@@ -895,7 +1051,17 @@ svg{display:block}
       <button class="btn btn--risk" type="button">Reject <span class="kbd">R</span></button>
       <button class="btn btn--ghost" type="button">Skip <span class="kbd">&rarr;</span></button>
     </div>
-    <span class="t-xs t-subtle foot-note">Approving runs a deterministic file operation &mdash; no model rewrites your note. The change lands as one git commit you can revert.</span>
+    <!-- The keyboard legend is product, not a power-user extra: this screen is
+         worked by hand on the keys, so the keys are on the screen. Undo is
+         listed with the four decisions rather than hidden behind a toast,
+         because knowing the way back is what makes people decide quickly. -->
+    <div class="keys foot-note" style="order:8">
+      <span class="keys__pair"><span class="kbd">J</span> next</span>
+      <span class="keys__pair"><span class="kbd">K</span> previous</span>
+      <span class="keys__pair"><span class="kbd">Z</span> undo the last decision</span>
+      <span class="keys__pair"><span class="kbd">?</span> every shortcut</span>
+    </div>
+    <span class="t-xs t-subtle foot-note">Approving edits the file directly &mdash; no model rewrites your note. It lands as one git commit, and <span class="kbd">Z</span> takes it back for ten seconds after that.</span>
   </div>
 </div>
 
@@ -943,7 +1109,7 @@ svg{display:block}
 <header class="topbar">
   <div>
     <h1 class="page-title">Review queue</h1>
-    <p class="page-sub">Nothing waiting. The curator ran 12 minutes ago.</p>
+    <p class="page-sub">Nothing is waiting on you. The curator last looked 12 minutes ago.</p>
   </div>
   <div class="row">
     
@@ -957,26 +1123,46 @@ svg{display:block}
 <div class="stack">
 <div class="card">
   <div class="card__body">
-    <div class="empty">
-      <span class="empty__mark"><svg class="i i--lg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2"/><path d="M8.3 12.4l2.7 2.7 4.7-5.2"/></svg></span>
-      <p class="empty__title">Nothing to review.</p>
-      <p class="empty__text">The inbox is clear and the curator finished its last run 12 minutes ago.
-      New knowledge keeps arriving on its own &mdash; you only land here when something existing would have to change.</p>
-      <div class="row" style="justify-content:center;margin-top:var(--p-space-2)">
-        <button class="btn" type="button"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2"/><path d="M12 7.8v4.6l3 1.9"/></svg>Curator log</button>
-        <a class="btn btn--ghost" href="./memory-explorer.html">Open the vault</a>
+    <!-- The done state is an achievement, not an absence. It gets the one drawn
+         mark on this screen, a title that says the queue is finished rather
+         than that a list is empty, and a recap of what the curator did while
+         nobody was watching — the "what happened while I was away" ritual that
+         makes an empty screen feel earned instead of broken. Restraints hold:
+         the ring is stroke-only, the numbers are mono, and there is no accent
+         and no exclamation mark anywhere in it. -->
+    <div class="empty empty--done">
+      <div class="done">
+        <div class="done__top">
+          <svg class="donemark" viewBox="0 0 48 48" aria-hidden="true">
+            <circle cx="24" cy="24" r="20"/>
+            <path d="M15.5 24.6 21.5 31.2 33.2 17.4"/>
+          </svg>
+          <p class="empty__title">The queue is clear.</p>
+        </div>
+        <p class="empty__text prose">You have looked at everything the curator wanted to change.
+        It kept working while you were away &mdash; it only stops to ask when a note you already
+        own would have to change.</p>
+        <div class="empty__recap">
+          <span class="t-over">since monday</span>
+          <ul class="factline" style="margin-top:6px">
+            <li><span class="fact-dot"></span><span class="t-mono">128</span> notes added without asking</li>
+            <li><span class="fact-dot"></span><span class="t-mono">9</span> proposals approved by you, <span class="t-mono">2</span> rejected</li>
+            <li><span class="fact-dot"></span>every one of them a git commit you can still revert</li>
+          </ul>
+        </div>
+        <div class="row" style="margin-top:var(--p-space-2)">
+          <button class="btn" type="button"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2"/><path d="M12 7.8v4.6l3 1.9"/></svg>See what the curator did</button>
+          <a class="btn btn--ghost" href="./memory-explorer.html">Open the vault</a>
+        </div>
       </div>
     </div>
-  </div>
-  <div class="card__foot">
-    <span class="t-xs t-subtle">Since Monday: 128 notes added autonomously, 9 proposals approved, 2 rejected. All of it in git, all of it revertible.</span>
   </div>
 </div>
 
 <div class="card card--flat">
   <div class="card__body row" style="gap:var(--p-space-3);align-items:flex-start">
     <svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2"/><path d="M12 11v5.2M12 7.9h.01"/></svg>
-    <p class="t-sm t-muted">An empty queue is the normal state. If it grows past a day&rsquo;s worth, palaia says so on the home screen instead of waiting to be found.</p>
+    <p class="t-sm t-muted">A clear queue is the normal state, not a lucky day. If it ever grows past a day&rsquo;s worth, palaia says so on the home screen rather than waiting to be found.</p>
   </div>
 </div>
 </div>
@@ -999,7 +1185,7 @@ svg{display:block}
 <header class="topbar">
   <div>
     <h1 class="page-title">Review queue</h1>
-    <p class="page-sub">The same review, rendered inside a chat client (MCP App reference).</p>
+    <p class="page-sub">The same review, rendered as a panel inside a chat client.</p>
   </div>
   <div class="row">
     
@@ -1025,7 +1211,7 @@ svg{display:block}
           <span class="t-xs t-subtle t-num">4 of 12</span>
         </div>
         <div class="appcard__body">
-          <p class="t-sm">Codex found the renewal date in the signed MSA. The note still says it is unknown.</p>
+          <p class="t-sm">Codex found the renewal date in the signed master agreement. The note still says it is unknown.</p>
           <div class="appdiff">
             <div class="dline dline--del"><b>&minus;</b><span>[term] Renewal date: unknown</span></div>
             <div class="dline dline--add"><b>+</b><span>[term] Renewal date: 2027-03-31</span></div>
@@ -1037,13 +1223,13 @@ svg{display:block}
           <!-- NOT signal here either: same reasoning as the dashboard queue above — Approve
                repeats once per proposal (12 in this queue alone), so it stays accent. -->
           <span class="actionbar"><button class="btn btn--primary" type="button"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 10 18 19.5 6.5"/></svg>Approve</button><button class="btn" type="button">Edit</button><button class="btn btn--risk" type="button">Reject</button></span>
-          <p class="t-xs t-subtle">Only what you approve enters the conversation &mdash; the other eleven stay out of the context window.</p>
+          <p class="t-xs t-subtle">Only what you approve enters the conversation &mdash; the other eleven never reach the chat.</p>
         </div>
       </div>
     </div>
   </div>
   <p class="t-sm t-muted" style="max-width:64ch;text-align:center">
-    The same tokens and components, in one column, inside the client &mdash; curation approved from the phone instead of a frontmatter editor.
+    The same tokens and components, in one column, inside the client &mdash; curation approved from the phone instead of hand-editing note fields in Obsidian.
     Administration that changes what is reachable stays in the dashboard.
   </p>
 </div>

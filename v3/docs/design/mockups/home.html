@@ -351,7 +351,7 @@ svg{display:block}
    .t-over  uppercase mono micro-label  — the metadata voice, always tertiary
    .t-meta  mono system string          — revisions, ids, timestamps
    .t-count mono tabular counter        — never a pill, never accent
-   .t-serif prose register              — sentence-length content only     */
+   .prose   the prose register          — a reading passage, and only that  */
 .t-over{font-family:var(--p-font-mono);font-size:var(--p-size-micro);line-height:14px;font-weight:500;
   letter-spacing:var(--p-track-micro);text-transform:uppercase;color:var(--p-ink-subtle);
   font-feature-settings:'tnum'}
@@ -359,16 +359,29 @@ svg{display:block}
   color:var(--p-ink-subtle);font-feature-settings:'tnum';white-space:nowrap}
 .t-count{font-family:var(--p-font-mono);font-size:var(--p-size-xs);line-height:16px;
   color:var(--p-ink-muted);font-feature-settings:'tnum'}
-.t-serif{font-family:var(--p-font-serif);font-weight:400;line-height:var(--p-leading-loose);font-optical-sizing:auto}
+/* THE SERIF RULE (visual-spec §2.7, binding).
+   Source Serif is the PROSE register: agent narration, analysis, summary,
+   long-form explanation — a passage the user reads. The spec's own sentence is
+   "Headings always stay structural", so serif never sets a page title, a card
+   head, an empty-state title, a wizard question, a note title, a brand mark,
+   a button, a label or any other lone line of chrome. Two tests before you
+   reach for it: does it run to more than one sentence, and is it the content
+   rather than the frame around the content? Both yes, or it is Geist. */
+.prose{font-family:var(--p-font-serif);font-size:var(--p-size-md);font-weight:400;
+  line-height:26px;font-optical-sizing:auto;color:var(--p-ink)}
+.prose--lg{font-size:var(--p-size-lg);line-height:28px}
+.prose--compact{font-size:var(--p-size-sm);line-height:22px}
+.prose strong{font-weight:600}
+.prose p + p{margin-top:var(--p-space-4)}
 .t-mono{font-family:var(--p-font-mono);font-size:var(--p-size-sm);font-feature-settings:'tnum'}
 .t-num{font-variant-numeric:tabular-nums}
 .t-muted{color:var(--p-ink-muted)}
 .t-subtle{color:var(--p-ink-subtle)}
 .t-sm{font-size:var(--p-size-sm)}
 .t-xs{font-size:var(--p-size-xs)}
-/* Lead paragraph = prose register: a sentence, so it is set in Source Serif */
-.t-lead{font-family:var(--p-font-serif);font-size:var(--p-size-lg);line-height:26px;
-  color:var(--p-ink-muted);font-optical-sizing:auto}
+/* Lead paragraph: the one or two lines that explain a title. Structural — a
+   sentence of instruction is not a reading passage (see the serif rule). */
+.t-lead{font-size:var(--p-size-lg);line-height:26px;color:var(--p-ink-muted)}
 
 /* ---------- layout helpers ---------- */
 .row{display:flex;align-items:center;gap:var(--p-space-3)}
@@ -456,11 +469,42 @@ svg{display:block}
 .btn[aria-disabled="true"]{background:var(--p-sunken);color:var(--text-disabled);box-shadow:none;cursor:not-allowed}
 .iconbtn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:var(--p-radius-sm);border:1px solid transparent;background:none;color:var(--p-ink-subtle);cursor:pointer}
 .iconbtn:hover{background:var(--p-sunken);color:var(--p-ink)}
+/* ---------- keyboard affordance ----------
+   A shortcut is permanent UI, not a tooltip. The cap rides inside the button
+   that owns the action, so the hand learns the key while the eye reads the
+   verb; a screen that is meant to be worked by keyboard also carries a legend
+   (.keys) where a footer would otherwise be empty. Caps stay neutral — a
+   keycap is metadata, so it never borrows the accent, except by inheriting
+   the contrast of the one primary button it sits in. */
 .kbd{
   display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 4px;
   border:1px solid var(--p-line);border-radius:4px;
   background:var(--p-surface);font-family:var(--p-font-mono);font-size:var(--p-size-micro);color:var(--p-ink-subtle)
 }
+.btn .kbd{margin-left:3px}
+.btn--primary .kbd{border-color:rgba(255,255,255,.36);background:rgba(255,255,255,.15);color:var(--p-on-accent)}
+.btn--risk .kbd{border-color:var(--p-risk-line)}
+.keys{display:flex;align-items:center;gap:var(--p-space-4);flex-wrap:wrap;
+  font-family:var(--p-font-mono);font-size:var(--p-size-meta);color:var(--p-ink-subtle)}
+.keys__pair{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+
+/* ---------- queue meter ----------
+   For work you draw DOWN rather than fill up, which is a different component
+   from the `.meter` progress bar in Status (that one fills; this one empties —
+   hence the separate name, and do not merge them). The count that leads is what
+   is LEFT, not what is done: Superhuman's inbox counter shrinks toward zero,
+   and the goal-gradient effect is the reason it works. One hairline cell per
+   remaining item makes the draw-down countable at a glance. Cells are neutral
+   ink; only the cell you are standing on is lit, which spends exactly one
+   accent element, never a coloured bar. */
+.qmeter{display:flex;align-items:center;gap:var(--p-space-4)}
+.qmeter__cells{display:flex;gap:3px;flex:1;min-width:60px}
+.qmeter__cell{height:4px;flex:1;min-width:2px;border-radius:2px;background:var(--p-line)}
+.qmeter__cell--done{background:var(--p-ink-subtle)}
+.qmeter__cell--now{background:var(--accent-fill);
+  box-shadow:0 0 4px var(--accent-glow-core), 0 0 9px var(--accent-glow)}
+.qmeter__left{font-family:var(--p-font-mono);font-size:var(--p-size-xs);color:var(--p-ink-muted);
+  font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
 
 /* ---------- surfaces ----------
    Cards are white floating surfaces on the cool canvas: hairline directional
@@ -531,6 +575,47 @@ svg{display:block}
 .tile--attention .tile__metric{color:var(--p-warn)}
 .tile__action{margin-top:var(--p-space-2)}
 
+/* ---------- fact list ----------
+   The three bulleted facts under a piece of prose: 3px neutral bullets, mono
+   figures, sentence remainder in ink — exactly the "Open tickets: 3 · all
+   assigned" list in the Lume reference application's briefing container. Used
+   wherever a passage needs its numbers stated under it rather than inside it. */
+.factline{display:flex;flex-direction:column;gap:5px}
+.factline li{position:relative;padding-left:11px;font-size:var(--p-size-xs);line-height:18px;color:var(--p-ink)}
+.factline .t-mono{font-size:var(--p-size-meta);color:var(--p-ink)}
+.fact-dot{position:absolute;left:0;top:8px;width:3px;height:3px;border-radius:50%;background:var(--p-ink-subtle)}
+
+/* ---------- tool surface ----------
+   What the connected agents can actually call: palaia's built-ins and every
+   server the user has added, read as one list (MASTERPLAN P2 — "configure
+   once, use everywhere" — made visible instead of implied). Home Assistant's
+   add-on store is the reference: small uniform rows, an icon that identifies
+   the source, and one quiet way to get more. Reachability is text and a dot,
+   never a fill; the tool count is mono metadata. */
+/* Column flow, not row flow, and that is the point: palaia's own tools fill
+   the left column and everything the user added fills the right, so the split
+   between "what palaia is" and "what you gave it" is legible without a single
+   extra label — and the rows still read as one uniform list, which is the
+   claim the gateway makes. */
+.tools{display:grid;gap:2px;grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-rows:repeat(3,auto);grid-auto-flow:column}
+.tool{display:flex;align-items:center;gap:9px;padding:5px 8px;border-radius:var(--p-radius-md);
+  min-width:0;color:var(--p-ink);text-decoration:none}
+.tool:hover{background:var(--p-surface-2);text-decoration:none}
+.tool__mark{width:24px;height:24px;border-radius:7px;flex:none;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--p-surface-raised);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
+  color:var(--p-ink-subtle);box-shadow:0 1px 0 var(--top-edge-highlight) inset}
+.tool__name{font-size:var(--p-size-sm);font-weight:500;min-width:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tool__count{font-family:var(--p-font-mono);font-size:var(--p-size-meta);color:var(--p-ink-subtle);
+  font-variant-numeric:tabular-nums;margin-left:auto;flex:none}
+/* a source that is installed but unreachable: the name goes quiet and the
+   count is replaced by the reason — still no colour on the box */
+.tool--off .tool__name{color:var(--p-ink-muted)}
+.tool--off .tool__mark{color:var(--text-disabled)}
+.tool--off .tool__count{color:var(--p-warn)}
+
 /* ---------- banners / callouts ---------- */
 /* Neutral surface; the state colours the icon and the title only, never the box (§2.6) */
 .banner{display:flex;gap:var(--p-space-3);padding:var(--p-space-4);border-radius:var(--p-radius-md);
@@ -568,8 +653,16 @@ svg{display:block}
 .empty__mark{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:var(--p-radius-lg);
   background:var(--p-surface-raised);color:var(--p-ink-subtle);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
   box-shadow:0 1px 0 var(--top-edge-highlight) inset}
-.empty__title{font-family:var(--p-font-serif);font-size:var(--p-size-xl);font-weight:400;line-height:28px;font-optical-sizing:auto}
+/* An empty-state title is a heading, so it is structural (see the serif rule). */
+.empty__title{font-size:var(--p-size-xl);font-weight:600;line-height:28px;letter-spacing:var(--p-track-tight)}
 .empty__text{max-width:52ch;color:var(--p-ink-muted);font-size:var(--p-size-sm);line-height:20px}
+/* Finishing a queue is an achievement, not an absence. The done variant keeps
+   every restraint — the ring is border-and-icon colour, never a fill — and
+   spends its warmth on the copy and on one drawn mark. */
+.empty--done .empty__mark{border-color:var(--p-ok-line);color:var(--p-ok)}
+.empty--done .empty__title{font-size:var(--p-size-2xl);line-height:32px}
+.empty__recap{display:flex;flex-direction:column;gap:6px;align-items:flex-start;text-align:left;
+  margin-top:var(--p-space-4);padding-top:var(--p-space-4);border-top:1px solid var(--p-line);width:100%;max-width:52ch}
 
 /* ---------- forms ---------- */
 .field{display:flex;flex-direction:column;gap:6px}
@@ -648,11 +741,12 @@ svg{display:block}
   border-right:1px solid var(--p-line);background:var(--p-surface-2);min-height:0}
 .brand{display:flex;align-items:center;gap:9px;color:var(--p-ink);text-decoration:none;padding:0 var(--p-space-2)}
 .brand:hover{text-decoration:none}
-/* neutral raised chip, not an accent tile — the shell spends no accent on branding */
+/* neutral raised chip, not an accent tile — the shell spends no accent on
+   branding, and a single glyph is chrome, so it is Geist (see the serif rule) */
 .brand__mark{width:22px;height:22px;border-radius:7px;background:var(--p-surface-raised);
   border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);color:var(--p-ink);
-  display:flex;align-items:center;justify-content:center;font-family:var(--p-font-serif);font-size:13px;font-weight:600;flex:none;
-  box-shadow:0 1px 0 var(--top-edge-highlight) inset}
+  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex:none;
+  letter-spacing:var(--p-track-tight);box-shadow:0 1px 0 var(--top-edge-highlight) inset}
 .brand__name{font-size:var(--p-size-md);font-weight:600;letter-spacing:var(--p-track-tight)}
 .brand__ver{font-family:var(--p-font-mono);font-size:var(--p-size-micro);color:var(--p-ink-subtle);letter-spacing:.04em}
 .nav{display:flex;flex-direction:column;gap:var(--p-space-5);flex:1;min-height:0;overflow:auto;scrollbar-width:thin}
@@ -738,9 +832,23 @@ svg{display:block}
 .state{display:none}
 
 /* ---------- home ---------- */
-/* The hub status card is a briefing, so it is set in the PROSE register:
-   a mono micro-label, then a Source Serif sentence at 400 — the same voice as
-   the "prepared briefing" container in the Lume reference application. */
+/* The greeting's meta is a sentence, not a system string, so it borrows the
+   mono metadata voice but drops .t-meta's `nowrap` — otherwise it holds the
+   topbar open past 360 and drags the whole page into a horizontal scroll. The
+   trailing clause is the first thing to go when there is no room for it. */
+.greet__meta{font-family:var(--p-font-mono);font-size:var(--p-size-meta);line-height:16px;
+  color:var(--p-ink-subtle);font-feature-settings:'tnum';margin-top:5px}
+@media (max-width:900px){.greet__meta .greet__since{display:none}}
+/* This is the ONE place on the home screen that keeps Source Serif, and it
+   survives the serif audit on purpose. The card is an end-to-end prose
+   container — a mono micro-label, then two or three sentences of narration
+   that palaia wrote about its own state — which is exactly `type.prose` plus
+   the rare `type.prose.heading` in visual-spec §2.7, and exactly the "prepared
+   briefing" container in the Lume reference application (Mockup 8), whose
+   title and body are both serif. The opening line is a sentence with a full
+   stop, not a label: it reads as the first line of the passage rather than as
+   a heading over it, which is the test the rule actually asks. Weight stays
+   400 — serif at 600 used as chrome is what the audit removed everywhere else. */
 .verdict{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--p-space-8);
   padding:var(--p-space-5) var(--p-space-6) var(--p-space-6);
   border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-lg);
@@ -752,12 +860,6 @@ svg{display:block}
   color:var(--p-ink-muted);font-optical-sizing:auto;max-width:62ch}
 .verdict__sub .t-mono{font-size:var(--p-size-xs)}
 .verdict__aside{display:flex;flex-direction:column;gap:8px;align-items:flex-end;flex:none;padding-top:2px}
-/* the structured facts under the briefing sentence — 3px neutral bullets, exactly
-   the "Open tickets: 3 · all assigned" list in the Lume briefing container */
-.factline{display:flex;flex-direction:column;gap:5px}
-.factline li{position:relative;padding-left:11px;font-size:var(--p-size-xs);line-height:18px;color:var(--p-ink)}
-.factline .t-mono{font-size:var(--p-size-meta);color:var(--p-ink)}
-.fact-dot{position:absolute;left:0;top:8px;width:3px;height:3px;border-radius:50%;background:var(--p-ink-subtle)}
 /* neutral bars; only the latest column is accent-tinted (one accent element) */
 .spark{width:176px;height:40px;color:var(--p-ink-subtle)}
 .spark rect{fill:currentColor;opacity:.30}
@@ -833,9 +935,15 @@ svg{display:block}
 </aside>
 <div class="main">
 <header class="topbar">
+  <!-- The greeting is the whole difference between a product and a status
+       endpoint, and it costs one line. It addresses the owner by name, and the
+       meta beside it is useful rather than decorative — the date, and when they
+       were last here, which is the frame for everything the feed is about to
+       tell them. No exclamation mark, no emoji, nothing cute: warmth here is
+       being spoken to, not being cheered at. -->
   <div>
-    <h1 class="page-title">Home</h1>
-    <p class="t-meta" style="margin-top:5px">Wednesday, 22 August &middot; 14:06</p>
+    <h1 class="page-title">Good afternoon, Christian.</h1>
+    <p class="greet__meta">Wednesday, 22 August &middot; 14:06<span class="greet__since"> &middot; you were last here two hours ago</span></p>
   </div>
   <div class="row">
     
@@ -852,13 +960,13 @@ svg{display:block}
     <h2 class="verdict__line">Everything is healthy.</h2>
     <p class="verdict__sub">
       Both vaults are indexed and nothing is waiting on you. The last memory
-      landed six minutes ago, written by Claude Code.
+      landed six minutes ago, written by Claude&nbsp;Code CLI.
     </p>
     <hr class="sep" style="margin:var(--p-space-4) 0 var(--p-space-3);max-width:62ch">
     <ul class="factline">
-      <li><span class="fact-dot"></span>4 clients connected &middot; 12 tools exposed</li>
+      <li><span class="fact-dot"></span>4 clients connected &middot; <span class="t-mono">37</span> tools from 6 sources, 3 of them built in</li>
       <li><span class="fact-dot"></span>2 vaults &middot; <span class="t-mono">1,284</span> notes &middot; index current</li>
-      <li><span class="fact-dot"></span>last memory <span class="t-mono">14:00</span> &middot; Claude Code, session <span class="t-mono">3f2a</span></li>
+      <li><span class="fact-dot"></span>last memory <span class="t-mono">14:00</span> &middot; Claude Code CLI, session <span class="t-mono">3f2a</span></li>
     </ul>
   </div>
   <div class="verdict__aside">
@@ -884,7 +992,7 @@ svg{display:block}
   <div class="tile">
   <div><span class="t-over">Clients</span></div>
   <div class="tile__metric">4<span class="tile__unit"> connected</span></div>
-  <div class="tile__sub">two agents, web and a local model</div>
+  <div class="tile__sub">terminal, desktop and the web</div>
   
 </div>
   <div class="tile tile--attention">
@@ -908,8 +1016,8 @@ svg{display:block}
       <div class="feed__item">
   <span class="feed__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg></span>
   <div class="grow">
-    <p class="feed__text">Claude Code wrote <a class="wlink" href="./memory-explorer.html">Billing service</a> &mdash; 3 observations, 1 relation</p>
-    <div class="feed__meta"><span class="chip">Claude Code</span><span class="chip chip--mono">session 3f2a</span><span class="t-meta">6 min ago</span></div>
+    <p class="feed__text">Claude Code CLI wrote <a class="wlink" href="./memory-explorer.html">Billing service</a> &mdash; 3 observations, 1 relation</p>
+    <div class="feed__meta"><span class="chip">Claude Code CLI</span><span class="chip chip--mono">session 3f2a</span><span class="t-meta">6 min ago</span></div>
   </div>
   <div class="feed__act"><button class="btn btn--sm btn--quiet" type="button">Undo</button></div>
 </div>
@@ -965,14 +1073,57 @@ svg{display:block}
   </div>
 
   <div class="stack">
+    <!-- The tool surface, on the home screen, because it is half of what palaia
+         IS (MASTERPLAN P2 "configure once, use everywhere" and P3 the
+         marketplace) and it was the one pillar the dashboard never showed. The
+         card answers "what can my agents actually do" in one glance: the three
+         built-ins and every server the owner added, read as one list, because
+         that sameness is the product's whole claim — an agent cannot tell which
+         of these palaia wrote and which it merely carries. Restraint holds: no
+         accent anywhere in it, reachability is a word and a dot, the counts are
+         mono, and the way to more is a quiet button, not a pitch. -->
+    <div class="card">
+      <div class="card__head">
+        <h3 class="card__title">tools your agents can use</h3>
+        <span class="t-meta">37 &middot; 3 built in, 3 added</span>
+      </div>
+      <div class="card__body--tight">
+        <div class="tools">
+          <a class="tool" href="#" title="palaia's own memory tools — search, write, recall">
+            <span class="tool__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg></span>
+            <span class="tool__name">Memory</span><span class="tool__count">14</span></a>
+          <a class="tool" href="#" title="palaia's own short-term store for handoffs between sessions">
+            <span class="tool__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="4.2" rx="1.2"/><path d="M5.5 9.2V19h13V9.2"/><path d="M10 12.8h4"/></svg></span>
+            <span class="tool__name">Stash</span><span class="tool__count">5</span></a>
+          <a class="tool" href="#" title="palaia's own messages between your agents">
+            <span class="tool__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 6.2h15v9.6H12l-4.5 3.4v-3.4H4.5z"/></svg></span>
+            <span class="tool__name">Messenger</span><span class="tool__count">4</span></a>
+          <a class="tool" href="#" title="GitHub — added from the marketplace, signed in as you">
+            <span class="tool__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="6.5" r="2.2"/><circle cx="7" cy="17.5" r="2.2"/><circle cx="17" cy="9.5" r="2.2"/><path d="M7 8.7v6.6"/><path d="M17 11.7c0 2.4-2 3.6-5 3.9"/></svg></span>
+            <span class="tool__name">GitHub</span><span class="tool__count">8</span></a>
+          <a class="tool" href="#" title="Linear — added from the marketplace, signed in as you">
+            <span class="tool__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.8 20 8l-8 4.2L4 8z"/><path d="M4 12.5l8 4.2 8-4.2"/></svg></span>
+            <span class="tool__name">Linear</span><span class="tool__count">6</span></a>
+          <a class="tool tool--off" href="#" title="Playwright — installed, but it has no API key yet">
+            <span class="tool__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.8" y="4.8" width="16.4" height="14.4" rx="1.6"/><path d="M3.8 9h16.4"/><path d="M6.6 6.9h.01M9 6.9h.01"/></svg></span>
+            <span class="tool__name">Playwright</span><span class="tool__count">no key</span></a>
+        </div>
+      </div>
+      <div class="card__foot">
+        <button class="btn btn--sm" type="button"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><path d="M16.75 13.5v6.5M13.5 16.75h6.5"/></svg>Browse marketplace</button>
+        <span class="t-meta">42 more available</span>
+      </div>
+    </div>
+
     <div class="card">
       <div class="card__head"><h3 class="card__title">clients</h3><span class="t-over">last seen</span></div>
       <div>
-        <div class="listrow"><span class="dot dot--ok"></span><div class="grow"><div class="listrow__title">Claude Code</div><div class="listrow__meta">profile: Coding &middot; 12 tools</div></div><span class="t-meta">12 s</span></div>
-        <div class="listrow"><span class="dot dot--ok"></span><div class="grow"><div class="listrow__title">Codex</div><div class="listrow__meta">profile: Memory only &middot; 6 tools</div></div><span class="t-meta">4 min</span></div>
-        <div class="listrow"><span class="dot dot--ok"></span><div class="grow"><div class="listrow__title">claude.ai</div><div class="listrow__meta">web, desktop, iPhone</div></div><span class="t-meta">2 h</span></div>
+        <div class="listrow"><span class="dot dot--ok"></span><div class="grow"><div class="listrow__title">Claude Code CLI</div><div class="listrow__meta">in your terminal &middot; Coding profile, 12 tools</div></div><span class="t-meta">12 s</span></div>
+        <div class="listrow"><span class="dot dot--ok"></span><div class="grow"><div class="listrow__title">Claude Code (Desktop app)</div><div class="listrow__meta">on this Mac &middot; Coding profile, 12 tools</div></div><span class="t-meta">18 min</span></div>
+        <div class="listrow"><span class="dot dot--ok"></span><div class="grow"><div class="listrow__title">Codex</div><div class="listrow__meta">in your terminal &middot; Memory only, 6 tools</div></div><span class="t-meta">4 min</span></div>
+        <div class="listrow"><span class="dot dot--ok"></span><div class="grow"><div class="listrow__title">claude.ai</div><div class="listrow__meta">web, desktop and iPhone</div></div><span class="t-meta">2 h</span></div>
       </div>
-      <div class="card__foot"><a class="btn btn--primary btn--sm" href="./connect-client.html"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg>Connect a client</a><span class="t-meta">lm-studio &middot; last seen 3 d</span></div>
+      <div class="card__foot"><a class="btn btn--primary btn--sm" href="./connect-client.html"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg>Connect a client</a><span class="t-meta">LM Studio &middot; last seen 3 d</span></div>
     </div>
 
   </div>
@@ -987,15 +1138,15 @@ svg{display:block}
   <a class="brand" href="#"><span class="brand__mark">p</span><span class="brand__name">palaia</span><span class="brand__ver">v3</span></a>
   <nav class="nav"><div class="nav__group"><span class="nav__label t-over">Overview</span><a class="nav__item nav__item--on" href="#" title="Home"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.6 12 4l9 6.6V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span>Home</span></a></div><div class="nav__group"><span class="nav__label t-over">Memory</span><a class="nav__item" href="#" title="Explorer"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg><span>Explorer</span></a><a class="nav__item" href="#" title="Inbox"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13.5h4l1.2 2.5h5.6l1.2-2.5h4"/><path d="M4 13.5 6.7 5h10.6L20 13.5V20H4z"/></svg><span>Inbox</span></a><a class="nav__item" href="#" title="Review queue"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2"/><path d="M8.3 12.4l2.7 2.7 4.7-5.2"/></svg><span>Review queue</span></a><a class="nav__item" href="#" title="Vaults"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="4.5" rx="1.2"/><path d="M5.5 9v10.5h13V9"/><path d="M10 13h4"/></svg><span>Vaults</span></a></div><div class="nav__group"><span class="nav__label t-over">Connections</span><a class="nav__item" href="#" title="Clients"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg><span>Clients</span></a><a class="nav__item" href="#" title="Tools &amp; skills"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg><span>Tools &amp; skills</span></a></div><div class="nav__group"><span class="nav__label t-over">System</span><a class="nav__item" href="#" title="Automations"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.2 3 5.5 14h5l-1 7 8.2-11.2h-5.1z"/></svg><span>Automations</span></a><a class="nav__item" href="#" title="Health"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12.5h3.8l2.2-5.5 3.4 11 2.2-5.5H21"/></svg><span>Health</span></a><a class="nav__item" href="#" title="Settings"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2M6.7 6.7l1.4 1.4M15.9 15.9l1.4 1.4M17.3 6.7l-1.4 1.4M8.1 15.9l-1.4 1.4"/></svg><span>Settings</span></a></div></nav>
   <div class="sidebar__foot">
-    <div class="row t-xs t-muted" style="gap:8px"><span class="dot dot--ok"></span><span><strong style="font-weight:600">Locked</strong> &middot; tailnet only</span></div>
+    <div class="row t-xs t-muted" style="gap:8px"><span class="dot dot--ok"></span><span><strong style="font-weight:600">Locked</strong> &middot; your network only</span></div>
     <div class="t-meta">2026.9.0 &middot; up to date</div>
   </div>
 </aside>
 <div class="main">
 <header class="topbar">
   <div>
-    <h1 class="page-title">Home</h1>
-    <p class="t-meta" style="margin-top:5px">First run &middot; nothing captured yet</p>
+    <h1 class="page-title">Welcome, Christian.</h1>
+    <p class="greet__meta">Nothing captured yet<span class="greet__since"> &middot; your hub has been up for four minutes</span></p>
   </div>
   <div class="row">
     
@@ -1011,7 +1162,7 @@ svg{display:block}
     <p class="t-over">State of the hub</p>
     <h2 class="verdict__line">Your hub is up. Nothing to remember yet.</h2>
     <p class="verdict__sub">
-      The hub is running in locked mode, reachable on your tailnet at
+      The hub is running in locked mode, reachable on your own network at
       <span class="t-mono">http://palaia.local</span>. Your vault
       <strong style="font-weight:600">Work</strong> is ready and empty.
     </p>
@@ -1087,6 +1238,32 @@ svg{display:block}
         <div class="listrow"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v10.5M8 11l4 4 4-4"/><path d="M4.5 18.5h15"/></svg><div class="grow"><div class="listrow__title">Obsidian folder</div><div class="listrow__meta">Markdown and wiki-links untouched</div></div><button class="btn btn--sm" type="button">Import</button></div>
       </div>
       <div class="card__foot"><span class="t-xs t-subtle">Every import runs dry first and lands in its own commit.</span></div>
+    </div>
+
+    <!-- First run gets the tool surface too, and it is the friendliest thing on
+         the screen: before a single client has connected, the user already owns
+         23 tools. It reframes an empty hub as a stocked one, and it introduces
+         the marketplace as the way it grows rather than as an upsell. -->
+    <div class="card">
+      <div class="card__head">
+        <h3 class="card__title">you already have these</h3>
+        <span class="t-meta">23 &middot; all built in</span>
+      </div>
+      <div class="card__body--tight">
+        <div class="tools" style="grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-auto-flow:row">
+          <span class="tool"><span class="tool__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg></span>
+            <span class="tool__name">Memory &mdash; search, write, recall</span><span class="tool__count">14</span></span>
+          <span class="tool"><span class="tool__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="4.2" rx="1.2"/><path d="M5.5 9.2V19h13V9.2"/><path d="M10 12.8h4"/></svg></span>
+            <span class="tool__name">Stash &mdash; hand work between sessions</span><span class="tool__count">5</span></span>
+          <span class="tool"><span class="tool__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 6.2h15v9.6H12l-4.5 3.4v-3.4H4.5z"/></svg></span>
+            <span class="tool__name">Messenger &mdash; agents talk to agents</span><span class="tool__count">4</span></span>
+        </div>
+      </div>
+      <div class="card__foot">
+        <button class="btn btn--sm" type="button"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><path d="M16.75 13.5v6.5M13.5 16.75h6.5"/></svg>Browse marketplace</button>
+        <span class="t-xs t-subtle foot-note">Add a tool once here and every client you connect can use it &mdash; that is the part
+        you would otherwise repeat in five config files.</span>
+      </div>
     </div>
   </div>
 </section>

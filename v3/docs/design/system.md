@@ -39,6 +39,25 @@
 > labels with a separate `card__subject` for heads that name a thing; the serif
 > retreated to prose and page titles moved to sans; metrics moved to mono; and
 > the mockups gained padding and gap so they breathe like the reference does.
+>
+> Version 2.3 — 2026-08-23 — version 2.2 was Lume-true and **cold**. The owner's
+> verdict: correct, and clinical. Four things changed, and three of them are new
+> binding rules rather than adjustments. **Plain language** (§3, rule 0) is now
+> the first rule of the tone section: no protocol name, acronym or transport
+> word appears in a label, heading or button, and the technical term survives
+> only in hint text or a `title`. **The serif rule** (§1.2b) is stated on its own
+> because version 2.2's "the serif retreated to prose" had not actually
+> happened — serif was still setting the brand mark, empty-state titles, note
+> titles and the wizard question, i.e. exactly the chrome visual-spec §2.7
+> forbids it on, while the one real reading surface in the product (a note's
+> observations) was set in sans. **Client naming** (§3, Vocabulary) is now
+> explicit: "Claude Code" alone is ambiguous and never appears. And **warmth**
+> (§1.6) is written down as the mechanisms that produce it — greeting, progress
+> ritual, keyboard legend, earned done-state — because "be warmer" is not a
+> reviewable instruction and the restraint rules stay in force while you do it.
+> Three components were added for those mechanisms (§2: tool surface, progress
+> meter, keyboard legend), and the home screen gained the **tool surface** it
+> was missing, which is half of what palaia is (MASTERPLAN P2/P3).
 
 ## 0. What palaia looks like, in one paragraph
 
@@ -179,12 +198,14 @@ so this is a nearest-step mapping, not an invention:
 
 | Role | Font | Lume step | Size | v1 size (for reference) |
 |---|---|---|---|---|
-| Wizard question | serif, weight 400 | `display` | 32px / 40px | 33px |
-| Health verdict (home), note title, empty-state title | serif, weight 400–600 | `h1` / `h2` | 24px / 20px | 26px / 21px |
-| Page title, section heads | **sans** | `h2` | 20px | 21px (was serif) |
+| Wizard question | **sans**, weight 500 | `display` | 32px / 40px | 33px (was serif) |
+| Note title, empty-state title, done-state title | **sans**, weight 600 | `h1` / `h2` | 24px / 20px | 26px / 21px (was serif) |
+| **Health briefing (home)** — the opening sentence and its body, one prose container | serif, weight 400 | `h1` + `body` | 24px / 16px | 26px |
+| Page title, section heads, greeting | **sans** | `h2` | 20px | 21px (was serif) |
 | Metric | **mono**, tabular numerals | `h1` | 24px / 28px | 26px, serif |
 | Card **subject** (`card__subject` — a head that names a thing, not the container) | sans, 600 | between `h3` and `body` | 15px | — |
-| Field label, lead paragraph (a sentence → serif) | sans / serif | `h3` | 16px | 17px |
+| Field label, lead paragraph (one sentence of instruction) | **sans** | `h3` | 16px | 17px (lead was serif) |
+| **Prose passage** (`.prose`) — agent narration, an observation, a rationale, a briefing body | serif, weight 400 | `body`+ | 16px / 26px | — |
 | Body | sans | `body` | 14px, leading 22px | 15px |
 | Dense UI (rows, table cells, buttons) | sans | `body-sm` | 13px | 13px (unchanged) |
 | Card **chrome** title (`card__title`), chips, hints | sans, 500 | `caption` | 12px | 16px, 600 |
@@ -224,9 +245,78 @@ label — 12px, weight 500, `text-secondary`, **lowercase** ("activity",
 "clients", "next in queue"), exactly as the Lume containers are labelled
 ("prepared briefing", "this week", "knowledge graph · current snapshot"). Its
 right-hand slot is a mono meta string. When the left slot instead names a
-**subject** — "Claude Code", "Acme Corp — contract terms" — it is a real heading
-and uses `card__subject` (15px/600, ink). Getting this backwards is what makes a
-dashboard shout: eight 16px bold headings competing with the content they label.
+**subject** — "Claude Code CLI", "Acme Corp — contract terms" — it is a real
+heading and uses `card__subject` (15px/600, ink). Getting this backwards is what
+makes a dashboard shout: eight 16px bold headings competing with the content
+they label.
+
+### 1.2b The serif rule — binding
+
+Source Serif is the **prose register and nothing else**. visual-spec §2.7 scopes
+it to "agent narration, analysis, summary, long-form explanation" and states the
+constraint in its own words: **"Headings always stay structural."** Version 2.2
+claimed the serif had retreated to prose; it had not. It was still setting the
+brand mark's single glyph, every empty-state title, the note title (at weight
+600, which principles.md rule 6 lists as a *Don't* on its own) and the wizard
+question — all chrome, all single lines — while the one genuinely prose-shaped
+surface in the product, a note's observations, was set in sans. That inversion
+is what this rule exists to prevent.
+
+**Two tests, both must pass before a run of text may be serif:**
+
+1. **Is it more than one sentence** — a passage someone reads, not a line
+   someone scans?
+2. **Is it the content**, rather than the frame around the content?
+
+| Serif — yes | Everything else — Geist |
+|---|---|
+| A note's observations (`.obs__text`) — sentences an agent wrote about the world; the one end-to-end reading surface in the product | The note's **title**, its category tags, its frontmatter, and every explanatory line in the same pane |
+| The home health briefing — a mono micro-label, then two or three sentences palaia wrote about its own state: an end-to-end prose container, the `type.prose` + rare `type.prose.heading` case, and exactly the "prepared briefing" container in the Lume reference application, whose title and body are both serif | The page title above it, the tiles beside it, the fact list under it |
+| A proposal's rationale in the review queue (`.prose--compact`) — why the curator wants this change, in its own words | The proposal's subject line, the `dt` labels, the diff, the buttons |
+| A done-state's closing passage | The done-state **title** |
+| Anything the agent emits with `style: "prose"` (the visual-spec §2.7 protocol) | Anything with no `style` trait — the default is structural |
+
+**Never serif, no exceptions:** page titles, greetings, card heads (`card__title`
+*and* `card__subject`), section heads, empty- and done-state titles, note titles,
+wizard questions, lead paragraphs, field labels, buttons, badges, chips, nav
+items, the brand mark, keycaps, and metadata of any kind (which is mono anyway,
+§1.2a). A single sentence of instruction under a heading is **not** a reading
+passage — that was the `.t-lead` mistake, and it is sans now.
+
+Weight discipline: prose is **400**, with 600 only for emphasis *inside* a
+passage. Serif at 600 with tight tracking is the chrome tell — if you are
+reaching for it, you are setting a heading, and a heading is Geist.
+
+Implementation: one shared utility, `.prose` (plus `--lg` / `--compact`), and no
+per-screen `font-family:var(--p-font-serif)` outside the three cases in the table
+above. Beware specificity while you do it: a blanket `.note p` outranks the
+`.t-xs` / `.t-sm` utilities and silently resizes every explanatory line in the
+pane, which is how a register rule turns into a layout bug.
+
+### 1.6 Warmth — the mechanisms, not the mood
+
+A screen can satisfy every rule above and still read as a server report. That
+was the verdict on version 2.2, and "be warmer" is not a reviewable instruction,
+so warmth is specified here as the mechanisms that produce it. **Every restraint
+stays in force while you use them:** warmth comes from copy, rhythm, spacing,
+progress and one drawn mark — never from more colour, a larger accent area, a
+second primary button, or an exclamation mark.
+
+| Mechanism | What it is, concretely | Where |
+|---|---|---|
+| **Be spoken to** | The screen a person opens daily greets them by name, with the date and one useful continuity fact beside it ("you were last here two hours ago"). Not decoration: it frames everything the feed then reports. Never cute, never an exclamation mark, never a personality that changes. | `home.html`, both states |
+| **One thing at a time** | A queue shows one decision at full size, with what follows visible but not competing for the eye. | `review-queue.html` |
+| **A progress ritual** | Work you draw down states its position in words ("the fourth of twelve"), the remainder in figures ("8 left"), one hairline cell per item, and an honest estimate so the end is visible before you start. The number that leads is what is **left**, not what is done. | `.meter`, `.focus` |
+| **Keyboard hints as product** | Shortcuts are permanent on-screen UI: the keycap rides inside the button that owns the action, and a legend sits where a footer would otherwise be empty. Undo is listed *with* the decisions, not hidden in a toast. | `.kbd`, `.keys` |
+| **Forgiveness, stated** | The way back is named at the moment of risk, in the same sentence as the risk: "…and `Z` takes it back for ten seconds after that." | review-queue foot |
+| **An earned done-state** | Finishing is an achievement, not an absence: a title saying the work is *finished* rather than that a list is empty, one drawn mark, a passage of prose, and a recap of what happened while nobody was watching. | `.empty--done`, `.donemark` |
+| **A stocked empty state** | Before anything has happened, say what the user already *has* rather than what is missing ("you already have these — 23, all built in"). | `home.html` first run |
+| **Payoff over configuration** | When a flow completes, one plain sentence says what it now *means*, among all the lines saying how it is configured. | connect-client, connected |
+
+Anti-patterns, for symmetry: a greeting with a personality ("Rise and shine"), a
+percentage where a remainder would motivate more, a celebration with no facts in
+it, an emoji, a spinner where a skeleton belongs, and warmth applied by tinting a
+surface.
 
 ### 1.3 Space, radius, elevation, motion
 
@@ -384,6 +474,35 @@ Lume's one sanctioned non-skeleton loading affordance), `skeleton`
 default loading treatment everywhere else), `meter` (accent-fill bar with a
 soft accent-glow underneath, on a sunken track — reads as lit, not painted).
 
+`qmeter` — the **queue** meter, and a deliberately separate component from
+`meter` above: that one *fills*, this one *empties*. For work drawn down rather
+than accumulated. One hairline `qmeter__cell` per item in neutral `line`,
+`--done` cells in `ink-subtle`, the single `--now` cell accent-lit (one accent
+element, never a coloured bar), and `qmeter__left` stating **what is left** in
+mono tabular figures, because a shrinking remainder motivates where a rising
+percentage does not (§1.6). Never merge the two names — a class collision here
+is what made onboarding's password-strength bar inherit a flexbox.
+
+`keys` — the keyboard legend: a row of `keys__pair` (a `kbd` cap plus the
+action in plain words) in the mono metadata register, placed where a card foot
+would otherwise be empty. Shortcuts are permanent UI on any screen meant to be
+worked by hand, not a tooltip and not a help modal (§1.6); the `kbd` cap itself
+also rides *inside* the button that owns its action, and picks up on-accent
+contrast when that button is the primary.
+
+`tool` / `tools` — the **tool surface**: one row per source of tools that the
+connected agents can call, built-ins and user-added servers rendered
+identically, because "an agent cannot tell which of these palaia wrote and
+which it merely carries" is the gateway's entire claim (MASTERPLAN P2). A
+`tool__mark` (a neutral raised chip holding a functional glyph — never a
+third-party logo), a `tool__name`, and a `tool__count` of exposed tools in mono.
+`tool--off` for installed-but-unreachable: the name goes quiet and the count
+slot is replaced by the reason in `warn` **text** ("no key"), never a tinted
+box. The container flows in columns so palaia's own tools fill the left and
+added servers the right, which separates the two groups without a label. Its
+foot carries exactly one quiet route to the marketplace (P3) — never a primary
+button, never a pitch.
+
 ### Forms
 
 `field` (label + control + hint — hints explain *why*, not *what*), `input`
@@ -403,11 +522,22 @@ machine will see, e.g. generated tool names).
 ### Empty & first-run
 
 `empty` (mark — a small **neutral** raised icon chip; an empty screen has nothing
-selected, so it has nothing to spend accent on — serif title at weight 400, one
-explanatory sentence, one or more next actions) plus the compact inline variant
-(`empty__mark` + two lines) for panels that are empty inside an otherwise
-populated screen. Every empty state must name the next action; see
-`principles.md` §3.
+selected, so it has nothing to spend accent on — **sans** title at weight 600
+(it is a heading, §1.2b), one explanatory sentence, one or more next actions)
+plus the compact inline variant (`empty__mark` + two lines) for panels that are
+empty inside an otherwise populated screen. Every empty state must name the next
+action; see `principles.md` §3.
+
+`empty--done` — the **done** state, which is not an empty state and must not
+read like one: the user finished something. It carries `donemark` (a stroked
+ring and a check drawn at 1.25/1.75px in `ok`, never a filled disc — the single
+drawn mark a screen is allowed, and the whole delight budget spent once), a
+title saying the *work* is finished rather than that a list is empty ("The queue
+is clear.", not "Nothing to review."), a `prose` passage, and `empty__recap` —
+a hairline-separated `t-over` label plus a `factline` of what happened while
+nobody was watching, with mono figures. Layout: the mark and title centre, the
+passage and recap share one left edge (four lines of centred serif photograph
+well and read badly). No accent, no exclamation mark, no emoji — see §1.6.
 
 ### Feedback (SPEC-109 also implements)
 
@@ -422,6 +552,42 @@ palaia speaks like a competent colleague who respects the user's time: plain,
 concrete, honest about limits, never cheerful about nothing.
 
 **Rules**
+
+0. **Plain language — no jargon in the surface. Binding, and it outranks every
+   other rule in this section.** No protocol name, standard, acronym, transport
+   or implementation word appears in a **label, heading, button, badge, status
+   line or option name**. The technical term is not forbidden — it is *demoted*:
+   it lives in hint text, a sub-line, a `title` attribute, or a documentation
+   link, where the person who wants it will find it and the person who does not
+   is never taxed by it. The test: **if a competent user would have to search
+   the web to know whether a control applies to them, the label is a bug** —
+   the same standard rule 3 sets for error messages, applied to every other
+   word on the screen.
+
+   | Don't (the surface) | Do (the surface) | Where the term goes |
+   |---|---|---|
+   | "Add any OIDC sign-in later" | "You can add GitHub, Google or **your company sign-in** later" | `title="Any OpenID Connect provider — Entra ID, Okta, Authentik, Keycloak"` |
+   | "Streamable HTTP · tool search · push events supported" | "Connects straight over the web · finds tools as it needs them · gets updates without asking" | `title` on the same line |
+   | "auth required" / "auth + hardening checklist" | "sign-in required" / "sign-in, plus a security checklist" | the mode card's body |
+   | "tailnet only" / "dashboard stays tailnet-only" | "your network only" / "reachable only from your own network" | the exposure wizard, which is where Tailscale is actually named |
+   | "not connected · signed bundle" | "not connected · one click to install" | the client's own flow (MCPB is a fact about the installer, not about the user) |
+   | "Any MCP client" | "Any other AI tool" | the row's detail line |
+   | "12 tools exposed" | "37 tools available to them" | — |
+   | "Approving runs a deterministic file operation" | "Approving edits the file directly" | — |
+   | "the other eleven stay out of the context window" | "the other eleven never reach the chat" | — |
+   | "Frontmatter" | "Fields" | `title="These are the note's YAML frontmatter fields"` |
+   | "Validated against the service schema — warn only" | "Checked against the service shape. Two optional fields are missing — palaia notes that and keeps the file." | — |
+   | "Already mounted at the gateway" | "Your agents can already see these three" | — |
+   | "Codex read the signed MSA" | "Codex read the signed **master agreement**" | — |
+   | "target: connected in under 2 minutes" | "most people finish this one in a minute" | — |
+   | "(MCP App reference)" | "rendered as a panel inside a chat client" | principles.md, which is for us |
+
+   Words that **stay**, because they are palaia's own domain vocabulary and the
+   product teaches them once (see Vocabulary below): vault, note, observation,
+   relation, inbox, capture, curator, proposal, client, tool profile, endpoint,
+   token, access mode, doctor, finding, git, commit, Markdown, Obsidian.
+   "MCP" may appear in prose that explains what palaia is; it may not appear in
+   a control the user has to act on.
 
 1. **Second person, active voice, present tense.** "Connect your first client",
    not "Client connection can be established".
@@ -445,10 +611,31 @@ concrete, honest about limits, never cheerful about nothing.
 10. **Buttons are verbs**: Approve, Reindex now, Connect a client, Rotate token.
     Never "OK", "Submit", "Yes".
 
+11. **Name a client exactly, never a family.** "Claude Code" on its own is
+    ambiguous — the CLI in a terminal and the desktop app are two different
+    clients, with two different install paths, two different rows in the client
+    list and two independent tokens. Writing one name for both makes the client
+    list lie and makes an activity entry unattributable. So, everywhere a client
+    is named — the home clients card, the activity feed, the connect page's
+    list and detail heads, the onboarding client grid, provenance chips, commit
+    lines, empty states and button labels:
+
+    | Don't | Do |
+    |---|---|
+    | "Claude Code" | **"Claude Code CLI"** — the one in your terminal |
+    | "Claude Code" (meaning the app) / "Claude Desktop" | **"Claude Code (Desktop app)"** — the one you double-click |
+    | "Claude Code wrote Billing service" | "Claude Code CLI wrote Billing service" |
+    | "Connect Claude Code" | "Connect Claude Code CLI" |
+
+    The rule generalises: prefer the name the user sees on the thing they
+    installed. `claude.ai` covers web, desktop and phone and is one client, so
+    it stays one row with "web, desktop and iPhone" as its detail. Where a
+    surface is genuinely distinct, it gets its own name and its own row.
+
 **Vocabulary** (use consistently — these words appear in the mockups and must not
 drift): vault, note, observation, relation, inbox, capture, curator, proposal,
 client, tool profile, endpoint, access mode (Locked / Cloud / Open), doctor,
-finding.
+finding, tool surface, marketplace, built-in.
 
 | Don't | Do |
 |---|---|

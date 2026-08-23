@@ -17,6 +17,79 @@
 > **accent restraint** (a countable three-to-six accent elements per screen) and
 > the **neutral monospace metadata register**. The review checklist in §5 now
 > asks for both. No other rule changed.
+>
+> Version 2.2 — 2026-08-23 — the mockups were Lume-true by version 2.1 and the
+> owner's verdict was **"correct, and clinical"**. Two binding rules are added
+> here as §0, because they are not refinements of the eight and a reviewer needs
+> to find them: **§0.1 plain language** (no jargon in the surface) and **§0.2
+> name a client exactly**. Rule 6 gains a fourth restraint, **the serif rule**,
+> and a new half, **warmth** — the mechanisms that make a correct screen
+> inviting, written down so that "be warmer" becomes reviewable. §5's checklist
+> asks for all four.
+
+## 0. Two rules that sit above the eight
+
+The eight rules of MASTERPLAN §4 are about *what a screen does*. These two are
+about *what a screen says*, they apply to every screen without exception, and a
+PR that breaks either is rejected the same way.
+
+### 0.1 — No jargon in the surface (binding)
+
+**No protocol name, standard, acronym, transport or implementation word appears
+in a label, heading, button, badge, status line or option name.** The technical
+term is not banned — it is demoted to hint text, a sub-line, a `title`
+attribute, or a doc link, where the person who wants it finds it and the person
+who does not is never taxed by it.
+
+The test is rule 5's test, applied to every word instead of only to errors: **if
+a competent user would have to search the web to know whether a control applies
+to them, the label is a bug.** A user who cannot tell "Locked" from "Cloud"
+because the badge says `auth required` has been handed a decision they cannot
+make.
+
+| Don't | Do |
+|---|---|
+| "Add any OIDC sign-in later" | "You can add GitHub, Google or **your company sign-in** later" — with `title="Any OpenID Connect provider — Entra ID, Okta, Authentik, Keycloak"` |
+| "Streamable HTTP · tool search · push events supported" | "Connects straight over the web · finds tools as it needs them · gets updates without asking" |
+| `auth required` · `auth + hardening checklist` | "sign-in required" · "sign-in, plus a security checklist" |
+| "tailnet only" | "your network only" — Tailscale is named in the wizard that actually sets it up |
+| "not connected · signed bundle" | "not connected · one click to install" |
+| "Any MCP client" | "Any other AI tool" |
+| "12 tools exposed" · "Already mounted at the gateway" | "37 tools available to them" · "Your agents can already see these three" |
+| "runs a deterministic file operation" | "edits the file directly" |
+| "stay out of the context window" | "never reach the chat" |
+| "Frontmatter" · "validated — warn only" | "Fields" · "Two optional fields are missing — palaia notes that and keeps the file" |
+| "Codex read the signed MSA" | "Codex read the signed **master agreement**" |
+| "target: connected in under 2 minutes" | "most people finish this one in a minute" |
+
+palaia's own domain words are **not** jargon and are used freely, because the
+product teaches them once and then relies on them: vault, note, observation,
+relation, inbox, capture, curator, proposal, client, tool profile, endpoint,
+token, access mode, doctor, finding, commit, Markdown. The full list, and where
+each demoted term went, is `system.md` §3 rule 0.
+
+### 0.2 — Name a client exactly, never a family (binding)
+
+**"Claude Code" on its own never appears.** The CLI in a terminal and the
+desktop app are two different clients: different install paths, different rows
+in the client list, independent tokens, independent last-seen times. One name
+for both makes the client list lie ("4 connected" over three rows) and makes an
+activity entry unattributable — which breaks rule 7, since provenance that
+cannot identify the actor is not provenance.
+
+| Don't | Do |
+|---|---|
+| "Claude Code" | **"Claude Code CLI"** |
+| "Claude Code" (meaning the app), "Claude Desktop" | **"Claude Code (Desktop app)"** |
+| "Claude Code wrote Billing service" | "Claude Code CLI wrote Billing service" |
+| "Connect Claude Code" · "Start with Claude Code" | "Connect Claude Code CLI" · "Start with Claude Code CLI" |
+
+Applies everywhere a client is named: the home clients card and activity feed,
+the connect page's list and its detail head, the onboarding client grid,
+provenance chips, commit lines, empty states and button labels. Generalised:
+**use the name printed on the thing the user installed.** Where one install
+genuinely covers several surfaces, it stays one row and names them in its detail
+line — `claude.ai` is one client, "web, desktop and iPhone".
 
 ## 1. The eight rules, applied
 
@@ -112,6 +185,18 @@ Three restraints sit on top of all of this, and they are the difference between
    for the single most important one-time commitment on that screen (`system.md`
    §1.1) — not a second accent, not a way to make an ordinary action feel more
    urgent than it is.
+4. **The serif is the prose register, and nothing else.** visual-spec §2.7 says
+   it in four words — *"Headings always stay structural"* — and version 2.1 broke
+   it in five places while claiming to honour it: the brand mark's single glyph,
+   every empty-state title, the note title (at weight 600, which the Don't table
+   below already forbade), the wizard question, and the lead paragraph. Meanwhile
+   the one genuinely prose-shaped surface in the product — a note's observations,
+   sentences an agent wrote about the world — was set in sans. Two tests, both
+   must pass: **more than one sentence** (a passage you read, not a line you
+   scan), **and** the content rather than the frame around it. That leaves
+   exactly three serif surfaces in these five screens: a note's observations, the
+   home health briefing, and a proposal's rationale. Everything else is Geist.
+   Full rule and the full never-list: `system.md` §1.2b.
 
 | Don't | Do |
 |---|---|
@@ -122,12 +207,39 @@ Three restraints sit on top of all of this, and they are the difference between
 | Accent-brown section labels, counters, links, avatars and brand marks | Uppercase mono micro-labels in `text-tertiary`; counts as mono tabular numerals; links ink-on-hairline-underline with the accent arriving on hover (`system.md` §1.2a) |
 | Large solid accent buttons everywhere | 30px quiet buttons on the raised surface by default; **at most one** accent-gradient primary per screen, and zero is a legitimate answer |
 | A warm accent wash over a card, hero panel or selected 640px option | Cool grey canvas, white cards; accent confined to a hairline edge, a glow ring or a small dot |
-| Serif set at 600 with tight tracking used as chrome | Serif at 400 for sentence-length prose; sans for page titles and chrome; mono for metrics and metadata |
+| Serif set at 600 with tight tracking used as chrome; a serif empty-state title, note title, wizard question, lead paragraph or brand glyph | Serif at 400 for a **passage**; sans for every title, head, label and single line; mono for metrics and metadata (restraint 4) |
 | A filled, coloured pill for "healthy" / "needs attention" / "broken" | Text and icon colour only — a status is never a block fill (`system.md` §1.1) |
 | Reaching for Signal because a button feels important | Signal only for the one genuine one-time commitment per view (`onboarding.html`'s "Create vault"); everything else, including a routine "Approve", stays accent |
 | Dark mode as inverted light mode | Its own palette; shadows replaced by hairlines and Lume's directional borders |
 | Fixed pixel widths | Fits 360 / 768 / 1280; primary answer never scrolls away |
 | Tight boxes to fit more in | More padding inside cards, more gap between them; density comes from smaller metadata type, not smaller whitespace |
+
+#### Beauty is not enough — the screen also has to be inviting
+
+The four restraints above are how a screen stops being *wrong*. They are not how
+it becomes *good*. Version 2.1 passed every one of them and the owner's verdict
+was "correct, and clinical" — a server report rendered in a beautiful material.
+
+So warmth is the second half of this rule, and because "be warmer" is not
+something a reviewer can check, it is specified as **mechanisms**. The
+restraints stay in force while you use them: warmth is made of copy, rhythm,
+spacing, progress and at most one drawn mark. **It is never made of more
+colour.** If a change to make a screen warmer added accent area, a second
+primary, a tinted surface or an exclamation mark, it is the wrong change.
+
+| Don't | Do |
+|---|---|
+| "Home" and a timestamp on the screen someone opens every morning | "Good afternoon, Christian." with the date and one continuity fact — "you were last here two hours ago" |
+| A greeting with a personality ("Rise and shine", "Working late?") or an emoji | One steady, plain greeting; the warmth is being addressed, not being entertained |
+| A queue that shows twelve rows and lets you pick | One proposal at full size, with the rest visible but quiet — a decision, not a list |
+| "4 of 12" in 11px mono in the corner of a card head | A strip above the decision: the position in words ("the fourth of twelve"), the remainder in figures ("8 left"), one hairline cell per item, and an honest estimate — the end visible before you start |
+| A percentage, or a bar that fills | A count that **shrinks**: what is left is the motivating number (`system.md` §1.6) |
+| Shortcuts in a help modal, or discoverable only by hover | The keycap inside the button that owns the action, plus a legend row where the foot would otherwise be empty |
+| Undo as a toast that disappears | Undo named next to the decisions, and named again in the sentence that describes the risk: "…and `Z` takes it back for ten seconds after that" |
+| "Nothing to review." over an empty card | "The queue is clear." — one drawn mark, a prose passage, and a recap of what the curator did while nobody was watching, with mono figures |
+| An empty screen that lists what is missing | An empty screen that says what the user already has: "you already have these — 23, all built in" |
+| A completed flow that shows only configuration | One plain sentence of payoff among the config lines: "From now on it shares one memory with everything else on this list" |
+| Delight applied everywhere (animated ticks, celebratory colour) | One drawn mark per screen, stroke-only, spent on the moment that earns it |
 
 ### Rule 7 — Trust through transparency
 
@@ -164,9 +276,30 @@ below it is: light and dark follow the OS, and the layouts hold at 360, 768 and
 
 **Primary question:** is everything healthy, and what happened while I was away?
 
-Above the fold, in this order: the verdict sentence, the four state tiles (vaults,
-inbox, clients, doctor), then the activity feed and connected clients. Anything
-that is not evidence for the verdict or a next action belongs on another screen.
+Above the fold, in this order: the greeting, the verdict sentence, the four state
+tiles (vaults, inbox, clients, doctor), then the activity feed on the left and,
+in the rail, the **tool surface** followed by the connected clients. Anything
+that is not evidence for the verdict, a next action, or an answer to "what can my
+agents actually do" belongs on another screen.
+
+**The tool surface is a required element, not a nice-to-have.** Half of what
+palaia *is* lives in MASTERPLAN P2 (one endpoint, configure once, use
+everywhere) and P3 (the marketplace), and until version 2.2 the home screen
+showed neither — a reviewer could read the whole dashboard and conclude palaia
+was a memory tool. The rail therefore leads with a "tools your agents can use"
+card: palaia's built-ins (memory, stash, messenger) and every added server in
+one uniform list, because an agent cannot tell which of them palaia wrote and
+which it merely carries, and that indistinguishability *is* the gateway's claim.
+It is the rail's **first** card, above clients, since capability precedes the
+list of who consumes it.
+
+| Don't | Do |
+|---|---|
+| A home screen that never mentions the tools, so palaia reads as a memory tool | The rail's first card: sources with tiny glyphs and mono counts, "37 · 3 built in, 3 added" |
+| Brand logos for third-party servers | Neutral functional glyphs on the standard raised chip — palaia does not host other people's marketing |
+| A tinted "upgrade" panel for the marketplace | One quiet `btn--sm` in the card foot, and a mono meta line: "42 more available" |
+| Hiding a server that is installed but broken | `tool--off`: the name goes quiet and the count is replaced by the reason as **text** ("no key") |
+| An empty first-run screen listing what is missing | "you already have these — 23, all built in", with what each built-in is for |
 
 | Don't | Do |
 |---|---|
@@ -273,7 +406,11 @@ job is doing its work honestly.
 | Hide where the knowledge came from | Provenance chips: agent, inbox entry, capture id, and the verbatim capture on request |
 | Imply a model will rewrite the note on approval | "Approving runs a deterministic file operation — no model rewrites your note" |
 | Approve-only | Approve, edit-then-approve, reject, skip — with keyboard shortcuts shown next to them |
-| Make an empty queue feel like a failure | "Nothing to review." plus what the curator did autonomously since Monday |
+| The queue position as 11px mono in a card head | A focus strip above the decision: "The fourth of twelve. Eight more after this one." + a `qmeter` + "about 4 minutes at this pace" |
+| Shortcuts discoverable only by trying them | Keycaps inside the four action buttons, plus a `keys` legend row: next, previous, **undo the last decision**, every shortcut |
+| Undo implied by "it's all in git" | `Z` named in the legend *and* in the sentence under the buttons |
+| Make an empty queue feel like a failure | "The queue is clear." — the drawn mark, a prose passage, and the since-Monday recap (128 added without asking, 9 approved, 2 rejected, all revertible) |
+| "An empty queue is the normal state" as a bare fact | "A clear queue is the normal state, **not a lucky day**" |
 
 **Rule 8:** yes — this is *the* app (§5.7 calls it the killer use case). The
 `in-client app` state in the mockup is the visual reference for it: the same
@@ -302,6 +439,21 @@ gets the plain-text tool result, and every app has a dashboard equivalent (rule 
 Use this on any PR that adds or changes UI:
 
 - [ ] The screen's primary question is answered at 1280×800 without scrolling.
+- [ ] **No jargon in the surface** (§0.1) — read every label, heading, button,
+      badge, status line and option name aloud. No protocol, standard, acronym
+      or transport word among them; each one that was needed is demoted to hint
+      text or a `title`.
+- [ ] **Every client is named exactly** (§0.2) — no bare "Claude Code" anywhere;
+      the client list's row count agrees with its "N connected".
+- [ ] **The serif sets only passages** (rule 6, restraint 4) — grep the diff for
+      `font-serif`: every hit is a note's observations, the home briefing, or a
+      rationale. No serif title, head, label, lead, button or brand glyph, and
+      no serif above weight 400 outside emphasis inside a passage.
+- [ ] **Warmth mechanisms present where they apply** (rule 6, second half) — a
+      daily screen greets by name; a queue shows one item with visible progress
+      and its shortcuts on screen; undo is named at the moment of risk; the
+      done-state says the work is finished and recaps what happened; nothing
+      warm was achieved by adding colour.
 - [ ] **Accent budget: count the accent-coloured elements — three to six**
       (`system.md` §1.1a). At most one `btn--primary`; no accent labels,
       counters, avatars, brand marks or resting link colours.

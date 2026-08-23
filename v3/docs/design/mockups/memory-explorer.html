@@ -351,7 +351,7 @@ svg{display:block}
    .t-over  uppercase mono micro-label  — the metadata voice, always tertiary
    .t-meta  mono system string          — revisions, ids, timestamps
    .t-count mono tabular counter        — never a pill, never accent
-   .t-serif prose register              — sentence-length content only     */
+   .prose   the prose register          — a reading passage, and only that  */
 .t-over{font-family:var(--p-font-mono);font-size:var(--p-size-micro);line-height:14px;font-weight:500;
   letter-spacing:var(--p-track-micro);text-transform:uppercase;color:var(--p-ink-subtle);
   font-feature-settings:'tnum'}
@@ -359,16 +359,29 @@ svg{display:block}
   color:var(--p-ink-subtle);font-feature-settings:'tnum';white-space:nowrap}
 .t-count{font-family:var(--p-font-mono);font-size:var(--p-size-xs);line-height:16px;
   color:var(--p-ink-muted);font-feature-settings:'tnum'}
-.t-serif{font-family:var(--p-font-serif);font-weight:400;line-height:var(--p-leading-loose);font-optical-sizing:auto}
+/* THE SERIF RULE (visual-spec §2.7, binding).
+   Source Serif is the PROSE register: agent narration, analysis, summary,
+   long-form explanation — a passage the user reads. The spec's own sentence is
+   "Headings always stay structural", so serif never sets a page title, a card
+   head, an empty-state title, a wizard question, a note title, a brand mark,
+   a button, a label or any other lone line of chrome. Two tests before you
+   reach for it: does it run to more than one sentence, and is it the content
+   rather than the frame around the content? Both yes, or it is Geist. */
+.prose{font-family:var(--p-font-serif);font-size:var(--p-size-md);font-weight:400;
+  line-height:26px;font-optical-sizing:auto;color:var(--p-ink)}
+.prose--lg{font-size:var(--p-size-lg);line-height:28px}
+.prose--compact{font-size:var(--p-size-sm);line-height:22px}
+.prose strong{font-weight:600}
+.prose p + p{margin-top:var(--p-space-4)}
 .t-mono{font-family:var(--p-font-mono);font-size:var(--p-size-sm);font-feature-settings:'tnum'}
 .t-num{font-variant-numeric:tabular-nums}
 .t-muted{color:var(--p-ink-muted)}
 .t-subtle{color:var(--p-ink-subtle)}
 .t-sm{font-size:var(--p-size-sm)}
 .t-xs{font-size:var(--p-size-xs)}
-/* Lead paragraph = prose register: a sentence, so it is set in Source Serif */
-.t-lead{font-family:var(--p-font-serif);font-size:var(--p-size-lg);line-height:26px;
-  color:var(--p-ink-muted);font-optical-sizing:auto}
+/* Lead paragraph: the one or two lines that explain a title. Structural — a
+   sentence of instruction is not a reading passage (see the serif rule). */
+.t-lead{font-size:var(--p-size-lg);line-height:26px;color:var(--p-ink-muted)}
 
 /* ---------- layout helpers ---------- */
 .row{display:flex;align-items:center;gap:var(--p-space-3)}
@@ -456,11 +469,42 @@ svg{display:block}
 .btn[aria-disabled="true"]{background:var(--p-sunken);color:var(--text-disabled);box-shadow:none;cursor:not-allowed}
 .iconbtn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:var(--p-radius-sm);border:1px solid transparent;background:none;color:var(--p-ink-subtle);cursor:pointer}
 .iconbtn:hover{background:var(--p-sunken);color:var(--p-ink)}
+/* ---------- keyboard affordance ----------
+   A shortcut is permanent UI, not a tooltip. The cap rides inside the button
+   that owns the action, so the hand learns the key while the eye reads the
+   verb; a screen that is meant to be worked by keyboard also carries a legend
+   (.keys) where a footer would otherwise be empty. Caps stay neutral — a
+   keycap is metadata, so it never borrows the accent, except by inheriting
+   the contrast of the one primary button it sits in. */
 .kbd{
   display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 4px;
   border:1px solid var(--p-line);border-radius:4px;
   background:var(--p-surface);font-family:var(--p-font-mono);font-size:var(--p-size-micro);color:var(--p-ink-subtle)
 }
+.btn .kbd{margin-left:3px}
+.btn--primary .kbd{border-color:rgba(255,255,255,.36);background:rgba(255,255,255,.15);color:var(--p-on-accent)}
+.btn--risk .kbd{border-color:var(--p-risk-line)}
+.keys{display:flex;align-items:center;gap:var(--p-space-4);flex-wrap:wrap;
+  font-family:var(--p-font-mono);font-size:var(--p-size-meta);color:var(--p-ink-subtle)}
+.keys__pair{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+
+/* ---------- queue meter ----------
+   For work you draw DOWN rather than fill up, which is a different component
+   from the `.meter` progress bar in Status (that one fills; this one empties —
+   hence the separate name, and do not merge them). The count that leads is what
+   is LEFT, not what is done: Superhuman's inbox counter shrinks toward zero,
+   and the goal-gradient effect is the reason it works. One hairline cell per
+   remaining item makes the draw-down countable at a glance. Cells are neutral
+   ink; only the cell you are standing on is lit, which spends exactly one
+   accent element, never a coloured bar. */
+.qmeter{display:flex;align-items:center;gap:var(--p-space-4)}
+.qmeter__cells{display:flex;gap:3px;flex:1;min-width:60px}
+.qmeter__cell{height:4px;flex:1;min-width:2px;border-radius:2px;background:var(--p-line)}
+.qmeter__cell--done{background:var(--p-ink-subtle)}
+.qmeter__cell--now{background:var(--accent-fill);
+  box-shadow:0 0 4px var(--accent-glow-core), 0 0 9px var(--accent-glow)}
+.qmeter__left{font-family:var(--p-font-mono);font-size:var(--p-size-xs);color:var(--p-ink-muted);
+  font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
 
 /* ---------- surfaces ----------
    Cards are white floating surfaces on the cool canvas: hairline directional
@@ -531,6 +575,47 @@ svg{display:block}
 .tile--attention .tile__metric{color:var(--p-warn)}
 .tile__action{margin-top:var(--p-space-2)}
 
+/* ---------- fact list ----------
+   The three bulleted facts under a piece of prose: 3px neutral bullets, mono
+   figures, sentence remainder in ink — exactly the "Open tickets: 3 · all
+   assigned" list in the Lume reference application's briefing container. Used
+   wherever a passage needs its numbers stated under it rather than inside it. */
+.factline{display:flex;flex-direction:column;gap:5px}
+.factline li{position:relative;padding-left:11px;font-size:var(--p-size-xs);line-height:18px;color:var(--p-ink)}
+.factline .t-mono{font-size:var(--p-size-meta);color:var(--p-ink)}
+.fact-dot{position:absolute;left:0;top:8px;width:3px;height:3px;border-radius:50%;background:var(--p-ink-subtle)}
+
+/* ---------- tool surface ----------
+   What the connected agents can actually call: palaia's built-ins and every
+   server the user has added, read as one list (MASTERPLAN P2 — "configure
+   once, use everywhere" — made visible instead of implied). Home Assistant's
+   add-on store is the reference: small uniform rows, an icon that identifies
+   the source, and one quiet way to get more. Reachability is text and a dot,
+   never a fill; the tool count is mono metadata. */
+/* Column flow, not row flow, and that is the point: palaia's own tools fill
+   the left column and everything the user added fills the right, so the split
+   between "what palaia is" and "what you gave it" is legible without a single
+   extra label — and the rows still read as one uniform list, which is the
+   claim the gateway makes. */
+.tools{display:grid;gap:2px;grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-rows:repeat(3,auto);grid-auto-flow:column}
+.tool{display:flex;align-items:center;gap:9px;padding:5px 8px;border-radius:var(--p-radius-md);
+  min-width:0;color:var(--p-ink);text-decoration:none}
+.tool:hover{background:var(--p-surface-2);text-decoration:none}
+.tool__mark{width:24px;height:24px;border-radius:7px;flex:none;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--p-surface-raised);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
+  color:var(--p-ink-subtle);box-shadow:0 1px 0 var(--top-edge-highlight) inset}
+.tool__name{font-size:var(--p-size-sm);font-weight:500;min-width:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tool__count{font-family:var(--p-font-mono);font-size:var(--p-size-meta);color:var(--p-ink-subtle);
+  font-variant-numeric:tabular-nums;margin-left:auto;flex:none}
+/* a source that is installed but unreachable: the name goes quiet and the
+   count is replaced by the reason — still no colour on the box */
+.tool--off .tool__name{color:var(--p-ink-muted)}
+.tool--off .tool__mark{color:var(--text-disabled)}
+.tool--off .tool__count{color:var(--p-warn)}
+
 /* ---------- banners / callouts ---------- */
 /* Neutral surface; the state colours the icon and the title only, never the box (§2.6) */
 .banner{display:flex;gap:var(--p-space-3);padding:var(--p-space-4);border-radius:var(--p-radius-md);
@@ -568,8 +653,16 @@ svg{display:block}
 .empty__mark{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:var(--p-radius-lg);
   background:var(--p-surface-raised);color:var(--p-ink-subtle);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
   box-shadow:0 1px 0 var(--top-edge-highlight) inset}
-.empty__title{font-family:var(--p-font-serif);font-size:var(--p-size-xl);font-weight:400;line-height:28px;font-optical-sizing:auto}
+/* An empty-state title is a heading, so it is structural (see the serif rule). */
+.empty__title{font-size:var(--p-size-xl);font-weight:600;line-height:28px;letter-spacing:var(--p-track-tight)}
 .empty__text{max-width:52ch;color:var(--p-ink-muted);font-size:var(--p-size-sm);line-height:20px}
+/* Finishing a queue is an achievement, not an absence. The done variant keeps
+   every restraint — the ring is border-and-icon colour, never a fill — and
+   spends its warmth on the copy and on one drawn mark. */
+.empty--done .empty__mark{border-color:var(--p-ok-line);color:var(--p-ok)}
+.empty--done .empty__title{font-size:var(--p-size-2xl);line-height:32px}
+.empty__recap{display:flex;flex-direction:column;gap:6px;align-items:flex-start;text-align:left;
+  margin-top:var(--p-space-4);padding-top:var(--p-space-4);border-top:1px solid var(--p-line);width:100%;max-width:52ch}
 
 /* ---------- forms ---------- */
 .field{display:flex;flex-direction:column;gap:6px}
@@ -648,11 +741,12 @@ svg{display:block}
   border-right:1px solid var(--p-line);background:var(--p-surface-2);min-height:0}
 .brand{display:flex;align-items:center;gap:9px;color:var(--p-ink);text-decoration:none;padding:0 var(--p-space-2)}
 .brand:hover{text-decoration:none}
-/* neutral raised chip, not an accent tile — the shell spends no accent on branding */
+/* neutral raised chip, not an accent tile — the shell spends no accent on
+   branding, and a single glyph is chrome, so it is Geist (see the serif rule) */
 .brand__mark{width:22px;height:22px;border-radius:7px;background:var(--p-surface-raised);
   border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);color:var(--p-ink);
-  display:flex;align-items:center;justify-content:center;font-family:var(--p-font-serif);font-size:13px;font-weight:600;flex:none;
-  box-shadow:0 1px 0 var(--top-edge-highlight) inset}
+  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex:none;
+  letter-spacing:var(--p-track-tight);box-shadow:0 1px 0 var(--top-edge-highlight) inset}
 .brand__name{font-size:var(--p-size-md);font-weight:600;letter-spacing:var(--p-track-tight)}
 .brand__ver{font-family:var(--p-font-mono);font-size:var(--p-size-micro);color:var(--p-ink-subtle);letter-spacing:.04em}
 .nav{display:flex;flex-direction:column;gap:var(--p-space-5);flex:1;min-height:0;overflow:auto;scrollbar-width:thin}
@@ -749,12 +843,22 @@ svg{display:block}
   border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-md);
   background:var(--p-surface-raised);cursor:pointer;font-size:var(--p-size-sm);font-weight:500;
   box-shadow:0 1px 0 var(--top-edge-highlight) inset}
-.explorer{display:grid;grid-template-columns:236px minmax(0,1fr) 296px;
+/* One number for every pane head on the screen, so the rule under them is
+   continuous across the two internal borders. 48px clears the tallest control
+   a head may hold (a 28px icon button) with 10px of air above and below. */
+.explorer{--p-panehead-h:48px;
+  display:grid;grid-template-columns:236px minmax(0,1fr) 296px;
   border:1px solid var(--p-line);border-radius:var(--p-radius-lg);background:var(--p-surface);overflow:hidden;box-shadow:var(--p-shadow-1)}
 .pane{display:flex;flex-direction:column;min-width:0;min-height:0}
 .pane + .pane{border-left:1px solid var(--p-line)}
+/* All three pane heads sit on ONE line. Their content differs — a bare label,
+   a label plus 26px buttons, a label plus a 28px icon button — so padding
+   alone cannot align them: whichever head holds the tallest control pushes its
+   rule 10px below its neighbours'. The head therefore owns a fixed height and
+   centres whatever it contains, and the three rules read as one. */
 .pane__head{display:flex;align-items:center;justify-content:space-between;gap:var(--p-space-2);
-  padding:var(--p-space-4) var(--p-space-4) var(--p-space-3);border-bottom:1px solid var(--p-line);background:var(--p-surface-2)}
+  height:var(--p-panehead-h);flex:none;box-sizing:border-box;
+  padding:0 var(--p-space-4);border-bottom:1px solid var(--p-line);background:var(--p-surface-2)}
 .pane__body{padding:var(--p-space-4) var(--p-space-3)}
 .tree{display:flex;flex-direction:column;gap:1px;font-size:var(--p-size-sm)}
 .tree__row{display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:var(--p-radius-sm);color:var(--p-ink-muted);cursor:pointer}
@@ -767,13 +871,30 @@ svg{display:block}
 .tree__row--ghost{color:var(--p-ink-subtle);font-style:italic}
 .tree__ind{width:14px;flex:none}
 .note{padding:var(--p-space-6) var(--p-space-6) var(--p-space-8);max-width:70ch}
-.note__title{font-family:var(--p-font-serif);font-size:var(--p-size-2xl);line-height:32px;font-weight:600;font-optical-sizing:auto}
+/* The note title names a subject — it is a heading, so it is Geist (see the
+   serif rule in the shared block). The serif belongs to what is below it. */
+.note__title{font-size:var(--p-size-2xl);line-height:32px;font-weight:600;letter-spacing:var(--p-track-tight)}
 .note__meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px}
 .note h3{font-family:var(--p-font-mono);font-size:var(--p-size-micro);line-height:14px;font-weight:500;
   letter-spacing:var(--p-track-micro);text-transform:uppercase;color:var(--p-ink-subtle);
   margin:var(--p-space-6) 0 var(--p-space-3);padding-bottom:var(--p-space-2);border-bottom:1px solid var(--p-line)}
-.note p{font-size:var(--p-size-md);color:var(--p-ink);line-height:var(--p-leading-loose)}
+/* HERE is where the serif earns its keep. An observation is a sentence an
+   agent wrote about the world — narration, the prose register by the letter of
+   visual-spec §2.7 — and this pane is the one end-to-end reading surface in
+   the product. The category tag beside it stays mono, the title above it stays
+   Geist; the passage itself reads like something written rather than
+   something rendered. */
+/* Scoped to the observation text and nothing else. A blanket `.note p` would
+   also catch every explanatory line inside this pane — the empty-state
+   sentences, the embed caption, the schema note — and those are chrome, which
+   the register rule keeps in Geist. It also outranks the .t-xs/.t-sm utilities
+   on specificity and silently resizes them, which is how a register rule turns
+   into a layout bug. */
+.obs__text{font-family:var(--p-font-serif);font-size:var(--p-size-md);color:var(--p-ink);
+  line-height:26px;font-optical-sizing:auto}
 .obs,.rel{display:flex;gap:10px;padding:5px 0;font-size:var(--p-size-md);line-height:var(--p-leading-snug);align-items:baseline}
+.obs{padding:7px 0;align-items:flex-start}
+.obs .obs__cat{margin-top:4px}
 .obs__cat,.rel__type{flex:none;font-family:var(--p-font-mono);font-size:11px;padding:2px 7px;border-radius:var(--p-radius-sm);
   background:var(--p-sunken);color:var(--p-ink-muted);min-width:74px;text-align:center}
 .obs__cat--decision{background:var(--p-sunken);color:var(--p-ink-muted);font-weight:500}
@@ -922,10 +1043,10 @@ svg{display:block}
 
   <h3>Observations</h3>
   <ul>
-    <li class="obs"><span class="obs__cat obs__cat--decision">decision</span><span>Dunning moves to Stripe Billing in Q4 &mdash; <a class="wlink" href="#">Acme Corp</a> requires SEPA mandates.</span></li>
-    <li class="obs"><span class="obs__cat">fact</span><span>Service owner is <a class="wlink" href="#">Mira Sanchez</a>; on-call rotates weekly with <a class="wlink" href="#">Platform team</a>.</span></li>
-    <li class="obs"><span class="obs__cat obs__cat--risk">risk</span><span>The legacy dunning job has no retry budget. Two failed batches in August went unnoticed for a day.</span></li>
-    <li class="obs"><span class="obs__cat">version</span><span>2026.5.7 &mdash; the version lives in a field, never in the note&rsquo;s name, so links never rot.</span></li>
+    <li class="obs"><span class="obs__cat obs__cat--decision">decision</span><span class="obs__text">Dunning moves to Stripe Billing in Q4 &mdash; <a class="wlink" href="#">Acme Corp</a> requires SEPA mandates.</span></li>
+    <li class="obs"><span class="obs__cat">fact</span><span class="obs__text">Service owner is <a class="wlink" href="#">Mira Sanchez</a>; on-call rotates weekly with <a class="wlink" href="#">Platform team</a>.</span></li>
+    <li class="obs"><span class="obs__cat obs__cat--risk">risk</span><span class="obs__text">The legacy dunning job has no retry budget. Two failed batches in August went unnoticed for a day.</span></li>
+    <li class="obs"><span class="obs__cat">version</span><span class="obs__text">2026.5.7 &mdash; the version lives in a field, never in the note&rsquo;s name, so links never rot.</span></li>
   </ul>
 
   <h3>Relations</h3>
@@ -949,7 +1070,7 @@ svg{display:block}
     
 <div class="ctx">
   <div class="ctx__block">
-    <span class="t-over">Frontmatter</span>
+    <span class="t-over" title="These are the note’s YAML frontmatter fields">Fields</span>
     <dl class="fm">
       <dt>type</dt><dd>service</dd>
       <dt>scope</dt><dd>project/billing</dd>
@@ -957,13 +1078,13 @@ svg{display:block}
       <dt>created</dt><dd>2026-03-04</dd>
       <dt>permalink</dt><dd>memory://work/areas/billing-service</dd>
     </dl>
-    <p class="t-xs t-subtle">Validated against the <span class="chip chip--mono">service</span> schema &mdash; warn only. Two optional fields are missing.</p>
+    <p class="t-xs t-subtle">Checked against the <span class="chip chip--mono">service</span> shape. Two optional fields are missing &mdash; palaia notes that and keeps the file.</p>
   </div>
 
   <div class="ctx__block">
     <span class="t-over">Where this came from</span>
     <div class="row row--wrap" style="gap:6px">
-      <span class="chip"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 4.9 4.9 1.9-4.9 1.9L12 17.1l-1.9-4.9-4.9-1.9 4.9-1.9z"/></svg>Claude Code</span>
+      <span class="chip"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 4.9 4.9 1.9-4.9 1.9L12 17.1l-1.9-4.9-4.9-1.9 4.9-1.9z"/></svg>Claude Code CLI</span>
       <span class="chip chip--mono">session 3f2a</span>
       <span class="chip">curated 22 min ago</span>
     </div>
@@ -996,7 +1117,7 @@ svg{display:block}
     <div class="row row--between"><span class="t-over">History</span><a class="t-xs" href="#">open diff</a></div>
     <div class="stack--2" style="display:flex;flex-direction:column">
       <div class="commitrow"><code>a91c4f</code><span class="grow">Curator: merge 2 captures into Billing service</span><span class="t-subtle">22 min</span></div>
-      <div class="commitrow"><code>7c30b1</code><span class="grow">Claude Code: add retry-budget risk</span><span class="t-subtle">6 h</span></div>
+      <div class="commitrow"><code>7c30b1</code><span class="grow">Claude Code CLI: add retry-budget risk</span><span class="t-subtle">6 h</span></div>
       <div class="commitrow"><code>5d1e08</code><span class="grow">You: rename Payments gateway (14 backlinks)</span><span class="t-subtle">1 d</span></div>
     </div>
     <p class="t-xs t-subtle">Every change is a commit. Reverting one is a revert, not a support ticket.</p>
@@ -1015,7 +1136,7 @@ svg{display:block}
   <a class="brand" href="#"><span class="brand__mark">p</span><span class="brand__name">palaia</span><span class="brand__ver">v3</span></a>
   <nav class="nav"><div class="nav__group"><span class="nav__label t-over">Overview</span><a class="nav__item" href="#" title="Home"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.6 12 4l9 6.6V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span>Home</span></a></div><div class="nav__group"><span class="nav__label t-over">Memory</span><a class="nav__item nav__item--on" href="#" title="Explorer"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg><span>Explorer</span></a><a class="nav__item" href="#" title="Inbox"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13.5h4l1.2 2.5h5.6l1.2-2.5h4"/><path d="M4 13.5 6.7 5h10.6L20 13.5V20H4z"/></svg><span>Inbox</span></a><a class="nav__item" href="#" title="Review queue"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2"/><path d="M8.3 12.4l2.7 2.7 4.7-5.2"/></svg><span>Review queue</span></a><a class="nav__item" href="#" title="Vaults"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="4.5" rx="1.2"/><path d="M5.5 9v10.5h13V9"/><path d="M10 13h4"/></svg><span>Vaults</span></a></div><div class="nav__group"><span class="nav__label t-over">Connections</span><a class="nav__item" href="#" title="Clients"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg><span>Clients</span></a><a class="nav__item" href="#" title="Tools &amp; skills"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg><span>Tools &amp; skills</span></a></div><div class="nav__group"><span class="nav__label t-over">System</span><a class="nav__item" href="#" title="Automations"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.2 3 5.5 14h5l-1 7 8.2-11.2h-5.1z"/></svg><span>Automations</span></a><a class="nav__item" href="#" title="Health"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12.5h3.8l2.2-5.5 3.4 11 2.2-5.5H21"/></svg><span>Health</span></a><a class="nav__item" href="#" title="Settings"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2M6.7 6.7l1.4 1.4M15.9 15.9l1.4 1.4M17.3 6.7l-1.4 1.4M8.1 15.9l-1.4 1.4"/></svg><span>Settings</span></a></div></nav>
   <div class="sidebar__foot">
-    <div class="row t-xs t-muted" style="gap:8px"><span class="dot dot--ok"></span><span><strong style="font-weight:600">Locked</strong> &middot; tailnet only</span></div>
+    <div class="row t-xs t-muted" style="gap:8px"><span class="dot dot--ok"></span><span><strong style="font-weight:600">Locked</strong> &middot; your network only</span></div>
     <div class="t-xs t-subtle">2026.9.0 &middot; up to date</div>
   </div>
 </aside>
@@ -1094,7 +1215,7 @@ svg{display:block}
           <span class="chip chip--mono">work_memory_write</span>
           <span class="chip chip--mono">work_recall</span>
         </div>
-        <p class="t-xs t-subtle">Already mounted at the gateway. The first write creates the first file.</p>
+        <p class="t-xs t-subtle">Your agents can already see these three. The first write creates the first file.</p>
       </div>
     </div>
   </div>

@@ -351,7 +351,7 @@ svg{display:block}
    .t-over  uppercase mono micro-label  — the metadata voice, always tertiary
    .t-meta  mono system string          — revisions, ids, timestamps
    .t-count mono tabular counter        — never a pill, never accent
-   .t-serif prose register              — sentence-length content only     */
+   .prose   the prose register          — a reading passage, and only that  */
 .t-over{font-family:var(--p-font-mono);font-size:var(--p-size-micro);line-height:14px;font-weight:500;
   letter-spacing:var(--p-track-micro);text-transform:uppercase;color:var(--p-ink-subtle);
   font-feature-settings:'tnum'}
@@ -359,16 +359,29 @@ svg{display:block}
   color:var(--p-ink-subtle);font-feature-settings:'tnum';white-space:nowrap}
 .t-count{font-family:var(--p-font-mono);font-size:var(--p-size-xs);line-height:16px;
   color:var(--p-ink-muted);font-feature-settings:'tnum'}
-.t-serif{font-family:var(--p-font-serif);font-weight:400;line-height:var(--p-leading-loose);font-optical-sizing:auto}
+/* THE SERIF RULE (visual-spec §2.7, binding).
+   Source Serif is the PROSE register: agent narration, analysis, summary,
+   long-form explanation — a passage the user reads. The spec's own sentence is
+   "Headings always stay structural", so serif never sets a page title, a card
+   head, an empty-state title, a wizard question, a note title, a brand mark,
+   a button, a label or any other lone line of chrome. Two tests before you
+   reach for it: does it run to more than one sentence, and is it the content
+   rather than the frame around the content? Both yes, or it is Geist. */
+.prose{font-family:var(--p-font-serif);font-size:var(--p-size-md);font-weight:400;
+  line-height:26px;font-optical-sizing:auto;color:var(--p-ink)}
+.prose--lg{font-size:var(--p-size-lg);line-height:28px}
+.prose--compact{font-size:var(--p-size-sm);line-height:22px}
+.prose strong{font-weight:600}
+.prose p + p{margin-top:var(--p-space-4)}
 .t-mono{font-family:var(--p-font-mono);font-size:var(--p-size-sm);font-feature-settings:'tnum'}
 .t-num{font-variant-numeric:tabular-nums}
 .t-muted{color:var(--p-ink-muted)}
 .t-subtle{color:var(--p-ink-subtle)}
 .t-sm{font-size:var(--p-size-sm)}
 .t-xs{font-size:var(--p-size-xs)}
-/* Lead paragraph = prose register: a sentence, so it is set in Source Serif */
-.t-lead{font-family:var(--p-font-serif);font-size:var(--p-size-lg);line-height:26px;
-  color:var(--p-ink-muted);font-optical-sizing:auto}
+/* Lead paragraph: the one or two lines that explain a title. Structural — a
+   sentence of instruction is not a reading passage (see the serif rule). */
+.t-lead{font-size:var(--p-size-lg);line-height:26px;color:var(--p-ink-muted)}
 
 /* ---------- layout helpers ---------- */
 .row{display:flex;align-items:center;gap:var(--p-space-3)}
@@ -456,11 +469,42 @@ svg{display:block}
 .btn[aria-disabled="true"]{background:var(--p-sunken);color:var(--text-disabled);box-shadow:none;cursor:not-allowed}
 .iconbtn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:var(--p-radius-sm);border:1px solid transparent;background:none;color:var(--p-ink-subtle);cursor:pointer}
 .iconbtn:hover{background:var(--p-sunken);color:var(--p-ink)}
+/* ---------- keyboard affordance ----------
+   A shortcut is permanent UI, not a tooltip. The cap rides inside the button
+   that owns the action, so the hand learns the key while the eye reads the
+   verb; a screen that is meant to be worked by keyboard also carries a legend
+   (.keys) where a footer would otherwise be empty. Caps stay neutral — a
+   keycap is metadata, so it never borrows the accent, except by inheriting
+   the contrast of the one primary button it sits in. */
 .kbd{
   display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 4px;
   border:1px solid var(--p-line);border-radius:4px;
   background:var(--p-surface);font-family:var(--p-font-mono);font-size:var(--p-size-micro);color:var(--p-ink-subtle)
 }
+.btn .kbd{margin-left:3px}
+.btn--primary .kbd{border-color:rgba(255,255,255,.36);background:rgba(255,255,255,.15);color:var(--p-on-accent)}
+.btn--risk .kbd{border-color:var(--p-risk-line)}
+.keys{display:flex;align-items:center;gap:var(--p-space-4);flex-wrap:wrap;
+  font-family:var(--p-font-mono);font-size:var(--p-size-meta);color:var(--p-ink-subtle)}
+.keys__pair{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+
+/* ---------- queue meter ----------
+   For work you draw DOWN rather than fill up, which is a different component
+   from the `.meter` progress bar in Status (that one fills; this one empties —
+   hence the separate name, and do not merge them). The count that leads is what
+   is LEFT, not what is done: Superhuman's inbox counter shrinks toward zero,
+   and the goal-gradient effect is the reason it works. One hairline cell per
+   remaining item makes the draw-down countable at a glance. Cells are neutral
+   ink; only the cell you are standing on is lit, which spends exactly one
+   accent element, never a coloured bar. */
+.qmeter{display:flex;align-items:center;gap:var(--p-space-4)}
+.qmeter__cells{display:flex;gap:3px;flex:1;min-width:60px}
+.qmeter__cell{height:4px;flex:1;min-width:2px;border-radius:2px;background:var(--p-line)}
+.qmeter__cell--done{background:var(--p-ink-subtle)}
+.qmeter__cell--now{background:var(--accent-fill);
+  box-shadow:0 0 4px var(--accent-glow-core), 0 0 9px var(--accent-glow)}
+.qmeter__left{font-family:var(--p-font-mono);font-size:var(--p-size-xs);color:var(--p-ink-muted);
+  font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
 
 /* ---------- surfaces ----------
    Cards are white floating surfaces on the cool canvas: hairline directional
@@ -531,6 +575,47 @@ svg{display:block}
 .tile--attention .tile__metric{color:var(--p-warn)}
 .tile__action{margin-top:var(--p-space-2)}
 
+/* ---------- fact list ----------
+   The three bulleted facts under a piece of prose: 3px neutral bullets, mono
+   figures, sentence remainder in ink — exactly the "Open tickets: 3 · all
+   assigned" list in the Lume reference application's briefing container. Used
+   wherever a passage needs its numbers stated under it rather than inside it. */
+.factline{display:flex;flex-direction:column;gap:5px}
+.factline li{position:relative;padding-left:11px;font-size:var(--p-size-xs);line-height:18px;color:var(--p-ink)}
+.factline .t-mono{font-size:var(--p-size-meta);color:var(--p-ink)}
+.fact-dot{position:absolute;left:0;top:8px;width:3px;height:3px;border-radius:50%;background:var(--p-ink-subtle)}
+
+/* ---------- tool surface ----------
+   What the connected agents can actually call: palaia's built-ins and every
+   server the user has added, read as one list (MASTERPLAN P2 — "configure
+   once, use everywhere" — made visible instead of implied). Home Assistant's
+   add-on store is the reference: small uniform rows, an icon that identifies
+   the source, and one quiet way to get more. Reachability is text and a dot,
+   never a fill; the tool count is mono metadata. */
+/* Column flow, not row flow, and that is the point: palaia's own tools fill
+   the left column and everything the user added fills the right, so the split
+   between "what palaia is" and "what you gave it" is legible without a single
+   extra label — and the rows still read as one uniform list, which is the
+   claim the gateway makes. */
+.tools{display:grid;gap:2px;grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-rows:repeat(3,auto);grid-auto-flow:column}
+.tool{display:flex;align-items:center;gap:9px;padding:5px 8px;border-radius:var(--p-radius-md);
+  min-width:0;color:var(--p-ink);text-decoration:none}
+.tool:hover{background:var(--p-surface-2);text-decoration:none}
+.tool__mark{width:24px;height:24px;border-radius:7px;flex:none;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--p-surface-raised);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
+  color:var(--p-ink-subtle);box-shadow:0 1px 0 var(--top-edge-highlight) inset}
+.tool__name{font-size:var(--p-size-sm);font-weight:500;min-width:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tool__count{font-family:var(--p-font-mono);font-size:var(--p-size-meta);color:var(--p-ink-subtle);
+  font-variant-numeric:tabular-nums;margin-left:auto;flex:none}
+/* a source that is installed but unreachable: the name goes quiet and the
+   count is replaced by the reason — still no colour on the box */
+.tool--off .tool__name{color:var(--p-ink-muted)}
+.tool--off .tool__mark{color:var(--text-disabled)}
+.tool--off .tool__count{color:var(--p-warn)}
+
 /* ---------- banners / callouts ---------- */
 /* Neutral surface; the state colours the icon and the title only, never the box (§2.6) */
 .banner{display:flex;gap:var(--p-space-3);padding:var(--p-space-4);border-radius:var(--p-radius-md);
@@ -568,8 +653,16 @@ svg{display:block}
 .empty__mark{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:var(--p-radius-lg);
   background:var(--p-surface-raised);color:var(--p-ink-subtle);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
   box-shadow:0 1px 0 var(--top-edge-highlight) inset}
-.empty__title{font-family:var(--p-font-serif);font-size:var(--p-size-xl);font-weight:400;line-height:28px;font-optical-sizing:auto}
+/* An empty-state title is a heading, so it is structural (see the serif rule). */
+.empty__title{font-size:var(--p-size-xl);font-weight:600;line-height:28px;letter-spacing:var(--p-track-tight)}
 .empty__text{max-width:52ch;color:var(--p-ink-muted);font-size:var(--p-size-sm);line-height:20px}
+/* Finishing a queue is an achievement, not an absence. The done variant keeps
+   every restraint — the ring is border-and-icon colour, never a fill — and
+   spends its warmth on the copy and on one drawn mark. */
+.empty--done .empty__mark{border-color:var(--p-ok-line);color:var(--p-ok)}
+.empty--done .empty__title{font-size:var(--p-size-2xl);line-height:32px}
+.empty__recap{display:flex;flex-direction:column;gap:6px;align-items:flex-start;text-align:left;
+  margin-top:var(--p-space-4);padding-top:var(--p-space-4);border-top:1px solid var(--p-line);width:100%;max-width:52ch}
 
 /* ---------- forms ---------- */
 .field{display:flex;flex-direction:column;gap:6px}
@@ -648,11 +741,12 @@ svg{display:block}
   border-right:1px solid var(--p-line);background:var(--p-surface-2);min-height:0}
 .brand{display:flex;align-items:center;gap:9px;color:var(--p-ink);text-decoration:none;padding:0 var(--p-space-2)}
 .brand:hover{text-decoration:none}
-/* neutral raised chip, not an accent tile — the shell spends no accent on branding */
+/* neutral raised chip, not an accent tile — the shell spends no accent on
+   branding, and a single glyph is chrome, so it is Geist (see the serif rule) */
 .brand__mark{width:22px;height:22px;border-radius:7px;background:var(--p-surface-raised);
   border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);color:var(--p-ink);
-  display:flex;align-items:center;justify-content:center;font-family:var(--p-font-serif);font-size:13px;font-weight:600;flex:none;
-  box-shadow:0 1px 0 var(--top-edge-highlight) inset}
+  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex:none;
+  letter-spacing:var(--p-track-tight);box-shadow:0 1px 0 var(--top-edge-highlight) inset}
 .brand__name{font-size:var(--p-size-md);font-weight:600;letter-spacing:var(--p-track-tight)}
 .brand__ver{font-family:var(--p-font-mono);font-size:var(--p-size-micro);color:var(--p-ink-subtle);letter-spacing:.04em}
 .nav{display:flex;flex-direction:column;gap:var(--p-space-5);flex:1;min-height:0;overflow:auto;scrollbar-width:thin}
@@ -744,8 +838,13 @@ svg{display:block}
 .wiz__panel{display:flex;justify-content:center;padding:var(--p-space-8) var(--p-space-6) var(--p-space-10)}
 .wiz__inner{width:100%;max-width:640px;display:flex;flex-direction:column;gap:var(--p-space-4)}
 .wiz__eyebrow{display:flex;align-items:center;gap:8px}
-.wiz__title{font-family:var(--p-font-serif);font-size:var(--p-size-3xl);font-weight:400;
-  line-height:40px;font-optical-sizing:auto;max-width:30ch}
+/* The wizard question is a heading — the single largest line of chrome in the
+   product — so it is Geist, not Source Serif (see the serif rule in the shared
+   block). It was the clearest case of the misapplication: one short line, set
+   in a face meant for paragraphs. At 32px the structural register carries the
+   weight on its own; 500 rather than 600 keeps a question from shouting. */
+.wiz__title{font-size:var(--p-size-3xl);font-weight:500;letter-spacing:-.012em;
+  line-height:40px;max-width:30ch}
 .wiz__foot{display:flex;align-items:center;gap:var(--p-space-3);padding-top:var(--p-space-2)}
 .wiz__foot .grow{text-align:right}
 .radiocards{display:flex;flex-direction:column;gap:var(--p-space-3)}
@@ -845,7 +944,7 @@ svg{display:block}
 
 <div class="wiz__eyebrow"><span class="t-over">Step 1 of 4</span><span class="badge">nothing installed on your clients yet</span></div>
 <h2 class="wiz__title">Let&rsquo;s set up your hub.</h2>
-<p class="t-lead">One account for you, the owner. Add GitHub, Google or any OIDC sign-in later &mdash; and when you do,
+<p class="t-lead">One account for you, the owner. You can add GitHub, Google or <span title="Any OpenID Connect provider — Entra ID, Okta, Authentik, Keycloak">your company sign-in</span> later &mdash; and when you do,
 palaia closes the password door behind it. Two doors into the same room mean the weaker one decides.</p>
 <div class="card"><div class="card__body stack--3" style="display:flex;flex-direction:column">
   <div class="field"><label class="field__label" for="ob-name">Your name</label><input class="input" id="ob-name" value="Christian" readonly></div>
@@ -876,23 +975,23 @@ palaia closes the password door behind it. Two doors into the same room mean the
 <div class="wiz__eyebrow"><span class="t-over">Step 2 of 4</span><span class="badge">enforced in code, not advice</span></div>
 <h2 class="wiz__title">Who should be able to reach palaia?</h2>
 <p class="t-lead">This decides which AI clients can connect at all. Pick by what you actually use &mdash;
-palaia translates it into network and auth rules for you.</p>
+palaia turns that into the network and sign-in rules for you.</p>
 
 <div class="radiocards">
   <label class="radiocard" for="ob-2">
     <span class="radiocard__pick"></span>
     <span class="grow">
-      <span class="row" style="gap:8px"><span class="radiocard__name">Locked</span><span class="badge">auth optional</span></span>
-      <span class="radiocard__when">You only use CLI and desktop agents on your own machines or tailnet.</span>
-      <span class="factlist"><span class="fact fact--yes"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 10 18 19.5 6.5"/></svg><span>Claude Code, Codex, LM Studio</span></span><span class="fact fact--no"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg><span>claude.ai, ChatGPT, phone apps</span></span></span>
+      <span class="row" style="gap:8px"><span class="radiocard__name">Locked</span><span class="badge">sign-in optional</span></span>
+      <span class="radiocard__when">You only use agents in your terminal and apps on your own machines.</span>
+      <span class="factlist"><span class="fact fact--yes"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 10 18 19.5 6.5"/></svg><span>Claude Code CLI, Codex, LM Studio</span></span><span class="fact fact--no"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg><span>claude.ai, ChatGPT, phone apps</span></span></span>
     </span>
   </label>
 
   <label class="radiocard radiocard--on" for="ob-2">
     <span class="radiocard__pick"></span>
     <span class="grow">
-      <span class="row" style="gap:8px"><span class="radiocard__name">Cloud</span><span class="badge">recommended</span><span class="badge">auth required</span></span>
-      <span class="radiocard__when">You want claude.ai, ChatGPT or your phone to reach your memory. palaia sets up a Tailscale or Cloudflare tunnel next &mdash; no open ports &mdash; and this dashboard stays tailnet-only.</span>
+      <span class="row" style="gap:8px"><span class="radiocard__name">Cloud</span><span class="badge">recommended</span><span class="badge">sign-in required</span></span>
+      <span class="radiocard__when">You want claude.ai, ChatGPT or your phone to reach your memory. palaia sets up a private tunnel next &mdash; no ports opened on your router &mdash; and this dashboard stays reachable only from your own network.</span>
       <span class="factlist"><span class="fact fact--yes"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 10 18 19.5 6.5"/></svg><span>Everything above, plus mobile</span></span><span class="fact fact--no"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg><span>Dashboard on the internet</span></span></span>
     </span>
   </label>
@@ -900,9 +999,9 @@ palaia translates it into network and auth rules for you.</p>
   <label class="radiocard" for="ob-2">
     <span class="radiocard__pick"></span>
     <span class="grow">
-      <span class="row" style="gap:8px"><span class="radiocard__name">Open</span><span class="badge badge--risk">auth + hardening checklist</span></span>
+      <span class="row" style="gap:8px"><span class="radiocard__name">Open</span><span class="badge badge--risk">sign-in, plus a security checklist</span></span>
       <span class="radiocard__when">You consciously want the dashboard itself reachable from the internet, for example to administer it while travelling.</span>
-      <span class="factlist"><span class="fact fact--yes"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 10 18 19.5 6.5"/></svg><span>Everything, from anywhere</span></span><span class="fact fact--no"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg><span>Skipping the hardening checklist</span></span></span>
+      <span class="factlist"><span class="fact fact--yes"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 10 18 19.5 6.5"/></svg><span>Everything, from anywhere</span></span><span class="fact fact--no"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg><span>Skipping the security checklist</span></span></span>
     </span>
   </label>
 </div>
@@ -990,17 +1089,17 @@ palaia translates it into network and auth rules for you.</p>
 </aside>
 <div class="wiz__panel"><div class="wiz__inner">
 
-<div class="wiz__eyebrow"><span class="t-over">Step 4 of 4</span><span class="badge">target: connected in under 2 minutes</span></div>
+<div class="wiz__eyebrow"><span class="t-over">Step 4 of 4</span><span class="badge">most people finish this one in a minute</span></div>
 <h2 class="wiz__title">Connect your first client.</h2>
 <p class="t-lead">Pick where you work most. You paste one thing &mdash; palaia handles the endpoint, the token and the tool list.</p>
 
 <div class="clientgrid">
-  <label class="clientcard clientcard--on" for="ob-4"><span class="row" style="gap:8px"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 4.9 4.9 1.9-4.9 1.9L12 17.1l-1.9-4.9-4.9-1.9 4.9-1.9z"/></svg><span class="clientcard__name">Claude Code</span></span><span class="t-xs t-muted">one command &middot; 1 min</span></label>
+  <label class="clientcard clientcard--on" for="ob-4"><span class="row" style="gap:8px"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 4.9 4.9 1.9-4.9 1.9L12 17.1l-1.9-4.9-4.9-1.9 4.9-1.9z"/></svg><span class="clientcard__name">Claude Code CLI</span></span><span class="t-xs t-muted">one command &middot; 1 min</span></label>
   <label class="clientcard" for="ob-4"><span class="row" style="gap:8px"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg><span class="clientcard__name">Codex</span></span><span class="t-xs t-muted">one command &middot; 1 min</span></label>
-  <label class="clientcard" for="ob-4"><span class="row" style="gap:8px"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg><span class="clientcard__name">Claude Desktop</span></span><span class="t-xs t-muted">signed bundle &middot; 1 min</span></label>
+  <label class="clientcard" for="ob-4"><span class="row" style="gap:8px"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg><span class="clientcard__name">Claude Code (Desktop app)</span></span><span class="t-xs t-muted">one click &middot; 1 min</span></label>
   <label class="clientcard" for="ob-4"><span class="row" style="gap:8px"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13.8a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2"/><path d="M14 10.2a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2"/></svg><span class="clientcard__name">claude.ai</span></span><span class="t-xs t-muted">guided &middot; 2 min</span></label>
   <label class="clientcard" for="ob-4"><span class="row" style="gap:8px"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13.8a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2"/><path d="M14 10.2a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2"/></svg><span class="clientcard__name">ChatGPT</span></span><span class="t-xs t-muted">guided &middot; 2 min</span></label>
-  <label class="clientcard" for="ob-4"><span class="row" style="gap:8px"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg><span class="clientcard__name">Something else</span></span><span class="t-xs t-muted">endpoint + token</span></label>
+  <label class="clientcard" for="ob-4"><span class="row" style="gap:8px"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg><span class="clientcard__name">Something else</span></span><span class="t-xs t-muted">address and key</span></label>
 </div>
 
 <div class="card">
