@@ -11,17 +11,17 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from . import __version__
 from .auth import TokenStore, build_auth_router, check_gateway_auth_policy
 from .config import HubConfig, load_config
 from .events import EventBus, build_events_router, start_background_tasks, stop_background_tasks
-from .gateway import GatewayASGI
+from .gateway import GatewayASGI, VaultService
 from .logging import setup_logging
 from .static import mount_dashboard
 
@@ -38,6 +38,7 @@ def create_app(
     *,
     gateway: GatewayASGI | None = None,
     token_store: TokenStore | None = None,
+    vault_services: Mapping[str, VaultService] | None = None,
 ) -> FastAPI:
     """Build the hub's ASGI app.
 
@@ -66,8 +67,14 @@ def create_app(
             than against config alone; :mod:`palaia_hub.config` already
             refuses the config-level version of this mistake earlier, at
             ``load_config()`` time).
+        vault_services: the same ``{vault_key: VaultService}`` mapping passed
+            to ``build_gateway`` (SPEC-107), used only to back the
+            ``/api/vaults/{vault_key}/inbox_status`` REST endpoint below.
+            Independent of ``gateway`` on purpose: a caller can expose the
+            REST endpoint without an MCP gateway mounted, and vice versa.
     """
     config = config or load_config()
+    vault_services = vault_services or {}
     setup_logging(config)
     if gateway is not None:
         check_gateway_auth_policy(config.mode, gateway.profile_servers)
@@ -114,6 +121,18 @@ def create_app(
             "mode": config.mode,
             "uptime_seconds": round(time.monotonic() - start_time, 3),
         }
+
+    # SPEC-107: inbox visibility outside the MCP surface (deliverable #3).
+    @app.get("/api/vaults/{vault_key}/inbox_status")
+    async def inbox_status(vault_key: str) -> dict[str, Any]:
+        service = vault_services.get(vault_key)
+        if service is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"no vault {vault_key!r} configured with a backing service",
+            )
+        status = await service.inbox_status()
+        return status.model_dump()
 
     # SPEC-109: the dashboard's live-state layer (health + vault-change
     # events) and, once `npm run build` has produced one, the static
