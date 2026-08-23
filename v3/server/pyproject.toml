@@ -11,13 +11,22 @@ dependencies = [
     "pydantic>=2.7",
     "pyyaml>=6.0",
     "platformdirs>=4.2",
+    "fastmcp==3.4.7",
+    "watchfiles>=0.22",
 ]
 
 [project.scripts]
 palaia-hub = "palaia_hub.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "httpx>=0.27", "types-PyYAML>=6.0"]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "httpx>=0.27",
+    "types-PyYAML>=6.0",
+    "anyio>=4",
+]
 
 [build-system]
 requires = ["hatchling"]
