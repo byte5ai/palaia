@@ -15,6 +15,7 @@ v2 hotfixes happen on the `v2-maintenance` branch.
 | [specs/](specs/) | Executable SPECs (one SPEC = one branch = one PR), Phase 0 + 1 |
 | [research/](research/) | Research dossiers the plan is grounded in |
 | [decisions/](decisions/) | Architecture Decision Records (ADRs) for v3 |
+| [docs/design/](docs/design/) | UX north star: design system, principles, and HTML mockups of the key screens |
 
 ## Dev setup
 
