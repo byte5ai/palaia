@@ -61,10 +61,18 @@
   --p-size-2xl:var(--type-h1-size);        /* 24px — page titles, metrics (was 26px) */
   --p-size-3xl:var(--type-display-size);   /* 32px — the one-glance verdict (was 33px) */
   --p-size-display:var(--type-display-size); /* 32px — onboarding (was 42px; Lume tops out here) */
+  /* Two sub-caption steps for the mono METADATA register. Not invention: the Lume
+     reference application sets its micro-labels and system strings at 9.5–11px
+     (see the KPI tile labels, LAYERS/SOURCES rail labels and `rev 4 · 14:08`
+     meta strings in the Lume mockups). 10px/11px are those two sizes, rounded
+     onto whole pixels; both are mono-only and never carry sentence text. */
+  --p-size-micro:10px;                     /* uppercase mono micro-label */
+  --p-size-meta:11px;                      /* mono system string / card meta */
   /* Leading ratios mirror the size/lh pairs above (display 32/40, h1 24/32, body 14/22, prose 16/26) */
   --p-leading-tight:1.2; --p-leading-snug:1.4; --p-leading-normal:1.571; --p-leading-loose:1.625;
   --p-track-tight:-.01em;  /* Lume .lume-display letter-spacing */
-  --p-track-label:.02em;   /* Lume type.caption.strong — "uppercase eyebrows" */
+  --p-track-label:.02em;   /* Lume type.caption.strong — quiet sans eyebrow */
+  --p-track-micro:.08em;   /* uppercase mono micro-label tracking (Lume reference app) */
 
   /* Space / radius / motion aliases (Lume's 4pt grid already matches palaia's 1:1 except space-10) */
   --p-space-1:var(--space-1);  --p-space-2:var(--space-2);  --p-space-3:var(--space-3); --p-space-4:var(--space-4);
@@ -76,7 +84,7 @@
   --p-dur-1:var(--duration-quick); --p-dur-2:var(--duration-smooth); --p-dur-3:var(--duration-condense);
 
   /* Layout — app-shell constants, outside Lume's token scope */
-  --p-nav-w:248px; --p-rail-w:64px; --p-topbar-h:60px; --p-content-max:1180px;
+  --p-nav-w:236px; --p-rail-w:60px; --p-topbar-h:60px; --p-content-max:1180px;
 }
 
 /* ================================================================
@@ -122,6 +130,8 @@
   --p-line-strong:var(--border-strong-btm);
   --p-ink:var(--text-primary); --p-ink-muted:var(--text-secondary); --p-ink-subtle:var(--text-tertiary);
   --p-shadow-1:var(--shadow-raised); --p-shadow-2:var(--shadow-popover); --p-shadow-3:var(--shadow-modal);
+  /* hairline rule for ink underlines — links stay INK, the accent is hover-only */
+  --p-underline:color-mix(in srgb, var(--text-primary) 26%, transparent);
 
   --p-ok:var(--state-success-fg);       --p-ok-soft:color-mix(in srgb, var(--state-success-fg) 12%, transparent);
   --p-ok-line:color-mix(in srgb, var(--state-success-fg) 40%, transparent);
@@ -172,6 +182,7 @@
   --p-line:var(--border-subtle-btm); --p-line-strong:var(--border-strong-btm);
   --p-ink:var(--text-primary); --p-ink-muted:var(--text-secondary); --p-ink-subtle:var(--text-tertiary);
   --p-shadow-1:var(--shadow-raised); --p-shadow-2:var(--shadow-popover); --p-shadow-3:var(--shadow-modal);
+  --p-underline:color-mix(in srgb, var(--text-primary) 30%, transparent);
 
   --p-ok:var(--state-success-fg);   --p-ok-soft:color-mix(in srgb, var(--state-success-fg) 16%, transparent);
   --p-ok-line:color-mix(in srgb, var(--state-success-fg) 40%, transparent);
@@ -215,6 +226,7 @@
   --p-line:var(--border-subtle-btm); --p-line-strong:var(--border-strong-btm);
   --p-ink:var(--text-primary); --p-ink-muted:var(--text-secondary); --p-ink-subtle:var(--text-tertiary);
   --p-shadow-1:var(--shadow-raised); --p-shadow-2:var(--shadow-popover); --p-shadow-3:var(--shadow-modal);
+  --p-underline:color-mix(in srgb, var(--text-primary) 30%, transparent);
 
   --p-ok:var(--state-success-fg);   --p-ok-soft:color-mix(in srgb, var(--state-success-fg) 16%, transparent);
   --p-ok-line:color-mix(in srgb, var(--state-success-fg) 40%, transparent);
@@ -285,13 +297,32 @@
 /* palaia aliases onto the active accent slot */
 :root{
   --p-accent:var(--accent-fill); --p-accent-hover:var(--accent-fill-hover);
-  --p-accent-ink:var(--accent-fill); /* Lume's text.accent = the active palette's accent */
+  --p-accent-ink:var(--accent-fill); /* Lume's text.accent — reserved for hover/selection, not metadata */
   --p-accent-soft:var(--accent-subtle);
   --p-accent-line:color-mix(in srgb, var(--accent-fill) 45%, transparent);
   --p-on-accent:var(--text-on-accent);
+  /* The QUIET selection wash: a left-anchored breath of accent-subtle that
+     dies out before the middle of the row. Paired with a 2px accent edge bar
+     it is the whole of the "selected" signal in app chrome — no tinted pill,
+     no accent text. Data rows (tree, table, queue) may additionally carry
+     Lume's two-stop glow via .lume-selected. */
+  --p-sel-wash:linear-gradient(90deg, var(--accent-subtle) 0%,
+               color-mix(in srgb, var(--accent-subtle) 34%, transparent) 46%, transparent 78%);
 }
 
-/* ================ primitives & components ================ */
+/* ================ primitives & components ================
+   VOICE (SPEC-005 redo, 2026-08-23) — three rules govern everything below:
+   1. ACCENT RESTRAINT. Atelier appears only as selection edges, small dots
+      and glows, the single primary per screen, and tiny highlights. Target
+      ~3–6 accent-coloured elements per screen, matching the Lume reference
+      application. Surfaces stay cool grey/white.
+   2. METADATA IS NEUTRAL. Micro-labels, counters, timestamps, ids and
+      system strings are Geist Mono in text-tertiary/secondary with
+      letterspacing when uppercased. Never accent-coloured.
+   3. CONTROLS ARE QUIET. Small compact heights; the raised-surface
+      secondary is the default button. One accent-gradient primary per
+      screen; Signal stays capped at one element across the whole wizard.
+   ======================================================== */
 *,*::before,*::after{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{
@@ -302,33 +333,48 @@ body{
 }
 h1,h2,h3,h4,p{margin:0}
 ul{margin:0;padding:0;list-style:none}
-a{color:var(--p-accent-ink);text-decoration:none}
-a:hover{text-decoration:underline;text-underline-offset:2px}
+/* Links are INK on a hairline underline. The accent arrives on hover or in a
+   selected row — it is never the resting colour of a link (voice rule 2). */
+a{color:inherit;text-decoration:underline;text-decoration-thickness:1px;
+  text-underline-offset:2px;text-decoration-color:var(--p-underline)}
+a:hover{text-decoration-color:var(--accent-fill)}
 button{font:inherit;color:inherit}
 /* Lume focus ring: outer corona + inner highlight (lume-focus-ring), not a flat outline */
 :focus-visible{outline:none;border-radius:var(--p-radius-sm);
   box-shadow:0 0 0 1px var(--accent-fill), 0 0 0 4px var(--accent-glow), 0 0 12px var(--accent-glow-core)}
 svg{display:block}
-.i{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:none}
-.i--sm{width:16px;height:16px}
-.i--lg{width:28px;height:28px;stroke-width:1.25}
+.i{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.i--sm{width:15px;height:15px;stroke-width:1.6}
+.i--lg{width:26px;height:26px;stroke-width:1.25}
 
-/* ---------- text primitives ---------- */
-.t-over{font-size:var(--p-size-2xs);letter-spacing:var(--p-track-label);text-transform:uppercase;color:var(--p-ink-subtle);font-weight:600}
-.t-serif{font-family:var(--p-font-serif);letter-spacing:var(--p-track-tight);line-height:var(--p-leading-tight);font-weight:600;font-optical-sizing:auto}
+/* ---------- text primitives ----------
+   .t-over  uppercase mono micro-label  — the metadata voice, always tertiary
+   .t-meta  mono system string          — revisions, ids, timestamps
+   .t-count mono tabular counter        — never a pill, never accent
+   .t-serif prose register              — sentence-length content only     */
+.t-over{font-family:var(--p-font-mono);font-size:var(--p-size-micro);line-height:14px;font-weight:500;
+  letter-spacing:var(--p-track-micro);text-transform:uppercase;color:var(--p-ink-subtle);
+  font-feature-settings:'tnum'}
+.t-meta{font-family:var(--p-font-mono);font-size:var(--p-size-meta);line-height:16px;
+  color:var(--p-ink-subtle);font-feature-settings:'tnum';white-space:nowrap}
+.t-count{font-family:var(--p-font-mono);font-size:var(--p-size-xs);line-height:16px;
+  color:var(--p-ink-muted);font-feature-settings:'tnum'}
+.t-serif{font-family:var(--p-font-serif);font-weight:400;line-height:var(--p-leading-loose);font-optical-sizing:auto}
 .t-mono{font-family:var(--p-font-mono);font-size:var(--p-size-sm);font-feature-settings:'tnum'}
 .t-num{font-variant-numeric:tabular-nums}
 .t-muted{color:var(--p-ink-muted)}
 .t-subtle{color:var(--p-ink-subtle)}
 .t-sm{font-size:var(--p-size-sm)}
 .t-xs{font-size:var(--p-size-xs)}
-.t-lead{font-size:var(--p-size-lg);color:var(--p-ink-muted);line-height:var(--p-leading-snug)}
+/* Lead paragraph = prose register: a sentence, so it is set in Source Serif */
+.t-lead{font-family:var(--p-font-serif);font-size:var(--p-size-lg);line-height:26px;
+  color:var(--p-ink-muted);font-optical-sizing:auto}
 
 /* ---------- layout helpers ---------- */
 .row{display:flex;align-items:center;gap:var(--p-space-3)}
 .row--wrap{flex-wrap:wrap}
 .row--between{display:flex;align-items:center;justify-content:space-between;gap:var(--p-space-4)}
-.stack{display:flex;flex-direction:column;gap:var(--p-space-4)}
+.stack{display:flex;flex-direction:column;gap:var(--p-space-5)}
 .stack--2{gap:var(--p-space-2)}
 .stack--3{gap:var(--p-space-3)}
 .stack--6{gap:var(--p-space-6)}
@@ -343,29 +389,40 @@ svg{display:block}
 .lume-glow{box-shadow:0 0 4px var(--accent-glow-core), 0 4px 12px var(--accent-glow)}
 .lume-glow-strong{box-shadow:0 0 6px var(--accent-glow-core), 0 6px 18px var(--accent-glow-strong)}
 .lume-focus-ring{outline:none;box-shadow:0 0 0 1px var(--accent-fill), 0 0 0 4px var(--accent-glow), 0 0 12px var(--accent-glow-core)}
+/* Full Lume two-stop selection halo — for DATA rows (tree, table, queue) */
 .lume-selected{position:relative;
   background:radial-gradient(ellipse at 20% 50%, var(--accent-glow-core) 0%, var(--accent-glow) 22%, transparent 70%),
              linear-gradient(180deg, var(--accent-subtle), transparent);
   box-shadow:0 0 12px -2px var(--accent-glow-core), 0 0 24px -6px var(--accent-glow-strong)}
 .lume-selected::before{content:'';position:absolute;left:0;top:4px;bottom:4px;width:2px;border-radius:2px;
   background:var(--accent-fill);box-shadow:0 0 6px var(--accent-glow-strong)}
+/* Quiet selection — for app CHROME (nav, steps, tabs): near-invisible wash
+   plus the 2px accent edge. Text stays ink. */
+.lume-selected-quiet{position:relative;background:var(--p-sel-wash)}
+.lume-selected-quiet::before{content:'';position:absolute;left:0;top:5px;bottom:5px;width:2px;border-radius:2px;
+  background:var(--accent-fill)}
 @keyframes lume-skeleton-pulse{0%{background-position:-200% 0}100%{background-position:200% 0}}
 .lume-skeleton{background:linear-gradient(90deg, var(--skeleton-base) 25%, var(--skeleton-hi) 50%, var(--skeleton-base) 75%);
   background-size:200% 100%;animation:lume-skeleton-pulse 1400ms linear infinite;border-radius:var(--p-radius-sm)}
 
-/* ---------- buttons ---------- */
+/* ---------- buttons ----------
+   Compact and quiet by default: 30px tall, raised surface, hairline subtle
+   border, inset top-edge highlight. .btn--primary is the accent-gradient
+   exception and is capped at ONE per screen. */
 .btn{
-  display:inline-flex;align-items:center;justify-content:center;gap:var(--p-space-2);
-  height:36px;padding:0 var(--p-space-4);border-radius:var(--p-radius-md);
-  border:1px solid var(--p-line-strong);border-top-color:var(--border-strong-top);
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:30px;padding:0 var(--p-space-3);border-radius:var(--p-radius-md);
+  border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
   background:var(--p-surface-raised);color:var(--p-ink);
-  font-size:var(--p-size-sm);font-weight:550;cursor:pointer;white-space:nowrap;
+  font-size:var(--p-size-sm);font-weight:500;cursor:pointer;white-space:nowrap;
+  text-decoration:none;
   box-shadow:0 1px 0 var(--top-edge-highlight) inset;
   transition:background var(--p-dur-1) var(--p-ease),border-color var(--p-dur-1) var(--p-ease),
-             transform var(--p-dur-1) var(--p-ease),box-shadow var(--p-dur-1) var(--p-ease);
+             box-shadow var(--p-dur-1) var(--p-ease);
 }
-.btn:hover{background:var(--p-surface-2);border-color:var(--p-ink-subtle)}
-.btn:active{transform:translateY(1px)}
+.btn:hover{background:linear-gradient(180deg, var(--accent-subtle), var(--accent-subtle)), var(--p-surface-raised);
+  text-decoration:none}
+.btn:active{box-shadow:none}
 .btn--primary{
   background:linear-gradient(180deg, var(--accent-fill) 0%, var(--accent-fill-hover) 100%);
   border-color:var(--accent-fill-hover);border-top-color:rgba(255,255,255,.22);color:var(--p-on-accent);
@@ -379,7 +436,7 @@ svg{display:block}
 /* Signal — the single loud CTA, capped at one per view (see the element that uses it) */
 .btn--signal{
   background:linear-gradient(180deg, var(--signal-fill) 0%, var(--signal-fill-hover) 100%);
-  border-color:var(--signal-fill-hover);border-top-color:rgba(255,255,255,.28);color:var(--p-on-accent);
+  border-color:var(--signal-fill-hover);border-top-color:rgba(255,255,255,.28);color:#fff;
   box-shadow:0 0 4px var(--signal-glow-core), 0 4px 12px var(--signal-glow), inset 0 1px 0 rgba(255,255,255,.22);
 }
 .btn--signal:hover{
@@ -387,65 +444,91 @@ svg{display:block}
   border-color:var(--signal-fill-active);
   box-shadow:0 0 6px var(--signal-glow-core), 0 6px 18px var(--signal-glow-strong), inset 0 1px 0 rgba(255,255,255,.22);
 }
-.btn--ghost{background:transparent;border-color:transparent;border-top-color:transparent;color:var(--p-ink-muted);box-shadow:none}
+.btn--ghost{background:none;border-color:transparent;border-top-color:transparent;color:var(--p-ink-muted);box-shadow:none}
 .btn--ghost:hover{background:var(--p-sunken);color:var(--p-ink);border-color:transparent}
-.btn--quiet{background:transparent;border-color:var(--p-line);border-top-color:var(--border-subtle-top);color:var(--p-ink-muted);box-shadow:none}
-.btn--risk{background:transparent;border-color:var(--p-risk-line);border-top-color:var(--p-risk-line);color:var(--p-risk);box-shadow:none}
+.btn--quiet{background:none;border-color:var(--p-line);border-top-color:var(--border-subtle-top);color:var(--p-ink-muted);box-shadow:none}
+.btn--quiet:hover{color:var(--p-ink);background:var(--p-sunken)}
+.btn--risk{background:none;border-color:var(--p-risk-line);border-top-color:var(--p-risk-line);color:var(--p-risk);box-shadow:none}
 .btn--risk:hover{background:var(--p-risk-soft);border-color:var(--p-risk-line)}
-.btn--sm{height:28px;padding:0 var(--p-space-3);font-size:var(--p-size-xs);border-radius:var(--p-radius-sm)}
-.btn--lg{height:44px;padding:0 var(--p-space-6);font-size:var(--p-size-md)}
+.btn--sm{height:25px;padding:0 9px;font-size:var(--p-size-xs);border-radius:var(--p-radius-sm);gap:5px}
+.btn--lg{height:34px;padding:0 var(--p-space-4);font-size:var(--p-size-sm)}
 .btn--block{width:100%}
-.btn[aria-disabled="true"]{opacity:.5;cursor:not-allowed}
-.iconbtn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:var(--p-radius-sm);border:1px solid transparent;background:transparent;color:var(--p-ink-muted);cursor:pointer}
+.btn[aria-disabled="true"]{background:var(--p-sunken);color:var(--text-disabled);box-shadow:none;cursor:not-allowed}
+.iconbtn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:var(--p-radius-sm);border:1px solid transparent;background:none;color:var(--p-ink-subtle);cursor:pointer}
 .iconbtn:hover{background:var(--p-sunken);color:var(--p-ink)}
 .kbd{
-  display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;
-  border:1px solid var(--p-line-strong);border-bottom-width:2px;border-radius:5px;
-  background:var(--p-surface);font-family:var(--p-font-mono);font-size:10px;color:var(--p-ink-muted)
+  display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 4px;
+  border:1px solid var(--p-line);border-radius:4px;
+  background:var(--p-surface);font-family:var(--p-font-mono);font-size:var(--p-size-micro);color:var(--p-ink-subtle)
 }
 
-/* ---------- surfaces ---------- */
-.card{background:var(--p-surface-raised);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
+/* ---------- surfaces ----------
+   Cards are white floating surfaces on the cool canvas: hairline directional
+   border, the raised inset top edge, and Lume's subtle raised shadow. */
+.card{background:var(--p-surface);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
   border-radius:var(--p-radius-lg);box-shadow:var(--p-shadow-1), 0 1px 0 var(--top-edge-highlight) inset}
-.card--flat{box-shadow:none}
+.card--flat{box-shadow:0 1px 0 var(--top-edge-highlight) inset}
 .card--raised{box-shadow:var(--p-shadow-2), 0 1px 0 var(--top-edge-highlight) inset}
-.card__head{display:flex;align-items:center;justify-content:space-between;gap:var(--p-space-3);padding:var(--p-space-4) var(--p-space-5);border-bottom:1px solid var(--p-line)}
-.card__title{font-size:var(--p-size-md);font-weight:600}
+/* Card chrome is QUIET: the container title is a 12px secondary label, not a
+   heading — the Lume reference application labels every container this way
+   ("prepared briefing", "this week"). Headings inside the body stay ink. */
+.card__head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--p-space-3);
+  padding:var(--p-space-4) var(--p-space-5) var(--p-space-3);border-bottom:1px solid var(--p-line)}
+.card__title{font-size:var(--p-size-xs);line-height:16px;font-weight:500;
+  letter-spacing:var(--p-track-label);color:var(--p-ink-muted)}
+/* When the left slot of a head names a SUBJECT rather than the container
+   ("Claude Code", not "clients"), it is a real heading: 15px/600 ink, the same
+   step the Lume reference gives the title inside a briefing container. */
+.card__subject{font-size:15px;line-height:22px;font-weight:600;letter-spacing:var(--p-track-tight);color:var(--p-ink)}
 .card__body{padding:var(--p-space-5)}
-.card__body--tight{padding:var(--p-space-3) var(--p-space-4)}
-.card__foot{padding:var(--p-space-4) var(--p-space-5);border-top:1px solid var(--border-subtle-top);display:flex;align-items:center;gap:var(--p-space-3);flex-wrap:wrap}
+.card__body--tight{padding:var(--p-space-4) var(--p-space-5)}
+.card__foot{padding:var(--p-space-4) var(--p-space-5);border-top:1px solid var(--p-line);
+  display:flex;align-items:center;gap:var(--p-space-3);flex-wrap:wrap}
 .card__foot .foot-note{flex-basis:100%;order:9}
 
 /* ---------- badges, dots, chips ---------- */
 /* Semantic state is text-only — never a filled pill (colors_and_type.css §2.6 / visual-spec §2.6, §7.6) */
-.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 2px;color:var(--p-ink-muted);
-  font-size:var(--p-size-xs);font-weight:550;white-space:nowrap}
-.badge .dot{width:6px;height:6px}
-.badge--ok{color:var(--p-ok)}
+.badge{display:inline-flex;align-items:center;gap:6px;height:18px;padding:0;color:var(--p-ink-muted);
+  font-size:var(--p-size-xs);font-weight:400;white-space:nowrap}
+.badge .dot{width:5px;height:5px}
+/* Healthy is the resting state: the dot carries it, the words stay neutral —
+   the same reading as "10 connectors live" in the Lume reference application.
+   warn/risk keep coloured text, because those are the states worth shouting. */
+.badge--ok{color:var(--p-ink-muted)}
+.badge--ok .dot{background:var(--p-ok)}
 .badge--warn{color:var(--p-warn)}
 .badge--risk{color:var(--p-risk)}
 .badge--info{color:var(--p-info)}
-.badge--accent{color:var(--p-accent-ink)}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--p-ink-subtle);flex:none}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--p-ink-subtle);flex:none}
 .dot--ok{background:var(--p-ok)}
 .dot--warn{background:var(--p-warn)}
 .dot--risk{background:var(--p-risk)}
-.dot--live{background:var(--p-ok);box-shadow:0 0 0 0 var(--p-ok-line);animation:pulse 2.4s var(--p-ease) infinite}
-@keyframes pulse{0%{box-shadow:0 0 0 0 var(--p-ok-line)}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
-.chip{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:var(--p-radius-sm);
+/* the one accent dot pattern Lume itself uses: a live/resolving pulse */
+.dot--live{background:var(--accent-fill);box-shadow:0 0 4px var(--accent-glow-core), 0 0 8px var(--accent-glow);
+  animation:pulse 1.6s var(--p-ease) infinite}
+@keyframes pulse{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:1;transform:scale(1.18)}}
+.chip{display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 7px;border-radius:var(--p-radius-sm);
   background:var(--p-sunken);color:var(--p-ink-muted);font-size:var(--p-size-xs);white-space:nowrap}
-.chip--mono{font-family:var(--p-font-mono);font-size:11px}
-.chip--accent{background:var(--p-accent-soft);color:var(--p-accent-ink)}
+.chip--mono{font-family:var(--p-font-mono);font-size:var(--p-size-meta);font-feature-settings:'tnum'}
 
-/* ---------- tiles (metrics) ---------- */
+/* ---------- tiles (metrics) ----------
+   Numbers are mono tabular ink, the unit is a small neutral sans word, the
+   label is the mono micro-label. Attention is carried by the dot and the
+   sub-line only — a tile is never fill-tinted (§2.6). */
 .tiles{display:grid;gap:var(--p-space-4);grid-template-columns:repeat(4,minmax(0,1fr))}
-.tile{background:var(--p-surface-raised);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-lg);padding:var(--p-space-4) var(--p-space-5);
-  display:flex;flex-direction:column;gap:var(--p-space-1);box-shadow:var(--p-shadow-1), 0 1px 0 var(--top-edge-highlight) inset;position:relative;overflow:hidden}
-.tile__metric{font-family:var(--p-font-serif);font-size:var(--p-size-2xl);line-height:1.1;letter-spacing:var(--p-track-tight);font-weight:600;font-variant-numeric:tabular-nums;font-optical-sizing:auto}
-.tile__unit{font-family:var(--p-font-sans);font-size:var(--p-size-sm);font-weight:500;color:var(--p-ink-muted);letter-spacing:0}
-.tile__sub{font-size:var(--p-size-xs);color:var(--p-ink-muted)}
-/* Attention state stays text + icon only — a tile that needs a look is never fill-tinted (§2.6) */
-.tile--attention .tile__metric,.tile--attention .t-over{color:var(--p-warn)}
+.tile{background:var(--p-surface-raised);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
+  border-radius:var(--p-radius-lg);padding:var(--p-space-4) var(--p-space-5) var(--p-space-5);
+  display:flex;flex-direction:column;gap:var(--p-space-2);
+  box-shadow:var(--p-shadow-1), 0 1px 0 var(--top-edge-highlight) inset;position:relative;overflow:hidden}
+.tile__metric{font-family:var(--p-font-mono);font-size:var(--p-size-2xl);line-height:28px;font-weight:500;
+  letter-spacing:var(--p-track-tight);font-variant-numeric:tabular-nums;color:var(--p-ink)}
+.tile__unit{font-family:var(--p-font-sans);font-size:var(--p-size-xs);font-weight:400;
+  color:var(--p-ink-subtle);letter-spacing:0}
+.tile__sub{font-size:var(--p-size-xs);color:var(--p-ink-muted);line-height:18px}
+/* attention colours the NUMBER, exactly as the Lume reference colours its
+   "Δ vs. last wk  -4.2%" tile -- not the whole sub-line, and never a fill.
+   One short numeral is a fraction of the warm area a coloured sentence is. */
+.tile--attention .tile__metric{color:var(--p-warn)}
 .tile__action{margin-top:var(--p-space-2)}
 
 /* ---------- banners / callouts ---------- */
@@ -453,7 +536,7 @@ svg{display:block}
 .banner{display:flex;gap:var(--p-space-3);padding:var(--p-space-4);border-radius:var(--p-radius-md);
   border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
   background:var(--p-surface);color:var(--p-ink);font-size:var(--p-size-sm)}
-.banner svg{color:var(--p-info);margin-top:1px}
+.banner svg{color:var(--p-ink-subtle);margin-top:1px}
 .banner--warn svg{color:var(--p-warn)}
 .banner--warn .banner__title{color:var(--p-warn)}
 .banner--ok svg{color:var(--p-ok)}
@@ -462,48 +545,54 @@ svg{display:block}
 
 /* ---------- tables ---------- */
 .table{width:100%;border-collapse:collapse;font-size:var(--p-size-sm)}
-.table th{text-align:left;font-size:var(--p-size-2xs);letter-spacing:var(--p-track-label);text-transform:uppercase;
-  color:var(--p-ink-subtle);font-weight:600;padding:0 var(--p-space-3) var(--p-space-2);border-bottom:1px solid var(--p-line)}
-.table td{padding:var(--p-space-3);border-bottom:1px solid var(--p-line);vertical-align:middle}
+.table th{text-align:left;font-family:var(--p-font-mono);font-size:var(--p-size-micro);line-height:14px;
+  letter-spacing:var(--p-track-micro);text-transform:uppercase;color:var(--p-ink-subtle);font-weight:500;
+  padding:0 var(--p-space-3) var(--p-space-2);border-bottom:1px solid var(--p-line)}
+.table td{padding:11px var(--p-space-3);border-bottom:1px solid var(--p-line);vertical-align:middle}
 .table tr:last-child td{border-bottom:0}
 .table tbody tr:hover{background:var(--p-surface-2)}
 
 /* ---------- lists ---------- */
-.listrow{display:flex;align-items:center;gap:var(--p-space-3);padding:var(--p-space-3) var(--p-space-4);border-bottom:1px solid var(--p-line)}
+.listrow{display:flex;align-items:center;gap:var(--p-space-3);padding:var(--p-space-3) var(--p-space-5);border-bottom:1px solid var(--p-line)}
 .listrow:last-child{border-bottom:0}
 .listrow:hover{background:var(--p-surface-2)}
-.listrow--selected{background:radial-gradient(ellipse at 15% 50%, var(--accent-glow-core) 0%, var(--accent-glow) 20%, transparent 70%),
-    linear-gradient(180deg, var(--accent-subtle), transparent)}
-.listrow__title{font-size:var(--p-size-sm);font-weight:550}
-.listrow__meta{font-size:var(--p-size-xs);color:var(--p-ink-muted)}
+.listrow--selected{position:relative;background:var(--p-sel-wash)}
+.listrow--selected::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:2px;border-radius:2px;background:var(--accent-fill)}
+.listrow__title{font-size:var(--p-size-sm);font-weight:500}
+.listrow__meta{font-size:var(--p-size-xs);color:var(--p-ink-subtle)}
 
 /* ---------- empty states ---------- */
 .empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:var(--p-space-3);padding:var(--p-space-10) var(--p-space-6)}
-.empty__mark{display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:var(--p-radius-lg);
-  background:var(--p-accent-soft);color:var(--p-accent-ink);border:1px solid var(--p-accent-line);
-  box-shadow:0 0 4px var(--accent-glow-core), 0 4px 10px var(--accent-glow)}
-.empty__title{font-family:var(--p-font-serif);font-size:var(--p-size-xl);font-weight:600;letter-spacing:var(--p-track-tight)}
-.empty__text{max-width:46ch;color:var(--p-ink-muted);font-size:var(--p-size-sm)}
+/* the mark is a neutral raised chip, not an accent badge — an empty screen has
+   nothing selected, so it has nothing to spend accent on */
+.empty__mark{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:var(--p-radius-lg);
+  background:var(--p-surface-raised);color:var(--p-ink-subtle);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
+  box-shadow:0 1px 0 var(--top-edge-highlight) inset}
+.empty__title{font-family:var(--p-font-serif);font-size:var(--p-size-xl);font-weight:400;line-height:28px;font-optical-sizing:auto}
+.empty__text{max-width:52ch;color:var(--p-ink-muted);font-size:var(--p-size-sm);line-height:20px}
 
 /* ---------- forms ---------- */
 .field{display:flex;flex-direction:column;gap:6px}
-.field__label{font-size:var(--p-size-sm);font-weight:600}
-.field__hint{font-size:var(--p-size-xs);color:var(--p-ink-muted)}
-.input{height:38px;padding:0 var(--p-space-3);border:1px solid var(--p-line-strong);border-top-color:var(--border-strong-top);border-radius:var(--p-radius-md);
+.field__label{font-size:var(--p-size-sm);font-weight:500}
+.field__hint{font-size:var(--p-size-xs);color:var(--p-ink-subtle);line-height:18px}
+.input{height:32px;padding:0 var(--p-space-3);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-md);
   background:var(--p-surface-raised);color:var(--p-ink);font:inherit;font-size:var(--p-size-sm);width:100%;
   box-shadow:0 1px 0 var(--top-edge-highlight) inset}
 .input::placeholder{color:var(--p-ink-subtle)}
 .input:focus{outline:none;border-color:var(--accent-fill);
   box-shadow:0 0 0 1px var(--accent-fill), 0 0 0 4px var(--accent-glow), 0 0 12px var(--accent-glow-core)}
 .input--readonly{background:var(--p-sunken);color:var(--p-ink-muted);font-family:var(--p-font-mono);font-size:var(--p-size-xs);box-shadow:none}
-.switchrow{display:flex;align-items:flex-start;gap:var(--p-space-3);padding:var(--p-space-3);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-md);background:var(--p-surface-2)}
-.switch{width:36px;height:20px;border-radius:var(--p-radius-pill);background:var(--p-line-strong);position:relative;flex:none;margin-top:2px}
-.switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--p-surface);box-shadow:var(--p-shadow-1)}
+.switchrow{display:flex;align-items:flex-start;gap:var(--p-space-3);padding:var(--p-space-3) var(--p-space-4);
+  border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-md);background:var(--p-surface)}
+/* A switch is a control, and Lume fills its controls with the accent when on —
+   this is one of the few places the accent is allowed to be a fill. */
+.switch{width:32px;height:18px;border-radius:var(--p-radius-pill);background:var(--p-line-strong);position:relative;flex:none;margin-top:2px}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:var(--p-shadow-1)}
 .switch--on{background:var(--accent-fill);box-shadow:0 0 3px var(--accent-glow-core), 0 0 6px var(--accent-glow)}
 .switch--on::after{left:auto;right:2px}
-.segmented{display:inline-flex;padding:3px;gap:2px;background:var(--p-sunken);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-md)}
-.segmented__item{padding:5px 12px;border-radius:7px;font-size:var(--p-size-xs);font-weight:550;color:var(--p-ink-muted);cursor:pointer}
-.segmented__item--on{background:var(--p-surface);color:var(--p-ink);box-shadow:var(--p-shadow-1)}
+.segmented{display:inline-flex;padding:2px;gap:2px;background:var(--p-sunken);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-md)}
+.segmented__item{padding:4px 10px;border-radius:6px;font-size:var(--p-size-xs);font-weight:500;color:var(--p-ink-subtle);cursor:pointer}
+.segmented__item--on{background:var(--p-surface-raised);color:var(--p-ink);box-shadow:var(--p-shadow-1), 0 1px 0 var(--top-edge-highlight) inset}
 
 /* ---------- snippet + copy ---------- */
 .snippet{display:flex;align-items:center;gap:var(--p-space-3);padding:var(--p-space-3) var(--p-space-3) var(--p-space-3) var(--p-space-4);
@@ -515,31 +604,32 @@ svg{display:block}
 
 /* ---------- steps ---------- */
 .steps{display:flex;flex-direction:column;gap:2px}
-.step{display:flex;gap:var(--p-space-3);align-items:flex-start;padding:var(--p-space-3);border-radius:var(--p-radius-md);cursor:pointer}
-.step__num{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;flex:none;
-  border:1px solid var(--p-line-strong);background:var(--p-surface);color:var(--p-ink-subtle);
-  font-size:var(--p-size-xs);font-weight:600;font-variant-numeric:tabular-nums}
-.step__name{font-size:var(--p-size-sm);font-weight:550}
-.step__hint{font-size:var(--p-size-xs);color:var(--p-ink-subtle)}
+.step{display:flex;gap:var(--p-space-3);align-items:flex-start;padding:var(--p-space-3);border-radius:var(--p-radius-sm);cursor:pointer;position:relative}
+.step__num{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;flex:none;
+  border:1px solid var(--p-line-strong);background:var(--p-surface-raised);color:var(--p-ink-subtle);
+  font-family:var(--p-font-mono);font-size:var(--p-size-meta);font-weight:500;font-variant-numeric:tabular-nums}
+.step__name{font-size:var(--p-size-sm);font-weight:500}
+.step__hint{font-size:var(--p-size-xs);color:var(--p-ink-subtle);line-height:18px}
 /* Done = neutral surface + success text/ring, never a success fill (§2.6) */
 .step--done .step__num{background:var(--p-surface);border-color:var(--p-ok-line);color:var(--p-ok)}
-/* Current step = the lit one: two-stop selection glow + a donut-glow number (§3.2, §3.3, §5.2) */
-.step--on{position:relative;
-  background:radial-gradient(ellipse at 18% 50%, var(--accent-glow-core) 0%, var(--accent-glow) 22%, transparent 70%),
-              linear-gradient(180deg, var(--accent-subtle), transparent)}
+/* Current step = quiet wash + 2px accent edge; the small numeral disc is the
+   one accent fill (the "you are here" marker), the label stays ink. */
+.step--on{background:var(--p-sel-wash)}
+.step--on::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:2px;border-radius:2px;background:var(--accent-fill)}
+.step--on .step__name{color:var(--p-ink);font-weight:600}
 .step--on .step__num{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--p-on-accent);
-  box-shadow:0 0 4px var(--accent-glow-core), 0 0 10px var(--accent-glow-strong)}
+  box-shadow:0 0 4px var(--accent-glow-core), 0 0 8px var(--accent-glow)}
 
 /* ---------- waiting indicator ---------- */
-.waiting{display:inline-flex;align-items:center;gap:8px;font-size:var(--p-size-sm);color:var(--p-ink-muted)}
-.waiting i{width:6px;height:6px;border-radius:50%;background:var(--accent-fill);animation:wait 1.4s var(--p-ease) infinite}
+.waiting{display:inline-flex;align-items:center;gap:7px;font-size:var(--p-size-sm);color:var(--p-ink-muted)}
+.waiting i{width:5px;height:5px;border-radius:50%;background:var(--p-ink-subtle);animation:wait 1.4s var(--p-ease) infinite}
 .waiting i:nth-child(2){animation-delay:.18s}
 .waiting i:nth-child(3){animation-delay:.36s}
 @keyframes wait{0%,100%{opacity:.25;transform:translateY(0)}45%{opacity:1;transform:translateY(-2px)}}
 
 /* ---------- compact widths: nothing may push the page sideways ---------- */
 @media (max-width:767px){
-  .chip{height:auto;min-height:20px;white-space:normal;overflow-wrap:anywhere;padding:2px 8px}
+  .chip{height:auto;min-height:19px;white-space:normal;overflow-wrap:anywhere;padding:2px 7px}
   .segmented{flex-wrap:wrap}
   .empty .row{flex-wrap:wrap;justify-content:center}
   .card__foot,.row{flex-wrap:wrap}
@@ -554,46 +644,53 @@ svg{display:block}
 
 /* ---------- app shell ---------- */
 .app{display:grid;grid-template-columns:var(--p-nav-w) minmax(0,1fr);background:var(--p-canvas)}
-.sidebar{display:flex;flex-direction:column;gap:var(--p-space-5);padding:var(--p-space-5) var(--p-space-4);
+.sidebar{display:flex;flex-direction:column;gap:var(--p-space-6);padding:var(--p-space-5) var(--p-space-3);
   border-right:1px solid var(--p-line);background:var(--p-surface-2);min-height:0}
-.brand{display:flex;align-items:center;gap:10px;color:var(--p-ink);text-decoration:none;padding:0 var(--p-space-2)}
+.brand{display:flex;align-items:center;gap:9px;color:var(--p-ink);text-decoration:none;padding:0 var(--p-space-2)}
 .brand:hover{text-decoration:none}
-.brand__mark{width:28px;height:28px;border-radius:9px;background:var(--accent-fill);color:var(--p-on-accent);
-  display:flex;align-items:center;justify-content:center;font-family:var(--p-font-serif);font-size:15px;font-weight:600;flex:none;
-  box-shadow:0 0 4px var(--accent-glow-core), 0 3px 8px var(--accent-glow)}
-.brand__name{font-family:var(--p-font-serif);font-size:var(--p-size-lg);font-weight:600;letter-spacing:var(--p-track-tight)}
-.brand__ver{font-size:var(--p-size-2xs);color:var(--p-ink-subtle);border:1px solid var(--p-line);border-radius:var(--p-radius-sm);padding:1px 5px}
+/* neutral raised chip, not an accent tile — the shell spends no accent on branding */
+.brand__mark{width:22px;height:22px;border-radius:7px;background:var(--p-surface-raised);
+  border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);color:var(--p-ink);
+  display:flex;align-items:center;justify-content:center;font-family:var(--p-font-serif);font-size:13px;font-weight:600;flex:none;
+  box-shadow:0 1px 0 var(--top-edge-highlight) inset}
+.brand__name{font-size:var(--p-size-md);font-weight:600;letter-spacing:var(--p-track-tight)}
+.brand__ver{font-family:var(--p-font-mono);font-size:var(--p-size-micro);color:var(--p-ink-subtle);letter-spacing:.04em}
 .nav{display:flex;flex-direction:column;gap:var(--p-space-5);flex:1;min-height:0;overflow:auto;scrollbar-width:thin}
-.nav__group{display:flex;flex-direction:column;gap:2px}
-.nav__label{padding:0 var(--p-space-3) var(--p-space-1)}
-.nav__item{display:flex;align-items:center;gap:10px;padding:7px var(--p-space-3);border-radius:var(--p-radius-md);
-  color:var(--p-ink-muted);font-size:var(--p-size-sm);font-weight:500;text-decoration:none;position:relative}
+.nav__group{display:flex;flex-direction:column;gap:1px}
+.nav__label{padding:0 var(--p-space-3) 6px}
+.nav__item{display:flex;align-items:center;gap:9px;padding:6px var(--p-space-3);border-radius:var(--p-radius-sm);
+  color:var(--p-ink-muted);font-size:var(--p-size-sm);font-weight:400;text-decoration:none;position:relative}
 .nav__item:hover{background:var(--p-sunken);color:var(--p-ink);text-decoration:none}
-/* Selected nav item = the two-stop selection halo (lume-selected), not a flat accent-soft fill (§4.2 list/tree) */
-.nav__item--on{color:var(--accent-fill);font-weight:600;
-  background:radial-gradient(ellipse at 15% 50%, var(--accent-glow-core) 0%, var(--accent-glow) 24%, transparent 70%),
-              linear-gradient(180deg, var(--accent-subtle), transparent);
-  box-shadow:0 0 10px -3px var(--accent-glow-core), 0 0 18px -6px var(--accent-glow-strong)}
-.nav__item--on::before{content:'';position:absolute;left:2px;top:4px;bottom:4px;width:2px;border-radius:2px;
-  background:var(--accent-fill);box-shadow:0 0 6px var(--accent-glow-strong)}
-.nav__item--on svg{color:var(--accent-fill)}
-.nav__count{margin-left:auto;font-size:var(--p-size-2xs);font-variant-numeric:tabular-nums;
-  background:var(--p-surface);border:1px solid var(--p-line);border-radius:var(--p-radius-pill);padding:1px 7px;color:var(--p-ink-muted)}
-/* Count needing attention: text colour only, no fill (§2.6) */
-.nav__count--warn{background:transparent;border-color:transparent;color:var(--p-warn);font-weight:600}
-.sidebar__foot{display:flex;flex-direction:column;gap:var(--p-space-2);padding:var(--p-space-3);border-top:1px solid var(--p-line)}
+/* SELECTED nav item — the quiet treatment: near-invisible wash that dies out
+   before mid-row, a 2px accent edge bar, and ink text. Never an accent pill,
+   never accent-coloured label or icon. */
+.nav__item--on{color:var(--p-ink);font-weight:500;background:var(--p-sel-wash)}
+.nav__item--on::before{content:'';position:absolute;left:0;top:5px;bottom:5px;width:2px;border-radius:2px;
+  background:var(--accent-fill)}
+.nav__item--on svg{color:var(--p-ink-muted)}
+/* counters are mono tabular metadata — no pill, no border, no accent */
+.nav__count{margin-left:auto;font-family:var(--p-font-mono);font-size:var(--p-size-xs);
+  font-variant-numeric:tabular-nums;color:var(--p-ink-muted);background:none;border:0;padding:0}
+.nav__count--warn{color:var(--p-warn)}
+.sidebar__foot{display:flex;flex-direction:column;gap:6px;padding:var(--p-space-3) var(--p-space-3) var(--p-space-1);border-top:1px solid var(--p-line)}
 .main{display:flex;flex-direction:column;min-width:0;min-height:0}
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:var(--p-space-4);
-  padding:var(--p-space-4) var(--p-space-6);border-bottom:1px solid var(--p-line);background:var(--p-canvas)}
-.page-title{font-family:var(--p-font-serif);font-size:var(--p-size-xl);font-weight:600;letter-spacing:var(--p-track-tight)}
-.page-sub{font-size:var(--p-size-xs);color:var(--p-ink-muted)}
-.cmdk{display:flex;align-items:center;gap:var(--p-space-2);height:34px;padding:0 var(--p-space-3);
+  padding:var(--p-space-5) var(--p-space-6) var(--p-space-4);border-bottom:1px solid var(--p-line);background:var(--p-canvas)}
+/* Page titles are sans — Source Serif is the PROSE register and is reserved
+   for sentence-length content (visual-spec: three registers, one job each). */
+.page-title{font-size:var(--p-size-xl);line-height:28px;font-weight:600;letter-spacing:-.005em}
+/* A sentence, so it stays in the sans body register. Date/clock strings under a
+   title are metadata and use .t-meta (mono) instead — see home.html. */
+.page-sub{font-size:var(--p-size-sm);line-height:20px;color:var(--p-ink-muted);margin-top:4px;max-width:78ch}
+.cmdk{display:flex;align-items:center;gap:var(--p-space-2);height:30px;padding:0 var(--p-space-3);
   border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-md);background:var(--p-surface-raised);
-  color:var(--p-ink-subtle);font-size:var(--p-size-sm);cursor:pointer;min-width:200px;white-space:nowrap;
+  color:var(--p-ink-subtle);font-size:var(--p-size-sm);cursor:pointer;min-width:190px;white-space:nowrap;
   box-shadow:0 1px 0 var(--top-edge-highlight) inset}
-.avatar{width:30px;height:30px;border-radius:50%;background:var(--p-accent-soft);color:var(--p-accent-ink);
-  border:1px solid var(--p-accent-line);display:flex;align-items:center;justify-content:center;font-size:var(--p-size-xs);font-weight:600}
-.content{padding:var(--p-space-4) var(--p-space-6) var(--p-space-6);display:flex;flex-direction:column;gap:var(--p-space-4)}
+.avatar{width:26px;height:26px;border-radius:50%;background:var(--p-surface-raised);color:var(--p-ink-muted);
+  border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);display:flex;align-items:center;justify-content:center;
+  font-family:var(--p-font-mono);font-size:var(--p-size-micro);font-weight:500;letter-spacing:.02em;
+  box-shadow:0 1px 0 var(--top-edge-highlight) inset}
+.content{padding:var(--p-space-6) var(--p-space-6) var(--p-space-10);display:flex;flex-direction:column;gap:var(--p-space-5)}
 
 @media (min-width:1024px){
   .app{height:calc(100dvh - var(--mock-h));overflow:hidden}
@@ -603,9 +700,9 @@ svg{display:block}
   .app{grid-template-columns:var(--p-rail-w) minmax(0,1fr)}
   .sidebar{align-items:center;padding:var(--p-space-4) var(--p-space-2)}
   .brand__name,.brand__ver,.nav__label,.nav__item span,.sidebar__foot{display:none}
-  .nav__item{justify-content:center;padding:9px}
+  .nav__item{justify-content:center;padding:8px}
   .nav__count{display:none}
-  .content{padding:var(--p-space-4) var(--p-space-4) var(--p-space-8)}
+  .content{padding:var(--p-space-5) var(--p-space-4) var(--p-space-8)}
   .topbar{padding:var(--p-space-4)}
 }
 @media (max-width:767px){
@@ -630,36 +727,38 @@ svg{display:block}
 .statepick{position:fixed;width:0;height:0;opacity:0;pointer-events:none}
 .mockbar{display:flex;align-items:center;gap:var(--p-space-4);height:var(--mock-h);padding:0 var(--p-space-4);
   border-bottom:1px dashed var(--p-line-strong);background:var(--p-sunken);
-  font-family:var(--p-font-mono);font-size:11px;color:var(--p-ink-subtle);overflow-x:auto;scrollbar-width:none}
+  font-family:var(--p-font-mono);font-size:var(--p-size-meta);color:var(--p-ink-subtle);overflow-x:auto;scrollbar-width:none}
 .mockbar::-webkit-scrollbar{display:none}
 .mockbar__id{white-space:nowrap}
 .mockbar__states{display:flex;gap:4px;margin-left:auto}
 .mockbar label{padding:3px 9px;border-radius:var(--p-radius-pill);cursor:pointer;white-space:nowrap;border:1px solid transparent}
 .mockbar label:hover{color:var(--p-ink)}
 .mockbar__theme{height:23px;padding:0 9px;border-radius:var(--p-radius-pill);border:1px solid var(--p-line-strong);
-  background:transparent;color:var(--p-ink-subtle);font:inherit;cursor:pointer;white-space:nowrap}
+  background:none;color:var(--p-ink-subtle);font:inherit;cursor:pointer;white-space:nowrap}
 .state{display:none}
 
 /* ---------- onboarding wizard ---------- */
 .wiz{display:grid;grid-template-columns:308px minmax(0,1fr);background:var(--p-canvas)}
-.wiz__rail{display:flex;flex-direction:column;gap:var(--p-space-6);padding:var(--p-space-6) var(--p-space-5);
+.wiz__rail{display:flex;flex-direction:column;gap:var(--p-space-8);padding:var(--p-space-6) var(--p-space-4);
   border-right:1px solid var(--p-line);background:var(--p-surface-2)}
-.wiz__panel{display:flex;justify-content:center;padding:var(--p-space-5) var(--p-space-6) var(--p-space-6)}
-.wiz__inner{width:100%;max-width:640px;display:flex;flex-direction:column;gap:var(--p-space-3)}
+.wiz__panel{display:flex;justify-content:center;padding:var(--p-space-8) var(--p-space-6) var(--p-space-10)}
+.wiz__inner{width:100%;max-width:640px;display:flex;flex-direction:column;gap:var(--p-space-4)}
 .wiz__eyebrow{display:flex;align-items:center;gap:8px}
-.wiz__title{font-family:var(--p-font-serif);font-size:var(--p-size-3xl);font-weight:600;
-  letter-spacing:var(--p-track-tight);line-height:var(--p-leading-tight)}
+.wiz__title{font-family:var(--p-font-serif);font-size:var(--p-size-3xl);font-weight:400;
+  line-height:40px;font-optical-sizing:auto;max-width:30ch}
 .wiz__foot{display:flex;align-items:center;gap:var(--p-space-3);padding-top:var(--p-space-2)}
 .wiz__foot .grow{text-align:right}
 .radiocards{display:flex;flex-direction:column;gap:var(--p-space-3)}
-.radiocard{display:flex;gap:var(--p-space-3);padding:var(--p-space-3) var(--p-space-4);border:1px solid var(--p-line);
-  border-radius:var(--p-radius-md);background:var(--p-surface);cursor:pointer}
+.radiocard{display:flex;gap:var(--p-space-3);padding:var(--p-space-4);border:1px solid var(--p-line);
+  border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-md);background:var(--p-surface);cursor:pointer;position:relative}
 .radiocard:hover{border-color:var(--p-line-strong)}
-.radiocard--on{border-color:var(--accent-fill);background:var(--accent-subtle);
-  box-shadow:0 0 0 1px var(--accent-fill), 0 0 4px var(--accent-glow-core), 0 4px 12px var(--accent-glow)}
-.radiocard__pick{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--p-line-strong);flex:none;margin-top:2px;background:var(--p-surface)}
-.radiocard--on .radiocard__pick{border-color:var(--p-accent);border-width:5px}
-.radiocard__name{font-size:var(--p-size-md);font-weight:600}
+/* chosen option = a hairline accent edge and the filled radio dot. A 640px card
+   is far too much area to tint: no fill, no glow -- the same "resting active"
+   1px accent ring the Lume reference gives an active container. */
+.radiocard--on{border-color:var(--p-accent-line);box-shadow:0 0 0 1px var(--accent-glow)}
+.radiocard__pick{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--p-line-strong);flex:none;margin-top:3px;background:var(--p-surface-raised)}
+.radiocard--on .radiocard__pick{border-color:var(--accent-fill);border-width:5px}
+.radiocard__name{font-size:var(--p-size-sm);font-weight:600}
 .radiocard__when{font-size:var(--p-size-sm);color:var(--p-ink-muted);margin-top:2px}
 .factlist{display:flex;flex-wrap:wrap;gap:var(--p-space-1) var(--p-space-5);margin-top:var(--p-space-2)}
 .fact{display:flex;align-items:flex-start;gap:6px;font-size:var(--p-size-xs);color:var(--p-ink-muted)}
@@ -669,21 +768,23 @@ svg{display:block}
 .meter{height:4px;border-radius:var(--p-radius-pill);background:var(--bg-surface-sunken-btm);overflow:hidden}
 .meter i{display:block;height:100%;width:72%;background:var(--p-ok);box-shadow:0 0 4px var(--p-ok-line)}
 .clientgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--p-space-3)}
-.clientcard{display:flex;flex-direction:column;gap:6px;padding:var(--p-space-3);border:1px solid var(--p-line);
-  border-radius:var(--p-radius-md);background:var(--p-surface);cursor:pointer}
+.clientcard{display:flex;flex-direction:column;gap:6px;padding:var(--p-space-3) var(--p-space-4);border:1px solid var(--p-line);
+  border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-md);background:var(--p-surface);cursor:pointer}
 .clientcard:hover{border-color:var(--p-line-strong)}
-.clientcard--on{border-color:var(--accent-fill);background:var(--accent-subtle);
-  box-shadow:0 0 0 1px var(--accent-fill), 0 0 4px var(--accent-glow-core), 0 4px 12px var(--accent-glow)}
-.clientcard__name{font-size:var(--p-size-sm);font-weight:600}
+.clientcard--on{border-color:var(--p-accent-line);box-shadow:0 0 0 1px var(--accent-glow)}
+.clientcard__name{font-size:var(--p-size-sm);font-weight:500}
 .switchgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--p-space-2)}
 .preview{padding:var(--p-space-3) var(--p-space-4);border:1px dashed var(--p-line-strong);border-radius:var(--p-radius-md);background:var(--p-sunken)}
 .tabs__panel{display:none}
 .tabbar{display:inline-flex;gap:var(--p-space-1);border-bottom:1px solid var(--p-line);width:100%}
-.tabbar label{padding:8px 12px;font-size:var(--p-size-sm);font-weight:550;color:var(--p-ink-muted);cursor:pointer;
+.tabbar label{padding:7px 11px;font-size:var(--p-size-sm);font-weight:500;color:var(--p-ink-subtle);cursor:pointer;
   border-bottom:2px solid transparent;margin-bottom:-1px}
 .tabbar label:hover{color:var(--p-ink)}
+/* the .tabbar sits inside the card head, so the checked radio reaches it
+   through a descendant step -- the active tab is a 2px accent edge, nothing more */
+#ob-t1:checked ~ * .tabbar label[for="ob-t1"],#ob-t2:checked ~ * .tabbar label[for="ob-t2"],
 #ob-t1:checked ~ .tabbar label[for="ob-t1"],#ob-t2:checked ~ .tabbar label[for="ob-t2"]{color:var(--p-ink);
-  border-bottom-color:var(--accent-fill);box-shadow:0 1px 0 var(--accent-glow)}
+  border-bottom-color:var(--accent-fill)}
 #ob-t1:checked ~ .tabs__panel--1,#ob-t2:checked ~ .tabs__panel--2{display:block}
 @media (min-width:1024px){
   .wiz{height:calc(100dvh - var(--mock-h));overflow:hidden}
@@ -754,7 +855,7 @@ palaia closes the password door behind it. Two doors into the same room mean the
     <div class="meter"><i></i></div><span class="field__hint">Strong enough. A passphrase beats a puzzle.</span></div>
 </div></div>
 <div class="wiz__foot">
-  <span class="t-xs t-subtle">Step 1 of 4</span>
+  <span class="t-meta">Step 1 of 4</span>
   <span class="grow"><label class="btn btn--primary btn--lg" for="ob-2">Continue<svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12h14M13 6.5l5.5 5.5L13 17.5"/></svg></label></span>
 </div>
 
@@ -772,7 +873,7 @@ palaia closes the password door behind it. Two doors into the same room mean the
 </aside>
 <div class="wiz__panel"><div class="wiz__inner">
 
-<div class="wiz__eyebrow"><span class="t-over">Step 2 of 4</span><span class="badge badge--accent">enforced in code, not advice</span></div>
+<div class="wiz__eyebrow"><span class="t-over">Step 2 of 4</span><span class="badge">enforced in code, not advice</span></div>
 <h2 class="wiz__title">Who should be able to reach palaia?</h2>
 <p class="t-lead">This decides which AI clients can connect at all. Pick by what you actually use &mdash;
 palaia translates it into network and auth rules for you.</p>
@@ -790,7 +891,7 @@ palaia translates it into network and auth rules for you.</p>
   <label class="radiocard radiocard--on" for="ob-2">
     <span class="radiocard__pick"></span>
     <span class="grow">
-      <span class="row" style="gap:8px"><span class="radiocard__name">Cloud</span><span class="badge badge--accent">recommended</span><span class="badge badge--warn">auth required</span></span>
+      <span class="row" style="gap:8px"><span class="radiocard__name">Cloud</span><span class="badge">recommended</span><span class="badge">auth required</span></span>
       <span class="radiocard__when">You want claude.ai, ChatGPT or your phone to reach your memory. palaia sets up a Tailscale or Cloudflare tunnel next &mdash; no open ports &mdash; and this dashboard stays tailnet-only.</span>
       <span class="factlist"><span class="fact fact--yes"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 10 18 19.5 6.5"/></svg><span>Everything above, plus mobile</span></span><span class="fact fact--no"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg><span>Dashboard on the internet</span></span></span>
     </span>
@@ -816,7 +917,7 @@ palaia translates it into network and auth rules for you.</p>
 
 <div class="wiz__foot">
   <label class="btn" for="ob-1">Back</label>
-  <span class="t-xs t-subtle">Step 2 of 4</span>
+  <span class="t-meta">Step 2 of 4</span>
   <span class="grow"><label class="btn btn--primary btn--lg" for="ob-3">Continue with Cloud<svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12h14M13 6.5l5.5 5.5L13 17.5"/></svg></label></span>
 </div>
 
@@ -864,7 +965,7 @@ palaia translates it into network and auth rules for you.</p>
 
 <div class="wiz__foot">
   <label class="btn" for="ob-2">Back</label>
-  <span class="t-xs t-subtle">Step 3 of 4</span>
+  <span class="t-meta">Step 3 of 4</span>
   <!-- SIGNAL: the one signal element on this screen. Creating the vault is the single
        most important commitment in onboarding — the moment memory starts existing on
        disk — so it gets the loud, palette-independent Signal treatment (colors_and_type.css
@@ -889,7 +990,7 @@ palaia translates it into network and auth rules for you.</p>
 </aside>
 <div class="wiz__panel"><div class="wiz__inner">
 
-<div class="wiz__eyebrow"><span class="t-over">Step 4 of 4</span><span class="badge badge--accent">target: connected in under 2 minutes</span></div>
+<div class="wiz__eyebrow"><span class="t-over">Step 4 of 4</span><span class="badge">target: connected in under 2 minutes</span></div>
 <h2 class="wiz__title">Connect your first client.</h2>
 <p class="t-lead">Pick where you work most. You paste one thing &mdash; palaia handles the endpoint, the token and the tool list.</p>
 
@@ -929,7 +1030,7 @@ Then run a test recall and tell me what you found.</code></div>
 
 <div class="wiz__foot">
   <label class="btn" for="ob-3">Back</label>
-  <span class="t-xs t-subtle">Step 4 of 4</span>
+  <span class="t-meta">Step 4 of 4</span>
   <span class="grow row" style="justify-content:flex-end">
     <a class="btn btn--ghost" href="./home.html">Skip for now</a>
     <a class="btn btn--primary btn--lg" href="./home.html">Finish<svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12h14M13 6.5l5.5 5.5L13 17.5"/></svg></a>

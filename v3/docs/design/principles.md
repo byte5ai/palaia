@@ -11,6 +11,12 @@
 > Version 2 — 2026-08-22 — Rule 6 updated for the restyle onto Lume (glow
 > selection instead of a flat tint, the Signal rule); every other rule is
 > unchanged from version 1.
+>
+> Version 2.1 — 2026-08-23 — Rule 6 gained the two restraints that were missing
+> from the first Lume pass and that the owner rejected the mockups over:
+> **accent restraint** (a countable three-to-six accent elements per screen) and
+> the **neutral monospace metadata register**. The review checklist in §5 now
+> asks for both. No other rule changed.
 
 ## 1. The eight rules, applied
 
@@ -83,27 +89,45 @@ An error the user must google is a bug. Findings come with a fix.
 
 The eye eats first. Concretely, for this system: Lume's light-as-material —
 gradient surfaces, directional borders that catch light from above, glow
-instead of flat tint at selection and focus — rendered in palaia's own accent,
-atelier's studio-lamp warmth, in both light and dark (both flawless, neither an
-afterthought); semantic colour that is always text or icon, never a fill; serif
-for the lines that carry meaning; and a verdict sentence in plain language
-instead of a wall of gauges. One more restraint sits on top of all of this:
-**Signal**, Lume's separate, palette-independent, deliberately loud colour, is
-capped at one element across the *entire currently-visible view* and reserved
-for the single most important one-time commitment on that screen (`system.md`
-§1.1) — not a second accent, not a way to make an ordinary action feel more
-urgent than it is.
+instead of flat tint at selection and focus — on a **cool light-grey canvas with
+white cards floating on it**, in both light and dark (both flawless, neither an
+afterthought); semantic colour that is always text or icon, never a fill; the
+serif kept for prose; and a verdict sentence in plain language instead of a wall
+of gauges.
+
+Three restraints sit on top of all of this, and they are the difference between
+"uses the Lume tokens" and "looks like Lume":
+
+1. **Accent restraint.** Atelier appears only as selection edges, small dots and
+   glows, the one primary button, and tiny highlights. **Count the
+   accent-coloured elements per screen: three to six**, which is what the Lume
+   reference application spends (`system.md` §1.1a). Everything else is neutral
+   — including labels, counters, links at rest, avatars and the brand mark.
+2. **Metadata is neutral and monospace.** Micro-labels, counters, ids,
+   timestamps, revisions and metrics are Geist Mono in `text-tertiary` /
+   `text-secondary`, uppercase with `.08em` tracking where they are labels
+   (`system.md` §1.2a). Metadata never borrows the accent to look important.
+3. **Signal**, Lume's separate, palette-independent, deliberately loud colour, is
+   capped at one element across the *entire currently-visible view* and reserved
+   for the single most important one-time commitment on that screen (`system.md`
+   §1.1) — not a second accent, not a way to make an ordinary action feel more
+   urgent than it is.
 
 | Don't | Do |
 |---|---|
 | A dashboard of dial charts | One sentence: "Everything is healthy." with the numbers underneath |
 | Six differently-shaped cards per screen | One card grammar (head / body / foot) everywhere |
 | Colour as decoration | Colour as state (`system.md` §1.1) |
-| A flat accent-tinted fill on the selected row or nav item | The Lume glow halo (`colors_and_type.css` §7, `.lume-selected`) — light the surface emits, not paint applied to it |
+| An accent-tinted pill on the selected nav item, with accent label and icon | A near-invisible left-anchored wash plus a **2px accent edge bar**; the label stays ink (`system.md` §2, Navigation). Data rows may use Lume's fuller two-stop halo (`.lume-selected`) |
+| Accent-brown section labels, counters, links, avatars and brand marks | Uppercase mono micro-labels in `text-tertiary`; counts as mono tabular numerals; links ink-on-hairline-underline with the accent arriving on hover (`system.md` §1.2a) |
+| Large solid accent buttons everywhere | 30px quiet buttons on the raised surface by default; **at most one** accent-gradient primary per screen, and zero is a legitimate answer |
+| A warm accent wash over a card, hero panel or selected 640px option | Cool grey canvas, white cards; accent confined to a hairline edge, a glow ring or a small dot |
+| Serif set at 600 with tight tracking used as chrome | Serif at 400 for sentence-length prose; sans for page titles and chrome; mono for metrics and metadata |
 | A filled, coloured pill for "healthy" / "needs attention" / "broken" | Text and icon colour only — a status is never a block fill (`system.md` §1.1) |
 | Reaching for Signal because a button feels important | Signal only for the one genuine one-time commitment per view (`onboarding.html`'s "Create vault"); everything else, including a routine "Approve", stays accent |
 | Dark mode as inverted light mode | Its own palette; shadows replaced by hairlines and Lume's directional borders |
 | Fixed pixel widths | Fits 360 / 768 / 1280; primary answer never scrolls away |
+| Tight boxes to fit more in | More padding inside cards, more gap between them; density comes from smaller metadata type, not smaller whitespace |
 
 ### Rule 7 — Trust through transparency
 
@@ -150,7 +174,8 @@ that is not evidence for the verdict or a next action belongs on another screen.
 | A number without a consequence ("Inbox 12") | "12 waiting, oldest capture 3 days old" + **Review now** |
 | An activity log of internal events | A feed of things *actors* did, in sentences, with undo |
 | A refresh button | The live dot: the feed is event-driven (SPEC-109 SSE) |
-| Charts for their own sake | One sparkline of memories written, because trend answers "is it being used?" |
+| Charts for their own sake | One sparkline of memories written, because trend answers "is it being used?" — neutral bars, with only the latest column accent-tinted |
+| A chip-salad status line under the verdict | A **briefing**: a mono micro-label, a serif sentence, a hairline rule, then three bulleted facts with mono numbers — the register of the "prepared briefing" container in the Lume reference application |
 
 **First run** (`first run` state) is a designed screen, not a fallback: the verdict
 becomes "Your hub is up. Nothing to remember yet.", the tiles show honest zeros
@@ -277,6 +302,16 @@ gets the plain-text tool result, and every app has a dashboard equivalent (rule 
 Use this on any PR that adds or changes UI:
 
 - [ ] The screen's primary question is answered at 1280×800 without scrolling.
+- [ ] **Accent budget: count the accent-coloured elements — three to six**
+      (`system.md` §1.1a). At most one `btn--primary`; no accent labels,
+      counters, avatars, brand marks or resting link colours.
+- [ ] **Metadata is neutral mono** — micro-labels, counters, timestamps, ids and
+      metrics (`system.md` §1.2a). Card chrome titles are quiet and lowercase;
+      only a head that names a *subject* gets `card__subject`.
+- [ ] **Buttons are quiet** — 30px raised-surface secondary by default; the
+      screen does not read as a row of coloured slabs.
+- [ ] The selected item is a wash plus a 2px accent edge with ink text, not a
+      tinted pill.
 - [ ] Light and dark both look deliberate; no colour outside the tokens.
 - [ ] Responsive at 360 / 768 / 1280; no horizontal page scroll; wide content
       scrolls inside its own container.

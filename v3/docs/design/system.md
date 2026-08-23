@@ -24,33 +24,57 @@
 > screen that read as a second, larger accent block — Lume keeps the accent
 > to small, sparing touches (selection halos, dots, glows), never a panel
 > tint.
+>
+> Version 2.2 — 2026-08-23 — the owner rejected version 2.1 too: the material
+> was right by then, but the **component voice** was not. Measured against the
+> owner-supplied Lume application mockups, palaia was spending accent on
+> everything that should be neutral. Three rules were added, and they are now
+> the load-bearing part of this document: **accent restraint** with a countable
+> three-to-six-elements-per-screen budget (§1.1a), a **neutral monospace
+> metadata register** for micro-labels, counters, ids, timestamps and metrics
+> (§1.2a), and **quiet compact controls** with the raised-surface secondary as
+> the default button and at most one accent primary per screen (§2, Actions).
+> Consequences: the selected nav item became a near-invisible wash plus a 2px
+> accent edge with ink text; card chrome titles became quiet lowercase 12px
+> labels with a separate `card__subject` for heads that name a thing; the serif
+> retreated to prose and page titles moved to sans; metrics moved to mono; and
+> the mockups gained padding and gap so they breathe like the reference does.
 
 ## 0. What palaia looks like, in one paragraph
 
 palaia is an appliance for a person's accumulated knowledge, so it looks like a
 well-kept **archive materialised out of light**, not like a control panel: Lume's
 light-as-material thesis — every surface a soft directional gradient, borders that
-catch light from above, selection and focus as a glow rather than a flat tint — in
-palaia's own accent, **atelier** (studio-lamp warmth: the agent as craftsman
-lighting the work), with a serif for the lines that carry meaning (page titles,
-the health verdict, note titles, metrics). Type is small and calm; whitespace
-does the separating; colour appears where something is *true about the system* —
-healthy, needs attention, broken — communicated through text and icon colour,
-never a filled pill or a status-tinted block. Nothing blinks, nothing gradients
-for decoration beyond Lume's own material recipes, nothing shouts except the one,
-rare, capped **Signal** moment a view is allowed (§1.1, `principles.md` rule 6).
-If a screen looks like an admin panel from 2015, it is not done (UX rule 6).
+catch light from above, selection and focus as a glow rather than a flat tint. The
+canvas is a cool light grey; cards are white surfaces floating on it. palaia's own
+accent, **atelier** (studio-lamp warmth: the agent as craftsman lighting the work),
+appears *sparingly* — a selection edge, a small dot or glow, the one primary
+button, a tiny highlight — and never as a panel wash or as the colour of a label.
+Prose is set in the serif; everything the machine says about itself — micro-labels,
+counters, ids, timestamps, metrics — is neutral monospace. Type is small and calm;
+whitespace does the separating; colour appears where something is *true about the
+system* — healthy, needs attention, broken — communicated through text and icon
+colour, never a filled pill or a status-tinted block. Nothing blinks, nothing
+gradients for decoration beyond Lume's own material recipes, nothing shouts except
+the one, rare, capped **Signal** moment a view is allowed (§1.1,
+`principles.md` rule 6). If a screen looks like an admin panel from 2015, it is
+not done (UX rule 6).
 
 Three deliberate consequences:
 
-1. **One accent, semantic colour otherwise — plus the rare Signal.** Atelier means
-   "you can act on this". Success/warning/error mean state, in text only. Signal
-   is a fourth, palette-independent colour reserved for at most one element per
-   view, the single most important commitment on the screen — it is not a second
-   accent (see §1.1 and `principles.md` rule 6).
-2. **Serif for meaning, sans for work, mono for machine text.** Endpoints, tool
-   names, commits, diffs and frontmatter are monospace — they are literal strings
-   the user may have to copy exactly.
+1. **One accent, spent sparingly — semantic colour otherwise, plus the rare
+   Signal.** Atelier means "you can act on this" or "this is the selected one".
+   Count the accent-coloured elements on a finished screen: the target is **three
+   to six**, matching the Lume reference application (§1.1a). Success/warning/error
+   mean state, in text only. Signal is a fourth, palette-independent colour
+   reserved for at most one element per view, the single most important commitment
+   on the screen — it is not a second accent (see §1.1 and `principles.md` rule 6).
+2. **Serif for prose, sans for work, mono for machine text.** The serif carries
+   sentence-length content — the health briefing, a wizard question, a note body,
+   an empty-state explanation — not chrome. Endpoints, tool names, commits, diffs,
+   frontmatter, metrics, counters, timestamps and uppercase micro-labels are
+   monospace: they are literal or numeric strings, and the mono register is what
+   makes them read as the system talking rather than as emphasis (§1.2a).
 3. **Live, not reloadable.** Every list is event-driven (SPEC-109's SSE layer).
    There is no refresh button anywhere in this system, and no spinner that owns a
    whole screen: Lume's skeleton pulse and inline `waiting` indicators only.
@@ -104,7 +128,7 @@ convenience and does not ship in the dashboard build.
 
 | Token family | Means | Never used for |
 |---|---|---|
-| `accent` (atelier) | Anything the user can act on: primary buttons, links, wiki-links, the selected item, the brand mark | State, decoration, large fills |
+| `accent` (atelier) | The **selected** thing (a 2px edge bar, sometimes a glow halo), the **one** primary button, small dots and glows on live controls, and hairline highlights | State; decoration; panel-sized fills; the resting colour of a link, a label, a counter, an avatar or the brand mark |
 | `signal` | The one, rare, most-important commitment in a view (e.g. the onboarding wizard's "Create vault") — palette-independent, capped at one per view | A second accent, a routine action (Approve is accent, not signal — see `principles.md` rule 6), a status pill |
 | `success` | Verified good: healthy checks, committed writes, additions in a diff | "Success" toasts that nobody needed |
 | `warning` | Needs a human eventually: inbox backlog, index lag, mode conflicts, merge proposals | Anything the system can fix by itself silently |
@@ -119,6 +143,26 @@ coloured text/icon on a neutral surface, never a colour-tinted box). The one
 partial exception Lume itself ships is `error`, which does get a real 1px
 border token (`state-error-edge`) for field-level errors — success and warning
 have no border token and stay text-only everywhere.
+
+### 1.1a Accent restraint — the three-to-six rule
+
+The accent is a budget, not a palette. On a finished screen, **count every
+element that renders in the accent colour**; the target is **three to six**,
+which is what the Lume reference application spends. Everything that is not on
+this list is neutral:
+
+| Allowed to be accent | Not accent — use this instead |
+|---|---|
+| The 2px selection edge bar on the selected nav item, tree row, list row, step or tab | — |
+| The selection wash: a left-anchored breath of `accent-subtle` that dies out before mid-row (`--p-sel-wash`); data rows may use Lume's fuller two-stop halo (`.lume-selected`) | A tinted pill, a full-width tint on a card-sized target, or accent-coloured text in the selected row — the label stays **ink** |
+| **One** `btn--primary` per screen (zero is fine when nothing is the obvious next step) | Every other action: `btn` (raised surface), `btn--quiet`, `btn--ghost`, `btn--risk` |
+| Small lit controls: a `dot--live` pulse, a switch that is on, a filled step numeral, the selected graph node, the accent radio dot | Status dots on metric tiles (drop them — the sub-line carries state), tinted marks, tinted chat bubbles, coloured avatars |
+| A single highlighted column in a sparkline, a 2px accent edge on a quoted block | An accent-tinted block, a whole accent-coloured sparkline |
+| Link and wiki-link **hover** / focus | The resting link colour, which is ink on a hairline underline (`--p-underline`) |
+
+If the count is above six, the screen is warm-washed and reads as a different
+product from the Lume reference. The usual culprits, in order: labels, counters,
+links, avatars, brand marks, and more than one primary button.
 
 Contrast is verified, not assumed (§5 of the PR that introduced this version
 re-ran the check against every new Lume surface/text pair — see that PR's
@@ -135,21 +179,54 @@ so this is a nearest-step mapping, not an invention:
 
 | Role | Font | Lume step | Size | v1 size (for reference) |
 |---|---|---|---|---|
-| Health verdict (home), wizard question | serif | `display` | 32px | 33px |
-| Page title, section heads | serif / sans | `h2` | 20px | 21px |
-| Note title, empty-state title | serif | `h1` / `h2` | 24px / 20px | 26px / 21px |
-| Metric | serif, tabular numerals | `h1` | 24px | 26px |
-| Card title, field label, lead paragraph | sans | `h3` | 16px | 17px |
+| Wizard question | serif, weight 400 | `display` | 32px / 40px | 33px |
+| Health verdict (home), note title, empty-state title | serif, weight 400–600 | `h1` / `h2` | 24px / 20px | 26px / 21px |
+| Page title, section heads | **sans** | `h2` | 20px | 21px (was serif) |
+| Metric | **mono**, tabular numerals | `h1` | 24px / 28px | 26px, serif |
+| Card **subject** (`card__subject` — a head that names a thing, not the container) | sans, 600 | between `h3` and `body` | 15px | — |
+| Field label, lead paragraph (a sentence → serif) | sans / serif | `h3` | 16px | 17px |
 | Body | sans | `body` | 14px, leading 22px | 15px |
 | Dense UI (rows, table cells, buttons) | sans | `body-sm` | 13px | 13px (unchanged) |
-| Meta, chips, hints, overline | sans | `caption` | 12px | 11–12px |
+| Card **chrome** title (`card__title`), chips, hints | sans, 500 | `caption` | 12px | 16px, 600 |
+| Counters, timestamps, revisions, system strings (`t-meta`) | mono | sub-caption | 11px | 12px sans |
+| Uppercase micro-label (`t-over`, table headers, `dl` label columns) | mono, 500, tracking `.08em` | sub-caption | 10px | 12px sans |
 | Endpoints, tool names, commits, diffs, frontmatter | mono | `mono` / `mono-sm` | 13px / 12px | 12–13px (unchanged) |
 
 Lume tops out at `display` (32px); the old 42px onboarding-only display size has
-no Lume equivalent and is retired — the wizard's step titles now render at the
-same 32px as the home verdict. Sentence case everywhere, including buttons and
-headings. No italics except for a quoted vault name or an emphasised word inside
-prose (which, per Lume's register rule, would be the serif channel already).
+no Lume equivalent and is retired. Sentence case everywhere, including buttons
+and headings; **container chrome labels are lowercase** (§1.2a). No italics
+except for a quoted vault name or an emphasised word inside prose (which, per
+Lume's register rule, would be the serif channel already).
+
+The two sub-caption steps (10px, 11px) are mono-only and never carry sentence
+text. They are not an invention: the Lume reference application sets its
+micro-labels and meta strings at 9.5–11px (the KPI tile labels, the
+`LAYERS`/`SOURCES` rail labels, the `rev 4 · 14:08` container metas), and these
+are those two sizes rounded onto whole pixels. Lume's 12px caption floor still
+governs everything in the sans register.
+
+### 1.2a The metadata register, and the two kinds of heading
+
+Two rules make palaia read like the Lume reference rather than like a generic
+admin panel, and they are worth stating on their own.
+
+**1. Metadata speaks in neutral mono.** Anything the system says *about* content
+— an uppercase micro-label, a counter, a revision, a timestamp, an id, a
+column header, the label column of a definition list — is Geist Mono in
+`text-tertiary` (or `text-secondary` when it must be read), with `.08em`
+tracking when uppercased and `tnum` always on. It is never accent-coloured, never
+wrapped in a bordered pill, and never bold. A nav counter is `12`, not a badge
+saying `12`. Metrics belong here too: mono tabular numerals in ink, with the unit
+as a small neutral sans word beside them.
+
+**2. A card head has two possible voices.** `card__title` is the *container*
+label — 12px, weight 500, `text-secondary`, **lowercase** ("activity",
+"clients", "next in queue"), exactly as the Lume containers are labelled
+("prepared briefing", "this week", "knowledge graph · current snapshot"). Its
+right-hand slot is a mono meta string. When the left slot instead names a
+**subject** — "Claude Code", "Acme Corp — contract terms" — it is a real heading
+and uses `card__subject` (15px/600, ink). Getting this backwards is what makes a
+dashboard shout: eight 16px bold headings competing with the content they label.
 
 ### 1.3 Space, radius, elevation, motion
 
@@ -206,25 +283,40 @@ the minimum a component must render.
 
 ### Actions
 
+Buttons are **small and quiet**. The default button is the raised-surface
+secondary; the accent-gradient primary is the exception, capped at one per
+screen. A screen with no primary at all is a legitimate outcome — the Lume
+reference application's editor screens have none.
+
 | Component | Anatomy | States | Rules |
 |---|---|---|---|
-| `btn--primary` | 36px, accent gradient fill (top→hover stop), two-stop accent glow, optional leading icon | hover (deeper glow), active, focus-visible (Lume focus ring), disabled | **One per view.** The primary is the thing you most likely want next |
+| `btn` (secondary — **the default**) | 30px, `bg-surface-raised` gradient + hairline directional `line-subtle` border + top-edge highlight, 13px/500 label; hover adds an `accent-subtle` wash over the gradient | hover, active, focus-visible (Lume focus ring), disabled | Use this unless the action is *the* next step. Two or three of these side by side is the normal action bar |
+| `btn--primary` | Same 30px box, accent gradient fill (top→hover stop), two-stop accent glow, optional leading icon | as above | **One per screen, at most.** It counts against the accent budget (§1.1a) |
 | `btn--signal` | Same anatomy as `btn--primary`, palette-independent Signal fill/glow instead of accent | as above | **At most one across the entire dashboard's currently-visible view**, and only for the single most important, one-time commitment — see `principles.md` rule 6. Not a second `btn--primary`; do not reach for it for a routine action |
-| `btn` (secondary) | `bg-surface-raised` gradient (not the flatter `bg-surface` pane gradient) + directional `line-strong` border + top-edge highlight | as above | For alternatives that are equally safe |
-| `btn--quiet` / `btn--ghost` | border only / text only | as above | Row-level and tertiary actions |
+| `btn--quiet` / `btn--ghost` | hairline border only / text only, `text-secondary` | as above | Row-level and tertiary actions |
 | `btn--risk` | transparent fill, border/text = `state.error.edge`/`state.error.fg` (the one semantic state with a real border token), low-alpha error wash on hover | as above | Revoke, reject, delete. Never filled red |
-| `btn--sm` / `btn--lg` | 28px / 44px | — | `sm` inside rows and cards, `lg` in the wizard |
-| `iconbtn` | 32px square, ghost | hover, focus | Needs `title`; never the only path to an action |
-| `kbd` | 20px key cap | — | Shown next to an action that has a shortcut, not in a legend somewhere else |
+| `btn--sm` / `btn--lg` | 25px / 34px | — | `sm` inside rows, tiles and cards; `lg` only for a wizard's forward action |
+| `btn--block` | full width | — | Only where the container really is one column wide *and* the action is not the primary; a full-width accent slab is the loudest object on any screen |
+| `iconbtn` | 28px square, ghost | hover, focus | Needs `title`; never the only path to an action |
+| `kbd` | 18px key cap, mono 10px, hairline border | — | Shown next to an action that has a shortcut, not in a legend somewhere else |
 
 ### Surfaces & structure
 
-`card` (+`--flat`, `--raised`) with `card__head` / `card__body` / `card__foot` —
-every non-flat card sits on the `bg-surface-raised` gradient pair (not the
-flatter plain `bg-surface`), with a directional border and a 1px top-edge
-highlight plus `--shadow-raised`, never a flat fill; `tile` (metric tile, same
-raised-gradient recipe as `card`, `--attention` variant — text and icon colour
-only, **no fill or coloured border**, per the text-only state rule); `banner`
+`card` (+`--flat`, `--raised`) with `card__head` / `card__title` or
+`card__subject` (§1.2a) / `card__body` / `card__foot` — a card is a **white
+surface floating on the cool canvas**: the `bg-surface` gradient pair, a hairline
+directional border, a 1px top-edge highlight and `--shadow-raised`, never a flat
+fill and never a tint (see below on `tile--attention`). `card__head` carries a quiet lowercase container label on
+the left and a mono meta string on the right; actions belong in `card__foot`, not
+in the head. Cards get generous internal padding (20px body, 16/20 head) and sit
+20px apart — the reference application breathes, and density comes from smaller
+metadata type, not tighter boxes. `tile` (metric tile, on the *raised* gradient
+since it nests inside a surface; `--attention` colours **the number and nothing
+else** — no fill, no coloured border, no status dot, no coloured sub-line — which
+is how the Lume reference renders its own `Δ vs. last wk  −4.2 %` tile. This
+matters more than it looks: Lume's `warning` token is an olive-brown that sits
+close to atelier, so a *sentence* in warn reads to the eye as another accent
+element, while one short numeral does not); `banner`
 (info / warn / ok — a neutral gradient surface whose icon and title take the
 state colour; the box itself never does. An explanation with an optional
 title, never a bare error string); `sep`; `scrollpane` (thin themed
@@ -235,23 +327,38 @@ stays confined to small touches (a dot, a glow, a 2px selection edge), per
 
 ### Navigation
 
-`sidebar` (brand — accent-glow mark — grouped `nav__item`s with optional
-`nav__count` badges, footer with operating mode and version), `topbar` (page
-title + one-line subtitle, command bar `⌘K`, global health badge, avatar),
-`tabbar` (in-card tabs; the active tab's underline carries an accent-glow
-underglow, per Lume's tabs recipe), `segmented` (small mutually exclusive
-choices, e.g. tool profiles), `steps` (wizard rail with done/current/upcoming —
-**selection states use the Lume two-stop glow halo, never a flat accent-tinted
-fill**: done = neutral + success ring, current = the donut-glow number), `numstep`
-(numbered step inside a flow, same done/current treatment as `steps`).
+`sidebar` (brand — a **neutral** raised chip, not an accent tile; the shell
+spends no accent on branding — grouped `nav__item`s with mono `nav__count`
+numbers, footer with operating mode and version), `topbar` (sans page title +
+one-line sentence subtitle — or a mono `t-meta` line when the subtitle is a
+date/clock — command bar `⌘K`, global health badge, **neutral** avatar),
+`tabbar` (in-card tabs; the active tab is a 2px accent bottom edge and ink text,
+nothing else), `segmented` (small mutually exclusive choices, e.g. tool
+profiles; the active segment is a raised neutral surface), `steps` (wizard rail
+with done/current/upcoming), `numstep` (numbered step inside a flow).
+
+**The selected nav item is the quiet treatment**, and this is the single most
+visible difference from an admin panel: a near-invisible left-anchored
+`accent-subtle` wash (`--p-sel-wash`) plus a **2px accent edge bar**, with the
+label and icon staying **ink** — never an accent-tinted pill, never accent text,
+never a bold accent icon. The same treatment carries `steps`, `numstep`,
+`listrow--selected`, `clientrow--on`, `tree__row--on` and the checklist's current
+row. Lume's fuller two-stop glow halo (`.lume-selected`) is reserved for **data**
+rows, where the surrounding rows are also data and the halo has to carry the
+selection on its own. In `steps` and `numstep`, done = neutral disc + success
+ring; the current step additionally gets the one small accent-filled numeral
+disc; peer steps in a flow that has no "current" (e.g. connect-client's three
+instructions) are **all** neutral mono discs.
 
 ### Data display
 
-`table` (hairline rows, no zebra, uppercase micro-headers, horizontally scrollable
-in its own wrapper), `listrow` (icon + title + meta + trailing value/action;
-`--selected` uses the glow halo, not a fill), `feed` (activity item: mark,
-sentence, provenance chips, relative time, hover action — the mark's colour
-carries the event type, never a coloured circle fill), `diff` (two columns at
+`table` (hairline rows, no zebra, **mono uppercase micro-headers** in
+`text-tertiary`, horizontally scrollable in its own wrapper), `listrow` (icon +
+title + meta + trailing mono value/action; `--selected` uses the quiet wash + 2px
+edge, not a fill), `feed` (activity item: neutral mark, sentence, provenance
+chips, mono relative time, hover action — the mark's colour carries the event
+type only when that type is a semantic state, and is neutral otherwise; never a
+coloured circle fill), `diff` (two columns at
 ≥ 768px, stacked below; `dline--add` / `--del` / `--same` render as a coloured
 left edge plus a coloured `+`/`−` glyph on a neutral row — **never a coloured
 block fill behind the line**, per the text-only state rule), `graph` (local
@@ -262,9 +369,13 @@ button; wraps rather than truncates), `qr`, `fm` (frontmatter key/value list),
 
 ### Status
 
-`badge` (neutral / ok / warn / risk / info / accent — **text and optional `dot`
-only, no pill background or border**, per `colors_and_type.css` §2.6), `dot`
-(+`dot--live` for event-stream-backed liveness), `chip` (provenance: which
+`badge` (neutral / ok / warn / risk / info — **text and optional `dot` only, no
+pill background or border**, per `colors_and_type.css` §2.6; there is no
+`badge--accent`, because a badge is metadata and metadata is neutral. `--ok` is
+the resting state, so its *dot* is green and its words stay neutral — the same
+reading as "10 connectors live" in the Lume reference; `--warn` and `--risk` do
+colour their text, because those are the states worth saying out loud), `dot`
+(+`dot--live`, the accent pulse for event-stream-backed liveness), `chip` (provenance: which
 agent, which session, which capture id; `chip--mono` for identifiers — a neutral
 tag, not a status indicator, so it may still carry a background wash), `waiting`
 (three-dot inline indicator with a sentence saying what is being waited for —
@@ -279,17 +390,21 @@ soft accent-glow underneath, on a sunken track — reads as lit, not painted).
 (`bg-surface-raised` gradient, directional border, top-edge highlight; focus =
 the Lume glow ring, not a flat outline; `+input--readonly` for machine-owned values like
 paths, which get a `Change…` button rather than becoming editable text),
-`switchrow` (toggle + label + consequence; the "on" thumb is accent-fill with a
-small glow), `radiocard` (a choice with its trade-offs: "choose this if…", what
-works, what does not — the selected card is an accent-subtle wash plus a glow
-ring, never a flat tinted fill), `clientcard` (same selected treatment),
-`preview` (dashed panel showing what the machine will see, e.g. generated tool
-names).
+`switchrow` (toggle + label + consequence; the "on" track is accent-fill with a
+small glow — a switch is one of the few places the accent is allowed to be a
+fill), `radiocard` (a choice with its trade-offs: "choose this if…", what works,
+what does not — **the selected card gets a hairline accent border and a 1px
+accent-glow ring, and nothing else**: a 640px-wide card is far too much area to
+tint, so the filled accent radio dot carries the choice. The same "resting
+active" treatment the Lume reference gives an active container),
+`clientcard` (same selected treatment), `preview` (dashed panel showing what the
+machine will see, e.g. generated tool names).
 
 ### Empty & first-run
 
-`empty` (mark — a small accent-glow icon tile — serif title, one explanatory
-sentence, one or more next actions) plus the compact inline variant
+`empty` (mark — a small **neutral** raised icon chip; an empty screen has nothing
+selected, so it has nothing to spend accent on — serif title at weight 400, one
+explanatory sentence, one or more next actions) plus the compact inline variant
 (`empty__mark` + two lines) for panels that are empty inside an otherwise
 populated screen. Every empty state must name the next action; see
 `principles.md` §3.
@@ -367,7 +482,12 @@ mockup's token block, gated behind `data-accent`, so the accent-switch story
 stays visible and testable in code without any of the mockups needing a second
 copy.
 
+All five files carry the same shared block — tokens **and** the component layer,
+from the bare `:root{` through `.state{display:none}` — byte-identically; only
+the comment header above it, the `<title>`, the per-screen CSS after it and the
+markup differ. Keep it that way: a change to a shared component means the same
+edit in all five files, and `md5` of that slice must match across them.
+
 **When you change a token**, change it in
 [`../lume/colors_and_type.css`](../lume/colors_and_type.css) first, then mirror
-it here and in every mockup's token block (they are byte-identical copies of
-each other), then in `v3/web`.
+it here and in every mockup's shared block, then in `v3/web`.
