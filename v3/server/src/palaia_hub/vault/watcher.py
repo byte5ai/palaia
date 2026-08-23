@@ -113,7 +113,13 @@ class VaultWatcher:
         return self._task is not None and not self._task.done()
 
     async def start(self) -> None:
-        """Start watching in a background task and wait until it is armed."""
+        """Start the watch task and wait until it is running.
+
+        ``watchfiles`` establishes its OS-level watch on the first iteration
+        and offers no "ready" signal, so a change made within a few tens of
+        milliseconds of this call may still be missed. Callers that need the
+        very first change (tests, imports) should settle briefly after start.
+        """
         if self.running:
             return
         self._stop.clear()
