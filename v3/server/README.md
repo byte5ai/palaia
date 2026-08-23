@@ -22,6 +22,43 @@ Python core of the palaia v3 hub daemon.
   `pyproject.toml` reads it back dynamically via `[tool.hatch.version]`
   rather than restating it.
 
+## The vault engine (SPEC-102)
+
+`palaia_hub.vault` — the memory core. Files are the only truth
+([vault format v1.0](../docs/vault-format.md)); the database that lands in
+SPEC-104 is a disposable index.
+
+- `VaultRegistry` — many vaults, physically isolated (own directory, own git
+  history, own `.palaia/` storage). Pointers live in `vaults.yaml` under the
+  hub home; names and purposes come from each vault's `meta/vault.md`.
+- `VaultEngine` — `write_note` / `read_note` / `edit_note` / `move_note` /
+  `delete_note` / `list_dir` / `history`, plus `rename_entity` (new
+  title+permalink, old ones kept as aliases, **every** inbound wikilink
+  rewritten, all in one commit). Writes are synchronous write-through: tmp
+  file → fsync → atomic rename → fsync dir → one attributed git commit.
+  `edit_note` takes the checksum you read, so a concurrent writer gets a
+  conflict instead of silently losing an edit.
+- `VaultWatcher` — debounced `watchfiles` watching with **checksum-based move
+  detection**: an external rename arrives as `deleted`+`added` in one batch
+  and is emitted as a single `NoteMoved`, keeping the note's identity.
+- `vault.events` — the typed change-event vocabulary and an in-process bus
+  stub (the real bus is Phase 2).
+- `VaultDoctor` — `verify()` findings (stale git locks, permalink problems,
+  partial renames, dangling links, repo bloat, file↔index drift against the
+  SPEC-104 `IndexView` interface), `repair()` for the safe repairs, and
+  `reindex(sink)` as the rebuild-from-files hook.
+- Git backend: porcelain `git` via subprocess, staging **only changed paths**,
+  with an explicit gc policy (`gc.auto` far below git's default plus a
+  scheduled `git gc`) — both bindings from the SPEC-003 findings.
+
+Scale knobs for the performance tests:
+
+```bash
+PALAIA_KILL_TRIALS=25 uv run pytest server/tests/vault/test_kill_safety.py
+PALAIA_VAULT_SCALE=10000 uv run pytest server/tests/vault/test_performance.py -s -k scale
+PALAIA_VAULT_SCALE_WRITES=10000 uv run pytest server/tests/vault/test_performance.py -s -k scale
+```
+
 ## Running it
 
 ```bash
