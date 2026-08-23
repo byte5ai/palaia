@@ -185,6 +185,32 @@ async def test_rename_to_a_volatile_title_is_refused(make_engine: EngineFactory)
     assert note.title == "API Gateway"
 
 
+async def test_rename_does_not_rewrite_links_owned_by_another_note(
+    make_engine: EngineFactory,
+) -> None:
+    """A path-shaped form that is another note's permalink stays untouched.
+
+    The renamed note lives at ``projects/api.md`` but its permalink is
+    something else, and a *different* note owns the permalink
+    ``projects/api`` — so ``[[projects/api]]`` means that other note.
+    """
+    engine = await make_engine("work")
+    await engine.write_note(
+        "projects/api", title="Gateway", body="x\n", permalink="platform/gateway"
+    )
+    await engine.write_note("other/decoy", title="Decoy", body="x\n", permalink="projects/api")
+    await engine.write_note(
+        "notes/links", title="Links", body="[[projects/api]] and [[platform/gateway]]\n"
+    )
+
+    await engine.rename_entity("platform/gateway", "Edge Gateway")
+
+    text = (engine.root / "notes/links.md").read_text(encoding="utf-8")
+    assert "[[projects/api]]" in text  # still the decoy's permalink
+    # The renamed note's new permalink: minted from its folder path (§3.1).
+    assert "[[projects/edge-gateway]]" in text
+
+
 async def test_explicit_new_permalink_is_honoured(make_engine: EngineFactory) -> None:
     engine = await golden_vault(make_engine)
     result = await engine.rename_entity(

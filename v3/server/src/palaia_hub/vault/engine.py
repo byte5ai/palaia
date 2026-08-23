@@ -1148,6 +1148,13 @@ class VaultEngine:
             if old_path.endswith(NOTE_SUFFIX):
                 permalink_forms.add(old_path[: -len(NOTE_SUFFIX)].lower())
             permalink_forms.add(old_path.lower())
+        # A path-shaped form must not shadow another note's permalink: if some
+        # other entity owns that exact permalink, links using it mean *that*
+        # note, not this one.
+        claims = self._lookup_tables().by_permalink
+        permalink_forms = {
+            form for form in permalink_forms if claims.get(form) in (None, *old_paths)
+        }
 
         def resolve(target: str) -> str | None:
             probe = target.strip()
