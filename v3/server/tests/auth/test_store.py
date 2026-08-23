@@ -129,6 +129,40 @@ def test_store_persists_across_instances(tmp_path: Path) -> None:
     assert record.name == "client"
 
 
+def test_list_tokens_reports_last_used_only_after_a_successful_verify(tmp_path: Path) -> None:
+    store = TokenStore(home=tmp_path)
+    created = store.create("client", "default", [])
+
+    before = store.list_tokens()[0]
+    assert before.last_used_at is None
+
+    store.verify(created.token)
+
+    after = store.get(created.info.id)
+    assert after.last_used_at is not None
+
+
+def test_last_used_at_is_not_persisted_to_disk(tmp_path: Path) -> None:
+    store = TokenStore(home=tmp_path)
+    created = store.create("client", "default", [])
+    store.verify(created.token)
+    assert store.get(created.info.id).last_used_at is not None
+
+    reloaded = TokenStore(home=tmp_path)
+
+    assert reloaded.get(created.info.id).last_used_at is None
+
+
+def test_failed_verify_does_not_stamp_last_used(tmp_path: Path) -> None:
+    store = TokenStore(home=tmp_path)
+    created = store.create("client", "default", [])
+    token_id = created.token.removeprefix("plt_").split(".", 1)[0]
+
+    store.verify(f"plt_{token_id}.wrong-secret-wrong-secret-wrong12")
+
+    assert store.get(created.info.id).last_used_at is None
+
+
 def test_malformed_store_file_reports_fix(tmp_path: Path) -> None:
     (tmp_path / "tokens.yaml").write_text("not: [a, valid, token, file\n", encoding="utf-8")
 

@@ -99,6 +99,9 @@ class TokenStore:
     def __init__(self, home: Path | None = None) -> None:
         self.home = Path(home).expanduser() if home is not None else palaia_home()
         self._records: dict[str, TokenRecord] = {}
+        # In-memory only (see TokenInfo.last_used_at's docstring for why):
+        # token_id -> ISO timestamp of its last successful verify().
+        self._last_used: dict[str, str] = {}
         self._load()
 
     @property
@@ -152,7 +155,10 @@ class TokenStore:
         builtin for every subsequent ``list[...]`` annotation in this class
         body.
         """
-        return [TokenInfo.from_record(r) for r in self._records.values()]
+        return [
+            TokenInfo.from_record(r, last_used_at=self._last_used.get(r.id))
+            for r in self._records.values()
+        ]
 
     def get(self, token_id: str) -> TokenInfo:
         record = self._records.get(token_id)
@@ -160,7 +166,7 @@ class TokenStore:
             raise TokenError(
                 f"no token with id {token_id!r}. Fix: check the id with list_tokens()."
             )
-        return TokenInfo.from_record(record)
+        return TokenInfo.from_record(record, last_used_at=self._last_used.get(token_id))
 
     # ------------------------------------------------------------- mutations
 
@@ -233,6 +239,7 @@ class TokenStore:
             return None
         if record.is_revoked:
             return None
+        self._last_used[token_id] = _now()
         return record
 
 

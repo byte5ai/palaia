@@ -23,6 +23,16 @@ export interface VaultChangedEventData {
   paths: string[];
 }
 
+/** One entry of `recentChanges` — the raw event plus when it arrived, for
+ * Home's activity feed (SPEC-110). */
+export interface VaultChangeEntry extends VaultChangedEventData {
+  ts: number;
+}
+
+/** How many `recentChanges` entries `EventStreamState` keeps — a feed, not
+ * an unbounded log; older entries fall off the end. */
+const RECENT_CHANGES_LIMIT = 20;
+
 export type ConnectionState = "connecting" | "open" | "reconnecting" | "closed";
 
 export interface EventStreamState {
@@ -35,6 +45,10 @@ export interface EventStreamState {
    * badge updates without reload". */
   vaultChangeCount: number;
   lastVaultChange: VaultChangedEventData | null;
+  /** The most recent `vaultChangeCount` events, newest first — Home's
+   * activity feed (SPEC-110 deliverable #4: "recent activity feed
+   * (SSE-live)"). Bounded to `RECENT_CHANGES_LIMIT` entries. */
+  recentChanges: VaultChangeEntry[];
 }
 
 const INITIAL_STATE: EventStreamState = {
@@ -43,6 +57,7 @@ const INITIAL_STATE: EventStreamState = {
   healthAt: null,
   vaultChangeCount: 0,
   lastVaultChange: null,
+  recentChanges: [],
 };
 
 /** Build an `EventSource` unless a test/story has already provided one via
@@ -86,12 +101,14 @@ export function useEventStream(
 
     source.addEventListener("vault_changed", (event: MessageEvent<string>) => {
       try {
-        const payload = JSON.parse(event.data) as { data: VaultChangedEventData };
+        const payload = JSON.parse(event.data) as { data: VaultChangedEventData; ts?: number };
+        const entry: VaultChangeEntry = { ...payload.data, ts: (payload.ts ?? Date.now() / 1000) * 1000 };
         setState((prev) => ({
           ...prev,
           connection: "open",
           vaultChangeCount: prev.vaultChangeCount + payload.data.count,
           lastVaultChange: payload.data,
+          recentChanges: [entry, ...prev.recentChanges].slice(0, RECENT_CHANGES_LIMIT),
         }));
       } catch {
         // same as above: drop and wait for the next event

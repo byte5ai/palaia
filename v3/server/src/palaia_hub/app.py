@@ -20,10 +20,13 @@ from fastapi import FastAPI, HTTPException
 from . import __version__
 from .auth import TokenStore, build_auth_router, check_gateway_auth_policy
 from .config import HubConfig, load_config
+from .dashboard_api import build_dashboard_router
 from .events import EventBus, build_events_router, start_background_tasks, stop_background_tasks
 from .gateway import GatewayASGI, VaultService
+from .gateway.wiring import EngineVaultService
 from .logging import setup_logging
 from .static import mount_dashboard
+from .vault import VaultNotFoundError, VaultRegistry
 
 # Name of the env var that, when set to a positive number of seconds, adds a
 # `/api/_test/slow` route that sleeps that long before responding. This
@@ -39,6 +42,7 @@ def create_app(
     gateway: GatewayASGI | None = None,
     token_store: TokenStore | None = None,
     vault_services: Mapping[str, VaultService] | None = None,
+    vault_registry: VaultRegistry | None = None,
 ) -> FastAPI:
     """Build the hub's ASGI app.
 
@@ -68,10 +72,20 @@ def create_app(
             refuses the config-level version of this mistake earlier, at
             ``load_config()`` time).
         vault_services: the same ``{vault_key: VaultService}`` mapping passed
-            to ``build_gateway`` (SPEC-107), used only to back the
+            to ``build_gateway`` (SPEC-107), used to back the
             ``/api/vaults/{vault_key}/inbox_status`` REST endpoint below.
             Independent of ``gateway`` on purpose: a caller can expose the
             REST endpoint without an MCP gateway mounted, and vice versa.
+        vault_registry: the hub's vault registry (SPEC-102/SPEC-110). Given,
+            mounts the wizard's "create a vault" endpoint and the memory
+            explorer's list/read/search/history/graph endpoints
+            (:mod:`palaia_hub.dashboard_api`), and backs ``inbox_status``
+            above for any vault key known to the registry but absent from
+            ``vault_services`` — so a vault created through the wizard at
+            runtime is inbox-visible without also needing an entry in the
+            (gateway-mounted-at-startup) ``vault_services`` mapping. Omitted
+            (the default), the hub runs with no wizard/explorer REST surface
+            at all, same as before this parameter existed.
     """
     config = config or load_config()
     vault_services = vault_services or {}
@@ -126,6 +140,11 @@ def create_app(
     @app.get("/api/vaults/{vault_key}/inbox_status")
     async def inbox_status(vault_key: str) -> dict[str, Any]:
         service = vault_services.get(vault_key)
+        if service is None and vault_registry is not None:
+            try:
+                service = EngineVaultService(await vault_registry.get(vault_key))
+            except VaultNotFoundError:
+                service = None
         if service is None:
             raise HTTPException(
                 status_code=404,
@@ -142,6 +161,9 @@ def create_app(
 
     if token_store is not None:
         app.include_router(build_auth_router(token_store))
+
+    if vault_registry is not None:
+        app.include_router(build_dashboard_router(vault_registry))
 
     _maybe_add_test_slow_route(app)
 
