@@ -1,9 +1,9 @@
 """ASGI app factory for the hub daemon.
 
-One FastAPI app hosting the REST/dashboard API (this SPEC: ``/api/health``
-and ``/api/info`` only) and, from SPEC-105 onward, the MCP gateway mount
-point. No MCP serving, auth, or persistence here — see SPEC-101's
-non-goals.
+One FastAPI app hosting the REST/dashboard API, the MCP gateway mount
+point (SPEC-105, opt-in via the ``gateway`` parameter), and the
+``/api/auth/tokens`` token-management surface (SPEC-108, opt-in via the
+``token_store`` parameter).
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from typing import Any
 from fastapi import FastAPI
 
 from . import __version__
+from .auth import TokenStore, build_auth_router, check_gateway_auth_policy
 from .config import HubConfig, load_config
 from .events import EventBus, build_events_router, start_background_tasks, stop_background_tasks
 from .gateway import GatewayASGI
@@ -32,7 +33,12 @@ from .static import mount_dashboard
 _TEST_SLOW_ENDPOINT_ENV = "PALAIA_TEST_SLOW_ENDPOINT_SECONDS"
 
 
-def create_app(config: HubConfig | None = None, *, gateway: GatewayASGI | None = None) -> FastAPI:
+def create_app(
+    config: HubConfig | None = None,
+    *,
+    gateway: GatewayASGI | None = None,
+    token_store: TokenStore | None = None,
+) -> FastAPI:
     """Build the hub's ASGI app.
 
     Args:
@@ -44,9 +50,27 @@ def create_app(config: HubConfig | None = None, *, gateway: GatewayASGI | None =
             before this parameter existed. Its lifespan MUST be attached to
             this app's lifespan (done below) or its mounted profile(s) hang
             on their first request — see ``gateway/build.py``'s docstring.
+        token_store: the client-token store (SPEC-108); given, mounts the
+            ``/api/auth/tokens`` REST surface (:func:`palaia_hub.auth.
+            build_auth_router`). Omitted (the default), the hub runs with
+            no token-management API at all, same as before this parameter
+            existed — a caller that only needs the gateway's *enforcement*
+            of tokens already-issued via the CLI does not need to pass one.
+
+    Raises:
+        palaia_hub.auth.AuthPolicyError: ``gateway`` is given, ``config.mode``
+            is ``cloud``/``open``, and one or more of the gateway's mounted
+            profiles has no auth attached (see ``auth/policy.py`` — this is
+            the "hub refuses to start MCP endpoints without auth enabled"
+            enforcement, checked against the gateway actually built rather
+            than against config alone; :mod:`palaia_hub.config` already
+            refuses the config-level version of this mistake earlier, at
+            ``load_config()`` time).
     """
     config = config or load_config()
     setup_logging(config)
+    if gateway is not None:
+        check_gateway_auth_policy(config.mode, gateway.profile_servers)
 
     start_time = time.monotonic()
     event_bus = EventBus()
@@ -96,6 +120,9 @@ def create_app(config: HubConfig | None = None, *, gateway: GatewayASGI | None =
     # dashboard build itself. The dashboard mount goes last so it never
     # shadows an /api/* route (see static.mount_dashboard).
     app.include_router(build_events_router(event_bus, health_snapshot=health_snapshot))
+
+    if token_store is not None:
+        app.include_router(build_auth_router(token_store))
 
     _maybe_add_test_slow_route(app)
 
