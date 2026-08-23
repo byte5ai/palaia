@@ -10,7 +10,7 @@ from conftest import TEST_POLICY, EngineFactory, write_raw
 
 from palaia_hub.vault import IndexEntry, Note, VaultDoctor
 from palaia_hub.vault.atomic import TEMP_SUFFIX
-from palaia_hub.vault.doctor import summarize
+from palaia_hub.vault.doctor import MAX_NOTES_PER_DIRECTORY, summarize
 
 pytestmark = pytest.mark.anyio
 
@@ -173,6 +173,25 @@ async def test_manifest_and_format_version_findings(make_engine: EngineFactory) 
     engine2 = await make_engine("other", root=engine.root)
     counts = summarize(await VaultDoctor(engine2).verify())
     assert "manifest-missing" not in counts  # re-open with create=True rewrote it
+
+
+async def test_oversized_directory_is_reported(make_engine: EngineFactory) -> None:
+    engine = await make_engine("work")
+    folder = engine.root / "flat"
+    folder.mkdir()
+    for index in range(MAX_NOTES_PER_DIRECTORY + 2):
+        (folder / f"n{index:04d}.md").write_text(
+            f"---\ntitle: N{index}\npermalink: flat/n{index:04d}\n---\n\nx\n", encoding="utf-8"
+        )
+    await engine.refresh()
+
+    findings = [
+        finding
+        for finding in await VaultDoctor(engine).verify()
+        if finding.code == "directory-large"
+    ]
+    assert [finding.path for finding in findings] == ["flat"]
+    assert "tree object" in findings[0].detail
 
 
 async def test_engine_exposes_the_doctor_hook_points(make_engine: EngineFactory) -> None:

@@ -35,6 +35,10 @@ logger = logging.getLogger("palaia_hub.vault.doctor")
 
 Severity = Literal["info", "warning", "error"]
 
+#: Format spec §1 layout guidance: keep directories under ~500 files, because
+#: git's tree-object cost per commit scales with directory size (SPEC-003).
+MAX_NOTES_PER_DIRECTORY = 500
+
 
 @dataclass(frozen=True, slots=True)
 class Finding:
@@ -100,6 +104,7 @@ class VaultDoctor:
         findings.extend(self._check_git())
         findings.extend(self._check_identity())
         findings.extend(self._check_links())
+        findings.extend(self._check_directory_sizes())
         findings.extend(self._check_temp_files())
         if index is not None:
             findings.extend(self._check_index(index))
@@ -343,6 +348,39 @@ class VaultDoctor:
         except VaultError:
             return False
         return True
+
+    def _check_directory_sizes(self) -> list[Finding]:
+        """Report directories past the format spec's size guidance (§1).
+
+        Not cosmetic: git rewrites a directory's tree object on every commit
+        touching it, so per-commit cost and repository growth scale with
+        *directory* size. Measured on a 10k-note vault: one flat directory
+        ends at ``.git`` 4.4x its content after gc, while the same notes
+        sharded stay proportional.
+        """
+        counts: dict[str, int] = {}
+        for path in self.engine.catalog:
+            folder = path.rsplit("/", 1)[0] if "/" in path else "."
+            counts[folder] = counts.get(folder, 0) + 1
+        findings: list[Finding] = []
+        for folder, count in sorted(counts.items()):
+            if count <= MAX_NOTES_PER_DIRECTORY:
+                continue
+            findings.append(
+                Finding(
+                    code="directory-large",
+                    severity="info",
+                    detail=(
+                        f"{folder} holds {count} notes, past the ~{MAX_NOTES_PER_DIRECTORY} "
+                        f"guidance (§1). Git rewrites this directory's tree object on every "
+                        f"commit that touches it, so both write latency and repository growth "
+                        f"scale with the count."
+                    ),
+                    fix="Split the notes into topic subfolders (move_note keeps permalinks).",
+                    path=folder,
+                )
+            )
+        return findings
 
     def _check_temp_files(self) -> list[Finding]:
         leftovers = [
