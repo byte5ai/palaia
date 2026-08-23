@@ -17,6 +17,7 @@ from fastapi import FastAPI
 
 from . import __version__
 from .config import HubConfig, load_config
+from .gateway import GatewayASGI
 from .logging import setup_logging
 
 # Name of the env var that, when set to a positive number of seconds, adds a
@@ -27,20 +28,34 @@ from .logging import setup_logging
 _TEST_SLOW_ENDPOINT_ENV = "PALAIA_TEST_SLOW_ENDPOINT_SECONDS"
 
 
-def create_app(config: HubConfig | None = None) -> FastAPI:
+def create_app(config: HubConfig | None = None, *, gateway: GatewayASGI | None = None) -> FastAPI:
     """Build the hub's ASGI app.
 
     Args:
         config: hub configuration; loaded via :func:`load_config` if omitted.
+        gateway: the MCP gateway (SPEC-105, ``palaia_hub.gateway.build_gateway``),
+            mounted at its configured profile paths when given. Real wiring
+            of vault services into a gateway happens in a later SPEC
+            (SPEC-113); omitted, the hub runs with no MCP endpoint, same as
+            before this parameter existed. Its lifespan MUST be attached to
+            this app's lifespan (done below) or its mounted profile(s) hang
+            on their first request — see ``gateway/build.py``'s docstring.
     """
     config = config or load_config()
     setup_logging(config)
 
     start_time = time.monotonic()
 
-    app = FastAPI(title="palaia-hub", version=__version__)
+    app = FastAPI(
+        title="palaia-hub",
+        version=__version__,
+        lifespan=gateway.lifespan if gateway is not None else None,
+    )
     app.state.config = config
     app.state.start_time = start_time
+    if gateway is not None:
+        for path, mounted_app in gateway.mounts.items():
+            app.mount(path, mounted_app)
 
     @app.get("/api/health")
     async def health() -> dict[str, Any]:
