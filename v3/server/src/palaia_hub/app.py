@@ -1,9 +1,10 @@
 """ASGI app factory for the hub daemon.
 
 One FastAPI app hosting the REST/dashboard API, the MCP gateway mount
-point (SPEC-105, opt-in via the ``gateway`` parameter), and the
+point (SPEC-105, opt-in via the ``gateway`` parameter), the
 ``/api/auth/tokens`` token-management surface (SPEC-108, opt-in via the
-``token_store`` parameter).
+``token_store`` parameter), and the ``/api/hooks`` webhook surface
+(SPEC-201, opt-in via the ``hook_store`` parameter).
 """
 
 from __future__ import annotations
@@ -11,21 +12,33 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from collections.abc import AsyncIterator, Mapping
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Callable, Mapping
+from contextlib import AsyncExitStack, asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
 
 from . import __version__
-from .auth import TokenStore, build_auth_router, check_gateway_auth_policy
-from .config import HubConfig, load_config
+from .auth import TokenRecord, TokenStore, build_auth_router, check_gateway_auth_policy
+from .config import HubConfig, load_config, palaia_home
 from .dashboard_api import build_dashboard_router
-from .events import EventBus, build_events_router, start_background_tasks, stop_background_tasks
+from .events import (
+    EventBus,
+    bridge_vault_events,
+    build_events_router,
+    publish_event,
+    start_background_tasks,
+    stop_background_tasks,
+)
 from .gateway import GatewayASGI, VaultService
+from .gateway.stash_tools import build_stash_gateway
 from .gateway.wiring import EngineVaultService
+from .hooks import OUTBOX_RELATIVE_PATH, HookDispatcher, HookOutbox, HookStore, build_hooks_router
 from .logging import setup_logging
 from .oauth import AuthorizationServer, build_oauth_router
+from .stash.service import StashService
+from .stash_api import build_stash_router
 from .static import mount_dashboard
 from .vault import VaultNotFoundError, VaultRegistry
 
@@ -45,6 +58,9 @@ def create_app(
     vault_services: Mapping[str, VaultService] | None = None,
     vault_registry: VaultRegistry | None = None,
     oauth_server: AuthorizationServer | None = None,
+    stash_service: StashService | None = None,
+    hook_store: HookStore | None = None,
+    hook_outbox: HookOutbox | None = None,
 ) -> FastAPI:
     """Build the hub's ASGI app.
 
@@ -96,6 +112,22 @@ def create_app(
             independent of it (a profile's JWT verifier is wired into the
             gateway, not here), so a split deployment can verify tokens
             without hosting the endpoints that issue them.
+        stash_service: the hub's stash cache (SPEC-202). Given, mounts the
+            stash tool family at ``/mcp/stash`` and the ``/api/stash`` REST
+            mirror, and wires its ``stash.*`` events onto ``event_bus``.
+            Omitted (the default), the hub runs with no stash surface at
+            all, same as before this parameter existed.
+        hook_store: outbound-webhook configuration (SPEC-201). Given, mounts
+            the ``/api/hooks`` REST surface and starts the delivery worker
+            that turns every published event into a signed webhook POST for
+            every matching, enabled hook. Omitted (the default), the hub
+            publishes events on its bus same as always, just with no
+            webhook consumer attached.
+        hook_outbox: the durable delivery queue backing ``hook_store``.
+            Defaults to :class:`~palaia_hub.hooks.HookOutbox` at its
+            standard path under the hub's data directory when ``hook_store``
+            is given and this is omitted; pass one explicitly in tests that
+            need an isolated path.
     """
     config = config or load_config()
     vault_services = vault_services or {}
@@ -109,20 +141,88 @@ def create_app(
     def health_snapshot() -> dict[str, Any]:
         return {"status": "ok", "components": {"config": "ok"}}
 
+    stash_gateway = None
+    if stash_service is not None:
+        def _publish_stash(action: str, data: dict[str, Any]) -> None:
+            publish_event(event_bus, action, origin="stash", data=data)
+
+        stash_service.publish = _publish_stash
+        stash_gateway = build_stash_gateway(stash_service)
+
     # One lifespan runs BOTH concerns: the events background tasks (SPEC-109)
     # and, when a gateway is mounted, its session-manager lifespan (SPEC-105 —
+    # skipping it hangs the mounted profiles on their first request). The
+    # stash server's own lifespan (SPEC-202) is combined in the same way.
+    # SPEC-201: unify the vault registry's internal change events onto the
+    # public bus — one bus, three consumers (in-process, SSE, webhooks; see
+    # palaia_hub.events.bridge's module docstring). Only possible when the
+    # registry was itself built with a vault.events.EventBus (cli.serve()
+    # does this; a caller that omits it — most tests — gets no bridge,
+    # same as before this SPEC existed).
+    unbridge_vault: Callable[[], None] | None = None
+    if vault_registry is not None and vault_registry.bus is not None:
+        unbridge_vault = bridge_vault_events(vault_registry.bus, event_bus)
+
+    # SPEC-201: "client.connected" fires on a token's first successful
+    # verify() this process. Wired regardless of whether a real MCP gateway
+    # is mounted here (see PalaiaTokenVerifier — it calls store.verify()
+    # from inside fastmcp's auth path), so it is ready the moment one is.
+    if token_store is not None:
+
+        def _on_verified(record: TokenRecord, is_first_use: bool) -> None:
+            if not is_first_use:
+                return
+            publish_event(
+                event_bus,
+                "client.connected",
+                origin="auth",
+                data={
+                    "token_id": record.id,
+                    "client_name": record.name,
+                    "profile": record.profile,
+                },
+            )
+
+        token_store.on_verified = _on_verified
+
+    # SPEC-201: outbound webhooks. The dispatcher subscribes to the bus as
+    # an ordinary in-process consumer (deliverable #4's own API) — nothing
+    # about the bus knows webhooks exist.
+    dispatcher: HookDispatcher | None = None
+    outbox: HookOutbox | None = None
+    if hook_store is not None:
+        outbox = hook_outbox or HookOutbox(_default_outbox_path())
+        dispatcher = HookDispatcher(hook_store, outbox)
+        event_bus.on(dispatcher.on_event)
+
+    # One lifespan runs every background concern: the events ticker
+    # (SPEC-109), the webhook delivery worker (SPEC-201), and, when a
+    # gateway is mounted, its session-manager lifespan (SPEC-105 —
     # skipping it hangs the mounted profiles on their first request).
     @asynccontextmanager
     async def lifespan(app_: FastAPI) -> AsyncIterator[None]:
         tasks = start_background_tasks(event_bus, health_snapshot=health_snapshot)
+        if dispatcher is not None:
+            tasks.append(asyncio.create_task(dispatcher.run_forever()))
+        publish_event(
+            event_bus,
+            "hub.started",
+            origin="hub",
+            data={"version": __version__, "mode": config.mode},
+        )
         try:
-            if gateway is not None:
-                async with gateway.lifespan(app_):
-                    yield
-            else:
+            async with AsyncExitStack() as stack:
+                if gateway is not None:
+                    await stack.enter_async_context(gateway.lifespan(app_))
+                if stash_gateway is not None:
+                    await stack.enter_async_context(stash_gateway.lifespan(app_))
                 yield
         finally:
             await stop_background_tasks(tasks)
+            if dispatcher is not None:
+                await dispatcher.aclose()
+            if unbridge_vault is not None:
+                unbridge_vault()
 
     app = FastAPI(title="palaia-hub", version=__version__, lifespan=lifespan)
     app.state.config = config
@@ -131,6 +231,8 @@ def create_app(
     if gateway is not None:
         for path, mounted_app in gateway.mounts.items():
             app.mount(path, mounted_app)
+    if stash_gateway is not None:
+        app.mount("/mcp/stash", stash_gateway.app)
 
     @app.get("/api/health")
     async def health() -> dict[str, Any]:
@@ -181,11 +283,22 @@ def create_app(
     if vault_registry is not None:
         app.include_router(build_dashboard_router(vault_registry))
 
+    if stash_service is not None:
+        app.include_router(build_stash_router(stash_service))
+    if hook_store is not None:
+        assert outbox is not None  # built above, together with hook_store's dispatcher
+        app.include_router(build_hooks_router(hook_store, outbox))
+
     _maybe_add_test_slow_route(app)
 
     mount_dashboard(app)
 
     return app
+
+
+def _default_outbox_path() -> Path:
+    """Where the hooks outbox lives when ``create_app`` is not given one explicitly."""
+    return palaia_home() / OUTBOX_RELATIVE_PATH
 
 
 def _maybe_add_test_slow_route(app: FastAPI) -> None:

@@ -33,9 +33,11 @@ of ``config.yaml``. Omitting it uses
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
+from palaia_hub.events.schema import HubEventHook
 from palaia_hub.index import SearchFilters, VaultIndex
 from palaia_hub.recall import DEFAULT_WEIGHTS, RankingWeights
 from palaia_hub.recall.budget import DEFAULT_MAX_TOKENS
@@ -66,6 +68,8 @@ from .vault_protocol import (
     VaultService,
     VaultServiceError,
 )
+
+logger = logging.getLogger("palaia_hub.gateway.wiring")
 
 # Every caller-facing engine failure this adapter might see, translated to
 # VaultServiceError (see vault_protocol.VaultService's docstring: tool
@@ -151,6 +155,12 @@ class EngineVaultService:
     adapter does not manage the engine's lifecycle, only translates calls.
     The same goes for ``index``: pass an already-opened
     :class:`~palaia_hub.index.VaultIndex` to get indexed + hybrid search.
+
+    ``on_event`` is SPEC-201's ``inbox.captured`` hook point: given, called
+    after every ``capture()`` (including a duplicate-acknowledged one) with
+    ``("inbox.captured", {...})`` — see :data:`~palaia_hub.events.schema.
+    HubEventHook`. Omitted (the default), ``capture()`` behaves exactly as
+    before this parameter existed.
     """
 
     def __init__(
@@ -159,9 +169,12 @@ class EngineVaultService:
         index: VaultIndex | None = None,
         *,
         ranking: RankingWeights = DEFAULT_WEIGHTS,
+        on_event: HubEventHook | None = None,
     ) -> None:
         self._engine = engine
         self._index = index
+        #: SPEC-201's ``inbox.captured`` hook point — see :data:`HubEventHook`.
+        self._on_event = on_event
         # SPEC-106's recall layer works entirely off the index (identity
         # lookups, the relation graph, access counters and note bodies all
         # live there), so it exists only when an index does — see
@@ -356,20 +369,23 @@ class EngineVaultService:
         content = content.strip()
         content_hash = inbox_shape.content_hash_for(what_it_concerns, why_keep, content)
 
+        resolved_source = (source or "").strip() or inbox_shape.default_source()
+
         # Dedup guard (format spec §7): an identical capture is acked, not duplicated.
         for existing in await self._inbox_captures():
             existing_hash = inbox_shape.extract_capture_hash(existing.body)
             if existing_hash == content_hash:
                 fm_status = str(existing.frontmatter.get("status") or "uncurated")
-                return CaptureResult(
+                duplicate_result = CaptureResult(
                     permalink=existing.permalink or existing.path,
                     title=existing.title,
                     capture_id=str(existing.frontmatter.get("capture_id") or ""),
                     status=fm_status,
                     duplicate=True,
                 )
+                self._emit_captured(duplicate_result, source=resolved_source)
+                return duplicate_result
 
-        resolved_source = (source or "").strip() or inbox_shape.default_source()
         slug = pl.slugify(what_it_concerns) or "capture"
         relative = f"inbox/{slug}.md"
         suffix = 2
@@ -397,12 +413,33 @@ class EngineVaultService:
         except _ENGINE_CALLER_ERRORS as exc:
             raise VaultServiceError(str(exc)) from exc
         assert result.note is not None
-        return CaptureResult(
+        captured = CaptureResult(
             permalink=result.note.permalink or permalink,
             title=result.note.title,
             capture_id=capture_id,
             status="uncurated",
         )
+        self._emit_captured(captured, source=resolved_source)
+        return captured
+
+    def _emit_captured(self, result: CaptureResult, *, source: str) -> None:
+        """SPEC-201's ``inbox.captured`` hook point — see :data:`HubEventHook`."""
+        if self._on_event is None:
+            return
+        try:
+            self._on_event(
+                "inbox.captured",
+                {
+                    "vault": self._engine.name,
+                    "permalink": result.permalink,
+                    "capture_id": result.capture_id,
+                    "title": result.title,
+                    "source": source,
+                    "duplicate": result.duplicate,
+                },
+            )
+        except Exception:  # noqa: BLE001 - a hook must not break a capture
+            logger.exception("inbox.captured hook failed")
 
     async def inbox_status(self) -> InboxStatusResult:
         captures = [

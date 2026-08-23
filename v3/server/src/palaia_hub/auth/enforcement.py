@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from fastmcp.server.dependencies import get_access_token
 
-from .scopes import required_scope_for_action
+from .scopes import required_scope_for_action, required_scope_for_stash_action
 
 
 def missing_scope_error(vault_key: str, action: str) -> str | None:
@@ -51,4 +51,22 @@ def missing_scope_error(vault_key: str, action: str) -> str | None:
     )
 
 
-__all__ = ["missing_scope_error"]
+def missing_stash_scope_error(action: str) -> str | None:
+    """Same contract as :func:`missing_scope_error`, for the stash tool
+    family (SPEC-202) — hub-level ``stash:read``/``stash:write`` scopes
+    rather than a per-vault one.
+    """
+    access_token = get_access_token()
+    if access_token is None:
+        return None
+    needed = required_scope_for_stash_action(action)
+    if needed in access_token.scopes:
+        return None
+    return (
+        f"this token is missing scope {needed!r} "
+        f"(it has: {sorted(access_token.scopes)!r}). Fix: create or use a token "
+        f"that includes {needed!r} for stash."
+    )
+
+
+__all__ = ["missing_scope_error", "missing_stash_scope_error"]

@@ -32,8 +32,18 @@ export class FakeEventSource implements Pick<EventSource, "close" | "url"> {
   }
 
   /** Test/story helper: dispatch a named SSE event with a JSON-encoded
-   * `data` payload, matching the wire shape `events.py` sends. */
-  emit(type: "health" | "vault_changed" | "open" | "error", data?: unknown): void {
+   * `data` payload, matching the SPEC-201 envelope shape the hub sends. */
+  emit(
+    type:
+      | "health"
+      | "memory.entry.created"
+      | "memory.entry.updated"
+      | "memory.entry.deleted"
+      | "memory.entry.moved"
+      | "open"
+      | "error",
+    data?: unknown,
+  ): void {
     const event = { data: data === undefined ? "" : JSON.stringify(data) } as MessageEvent<string>;
     for (const listener of this.listeners.get(type) ?? []) {
       listener(event);

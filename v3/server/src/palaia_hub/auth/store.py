@@ -28,7 +28,7 @@ import contextlib
 import logging
 import re
 import secrets
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -102,6 +102,16 @@ class TokenStore:
         # In-memory only (see TokenInfo.last_used_at's docstring for why):
         # token_id -> ISO timestamp of its last successful verify().
         self._last_used: dict[str, str] = {}
+        #: SPEC-201's ``client.connected`` hook point: called with
+        #: ``(record, is_first_use)`` after every *successful* verify(),
+        #: ``is_first_use`` true exactly once per token per process
+        #: lifetime (mirrors ``last_used_at``'s own "resets on restart"
+        #: trade). ``None`` (the default) keeps this store's behavior
+        #: identical to before this hook existed. Wired by
+        #: :func:`palaia_hub.app.create_app` onto the hub's event bus —
+        #: this module stays free of any dependency on it (see this file's
+        #: own module docstring on why the auth package is self-contained).
+        self.on_verified: Callable[[TokenRecord, bool], None] | None = None
         self._load()
 
     @property
@@ -239,7 +249,13 @@ class TokenStore:
             return None
         if record.is_revoked:
             return None
+        is_first_use = token_id not in self._last_used
         self._last_used[token_id] = _now()
+        if self.on_verified is not None:
+            try:
+                self.on_verified(record, is_first_use)
+            except Exception:  # noqa: BLE001 - a hook must not break verification
+                logger.exception("client.connected hook failed", extra={"token_id": token_id})
         return record
 
 

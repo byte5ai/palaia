@@ -168,3 +168,45 @@ def test_malformed_store_file_reports_fix(tmp_path: Path) -> None:
 
     with pytest.raises(TokenError, match="Fix"):
         TokenStore(home=tmp_path)
+
+
+# --- SPEC-201: the "client.connected" hub-event hook point --------------
+
+
+def test_on_verified_fires_only_on_the_first_successful_verify(tmp_path: Path) -> None:
+    store = TokenStore(home=tmp_path)
+    created = store.create("client", "default", [])
+    calls: list[tuple[str, bool]] = []
+    store.on_verified = lambda record, is_first: calls.append((record.id, is_first))
+
+    store.verify(created.token)
+    store.verify(created.token)
+
+    assert calls == [(created.info.id, True), (created.info.id, False)]
+
+
+def test_on_verified_does_not_fire_on_a_failed_verify(tmp_path: Path) -> None:
+    store = TokenStore(home=tmp_path)
+    created = store.create("client", "default", [])
+    token_id = created.token.removeprefix("plt_").split(".", 1)[0]
+    calls: list[tuple[str, bool]] = []
+    store.on_verified = lambda record, is_first: calls.append((record.id, is_first))
+
+    store.verify(f"plt_{token_id}.wrong-secret-wrong-secret-wrong12")
+
+    assert calls == []
+
+
+def test_a_raising_on_verified_hook_does_not_break_verification(tmp_path: Path) -> None:
+    store = TokenStore(home=tmp_path)
+    created = store.create("client", "default", [])
+
+    def bad(_record: object, _is_first: bool) -> None:
+        raise RuntimeError("boom")
+
+    store.on_verified = bad
+
+    record = store.verify(created.token)
+
+    assert record is not None
+    assert record.id == created.info.id

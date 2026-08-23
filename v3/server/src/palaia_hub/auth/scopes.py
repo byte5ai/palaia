@@ -55,10 +55,37 @@ def required_scope_for_action(vault_key: str, action: str) -> str:
     return vault_scope(vault_key, permission)
 
 
+# SPEC-202 (stash): the stash tool family is hub-level, not per-vault, so its
+# scopes are plain ``stash:read``/``stash:write`` rather than
+# ``vault:<key>:<permission>``. Same fail-closed rule as above: only actions
+# on :data:`STASH_READ_ACTIONS` get the weaker scope.
+STASH_READ_ACTIONS: frozenset[str] = frozenset({"stash_get", "stash_list", "stash_status"})
+STASH_WRITE_ACTIONS: frozenset[str] = frozenset({"stash_set", "stash_del"})
+
+
+def stash_scope(permission: Permission) -> str:
+    """The scope string for ``permission`` on the stash tool family."""
+    return f"stash:{permission}"
+
+
+def required_scope_for_stash_action(action: str) -> str:
+    """The scope a token needs to call stash-tool ``action``.
+
+    Fail-closed, same as :func:`required_scope_for_action`: an action name
+    this module does not recognize requires the stronger ``write`` scope.
+    """
+    permission: Permission = "read" if action in STASH_READ_ACTIONS else "write"
+    return stash_scope(permission)
+
+
 __all__ = [
     "READ_ACTIONS",
+    "STASH_READ_ACTIONS",
+    "STASH_WRITE_ACTIONS",
     "WRITE_ACTIONS",
     "Permission",
     "required_scope_for_action",
+    "required_scope_for_stash_action",
+    "stash_scope",
     "vault_scope",
 ]
