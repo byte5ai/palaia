@@ -49,6 +49,10 @@ EventName = Literal[
     "index.reindexed",
     "index.embed_backlog_drained",
     "doctor.finding",
+    "stash.set",
+    "stash.get",
+    "stash.del",
+    "stash.evicted",
     "health",
 ]
 
