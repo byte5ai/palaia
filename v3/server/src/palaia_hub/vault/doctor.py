@@ -27,6 +27,7 @@ from typing import Literal, Protocol, runtime_checkable
 from . import permalink as pl
 from .atomic import TEMP_SUFFIX, sweep_temp_files
 from .engine import VaultEngine
+from .errors import AmbiguousReferenceError, VaultError
 from .links import iter_links
 from .models import MANIFEST_PATH, VAULT_FORMAT_VERSION, Note
 
@@ -336,7 +337,10 @@ class VaultDoctor:
     def _resolves(self, target: str) -> bool:
         try:
             self.engine.resolve(target)
-        except Exception:  # noqa: BLE001 - any resolution failure counts as unresolved
+        except AmbiguousReferenceError:
+            # Ambiguous is not dangling: the link does name existing notes.
+            return True
+        except VaultError:
             return False
         return True
 
