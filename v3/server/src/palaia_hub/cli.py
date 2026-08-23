@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import getpass
 import json
 import sys
 from collections.abc import Sequence
@@ -19,9 +20,18 @@ import uvicorn
 
 from .app import create_app
 from .auth import TokenError, TokenStore
-from .config import ConfigError, load_config
+from .config import ConfigError, HubConfig, load_config, palaia_home
 from .importers import ImportReport, ImportRunner, v2_source
 from .importers import basic_memory_source as bm_source
+from .oauth import (
+    AuthorizationServer,
+    OAuthError,
+    OAuthStore,
+    ResourceRegistry,
+    now_seconds,
+    provision_machine_client,
+    set_owner_password,
+)
 from .vault import VaultRegistry
 from .vault.engine import VaultEngine
 
@@ -53,6 +63,8 @@ def _build_parser() -> argparse.ArgumentParser:
     revoke_parser = token_subparsers.add_parser("revoke", help="Revoke a token by id")
     revoke_parser.add_argument("token_id", help="Token id, from 'token list'")
 
+    _add_oauth_parser(subparsers)
+
     import_parser = subparsers.add_parser("import", help="Import notes from another store")
     import_subparsers = import_parser.add_subparsers(dest="import_source", required=True)
 
@@ -65,6 +77,42 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_import_args(bm_parser)
 
     return parser
+
+
+def _add_oauth_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """The ``palaia-hub oauth ...`` admin surface (SPEC-203).
+
+    Deliberately CLI-only, not REST: setting the owner password and minting a
+    machine identity change who can reach the hub, and MASTERPLAN §5.7 keeps
+    "decisions that change the attack surface" off the chat/app surfaces. The
+    dashboard's read-only client list is a later SPEC's job.
+    """
+    oauth_parser = subparsers.add_parser("oauth", help="Manage the OAuth 2.1 server")
+    oauth_subparsers = oauth_parser.add_subparsers(dest="oauth_command", required=True)
+
+    password_parser = oauth_subparsers.add_parser(
+        "set-password", help="Create or replace the local owner account"
+    )
+    password_parser.add_argument("--username", required=True, help="Owner account username")
+
+    machine_parser = oauth_subparsers.add_parser(
+        "machine-client",
+        help="Provision a machine client (client_credentials, pinned audience)",
+    )
+    machine_parser.add_argument("--name", required=True, help="Human-readable client name")
+    machine_parser.add_argument(
+        "--profile", required=True, help="MCP profile path this client is pinned to"
+    )
+    machine_parser.add_argument(
+        "--scope",
+        dest="scopes",
+        action="append",
+        default=[],
+        help="'vault:<key>:read' or 'vault:<key>:write'; repeatable",
+    )
+
+    oauth_subparsers.add_parser("clients", help="List registered clients (no secrets shown)")
+    oauth_subparsers.add_parser("gc", help="Prune orphaned registered clients now")
 
 
 def _add_import_args(parser: argparse.ArgumentParser) -> None:
@@ -103,7 +151,12 @@ def serve(host: str | None = None, port: int | None = None) -> None:
     # requires a config-driven GatewayConfig — SPEC-105/107/108's own CLI
     # surface), so a freshly wizard-created vault is dashboard-visible
     # immediately but needs a hub restart before an MCP client can reach it.
-    app = create_app(config, token_store=TokenStore(), vault_registry=VaultRegistry())
+    app = create_app(
+        config,
+        token_store=TokenStore(),
+        vault_registry=VaultRegistry(),
+        oauth_server=_maybe_oauth_server(config),
+    )
 
     uvicorn_config = uvicorn.Config(
         app,
@@ -114,6 +167,124 @@ def serve(host: str | None = None, port: int | None = None) -> None:
     )
     server = uvicorn.Server(uvicorn_config)
     server.run()
+
+
+def _profile_scopes(profiles: Sequence[str], vault_keys: Sequence[str]) -> dict[str, list[str]]:
+    """``{profile: grantable scopes}`` for every profile, over ``vault_keys``.
+
+    Until the gateway's own config reaches ``config.yaml`` (see
+    ``OAuthSettings.profiles``), the scope ceiling is derived from the vault
+    registry: every registered vault contributes a read and a write scope.
+    That is the same vocabulary SPEC-108 tokens use
+    (:func:`palaia_hub.auth.scopes.vault_scope`), so a client's scopes mean
+    the same thing whichever credential carried them.
+    """
+    scopes = [scope for key in vault_keys for scope in (f"vault:{key}:read", f"vault:{key}:write")]
+    return {profile: list(scopes) for profile in profiles}
+
+
+def _maybe_oauth_server(config: HubConfig) -> AuthorizationServer | None:
+    """Build the authorization server if config asks for one; else ``None``."""
+    if not config.oauth.enabled:
+        return None
+    if not config.oauth.issuer:
+        print(
+            "palaia-hub: oauth.enabled is true but oauth.issuer is not set. Fix: set "
+            "`oauth.issuer` in config.yaml to the public https URL clients reach this "
+            "hub at.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    vault_keys = sorted(VaultRegistry().names())
+    profiles = config.oauth.profiles
+    if not profiles:
+        print(
+            "palaia-hub: oauth.enabled is true but oauth.profiles is empty, so no MCP "
+            "resource can be named in a token. Fix: list your gateway's profile paths "
+            "under `oauth.profiles` in config.yaml.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    server = AuthorizationServer.build(config, _profile_scopes(profiles, vault_keys))
+    print(
+        f"OAuth 2.1 authorization server enabled (issuer {server.issuer}); "
+        f"profiles: {', '.join(profiles)}"
+    )
+    return server
+
+
+def _oauth_server_for_admin() -> tuple[OAuthStore, HubConfig]:
+    """Open the OAuth store for a CLI admin command, without an HTTP surface."""
+    config = load_config()
+    store = OAuthStore(palaia_home())
+    store.open()
+    return store, config
+
+
+def _oauth_set_password(username: str) -> None:
+    store, _config = _oauth_server_for_admin()
+    password = getpass.getpass("New owner password: ")
+    confirm = getpass.getpass("Repeat password: ")
+    if password != confirm:
+        print("palaia-hub: the two passwords do not match.", file=sys.stderr)
+        raise SystemExit(1)
+    try:
+        set_owner_password(store, username, password, now=now_seconds())
+    except OAuthError as exc:
+        print(f"palaia-hub: {exc.description}", file=sys.stderr)
+        raise SystemExit(1) from exc
+    print(f"Owner account set for {username!r}. Existing login sessions were cleared.")
+
+
+def _oauth_machine_client(name: str, profile: str, scopes: list[str]) -> None:
+    store, config = _oauth_server_for_admin()
+    if not config.oauth.issuer:
+        print(
+            "palaia-hub: oauth.issuer is not set, so a machine client cannot be "
+            "pinned to a resource. Fix: set `oauth.issuer` in config.yaml.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    registry = ResourceRegistry(config.oauth.issuer, config.oauth.profiles or [profile])
+    try:
+        audience = registry.audience(profile)
+        provisioned = provision_machine_client(
+            store, client_name=name, audience=audience, scopes=scopes, now=now_seconds()
+        )
+    except (KeyError, OAuthError) as exc:
+        print(f"palaia-hub: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+    print(f"Provisioned machine client {provisioned.client.client_id!r} for {audience}.")
+    print("Copy the secret now — it will not be shown again:")
+    print(f"  {provisioned.client_secret}")
+
+
+def _oauth_clients() -> None:
+    store, _config = _oauth_server_for_admin()
+    clients = store.list_clients()
+    if not clients:
+        print("No registered OAuth clients yet.")
+        return
+    for client in clients:
+        kind = "machine" if client.is_machine else client.source
+        print(
+            f"{client.client_id}  {kind:8}  {client.client_name!r}  "
+            f"scopes={list(client.scopes)}"
+        )
+
+
+def _oauth_gc() -> None:
+    store, config = _oauth_server_for_admin()
+    report = store.prune_clients(
+        now=now_seconds(),
+        ttl_seconds=config.oauth.client_gc_ttl,
+        throttle_seconds=config.oauth.client_gc_interval,
+        force=True,
+    )
+    print(
+        f"Pruned {report.pruned_count} orphaned client(s); kept "
+        f"{report.kept_machine} machine and {report.kept_active} active client(s)."
+    )
 
 
 def _token_create(name: str, profile: str, scopes: list[str]) -> None:
@@ -209,6 +380,15 @@ def main(argv: Sequence[str] | None = None) -> None:
             _token_list()
         elif args.token_command == "revoke":
             _token_revoke(args.token_id)
+    elif args.command == "oauth":
+        if args.oauth_command == "set-password":
+            _oauth_set_password(args.username)
+        elif args.oauth_command == "machine-client":
+            _oauth_machine_client(args.name, args.profile, args.scopes)
+        elif args.oauth_command == "clients":
+            _oauth_clients()
+        elif args.oauth_command == "gc":
+            _oauth_gc()
     elif args.command == "import":
         if args.import_source == "v2":
             _import_v2(args)

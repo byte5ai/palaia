@@ -1425,8 +1425,10 @@ name = "palaia-hub"
 source = { editable = "server" }
 dependencies = [
     { name = "argon2-cffi" },
+    { name = "cryptography" },
     { name = "fastapi" },
     { name = "fastmcp" },
+    { name = "joserfc" },
     { name = "platformdirs" },
     { name = "pydantic" },
     { name = "pyyaml" },
@@ -1452,10 +1454,12 @@ embeddings = [
 requires-dist = [
     { name = "anyio", marker = "extra == 'dev'", specifier = ">=4" },
     { name = "argon2-cffi", specifier = ">=23.1" },
+    { name = "cryptography", specifier = ">=42" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "fastembed", marker = "extra == 'embeddings'", specifier = ">=0.4" },
     { name = "fastmcp", specifier = "==3.4.7" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
+    { name = "joserfc", specifier = ">=1.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11" },
     { name = "platformdirs", specifier = ">=4.2" },
     { name = "pydantic", specifier = ">=2.7" },
