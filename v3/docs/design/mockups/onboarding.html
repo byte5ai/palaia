@@ -6,139 +6,285 @@
 <title>palaia &middot; Onboarding wizard (mockup)</title>
 <style>
 /* ================================================================
-   palaia design tokens v1 - verbatim mirror of v3/docs/design/system.md
-   Change them there first; every mockup carries the same block.
+   palaia design tokens v2 — Lume
+   Source of truth: v3/docs/design/lume/colors_and_type.css (never invent
+   a value; everything below is copied or mechanically derived from it).
+   The --p-* names are kept as the mockups' working vocabulary so every
+   component rule below stays readable; each one is now an alias onto a
+   real Lume token. Change values in colors_and_type.css first, then
+   mirror here and in v3/docs/design/system.md — every mockup carries the
+   same block, byte-identical except this comment header and the <title>.
    ================================================================ */
 :root{
   color-scheme: light dark;
 
-  /* Neutrals - warm paper */
-  --p-canvas:#F6F4F0;
-  --p-surface:#FFFFFF;
-  --p-surface-2:#FBF9F6;
-  --p-sunken:#EFEBE4;
-  --p-line:#E4DFD6;
-  --p-line-strong:#CFC8BB;
-  --p-ink:#1E1C19;
-  --p-ink-muted:#6A645B;
-  --p-ink-subtle:#776E63;
+  /* ---- Lume primitives: spacing, radius, motion, type (colors_and_type.css §1) ---- */
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-5:20px;
+  --space-6:24px; --space-8:32px; --space-10:40px; --space-12:48px; --space-16:64px;
+  --radius-editor:0; --radius-sm:6px; --radius-md:8px; --radius-lg:10px; --radius-xl:12px; --radius-pill:999px;
+  --duration-instant:0ms; --duration-quick:100ms; --duration-smooth:200ms; --duration-condense:300ms;
+  --easing-standard:cubic-bezier(.2,0,0,1); --easing-emphasis:cubic-bezier(.4,0,.2,1);
 
-  /* Accent - verdigris (brand + everything interactive) */
-  --p-accent:#0B6E6B;
-  --p-accent-hover:#095857;
-  --p-accent-ink:#0A5F5D;
-  --p-accent-soft:#E3F0EE;
-  --p-accent-line:#B9DAD6;
-  --p-on-accent:#FFFFFF;
+  /* Three registers. No Google Fonts @import here on purpose (lume/README.md
+     decision 3): mockups stay CDN-free and self-contained; the fallback
+     stacks below carry the rendering. Dashboard build self-hosts the
+     variable files; MCP Apps bundle them. */
+  --font-sans:  'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:  'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --font-serif: 'Source Serif 4', Charter, 'Iowan Old Style', Georgia, serif;
+  --type-display-size:32px; --type-display-lh:40px; --type-display-weight:600;
+  --type-h1-size:24px;      --type-h1-lh:32px;      --type-h1-weight:600;
+  --type-h2-size:20px;      --type-h2-lh:28px;      --type-h2-weight:600;
+  --type-h3-size:16px;      --type-h3-lh:24px;      --type-h3-weight:600;
+  --type-body-size:14px;    --type-body-lh:22px;    --type-body-weight:400;
+  --type-body-sm-size:13px; --type-body-sm-lh:20px; --type-body-sm-weight:400;
+  --type-caption-size:12px; --type-caption-lh:18px; --type-caption-weight:400;
+  --type-prose-size:16px;   --type-prose-lh:26px;   --type-prose-weight:400;
+  --type-mono-size:13px;    --type-mono-lh:20px;    --type-mono-weight:450;
+  --type-mono-sm-size:12px; --type-mono-sm-lh:18px; --type-mono-sm-weight:450;
 
-  /* Semantic - state, never decoration */
-  --p-ok:#377346;   --p-ok-soft:#E7EFE7;   --p-ok-line:#C2DAC4;
-  --p-warn:#8F5D10; --p-warn-soft:#F8EFDC; --p-warn-line:#E4D0A7;
-  --p-risk:#A63929; --p-risk-soft:#F8E8E5; --p-risk-line:#E8C5BE;
-  --p-info:#3A5A85; --p-info-soft:#E8EEF7; --p-info-line:#C5D3E7;
+  /* ---- palaia's working aliases onto the Lume primitives above ---- */
+  --p-font-sans:var(--font-sans); --p-font-serif:var(--font-serif); --p-font-mono:var(--font-mono);
+  /* Type scale collapses onto Lume's actual steps (display/h1/h2/h3/body/body-sm/caption) —
+     Lume ships fewer, larger-jump sizes than the old bespoke scale; nearest-step mapping, not invention.
+     2xs/xs both land on caption (12px, Lume's floor); display and 3xl both land on Lume's display (32px,
+     Lume's ceiling — the old 42px onboarding step has no Lume equivalent and is retired). */
+  --p-size-2xs:var(--type-caption-size);   /* 12px — overlines (was 11px) */
+  --p-size-xs:var(--type-caption-size);    /* 12px — meta, chips */
+  --p-size-sm:var(--type-body-sm-size);    /* 13px — dense UI, table cells */
+  --p-size-md:var(--type-body-size);       /* 14px — body, the default (was 15px) */
+  --p-size-lg:var(--type-h3-size);         /* 16px — lead paragraph, card titles */
+  --p-size-xl:var(--type-h2-size);         /* 20px — section heads (was 21px) */
+  --p-size-2xl:var(--type-h1-size);        /* 24px — page titles, metrics (was 26px) */
+  --p-size-3xl:var(--type-display-size);   /* 32px — the one-glance verdict (was 33px) */
+  --p-size-display:var(--type-display-size); /* 32px — onboarding (was 42px; Lume tops out here) */
+  /* Leading ratios mirror the size/lh pairs above (display 32/40, h1 24/32, body 14/22, prose 16/26) */
+  --p-leading-tight:1.2; --p-leading-snug:1.4; --p-leading-normal:1.571; --p-leading-loose:1.625;
+  --p-track-tight:-.01em;  /* Lume .lume-display letter-spacing */
+  --p-track-label:.02em;   /* Lume type.caption.strong — "uppercase eyebrows" */
 
-  /* Elevation */
-  --p-shadow-1:0 1px 2px rgba(30,28,25,.06);
-  --p-shadow-2:0 1px 2px rgba(30,28,25,.05), 0 10px 24px -14px rgba(30,28,25,.22);
-  --p-shadow-3:0 2px 4px rgba(30,28,25,.06), 0 24px 48px -20px rgba(30,28,25,.28);
+  /* Space / radius / motion aliases (Lume's 4pt grid already matches palaia's 1:1 except space-10) */
+  --p-space-1:var(--space-1);  --p-space-2:var(--space-2);  --p-space-3:var(--space-3); --p-space-4:var(--space-4);
+  --p-space-5:var(--space-5);  --p-space-6:var(--space-6);  --p-space-8:var(--space-8);
+  --p-space-10:calc(var(--space-8) + var(--space-2)); --p-space-12:var(--space-12); --p-space-16:var(--space-16);
+  --p-radius-sm:var(--radius-sm); --p-radius-md:var(--radius-md); --p-radius-lg:var(--radius-lg);
+  --p-radius-xl:var(--radius-xl); --p-radius-pill:var(--radius-pill);
+  --p-ease:var(--easing-standard);
+  --p-dur-1:var(--duration-quick); --p-dur-2:var(--duration-smooth); --p-dur-3:var(--duration-condense);
 
-  /* Type */
-  --p-font-sans:ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --p-font-serif:ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
-  --p-font-mono:ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  --p-size-2xs:.6875rem;  /* 11px - overlines only */
-  --p-size-xs:.75rem;     /* 12px - meta, chips */
-  --p-size-sm:.8125rem;   /* 13px - dense UI, table cells */
-  --p-size-md:.9375rem;   /* 15px - body, the default */
-  --p-size-lg:1.0625rem;  /* 17px - lead paragraph, card titles */
-  --p-size-xl:1.3125rem;  /* 21px - section heads */
-  --p-size-2xl:1.625rem;  /* 26px - page titles, metrics */
-  --p-size-3xl:2.0625rem; /* 33px - the one-glance verdict */
-  --p-size-display:2.625rem; /* 42px - onboarding only */
-  --p-leading-tight:1.15;
-  --p-leading-snug:1.35;
-  --p-leading-normal:1.55;
-  --p-leading-loose:1.7;
-  --p-track-tight:-.012em;
-  --p-track-label:.09em;
-
-  /* Space - 4px base */
-  --p-space-1:.25rem;  --p-space-2:.5rem;  --p-space-3:.75rem; --p-space-4:1rem;
-  --p-space-5:1.25rem; --p-space-6:1.5rem; --p-space-8:2rem;   --p-space-10:2.5rem;
-  --p-space-12:3rem;   --p-space-16:4rem;
-
-  /* Radii */
-  --p-radius-sm:6px; --p-radius-md:10px; --p-radius-lg:14px; --p-radius-xl:20px; --p-radius-pill:999px;
-
-  /* Motion - short, eased, always skippable */
-  --p-ease:cubic-bezier(.2,.7,.3,1);
-  --p-dur-1:120ms; --p-dur-2:180ms; --p-dur-3:260ms;
-
-  /* Layout */
+  /* Layout — app-shell constants, outside Lume's token scope */
   --p-nav-w:248px; --p-rail-w:64px; --p-topbar-h:60px; --p-content-max:1180px;
 }
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  /* Neutrals - ink */
-  --p-canvas:#121417;
-  --p-surface:#191C21;
-  --p-surface-2:#1E2228;
-  --p-sunken:#0E1013;
-  --p-line:#282D34;
-  --p-line-strong:#3A4048;
-  --p-ink:#EAE7E1;
-  --p-ink-muted:#9EA4AC;
-  --p-ink-subtle:#8A9099;
 
-  /* Accent */
-  --p-accent:#2E9E97;
-  --p-accent-hover:#3BB3AB;
-  --p-accent-ink:#5FC8BF;
-  --p-accent-soft:#102B2A;
-  --p-accent-line:#22514D;
-  --p-on-accent:#04211F;
+/* ================================================================
+   Surface / border / text tokens — colors_and_type.css §2, light mode.
+   [data-mode="light"] matches Lume's own selector grouping.
+   ================================================================ */
+:root, [data-mode="light"]{
+  --bg-canvas-top:#F8F9FA;         --bg-canvas-btm:#F4F5F7;
+  --bg-surface-top:#FFFFFF;        --bg-surface-btm:#FAFBFC;
+  --bg-surface-raised-top:#FFFFFF; --bg-surface-raised-btm:#F7F9FB;
+  --bg-surface-sunken-top:#F4F5F7; --bg-surface-sunken-btm:#EEF0F2;
+  --bg-modal-surface-top:#FFFFFF;  --bg-modal-surface-btm:#FBFBFE;
+  --bg-modal-overlay:rgba(20,30,50,.40);
 
-  /* Semantic */
-  --p-ok:#79B886;   --p-ok-soft:#13211A;   --p-ok-line:#264430;
-  --p-warn:#DCA85C; --p-warn-soft:#241C0F; --p-warn-line:#4A3A1D;
-  --p-risk:#E0857A; --p-risk-soft:#251411; --p-risk-line:#4E2620;
-  --p-info:#8CB0E2; --p-info-soft:#131C29; --p-info-line:#26364B;
+  --border-subtle-top:#E6E8EB; --border-subtle-btm:#D9DCDF;
+  --border-strong-top:#CFD3D7; --border-strong-btm:#BFC4C8;
 
-  /* Elevation - dark leans on lines, not shadows */
-  --p-shadow-1:0 1px 2px rgba(0,0,0,.45);
-  --p-shadow-2:0 1px 2px rgba(0,0,0,.45), 0 12px 28px -16px rgba(0,0,0,.75);
-  --p-shadow-3:0 2px 6px rgba(0,0,0,.5), 0 28px 56px -24px rgba(0,0,0,.85);
-}}
-:root[data-theme="dark"]{
-  /* Neutrals - ink */
-  --p-canvas:#121417;
-  --p-surface:#191C21;
-  --p-surface-2:#1E2228;
-  --p-sunken:#0E1013;
-  --p-line:#282D34;
-  --p-line-strong:#3A4048;
-  --p-ink:#EAE7E1;
-  --p-ink-muted:#9EA4AC;
-  --p-ink-subtle:#8A9099;
+  --text-primary:#1A1D20; --text-secondary:#5A6068; --text-tertiary:#8A9098;
+  --text-disabled:#B8BDC2; --text-on-accent:#FFFFFF;
+  --top-edge-highlight:rgba(255,255,255,.60);
 
-  /* Accent */
-  --p-accent:#2E9E97;
-  --p-accent-hover:#3BB3AB;
-  --p-accent-ink:#5FC8BF;
-  --p-accent-soft:#102B2A;
-  --p-accent-line:#22514D;
-  --p-on-accent:#04211F;
+  --state-error-fg:#A8443B;   --state-error-edge:#C45A50;
+  --state-success-fg:#3F7A55; --state-warning-fg:#8C6A1F;
+  --skeleton-base:#ECEEF0;    --skeleton-hi:#F4F5F7;
 
-  /* Semantic */
-  --p-ok:#79B886;   --p-ok-soft:#13211A;   --p-ok-line:#264430;
-  --p-warn:#DCA85C; --p-warn-soft:#241C0F; --p-warn-line:#4A3A1D;
-  --p-risk:#E0857A; --p-risk-soft:#251411; --p-risk-line:#4E2620;
-  --p-info:#8CB0E2; --p-info-soft:#131C29; --p-info-line:#26364B;
+  --shadow-flat:none;
+  --shadow-raised:0 1px 2px rgba(20,25,30,.04), 0 0 0 1px rgba(20,25,30,.02);
+  --shadow-popover:0 1px 2px rgba(20,25,30,.04), 0 8px 24px rgba(20,25,30,.06);
+  --shadow-modal:0 4px 16px rgba(20,25,30,.06), 0 24px 48px rgba(20,25,30,.12),
+                 0 0 32px var(--accent-glow), 0 0 64px var(--accent-glow-strong);
+  --shadow-drag:0 8px 24px rgba(20,25,30,.16);
 
-  /* Elevation - dark leans on lines, not shadows */
-  --p-shadow-1:0 1px 2px rgba(0,0,0,.45);
-  --p-shadow-2:0 1px 2px rgba(0,0,0,.45), 0 12px 28px -16px rgba(0,0,0,.75);
-  --p-shadow-3:0 2px 6px rgba(0,0,0,.5), 0 28px 56px -24px rgba(0,0,0,.85);
+  /* ---- palaia aliases: surfaces become gradient PAIRS by holding the whole
+     gradient() in the variable — every rule below that already wrote
+     background:var(--p-surface) etc. now renders the Lume surface-luminosity
+     recipe (§3.1) with zero per-rule edits. ---- */
+  --p-canvas:linear-gradient(180deg, var(--bg-canvas-top) 0%, var(--bg-canvas-btm) 100%);
+  --p-surface:linear-gradient(180deg, var(--bg-surface-top) 0%, var(--bg-surface-btm) 100%);
+  --p-surface-2:linear-gradient(180deg, var(--bg-surface-sunken-top) 0%, var(--bg-surface-sunken-btm) 100%);
+  --p-sunken:linear-gradient(180deg, var(--bg-surface-sunken-top) 0%, var(--bg-surface-sunken-btm) 100%);
+  --p-line:var(--border-subtle-btm);
+  --p-line-strong:var(--border-strong-btm);
+  --p-ink:var(--text-primary); --p-ink-muted:var(--text-secondary); --p-ink-subtle:var(--text-tertiary);
+  --p-shadow-1:var(--shadow-raised); --p-shadow-2:var(--shadow-popover); --p-shadow-3:var(--shadow-modal);
+
+  --p-ok:var(--state-success-fg);       --p-ok-soft:color-mix(in srgb, var(--state-success-fg) 12%, transparent);
+  --p-ok-line:color-mix(in srgb, var(--state-success-fg) 40%, transparent);
+  --p-warn:var(--state-warning-fg);     --p-warn-soft:color-mix(in srgb, var(--state-warning-fg) 12%, transparent);
+  --p-warn-line:color-mix(in srgb, var(--state-warning-fg) 40%, transparent);
+  --p-risk:var(--state-error-fg);       --p-risk-soft:color-mix(in srgb, var(--state-error-fg) 12%, transparent);
+  --p-risk-line:var(--state-error-edge); /* the one semantic state with a real Lume border token */
+  /* Lume ships no "info" hue among its semantic tokens (only error/success/warning) — info
+     is rendered as quieter neutral text + a neutral icon rather than an invented tint. */
+  --p-info:var(--text-secondary);       --p-info-soft:transparent; --p-info-line:var(--border-subtle-btm);
 }
+
+/* ================================================================
+   Dark mode — system default via prefers-color-scheme, explicit
+   override via [data-mode="dark"] (palaia decision, lume/README.md #2).
+   ================================================================ */
+@media (prefers-color-scheme:dark){:root:not([data-mode="light"]){
+  --bg-canvas-top:#232631;         --bg-canvas-btm:#1B1D24;
+  --bg-surface-top:#2A2D38;        --bg-surface-btm:#23262F;
+  --bg-surface-raised-top:#303440; --bg-surface-raised-btm:#292C37;
+  --bg-surface-sunken-top:#1D1F26; --bg-surface-sunken-btm:#16181E;
+  --bg-modal-surface-top:#303440;  --bg-modal-surface-btm:#292C37;
+  --bg-modal-overlay:rgba(0,0,0,.60);
+
+  --border-subtle-top:rgba(255,255,255,.06); --border-subtle-btm:rgba(0,0,0,.40);
+  --border-strong-top:rgba(255,255,255,.18); --border-strong-btm:rgba(0,0,0,.60);
+
+  --text-primary:#EEEFF3; --text-secondary:#B6B9C3; --text-tertiary:#888B95;
+  --text-disabled:#525561; --text-on-accent:#1F2127;
+  --top-edge-highlight:rgba(255,255,255,.08);
+
+  --state-error-fg:#E08577;   --state-error-edge:#C5685A;
+  --state-success-fg:#88C499; --state-warning-fg:#D6B468;
+  --skeleton-base:#3E414C;    --skeleton-hi:#525561;
+
+  --shadow-flat:none;
+  --shadow-raised:0 1px 2px rgba(0,0,0,.30), 0 0 0 1px rgba(0,0,0,.20);
+  --shadow-popover:0 1px 2px rgba(0,0,0,.40), 0 8px 24px rgba(0,0,0,.45);
+  --shadow-modal:0 4px 16px rgba(0,0,0,.55), 0 24px 48px rgba(0,0,0,.65),
+                 0 0 32px var(--accent-glow), 0 0 64px var(--accent-glow-strong);
+  --shadow-drag:0 8px 24px rgba(0,0,0,.55);
+
+  --p-canvas:linear-gradient(180deg, var(--bg-canvas-top) 0%, var(--bg-canvas-btm) 100%);
+  --p-surface:linear-gradient(180deg, var(--bg-surface-top) 0%, var(--bg-surface-btm) 100%);
+  --p-surface-2:linear-gradient(180deg, var(--bg-surface-sunken-top) 0%, var(--bg-surface-sunken-btm) 100%);
+  --p-sunken:linear-gradient(180deg, var(--bg-surface-sunken-top) 0%, var(--bg-surface-sunken-btm) 100%);
+  --p-line:var(--border-subtle-btm); --p-line-strong:var(--border-strong-btm);
+  --p-ink:var(--text-primary); --p-ink-muted:var(--text-secondary); --p-ink-subtle:var(--text-tertiary);
+  --p-shadow-1:var(--shadow-raised); --p-shadow-2:var(--shadow-popover); --p-shadow-3:var(--shadow-modal);
+
+  --p-ok:var(--state-success-fg);   --p-ok-soft:color-mix(in srgb, var(--state-success-fg) 16%, transparent);
+  --p-ok-line:color-mix(in srgb, var(--state-success-fg) 40%, transparent);
+  --p-warn:var(--state-warning-fg); --p-warn-soft:color-mix(in srgb, var(--state-warning-fg) 16%, transparent);
+  --p-warn-line:color-mix(in srgb, var(--state-warning-fg) 40%, transparent);
+  --p-risk:var(--state-error-fg);   --p-risk-soft:color-mix(in srgb, var(--state-error-fg) 16%, transparent);
+  --p-risk-line:var(--state-error-edge);
+  --p-info:var(--text-secondary);   --p-info-soft:transparent; --p-info-line:var(--border-subtle-btm);
+}}
+:root[data-mode="dark"]{
+  --bg-canvas-top:#232631;         --bg-canvas-btm:#1B1D24;
+  --bg-surface-top:#2A2D38;        --bg-surface-btm:#23262F;
+  --bg-surface-raised-top:#303440; --bg-surface-raised-btm:#292C37;
+  --bg-surface-sunken-top:#1D1F26; --bg-surface-sunken-btm:#16181E;
+  --bg-modal-surface-top:#303440;  --bg-modal-surface-btm:#292C37;
+  --bg-modal-overlay:rgba(0,0,0,.60);
+
+  --border-subtle-top:rgba(255,255,255,.06); --border-subtle-btm:rgba(0,0,0,.40);
+  --border-strong-top:rgba(255,255,255,.18); --border-strong-btm:rgba(0,0,0,.60);
+
+  --text-primary:#EEEFF3; --text-secondary:#B6B9C3; --text-tertiary:#888B95;
+  --text-disabled:#525561; --text-on-accent:#1F2127;
+  --top-edge-highlight:rgba(255,255,255,.08);
+
+  --state-error-fg:#E08577;   --state-error-edge:#C5685A;
+  --state-success-fg:#88C499; --state-warning-fg:#D6B468;
+  --skeleton-base:#3E414C;    --skeleton-hi:#525561;
+
+  --shadow-flat:none;
+  --shadow-raised:0 1px 2px rgba(0,0,0,.30), 0 0 0 1px rgba(0,0,0,.20);
+  --shadow-popover:0 1px 2px rgba(0,0,0,.40), 0 8px 24px rgba(0,0,0,.45);
+  --shadow-modal:0 4px 16px rgba(0,0,0,.55), 0 24px 48px rgba(0,0,0,.65),
+                 0 0 32px var(--accent-glow), 0 0 64px var(--accent-glow-strong);
+  --shadow-drag:0 8px 24px rgba(0,0,0,.55);
+
+  --p-canvas:linear-gradient(180deg, var(--bg-canvas-top) 0%, var(--bg-canvas-btm) 100%);
+  --p-surface:linear-gradient(180deg, var(--bg-surface-top) 0%, var(--bg-surface-btm) 100%);
+  --p-surface-2:linear-gradient(180deg, var(--bg-surface-sunken-top) 0%, var(--bg-surface-sunken-btm) 100%);
+  --p-sunken:linear-gradient(180deg, var(--bg-surface-sunken-top) 0%, var(--bg-surface-sunken-btm) 100%);
+  --p-line:var(--border-subtle-btm); --p-line-strong:var(--border-strong-btm);
+  --p-ink:var(--text-primary); --p-ink-muted:var(--text-secondary); --p-ink-subtle:var(--text-tertiary);
+  --p-shadow-1:var(--shadow-raised); --p-shadow-2:var(--shadow-popover); --p-shadow-3:var(--shadow-modal);
+
+  --p-ok:var(--state-success-fg);   --p-ok-soft:color-mix(in srgb, var(--state-success-fg) 16%, transparent);
+  --p-ok-line:color-mix(in srgb, var(--state-success-fg) 40%, transparent);
+  --p-warn:var(--state-warning-fg); --p-warn-soft:color-mix(in srgb, var(--state-warning-fg) 16%, transparent);
+  --p-warn-line:color-mix(in srgb, var(--state-warning-fg) 40%, transparent);
+  --p-risk:var(--state-error-fg);   --p-risk-soft:color-mix(in srgb, var(--state-error-fg) 16%, transparent);
+  --p-risk-line:var(--state-error-edge);
+  --p-info:var(--text-secondary);   --p-info-soft:transparent; --p-info-line:var(--border-subtle-btm);
+}
+
+/* ================================================================
+   Accent palettes — colors_and_type.css §4. palaia default is ATELIER
+   (lume/README.md decision 1), which is why atelier — not Lume's own
+   bare-:root default of lagoon — is bound to the un-attributed :root
+   here. Lagoon and Petrol are fully present and correct, just gated
+   behind [data-accent], so the accent-switch story stays visible and
+   swappable in code: set data-accent="lagoon" or "petrol" on <html> to
+   preview them.
+   ================================================================ */
+:root, [data-accent="atelier"]{
+  --accent-fill:#B36B2E; --accent-fill-hover:#9F5C26; --accent-fill-active:#8A4E1F;
+  --accent-subtle:rgba(179,107,46,.10); --accent-glow:rgba(179,107,46,.24);
+  --accent-glow-strong:rgba(179,107,46,.38); --accent-glow-core:rgba(245,215,175,.55);
+}
+[data-mode="dark"][data-accent="atelier"], [data-mode="dark"]:root{
+  --accent-fill:#E0A26B; --accent-fill-hover:#E5B080; --accent-fill-active:#EBBE93;
+  --accent-subtle:rgba(224,162,107,.18); --accent-glow:rgba(224,162,107,.30);
+  --accent-glow-strong:rgba(224,162,107,.46); --accent-glow-core:rgba(250,228,200,.45);
+}
+
+/* Lagoon — present, inactive unless data-accent="lagoon" (Lume's own default) */
+[data-accent="lagoon"]{
+  --accent-fill:#1F8FA3; --accent-fill-hover:#197D90; --accent-fill-active:#146B7C;
+  --accent-subtle:rgba(31,143,163,.12); --accent-glow:rgba(60,175,195,.32);
+  --accent-glow-strong:rgba(60,175,195,.48); --accent-glow-core:rgba(180,238,248,.60);
+}
+[data-mode="dark"][data-accent="lagoon"]{
+  --accent-fill:#6FC8D6; --accent-fill-hover:#88D2DE; --accent-fill-active:#A1DCE6;
+  --accent-subtle:rgba(111,200,214,.20); --accent-glow:rgba(111,200,214,.32);
+  --accent-glow-strong:rgba(111,200,214,.48); --accent-glow-core:rgba(210,245,250,.50);
+}
+/* Petrol — present, inactive unless data-accent="petrol" */
+[data-accent="petrol"]{
+  --accent-fill:#0F7AB8; --accent-fill-hover:#0C6CA8; --accent-fill-active:#0A5E94;
+  --accent-subtle:rgba(15,122,184,.10); --accent-glow:rgba(15,122,184,.22);
+  --accent-glow-strong:rgba(15,122,184,.36); --accent-glow-core:rgba(165,215,240,.55);
+}
+[data-mode="dark"][data-accent="petrol"]{
+  --accent-fill:#52B0E2; --accent-fill-hover:#74C0E8; --accent-fill-active:#90CFEE;
+  --accent-subtle:rgba(82,176,226,.16); --accent-glow:rgba(82,176,226,.28);
+  --accent-glow-strong:rgba(82,176,226,.44); --accent-glow-core:rgba(197,229,245,.45);
+}
+
+/* Signal — the loud, palette-independent accent (colors_and_type.css §4b).
+   NOT bound to the accent slot; does not change with data-accent. At most
+   one signal element per view, documented at the element (visual-spec §2.5.5). */
+:root{
+  --signal-fill:#D6177A; --signal-fill-hover:#C2126D; --signal-fill-active:#AD0E60;
+  --signal-subtle:rgba(214,23,122,.10); --signal-glow:rgba(214,23,122,.24);
+  --signal-glow-strong:rgba(214,23,122,.42); --signal-glow-core:rgba(255,200,230,.55);
+}
+[data-mode="dark"]{
+  --signal-fill:#FF5FA8; --signal-fill-hover:#FF77B6; --signal-fill-active:#FF90C4;
+  --signal-subtle:rgba(255,95,168,.18); --signal-glow:rgba(255,95,168,.30);
+  --signal-glow-strong:rgba(255,95,168,.46); --signal-glow-core:rgba(255,215,235,.50);
+}
+
+/* palaia aliases onto the active accent slot */
+:root{
+  --p-accent:var(--accent-fill); --p-accent-hover:var(--accent-fill-hover);
+  --p-accent-ink:var(--accent-fill); /* Lume's text.accent = the active palette's accent */
+  --p-accent-soft:var(--accent-subtle);
+  --p-accent-line:color-mix(in srgb, var(--accent-fill) 45%, transparent);
+  --p-on-accent:var(--text-on-accent);
+}
+
 /* ================ primitives & components ================ */
 *,*::before,*::after{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
@@ -146,13 +292,16 @@ body{
   margin:0;background:var(--p-canvas);color:var(--p-ink);
   font-family:var(--p-font-sans);font-size:var(--p-size-md);line-height:var(--p-leading-normal);
   -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  font-feature-settings:'cv11','ss01';
 }
 h1,h2,h3,h4,p{margin:0}
 ul{margin:0;padding:0;list-style:none}
 a{color:var(--p-accent-ink);text-decoration:none}
 a:hover{text-decoration:underline;text-underline-offset:2px}
 button{font:inherit;color:inherit}
-:focus-visible{outline:2px solid var(--p-accent);outline-offset:2px;border-radius:var(--p-radius-sm)}
+/* Lume focus ring: outer corona + inner highlight (lume-focus-ring), not a flat outline */
+:focus-visible{outline:none;border-radius:var(--p-radius-sm);
+  box-shadow:0 0 0 1px var(--accent-fill), 0 0 0 4px var(--accent-glow), 0 0 12px var(--accent-glow-core)}
 svg{display:block}
 .i{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:none}
 .i--sm{width:16px;height:16px}
@@ -160,8 +309,8 @@ svg{display:block}
 
 /* ---------- text primitives ---------- */
 .t-over{font-size:var(--p-size-2xs);letter-spacing:var(--p-track-label);text-transform:uppercase;color:var(--p-ink-subtle);font-weight:600}
-.t-serif{font-family:var(--p-font-serif);letter-spacing:var(--p-track-tight);line-height:var(--p-leading-tight);font-weight:600}
-.t-mono{font-family:var(--p-font-mono);font-size:var(--p-size-sm)}
+.t-serif{font-family:var(--p-font-serif);letter-spacing:var(--p-track-tight);line-height:var(--p-leading-tight);font-weight:600;font-optical-sizing:auto}
+.t-mono{font-family:var(--p-font-mono);font-size:var(--p-size-sm);font-feature-settings:'tnum'}
 .t-num{font-variant-numeric:tabular-nums}
 .t-muted{color:var(--p-ink-muted)}
 .t-subtle{color:var(--p-ink-subtle)}
@@ -184,23 +333,59 @@ svg{display:block}
 .scrollpane::-webkit-scrollbar-track{background:transparent}
 .sep{height:1px;background:var(--p-line);border:0;margin:0}
 
+/* ---------- Lume material utilities (colors_and_type.css §7) ---------- */
+.lume-glow{box-shadow:0 0 4px var(--accent-glow-core), 0 4px 12px var(--accent-glow)}
+.lume-glow-strong{box-shadow:0 0 6px var(--accent-glow-core), 0 6px 18px var(--accent-glow-strong)}
+.lume-focus-ring{outline:none;box-shadow:0 0 0 1px var(--accent-fill), 0 0 0 4px var(--accent-glow), 0 0 12px var(--accent-glow-core)}
+.lume-selected{position:relative;
+  background:radial-gradient(ellipse at 20% 50%, var(--accent-glow-core) 0%, var(--accent-glow) 22%, transparent 70%),
+             linear-gradient(180deg, var(--accent-subtle), transparent);
+  box-shadow:0 0 12px -2px var(--accent-glow-core), 0 0 24px -6px var(--accent-glow-strong)}
+.lume-selected::before{content:'';position:absolute;left:0;top:4px;bottom:4px;width:2px;border-radius:2px;
+  background:var(--accent-fill);box-shadow:0 0 6px var(--accent-glow-strong)}
+@keyframes lume-skeleton-pulse{0%{background-position:-200% 0}100%{background-position:200% 0}}
+.lume-skeleton{background:linear-gradient(90deg, var(--skeleton-base) 25%, var(--skeleton-hi) 50%, var(--skeleton-base) 75%);
+  background-size:200% 100%;animation:lume-skeleton-pulse 1400ms linear infinite;border-radius:var(--p-radius-sm)}
+
 /* ---------- buttons ---------- */
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:var(--p-space-2);
   height:36px;padding:0 var(--p-space-4);border-radius:var(--p-radius-md);
-  border:1px solid var(--p-line-strong);background:var(--p-surface);color:var(--p-ink);
+  border:1px solid var(--p-line-strong);border-top-color:var(--border-strong-top);
+  background:var(--p-surface);color:var(--p-ink);
   font-size:var(--p-size-sm);font-weight:550;cursor:pointer;white-space:nowrap;
-  transition:background var(--p-dur-1) var(--p-ease),border-color var(--p-dur-1) var(--p-ease),transform var(--p-dur-1) var(--p-ease);
+  box-shadow:0 1px 0 var(--top-edge-highlight) inset;
+  transition:background var(--p-dur-1) var(--p-ease),border-color var(--p-dur-1) var(--p-ease),
+             transform var(--p-dur-1) var(--p-ease),box-shadow var(--p-dur-1) var(--p-ease);
 }
 .btn:hover{background:var(--p-surface-2);border-color:var(--p-ink-subtle)}
 .btn:active{transform:translateY(1px)}
-.btn--primary{background:var(--p-accent);border-color:var(--p-accent);color:var(--p-on-accent);box-shadow:var(--p-shadow-1)}
-.btn--primary:hover{background:var(--p-accent-hover);border-color:var(--p-accent-hover)}
-.btn--ghost{background:transparent;border-color:transparent;color:var(--p-ink-muted)}
+.btn--primary{
+  background:linear-gradient(180deg, var(--accent-fill) 0%, var(--accent-fill-hover) 100%);
+  border-color:var(--accent-fill-hover);border-top-color:var(--top-edge-highlight);color:var(--p-on-accent);
+  box-shadow:0 0 4px var(--accent-glow-core), 0 4px 12px var(--accent-glow);
+}
+.btn--primary:hover{
+  background:linear-gradient(180deg, var(--accent-fill-hover) 0%, var(--accent-fill-active) 100%);
+  border-color:var(--accent-fill-active);
+  box-shadow:0 0 6px var(--accent-glow-core), 0 6px 18px var(--accent-glow-strong);
+}
+/* Signal — the single loud CTA, capped at one per view (see the element that uses it) */
+.btn--signal{
+  background:linear-gradient(180deg, var(--signal-fill) 0%, var(--signal-fill-hover) 100%);
+  border-color:var(--signal-fill-hover);border-top-color:var(--top-edge-highlight);color:var(--p-on-accent);
+  box-shadow:0 0 4px var(--signal-glow-core), 0 4px 12px var(--signal-glow);
+}
+.btn--signal:hover{
+  background:linear-gradient(180deg, var(--signal-fill-hover) 0%, var(--signal-fill-active) 100%);
+  border-color:var(--signal-fill-active);
+  box-shadow:0 0 6px var(--signal-glow-core), 0 6px 18px var(--signal-glow-strong);
+}
+.btn--ghost{background:transparent;border-color:transparent;border-top-color:transparent;color:var(--p-ink-muted);box-shadow:none}
 .btn--ghost:hover{background:var(--p-sunken);color:var(--p-ink);border-color:transparent}
-.btn--quiet{background:transparent;border-color:var(--p-line);color:var(--p-ink-muted)}
-.btn--risk{background:transparent;border-color:var(--p-risk-line);color:var(--p-risk)}
-.btn--risk:hover{background:var(--p-risk-soft);border-color:var(--p-risk)}
+.btn--quiet{background:transparent;border-color:var(--p-line);border-top-color:var(--border-subtle-top);color:var(--p-ink-muted);box-shadow:none}
+.btn--risk{background:transparent;border-color:var(--p-risk-line);border-top-color:var(--p-risk-line);color:var(--p-risk);box-shadow:none}
+.btn--risk:hover{background:var(--p-risk-soft);border-color:var(--p-risk-line)}
 .btn--sm{height:28px;padding:0 var(--p-space-3);font-size:var(--p-size-xs);border-radius:var(--p-radius-sm)}
 .btn--lg{height:44px;padding:0 var(--p-space-6);font-size:var(--p-size-md)}
 .btn--block{width:100%}
@@ -214,26 +399,27 @@ svg{display:block}
 }
 
 /* ---------- surfaces ---------- */
-.card{background:var(--p-surface);border:1px solid var(--p-line);border-radius:var(--p-radius-lg);box-shadow:var(--p-shadow-1)}
+.card{background:var(--p-surface);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
+  border-radius:var(--p-radius-lg);box-shadow:var(--p-shadow-1), 0 1px 0 var(--top-edge-highlight) inset}
 .card--flat{box-shadow:none}
-.card--raised{box-shadow:var(--p-shadow-2)}
+.card--raised{box-shadow:var(--p-shadow-2), 0 1px 0 var(--top-edge-highlight) inset}
 .card__head{display:flex;align-items:center;justify-content:space-between;gap:var(--p-space-3);padding:var(--p-space-4) var(--p-space-5);border-bottom:1px solid var(--p-line)}
 .card__title{font-size:var(--p-size-md);font-weight:600}
 .card__body{padding:var(--p-space-5)}
 .card__body--tight{padding:var(--p-space-3) var(--p-space-4)}
-.card__foot{padding:var(--p-space-4) var(--p-space-5);border-top:1px solid var(--p-line);display:flex;align-items:center;gap:var(--p-space-3);flex-wrap:wrap}
+.card__foot{padding:var(--p-space-4) var(--p-space-5);border-top:1px solid var(--border-subtle-top);display:flex;align-items:center;gap:var(--p-space-3);flex-wrap:wrap}
 .card__foot .foot-note{flex-basis:100%;order:9}
 
 /* ---------- badges, dots, chips ---------- */
-.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:var(--p-radius-pill);
-  border:1px solid var(--p-line);background:var(--p-surface-2);color:var(--p-ink-muted);
+/* Semantic state is text-only — never a filled pill (colors_and_type.css §2.6 / visual-spec §2.6, §7.6) */
+.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 2px;color:var(--p-ink-muted);
   font-size:var(--p-size-xs);font-weight:550;white-space:nowrap}
 .badge .dot{width:6px;height:6px}
-.badge--ok{background:var(--p-ok-soft);border-color:var(--p-ok-line);color:var(--p-ok)}
-.badge--warn{background:var(--p-warn-soft);border-color:var(--p-warn-line);color:var(--p-warn)}
-.badge--risk{background:var(--p-risk-soft);border-color:var(--p-risk-line);color:var(--p-risk)}
-.badge--info{background:var(--p-info-soft);border-color:var(--p-info-line);color:var(--p-info)}
-.badge--accent{background:var(--p-accent-soft);border-color:var(--p-accent-line);color:var(--p-accent-ink)}
+.badge--ok{color:var(--p-ok)}
+.badge--warn{color:var(--p-warn)}
+.badge--risk{color:var(--p-risk)}
+.badge--info{color:var(--p-info)}
+.badge--accent{color:var(--p-accent-ink)}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--p-ink-subtle);flex:none}
 .dot--ok{background:var(--p-ok)}
 .dot--warn{background:var(--p-warn)}
@@ -247,22 +433,25 @@ svg{display:block}
 
 /* ---------- tiles (metrics) ---------- */
 .tiles{display:grid;gap:var(--p-space-4);grid-template-columns:repeat(4,minmax(0,1fr))}
-.tile{background:var(--p-surface);border:1px solid var(--p-line);border-radius:var(--p-radius-lg);padding:var(--p-space-4) var(--p-space-5);
-  display:flex;flex-direction:column;gap:var(--p-space-1);box-shadow:var(--p-shadow-1);position:relative;overflow:hidden}
-.tile__metric{font-family:var(--p-font-serif);font-size:var(--p-size-2xl);line-height:1.1;letter-spacing:var(--p-track-tight);font-weight:600;font-variant-numeric:tabular-nums}
+.tile{background:var(--p-surface);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-lg);padding:var(--p-space-4) var(--p-space-5);
+  display:flex;flex-direction:column;gap:var(--p-space-1);box-shadow:var(--p-shadow-1), 0 1px 0 var(--top-edge-highlight) inset;position:relative;overflow:hidden}
+.tile__metric{font-family:var(--p-font-serif);font-size:var(--p-size-2xl);line-height:1.1;letter-spacing:var(--p-track-tight);font-weight:600;font-variant-numeric:tabular-nums;font-optical-sizing:auto}
 .tile__unit{font-family:var(--p-font-sans);font-size:var(--p-size-sm);font-weight:500;color:var(--p-ink-muted);letter-spacing:0}
 .tile__sub{font-size:var(--p-size-xs);color:var(--p-ink-muted)}
-.tile--attention{border-color:var(--p-warn-line);background:linear-gradient(180deg,var(--p-warn-soft),var(--p-surface) 62%)}
+/* Attention state stays text + icon only — a tile that needs a look is never fill-tinted (§2.6) */
+.tile--attention .tile__metric,.tile--attention .t-over{color:var(--p-warn)}
 .tile__action{margin-top:var(--p-space-2)}
 
 /* ---------- banners / callouts ---------- */
+/* Neutral surface; the state colours the icon and the title only, never the box (§2.6) */
 .banner{display:flex;gap:var(--p-space-3);padding:var(--p-space-4);border-radius:var(--p-radius-md);
-  border:1px solid var(--p-info-line);background:var(--p-info-soft);color:var(--p-ink);font-size:var(--p-size-sm)}
+  border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
+  background:var(--p-surface);color:var(--p-ink);font-size:var(--p-size-sm)}
 .banner svg{color:var(--p-info);margin-top:1px}
-.banner--warn{border-color:var(--p-warn-line);background:var(--p-warn-soft)}
 .banner--warn svg{color:var(--p-warn)}
-.banner--ok{border-color:var(--p-ok-line);background:var(--p-ok-soft)}
+.banner--warn .banner__title{color:var(--p-warn)}
 .banner--ok svg{color:var(--p-ok)}
+.banner--ok .banner__title{color:var(--p-ok)}
 .banner__title{font-weight:600;margin-bottom:2px}
 
 /* ---------- tables ---------- */
@@ -277,13 +466,16 @@ svg{display:block}
 .listrow{display:flex;align-items:center;gap:var(--p-space-3);padding:var(--p-space-3) var(--p-space-4);border-bottom:1px solid var(--p-line)}
 .listrow:last-child{border-bottom:0}
 .listrow:hover{background:var(--p-surface-2)}
+.listrow--selected{background:radial-gradient(ellipse at 15% 50%, var(--accent-glow-core) 0%, var(--accent-glow) 20%, transparent 70%),
+    linear-gradient(180deg, var(--accent-subtle), transparent)}
 .listrow__title{font-size:var(--p-size-sm);font-weight:550}
 .listrow__meta{font-size:var(--p-size-xs);color:var(--p-ink-muted)}
 
 /* ---------- empty states ---------- */
 .empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:var(--p-space-3);padding:var(--p-space-10) var(--p-space-6)}
 .empty__mark{display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:var(--p-radius-lg);
-  background:var(--p-accent-soft);color:var(--p-accent-ink);border:1px solid var(--p-accent-line)}
+  background:var(--p-accent-soft);color:var(--p-accent-ink);border:1px solid var(--p-accent-line);
+  box-shadow:0 0 4px var(--accent-glow-core), 0 4px 10px var(--accent-glow)}
 .empty__title{font-family:var(--p-font-serif);font-size:var(--p-size-xl);font-weight:600;letter-spacing:var(--p-track-tight)}
 .empty__text{max-width:46ch;color:var(--p-ink-muted);font-size:var(--p-size-sm)}
 
@@ -291,24 +483,26 @@ svg{display:block}
 .field{display:flex;flex-direction:column;gap:6px}
 .field__label{font-size:var(--p-size-sm);font-weight:600}
 .field__hint{font-size:var(--p-size-xs);color:var(--p-ink-muted)}
-.input{height:38px;padding:0 var(--p-space-3);border:1px solid var(--p-line-strong);border-radius:var(--p-radius-md);
-  background:var(--p-surface);color:var(--p-ink);font:inherit;font-size:var(--p-size-sm);width:100%}
+.input{height:38px;padding:0 var(--p-space-3);border:1px solid var(--p-line-strong);border-top-color:var(--border-strong-top);border-radius:var(--p-radius-md);
+  background:var(--p-surface);color:var(--p-ink);font:inherit;font-size:var(--p-size-sm);width:100%;
+  box-shadow:0 1px 0 var(--top-edge-highlight) inset}
 .input::placeholder{color:var(--p-ink-subtle)}
-.input:focus{outline:2px solid var(--p-accent);outline-offset:1px;border-color:var(--p-accent)}
-.input--readonly{background:var(--p-sunken);color:var(--p-ink-muted);font-family:var(--p-font-mono);font-size:var(--p-size-xs)}
-.switchrow{display:flex;align-items:flex-start;gap:var(--p-space-3);padding:var(--p-space-3);border:1px solid var(--p-line);border-radius:var(--p-radius-md);background:var(--p-surface-2)}
+.input:focus{outline:none;border-color:var(--accent-fill);
+  box-shadow:0 0 0 1px var(--accent-fill), 0 0 0 4px var(--accent-glow), 0 0 12px var(--accent-glow-core)}
+.input--readonly{background:var(--p-sunken);color:var(--p-ink-muted);font-family:var(--p-font-mono);font-size:var(--p-size-xs);box-shadow:none}
+.switchrow{display:flex;align-items:flex-start;gap:var(--p-space-3);padding:var(--p-space-3);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-md);background:var(--p-surface-2)}
 .switch{width:36px;height:20px;border-radius:var(--p-radius-pill);background:var(--p-line-strong);position:relative;flex:none;margin-top:2px}
 .switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--p-surface);box-shadow:var(--p-shadow-1)}
-.switch--on{background:var(--p-accent)}
+.switch--on{background:var(--accent-fill);box-shadow:0 0 3px var(--accent-glow-core), 0 0 6px var(--accent-glow)}
 .switch--on::after{left:auto;right:2px}
-.segmented{display:inline-flex;padding:3px;gap:2px;background:var(--p-sunken);border-radius:var(--p-radius-md);border:1px solid var(--p-line)}
+.segmented{display:inline-flex;padding:3px;gap:2px;background:var(--p-sunken);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-md)}
 .segmented__item{padding:5px 12px;border-radius:7px;font-size:var(--p-size-xs);font-weight:550;color:var(--p-ink-muted);cursor:pointer}
 .segmented__item--on{background:var(--p-surface);color:var(--p-ink);box-shadow:var(--p-shadow-1)}
 
 /* ---------- snippet + copy ---------- */
 .snippet{display:flex;align-items:center;gap:var(--p-space-3);padding:var(--p-space-3) var(--p-space-3) var(--p-space-3) var(--p-space-4);
-  background:var(--p-sunken);border:1px solid var(--p-line);border-radius:var(--p-radius-md)}
-.snippet code{font-family:var(--p-font-mono);font-size:var(--p-size-xs);color:var(--p-ink);overflow:auto;white-space:pre;scrollbar-width:none}
+  background:var(--p-sunken);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-md)}
+.snippet code{font-family:var(--p-font-mono);font-size:var(--p-size-xs);color:var(--p-ink);overflow:auto;white-space:pre;scrollbar-width:none;font-feature-settings:'tnum'}
 .snippet code::-webkit-scrollbar{display:none}
 .snippet--block{display:block}
 .snippet--block code{display:block;white-space:pre-wrap;line-height:var(--p-leading-normal)}
@@ -321,13 +515,18 @@ svg{display:block}
   font-size:var(--p-size-xs);font-weight:600;font-variant-numeric:tabular-nums}
 .step__name{font-size:var(--p-size-sm);font-weight:550}
 .step__hint{font-size:var(--p-size-xs);color:var(--p-ink-subtle)}
-.step--done .step__num{background:var(--p-ok-soft);border-color:var(--p-ok-line);color:var(--p-ok)}
-.step--on{background:var(--p-accent-soft)}
-.step--on .step__num{background:var(--p-accent);border-color:var(--p-accent);color:var(--p-on-accent)}
+/* Done = neutral surface + success text/ring, never a success fill (§2.6) */
+.step--done .step__num{background:var(--p-surface);border-color:var(--p-ok-line);color:var(--p-ok)}
+/* Current step = the lit one: two-stop selection glow + a donut-glow number (§3.2, §3.3, §5.2) */
+.step--on{position:relative;
+  background:radial-gradient(ellipse at 18% 50%, var(--accent-glow-core) 0%, var(--accent-glow) 22%, transparent 70%),
+              linear-gradient(180deg, var(--accent-subtle), transparent)}
+.step--on .step__num{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--p-on-accent);
+  box-shadow:0 0 4px var(--accent-glow-core), 0 0 10px var(--accent-glow-strong)}
 
 /* ---------- waiting indicator ---------- */
 .waiting{display:inline-flex;align-items:center;gap:8px;font-size:var(--p-size-sm);color:var(--p-ink-muted)}
-.waiting i{width:6px;height:6px;border-radius:50%;background:var(--p-accent);animation:wait 1.4s var(--p-ease) infinite}
+.waiting i{width:6px;height:6px;border-radius:50%;background:var(--accent-fill);animation:wait 1.4s var(--p-ease) infinite}
 .waiting i:nth-child(2){animation-delay:.18s}
 .waiting i:nth-child(3){animation-delay:.36s}
 @keyframes wait{0%,100%{opacity:.25;transform:translateY(0)}45%{opacity:1;transform:translateY(-2px)}}
@@ -343,6 +542,7 @@ svg{display:block}
 }
 
 @media (prefers-reduced-motion:reduce){
+  .lume-skeleton{animation:none;opacity:.4}
   *{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important}
 }
 
@@ -352,21 +552,29 @@ svg{display:block}
   border-right:1px solid var(--p-line);background:var(--p-surface-2);min-height:0}
 .brand{display:flex;align-items:center;gap:10px;color:var(--p-ink);text-decoration:none;padding:0 var(--p-space-2)}
 .brand:hover{text-decoration:none}
-.brand__mark{width:28px;height:28px;border-radius:9px;background:var(--p-accent);color:var(--p-on-accent);
-  display:flex;align-items:center;justify-content:center;font-family:var(--p-font-serif);font-size:15px;font-weight:600;flex:none}
+.brand__mark{width:28px;height:28px;border-radius:9px;background:var(--accent-fill);color:var(--p-on-accent);
+  display:flex;align-items:center;justify-content:center;font-family:var(--p-font-serif);font-size:15px;font-weight:600;flex:none;
+  box-shadow:0 0 4px var(--accent-glow-core), 0 3px 8px var(--accent-glow)}
 .brand__name{font-family:var(--p-font-serif);font-size:var(--p-size-lg);font-weight:600;letter-spacing:var(--p-track-tight)}
 .brand__ver{font-size:var(--p-size-2xs);color:var(--p-ink-subtle);border:1px solid var(--p-line);border-radius:var(--p-radius-sm);padding:1px 5px}
 .nav{display:flex;flex-direction:column;gap:var(--p-space-5);flex:1;min-height:0;overflow:auto;scrollbar-width:thin}
 .nav__group{display:flex;flex-direction:column;gap:2px}
 .nav__label{padding:0 var(--p-space-3) var(--p-space-1)}
 .nav__item{display:flex;align-items:center;gap:10px;padding:7px var(--p-space-3);border-radius:var(--p-radius-md);
-  color:var(--p-ink-muted);font-size:var(--p-size-sm);font-weight:500;text-decoration:none}
+  color:var(--p-ink-muted);font-size:var(--p-size-sm);font-weight:500;text-decoration:none;position:relative}
 .nav__item:hover{background:var(--p-sunken);color:var(--p-ink);text-decoration:none}
-.nav__item--on{background:var(--p-accent-soft);color:var(--p-accent-ink);font-weight:600}
-.nav__item--on svg{color:var(--p-accent)}
+/* Selected nav item = the two-stop selection halo (lume-selected), not a flat accent-soft fill (§4.2 list/tree) */
+.nav__item--on{color:var(--accent-fill);font-weight:600;
+  background:radial-gradient(ellipse at 15% 50%, var(--accent-glow-core) 0%, var(--accent-glow) 24%, transparent 70%),
+              linear-gradient(180deg, var(--accent-subtle), transparent);
+  box-shadow:0 0 10px -3px var(--accent-glow-core), 0 0 18px -6px var(--accent-glow-strong)}
+.nav__item--on::before{content:'';position:absolute;left:2px;top:4px;bottom:4px;width:2px;border-radius:2px;
+  background:var(--accent-fill);box-shadow:0 0 6px var(--accent-glow-strong)}
+.nav__item--on svg{color:var(--accent-fill)}
 .nav__count{margin-left:auto;font-size:var(--p-size-2xs);font-variant-numeric:tabular-nums;
   background:var(--p-surface);border:1px solid var(--p-line);border-radius:var(--p-radius-pill);padding:1px 7px;color:var(--p-ink-muted)}
-.nav__count--warn{background:var(--p-warn-soft);border-color:var(--p-warn-line);color:var(--p-warn)}
+/* Count needing attention: text colour only, no fill (§2.6) */
+.nav__count--warn{background:transparent;border-color:transparent;color:var(--p-warn);font-weight:600}
 .sidebar__foot{display:flex;flex-direction:column;gap:var(--p-space-2);padding:var(--p-space-3);border-top:1px solid var(--p-line)}
 .main{display:flex;flex-direction:column;min-width:0;min-height:0}
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:var(--p-space-4);
@@ -374,7 +582,7 @@ svg{display:block}
 .page-title{font-family:var(--p-font-serif);font-size:var(--p-size-xl);font-weight:600;letter-spacing:var(--p-track-tight)}
 .page-sub{font-size:var(--p-size-xs);color:var(--p-ink-muted)}
 .cmdk{display:flex;align-items:center;gap:var(--p-space-2);height:34px;padding:0 var(--p-space-3);
-  border:1px solid var(--p-line);border-radius:var(--p-radius-md);background:var(--p-surface);
+  border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-md);background:var(--p-surface);
   color:var(--p-ink-subtle);font-size:var(--p-size-sm);cursor:pointer;min-width:200px;white-space:nowrap}
 .avatar{width:30px;height:30px;border-radius:50%;background:var(--p-accent-soft);color:var(--p-accent-ink);
   border:1px solid var(--p-accent-line);display:flex;align-items:center;justify-content:center;font-size:var(--p-size-xs);font-weight:600}
@@ -440,7 +648,8 @@ svg{display:block}
 .radiocard{display:flex;gap:var(--p-space-3);padding:var(--p-space-3) var(--p-space-4);border:1px solid var(--p-line);
   border-radius:var(--p-radius-md);background:var(--p-surface);cursor:pointer}
 .radiocard:hover{border-color:var(--p-line-strong)}
-.radiocard--on{border-color:var(--p-accent);background:var(--p-accent-soft);box-shadow:0 0 0 1px var(--p-accent)}
+.radiocard--on{border-color:var(--accent-fill);background:var(--accent-subtle);
+  box-shadow:0 0 0 1px var(--accent-fill), 0 0 4px var(--accent-glow-core), 0 4px 12px var(--accent-glow)}
 .radiocard__pick{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--p-line-strong);flex:none;margin-top:2px;background:var(--p-surface)}
 .radiocard--on .radiocard__pick{border-color:var(--p-accent);border-width:5px}
 .radiocard__name{font-size:var(--p-size-md);font-weight:600}
@@ -450,13 +659,14 @@ svg{display:block}
 .fact svg{margin-top:2px}
 .fact--yes svg{color:var(--p-ok)}
 .fact--no svg{color:var(--p-risk)}
-.meter{height:4px;border-radius:var(--p-radius-pill);background:var(--p-line);overflow:hidden}
-.meter i{display:block;height:100%;width:72%;background:var(--p-ok)}
+.meter{height:4px;border-radius:var(--p-radius-pill);background:var(--bg-surface-sunken-btm);overflow:hidden}
+.meter i{display:block;height:100%;width:72%;background:var(--p-ok);box-shadow:0 0 4px var(--p-ok-line)}
 .clientgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--p-space-3)}
 .clientcard{display:flex;flex-direction:column;gap:6px;padding:var(--p-space-3);border:1px solid var(--p-line);
   border-radius:var(--p-radius-md);background:var(--p-surface);cursor:pointer}
 .clientcard:hover{border-color:var(--p-line-strong)}
-.clientcard--on{border-color:var(--p-accent);background:var(--p-accent-soft);box-shadow:0 0 0 1px var(--p-accent)}
+.clientcard--on{border-color:var(--accent-fill);background:var(--accent-subtle);
+  box-shadow:0 0 0 1px var(--accent-fill), 0 0 4px var(--accent-glow-core), 0 4px 12px var(--accent-glow)}
 .clientcard__name{font-size:var(--p-size-sm);font-weight:600}
 .switchgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--p-space-2)}
 .preview{padding:var(--p-space-3) var(--p-space-4);border:1px dashed var(--p-line-strong);border-radius:var(--p-radius-md);background:var(--p-sunken)}
@@ -465,7 +675,8 @@ svg{display:block}
 .tabbar label{padding:8px 12px;font-size:var(--p-size-sm);font-weight:550;color:var(--p-ink-muted);cursor:pointer;
   border-bottom:2px solid transparent;margin-bottom:-1px}
 .tabbar label:hover{color:var(--p-ink)}
-#ob-t1:checked ~ .tabbar label[for="ob-t1"],#ob-t2:checked ~ .tabbar label[for="ob-t2"]{color:var(--p-ink);border-bottom-color:var(--p-accent)}
+#ob-t1:checked ~ .tabbar label[for="ob-t1"],#ob-t2:checked ~ .tabbar label[for="ob-t2"]{color:var(--p-ink);
+  border-bottom-color:var(--accent-fill);box-shadow:0 1px 0 var(--accent-glow)}
 #ob-t1:checked ~ .tabs__panel--1,#ob-t2:checked ~ .tabs__panel--2{display:block}
 @media (min-width:1024px){
   .wiz{height:calc(100dvh - var(--mock-h));overflow:hidden}
@@ -647,7 +858,14 @@ palaia translates it into network and auth rules for you.</p>
 <div class="wiz__foot">
   <label class="btn" for="ob-2">Back</label>
   <span class="t-xs t-subtle">Step 3 of 4</span>
-  <span class="grow"><label class="btn btn--primary btn--lg" for="ob-4">Create vault<svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12h14M13 6.5l5.5 5.5L13 17.5"/></svg></label></span>
+  <!-- SIGNAL: the one signal element on this screen. Creating the vault is the single
+       most important commitment in onboarding — the moment memory starts existing on
+       disk — so it gets the loud, palette-independent Signal treatment (colors_and_type.css
+       §4b) instead of the accent. No other element on any of the four wizard steps carries
+       Signal; "Continue" (steps 1-2) and "Finish" (step 4) stay accent — they are reversible
+       progressions, not the commitment itself. Review queue's "Approve" is deliberately NOT
+       signal (it's accent) for the same reason: it is routine, not a one-time commitment. -->
+  <span class="grow"><label class="btn btn--signal btn--lg" for="ob-4">Create vault<svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12h14M13 6.5l5.5 5.5L13 17.5"/></svg></label></span>
 </div>
 
 </div></div>
@@ -718,12 +936,13 @@ Then run a test recall and tell me what you found.</code></div>
 
 <script>
 /* Mockup-only: cycles the theme so a reviewer can see both without changing OS settings.
-   The product ships the same contract: prefers-color-scheme by default, data-theme to override. */
+   The product ships the same contract: prefers-color-scheme by default, data-mode to override
+   (Lume's own attribute name — lume/README.md decision 2). */
 (function(){
   var root=document.documentElement, btn=document.getElementById('themebtn'), modes=['system','light','dark'], i=0;
   btn.addEventListener('click',function(){
     i=(i+1)%modes.length; var m=modes[i];
-    if(m==='system'){root.removeAttribute('data-theme');}else{root.setAttribute('data-theme',m);}
+    if(m==='system'){root.removeAttribute('data-mode');}else{root.setAttribute('data-mode',m);}
     btn.textContent='theme: '+m;
   });
 })();
