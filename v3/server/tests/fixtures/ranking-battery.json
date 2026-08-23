@@ -1,0 +1,101 @@
+{
+  "_about": [
+    "SPEC-106's ranking regression battery: expected top-3 recall results per",
+    "query against the golden `work` vault (server/tests/fixtures/golden-vault).",
+    "Run by tests/recall/test_ranking_battery.py.",
+    "",
+    "Conditions are fixed by that test and must not change without a new",
+    "battery: embeddings OFF (so retrieval is deterministic FTS-only, which is",
+    "what CI runs), access counters NOT recorded (so one query cannot influence",
+    "the next), and the clock frozen at 2026-08-23T12:00:00Z (decay reads one).",
+    "",
+    "`top` is an ordered prefix: the first min(3, len(top)) results must be",
+    "exactly these permalinks, in this order. `why` records the judgment the",
+    "row encodes, so a future weight change shows up as an argument about a",
+    "stated intent rather than as a diff of opaque permalinks.",
+    "",
+    "Golden-vault caveat worth knowing when reading these rows: only the",
+    "inbox/ captures carry a `created` date, so every other note scores the",
+    "neutral `unknown_recency`. Engine-written notes always carry timestamps",
+    "(the write path stamps created/modified), so a real vault exercises the",
+    "recency term far more than this fixture can."
+  ],
+  "queries": {
+    "commit messages": {
+      "top": ["rules/how-to-write-commit-messages"],
+      "why": "The rule that answers it is the only match; nothing to reorder."
+    },
+    "files are truth": {
+      "top": ["decisions/files-are-truth", "projects/vault-engine"],
+      "why": "The decision named by the query wins even though Vault Engine is the more central note — decay must not demote an on-the-nose match."
+    },
+    "api gateway": {
+      "top": ["projects/api-gateway", "projects/mcp-gateway", "decisions/adopt-fastmcp"],
+      "why": "Title match first; the second gateway project and the decision behind it follow."
+    },
+    "who owns the recall engine": {
+      "top": ["people/farah-al-sayed", "projects/recall-engine", "inbox/recall-context-budget"],
+      "why": "An ownership question is answered by the person, not the project — she is the only note whose observation says 'Recall engine lead'."
+    },
+    "vault doctor": {
+      "top": [
+        "processes/vault-doctor-runbook",
+        "processes/incident-response",
+        "projects/vault-engine"
+      ],
+      "why": "The runbook is the answer; the two notes that reference the doctor follow."
+    },
+    "MIT license": {
+      "top": ["inbox/mit-license-file-location", "decisions/mit-license"],
+      "why": "A deliberate close call: the fresh capture keeps the top slot it earned from retrieval, and the ADR sits right behind it. If a weight change swaps these two, that is a defensible outcome — re-record the row and say so."
+    },
+    "rate limit": {
+      "top": [
+        "inbox/rate-limit-decision-from-pr-review",
+        "glossary/base-rate",
+        "glossary/pricing"
+      ],
+      "why": "Recent capture first, then the note holding the actual value, then the note that embeds it."
+    },
+    "pricing": {
+      "top": ["glossary/pricing", "glossary/pricing-summary"],
+      "why": "Direct match ahead of the note that embeds it one level further out."
+    },
+    "release process": {
+      "top": ["processes/release-process"],
+      "why": "Single match; guards against a filter accidentally excluding processes."
+    },
+    "escalation": {
+      "top": ["rules/escalation-policy"],
+      "why": "Single match on a rule."
+    },
+    "testing standards": {
+      "top": ["rules/testing-standards"],
+      "why": "Single match on a rule."
+    },
+    "response length": {
+      "top": ["rules/response-length"],
+      "why": "The per-model variant note: recall must return it whole for every caller, with one variant served."
+    },
+    "importer": {
+      "top": ["projects/importer-suite", "projects/legacy-migration"],
+      "why": "The importer project ahead of the migration that depends on it."
+    },
+    "curator retries": {
+      "top": ["inbox/curator-retry-budget"],
+      "why": "An inbox capture is recallable — the inbox is staging, not a hiding place."
+    },
+    "watcher debounce": {
+      "top": ["inbox/watcher-debounce-window"],
+      "why": "Same, for a second capture."
+    },
+    "onboarding a new client": {
+      "top": ["processes/onboarding-a-new-client"],
+      "why": "A multi-word natural-language query still lands on the process note."
+    },
+    "incident response": {
+      "top": ["processes/incident-response"],
+      "why": "Single match on a process."
+    }
+  }
+}

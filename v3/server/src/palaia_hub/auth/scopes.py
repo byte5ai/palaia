@@ -27,7 +27,15 @@ Permission = Literal["read", "write"]
 # per the fail-closed rule above, an action this set has never seen (a
 # future ninth tool, a typo) requires the stronger scope, not the weaker
 # one.
-READ_ACTIONS: frozenset[str] = frozenset({"search", "read", "list", "recent_activity"})
+#
+# SPEC-106's `recall`/`build_context` are on the read list: they answer from
+# the vault and never write to it. They *do* bump an access counter in the
+# disposable index (palaia_hub.index.schema's `note_access`), which is not
+# vault content and cannot change what any note says — the same reason both
+# tools also carry `readOnlyHint`.
+READ_ACTIONS: frozenset[str] = frozenset(
+    {"search", "read", "list", "recent_activity", "recall", "build_context"}
+)
 WRITE_ACTIONS: frozenset[str] = frozenset({"write", "edit", "move", "delete"})
 
 

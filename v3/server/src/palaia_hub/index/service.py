@@ -47,6 +47,7 @@ from palaia_hub.vault import (
 
 from .db import INDEX_RELATIVE_PATH, IndexDatabase
 from .embeddings import Embedder, EmbedderUnavailableError, EmbeddingConfig, build_embedder
+from .graph import GraphReader
 from .models import (
     EmbedStatus,
     IndexStatus,
@@ -85,6 +86,9 @@ class VaultIndex:
         self.db = IndexDatabase(path or engine.root / INDEX_RELATIVE_PATH, engine.name)
         self.writer = IndexWriter(self.db, self._embedding)
         self.searcher = IndexSearch(self.db)
+        #: Identity/graph/access reads the recall layer (SPEC-106) needs on
+        #: top of :attr:`searcher`. Same database, different question shape.
+        self.graph = GraphReader(self.db)
         self._doctor = VaultDoctor(engine)
         self._embedder: Embedder | None = embedder
         self._embedder_failed = ""

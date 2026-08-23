@@ -39,8 +39,9 @@ Python core of the palaia v3 hub daemon.
 
 `palaia_hub.gateway` builds the streamable-HTTP MCP endpoint: one memory
 tool family (`search`/`read`/`write`/`edit`/`move`/`delete`/`list`/
-`recent_activity`) per configured vault, mounted into one or more
-addressable profiles (`/mcp/<profile>`). It is written against a narrow
+`recent_activity`, plus `capture`/`inbox_status` from SPEC-107 and
+`recall`/`build_context` from SPEC-106) per configured vault, mounted into one
+or more addressable profiles (`/mcp/<profile>`). It is written against a narrow
 `VaultService` protocol, not against SPEC-102's vault engine directly (the
 two lanes run in parallel; real wiring is SPEC-113's job) — tests use the
 in-memory `FakeVaultService`.
@@ -150,6 +151,53 @@ index.status()                  # notes/observations/relations + embed backlog
   `index.reindex()` is the rebuild-from-files path.
 - Embeddings need the `embeddings` extra (`fastembed`); without it the index
   is FTS-only and reports why.
+
+## Recall, traversal & context assembly (SPEC-106)
+
+`palaia_hub.recall` — the intelligence layer *on top of* SPEC-104's search:
+`memory://` addressing, decay-scored ranking, per-model variants, read-time
+value references, and token-budgeted graph traversal. Two MCP tools
+(`recall`, `build_context`) join the memory tool family; both are read-only.
+
+```python
+from palaia_hub.recall import RecallService
+
+recall = RecallService(index, vault="work")
+await recall.recall(query="how do we write commit messages", model="anthropic/opus-5")
+await recall.recall(ref="memory://glossary/pricing")     # or a title, path, or glob
+await recall.build_context(ref="projects/recall-engine", depth=2, max_tokens=4000)
+```
+
+- **`memory://` resolution** (format spec §3.2) in one fixed order: exact
+  permalink → alias → exact title → unique path suffix. Ambiguity is an error
+  listing the candidates, never a silent pick. Also globs (`projects/api-*`,
+  `**`), block anchors (`note#^anchor`) and synthetic sub-note permalinks
+  (`.../obs/...`, `.../rel/...`).
+- **Decay-scored ranking** — relevance enters as its *reciprocal rank* (the
+  one quantity all three retrieval modes agree on), multiplied by
+  `1 + w_r·recency + w_a·access + w_s·significance`. Logical only: nothing on
+  disk moves. Weights live in `config.yaml`'s `recall:` section; the bound is
+  deliberate — decay reshuffles the top of the page and cannot overturn a
+  large relevance gap.
+- **Per-model variants** (§5.1) — `[how-to-apply | anthropic/opus-5]` resolves
+  to the most specific applicable line: exact model > provider family >
+  scopeless base; unknown model → base; a scoped-only group serves a
+  non-matching caller nothing. A pure function
+  (`palaia_hub.recall.variants`), table-tested.
+- **Value references resolved at read time** (§5.3) — `![[Base Rate#^rate]]`
+  shows the current source value in `recall` and `read` output, with
+  `⟦missing: …⟧` / `⟦cycle: …⟧` / `⟦depth: …⟧` markers and their warnings for
+  the three failure modes. The corpus scenarios in
+  `docs/vault-format-conformance/resolution/` are the byte-exact contract.
+- **`build_context`** walks relations in both directions with depth and
+  timeframe limits, cycle-safe and deduplicated, then fits the result into
+  `max_tokens` by *degrading* notes (full → title + key observations → one
+  naming line) rather than cutting any note mid-body. It never returns
+  nothing when something matched.
+- **Ranking battery** — `server/tests/fixtures/ranking-battery.json` holds the
+  expected top-3 per query over the golden vault, with the judgment each row
+  encodes. Run it with
+  `uv run pytest server/tests/recall/test_ranking_battery.py`.
 
 ## Running it
 

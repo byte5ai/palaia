@@ -1,16 +1,54 @@
 """An in-memory :class:`VaultService` for tests and the e2e connectivity check.
 
 This is deliberately not a vault-format-conformant engine — no files, no git,
-no frontmatter parsing. It exists so the gateway's tool family (this SPEC)
+no index. It exists so the gateway's tool family (this SPEC)
 can be built and tested end-to-end without depending on SPEC-102, which runs
 in parallel and is not merged. SPEC-113 replaces this with a real adapter
 over the vault engine; nothing here is meant to survive that swap.
+
+SPEC-106's ``recall``/``build_context`` are implemented here too, in the same
+spirit: real enough to exercise the *tool surface* (dual output, parameter
+aliases, error results) without an index. They reuse the pure halves of
+:mod:`palaia_hub.recall` — the body grammar parser for observations and
+relations, variant resolution, value-reference resolution, the graph walk and
+the token budget — and skip exactly the parts that need an index: **decay
+scoring** (no timestamps worth ranking, no access counters) and hybrid
+search. Ordering here is retrieval order; the real adapter's is decay-ranked.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+from palaia_hub.recall import budget as bg
+from palaia_hub.recall.embeds import SourceNote, resolve_references
+from palaia_hub.recall.models import (
+    ContextNode,
+    ContextResult,
+    RecallEntry,
+    RecallObservation,
+    RecallResult,
+)
+from palaia_hub.recall.ranking import relevance_of
+from palaia_hub.recall.service import context_header
+from palaia_hub.recall.traversal import (
+    DEFAULT_DEPTH,
+    GraphView,
+    clamp_depth,
+    parse_timeframe,
+    walk,
+)
+from palaia_hub.recall.variants import (
+    ModelScope,
+    dropped_indices,
+    parse_model_scope,
+    resolve_variants,
+)
+from palaia_hub.vault.parse import ParsedNote, Relation, parse_note
 
 from . import inbox as inbox_shape
 from .vault_protocol import (
@@ -19,6 +57,7 @@ from .vault_protocol import (
     NoteRecord,
     NoteSummary,
     SearchHit,
+    VaultService,
     VaultServiceError,
 )
 
@@ -225,3 +264,308 @@ class FakeVaultService:
             last_capture_id=newest.capture_id,
             last_captured_at=newest.created,
         )
+
+    # -------------------------------------------------------- recall (SPEC-106)
+
+    def _parsed(self, permalink: str, body: str) -> ParsedNote:
+        # A leading newline so a body starting with "---" cannot be re-read as
+        # frontmatter; body line n is therefore parse line n + 2 — the same
+        # convention palaia_hub.recall.service uses.
+        return parse_note("\n" + body, f"{permalink}.md")
+
+    def note_at(self, permalink: str) -> NoteRecord | None:
+        """The note stored under exactly this permalink, or ``None``."""
+        return self._notes.get(permalink)
+
+    def permalinks(self) -> tuple[str, ...]:
+        """Every stored permalink."""
+        return tuple(self._notes)
+
+    def relations_of(self, permalink: str) -> tuple[Relation, ...]:
+        """The relation lines in one note's body (format spec §5.2)."""
+        note = self._notes.get(permalink)
+        if note is None:
+            return ()
+        return self._parsed(note.permalink, note.body).relations
+
+    def lookup(self, target: str) -> NoteRecord | None:
+        """Resolve an embed/relation target: permalink, then title, then slug."""
+        key = target.strip().removeprefix("memory://").strip("/")
+        if key in self._notes:
+            return self._notes[key]
+        folded = key.casefold()
+        for note in self._notes.values():
+            if note.title.casefold() == folded:
+                return note
+        slug = _slugify(key)
+        for note in self._notes.values():
+            if note.permalink.rsplit("/", 1)[-1] == slug:
+                return note
+        return None
+
+    def _filter_variants(self, body: str, caller: ModelScope) -> str:
+        if "|" not in body:
+            return body
+        observations = self._parsed("variants", body).observations
+        if not observations:
+            return body
+        dropped = {observations[index].line - 2 for index in dropped_indices(observations, caller)}
+        return "\n".join(
+            line for index, line in enumerate(body.split("\n")) if index not in dropped
+        )
+
+    def _resolved_body(self, note: NoteRecord, caller: ModelScope) -> tuple[str, list[str]]:
+        resolved = resolve_references(
+            self._filter_variants(note.body, caller),
+            entry=SourceNote(permalink=note.permalink, title=note.title, body=note.body),
+            source=_FakeNoteSource(self),
+            transform=lambda text: self._filter_variants(text, caller),
+        )
+        return resolved.text, [str(warning) for warning in resolved.warnings]
+
+    def _observations(self, note: NoteRecord, caller: ModelScope) -> list[RecallObservation]:
+        served = resolve_variants(self._parsed(note.permalink, note.body).observations, caller)
+        return [
+            RecallObservation(
+                ref=f"{note.permalink}/obs/{_slugify(obs.category)}",
+                category=obs.category,
+                scope=obs.scope,
+                text=obs.text,
+                context=obs.context,
+                block_id=obs.block_id,
+                tags=list(obs.tags),
+            )
+            for obs in served
+        ]
+
+    def _candidates(self, *, query: str, ref: str) -> list[NoteRecord]:
+        if ref.strip():
+            note = self.lookup(ref)
+            if note is None:
+                raise VaultServiceError(
+                    f"nothing in this vault matches '{ref}' (resolution order: "
+                    f"permalink, title, slug)"
+                )
+            return [note]
+        if not query.strip():
+            raise VaultServiceError(
+                "recall needs something to start from. Fix: pass a query (what "
+                "you are looking for) or a ref (a memory:// address)."
+            )
+        return _substring_hits(self._notes.values(), query)
+
+    async def recall(
+        self,
+        *,
+        query: str = "",
+        ref: str = "",
+        limit: int = 5,
+        model: str = "",
+    ) -> RecallResult:
+        caller = parse_model_scope(model)
+        candidates = self._candidates(query=query, ref=ref)
+        entries: list[RecallEntry] = []
+        warnings: list[str] = []
+        for rank, note in enumerate(candidates[: max(1, int(limit))]):
+            body, note_warnings = self._resolved_body(note, caller)
+            warnings.extend(note_warnings)
+            entries.append(
+                RecallEntry(
+                    ref=note.permalink,
+                    permalink=note.permalink,
+                    title=note.title,
+                    type=note.type,
+                    kind="note",
+                    snippet=bg.elide(note.body, 160),
+                    score=round(relevance_of(rank), 9),
+                    relevance_rank=rank,
+                    body=body,
+                    observations=self._observations(note, caller),
+                    warnings=note_warnings,
+                )
+            )
+        return RecallResult(
+            query=query,
+            ref=ref,
+            model=str(caller) if caller.known else "",
+            entries=entries,
+            matched=len(candidates),
+            warnings=warnings,
+        )
+
+    async def build_context(
+        self,
+        *,
+        ref: str = "",
+        query: str = "",
+        depth: int = DEFAULT_DEPTH,
+        timeframe: str = "",
+        max_tokens: int = bg.DEFAULT_MAX_TOKENS,
+        model: str = "",
+    ) -> ContextResult:
+        caller = parse_model_scope(model)
+        seeds = [note.permalink for note in self._candidates(query=query, ref=ref)][:3]
+        hops = clamp_depth(depth)
+        result = walk(
+            _FakeGraphView(self),
+            seeds,
+            depth=hops,
+            since=parse_timeframe(timeframe, now=datetime.now(UTC)),
+        )
+        header = context_header(seeds, query=query, depth=hops)
+        items: list[bg.BudgetItem] = []
+        extras: dict[str, tuple[list[str], list[RecallObservation]]] = {}
+        for node in result.nodes:
+            note = self._notes.get(node.permalink)
+            if note is None:
+                continue
+            heading = f"## {note.title} — memory://{note.permalink} [{note.type}]"
+            if not node.is_seed:
+                heading += f"\n> depth {node.depth} · {node.via} {node.parent}"
+            body, note_warnings = self._resolved_body(note, caller)
+            observations = self._observations(note, caller)
+            summary_lines = [
+                f"- [{obs.category}] {obs.text}"
+                for obs in observations[: bg.SUMMARY_OBSERVATIONS]
+            ]
+            summary = (
+                "\n".join([heading, "(summarized to fit the token budget)", *summary_lines]) + "\n"
+                if summary_lines
+                else ""
+            )
+            extras[node.permalink] = (note_warnings, observations)
+            items.append(
+                bg.BudgetItem(
+                    key=node.permalink,
+                    full=f"{heading}\n{body.strip()}\n" if body.strip() else f"{heading}\n",
+                    summary=summary,
+                    stub=f"{bg.stub_line(note.title, note.permalink)}\n",
+                )
+            )
+        plan = bg.plan_budget(items, max_tokens=max_tokens, overhead=header)
+        by_permalink = {node.permalink: node for node in result.nodes}
+        nodes: list[ContextNode] = []
+        warnings: list[str] = []
+        for placement in plan.placements:
+            node = by_permalink[placement.key]
+            note = self._notes[placement.key]
+            note_warnings, observations = extras[placement.key]
+            full = placement.tier == "full"
+            if full:
+                warnings.extend(note_warnings)
+            nodes.append(
+                ContextNode(
+                    ref=placement.key,
+                    permalink=placement.key,
+                    title=note.title,
+                    type=note.type,
+                    depth=node.depth,
+                    via=node.via,
+                    parent=node.parent,
+                    tier=placement.tier,
+                    tokens=placement.tokens,
+                    text=placement.text,
+                    observations=[] if full else observations,
+                    warnings=note_warnings if full else [],
+                )
+            )
+        return ContextResult(
+            seeds=seeds,
+            query=query,
+            model=str(caller) if caller.known else "",
+            depth=hops,
+            timeframe=timeframe,
+            max_tokens=plan.budget,
+            requested_max_tokens=int(max_tokens),
+            estimated_tokens=plan.tokens,
+            nodes=nodes,
+            dropped=list(plan.dropped),
+            walk_truncated=result.truncated,
+            skipped_by_timeframe=result.skipped_by_timeframe,
+            degraded=plan.degraded,
+            warnings=warnings,
+        )
+
+
+def _substring_hits(notes: Iterable[NoteRecord], query: str) -> list[NoteRecord]:
+    """Substring match over ``notes``, title hits first — the fake's retrieval."""
+    needle = query.casefold()
+    scored: list[tuple[int, str, NoteRecord]] = []
+    for note in notes:
+        if needle not in f"{note.title}\n{note.body}".casefold():
+            continue
+        scored.append((0 if needle in note.title.casefold() else 1, note.permalink, note))
+    scored.sort(key=lambda row: (row[0], row[1]))
+    return [note for _, _, note in scored]
+
+
+@dataclass(frozen=True, slots=True)
+class _FakeEdge:
+    """A relation between two fake notes, shaped like the index's ``Edge``."""
+
+    target: str
+    type: str
+    direction: str
+
+    @property
+    def label(self) -> str:
+        return f"{self.type} →" if self.direction == "out" else f"← {self.type}"
+
+
+class _FakeNoteSource:
+    """A :class:`~palaia_hub.recall.NoteSource` over the fake's dict of notes."""
+
+    def __init__(self, vault: FakeVaultService) -> None:
+        self._vault = vault
+
+    def resolve(self, target: str) -> SourceNote | None:
+        note = self._vault.lookup(target)
+        if note is None:
+            return None
+        return SourceNote(permalink=note.permalink, title=note.title, body=note.body)
+
+
+class _FakeGraphView:
+    """A :class:`~palaia_hub.recall.traversal.GraphView` over the fake's notes.
+
+    Relations are re-parsed from bodies on every call — fine for a handful of
+    test notes, and it keeps the fake from having to maintain a graph.
+    """
+
+    def __init__(self, vault: FakeVaultService) -> None:
+        self._vault = vault
+
+    def neighbors(self, permalink: str) -> Sequence[_FakeEdge]:
+        edges: list[_FakeEdge] = []
+        seen: set[tuple[str, str, str]] = set()
+
+        def add(other: str, relation_type: str, direction: str) -> None:
+            if other == permalink:
+                return
+            key = (other, relation_type, direction)
+            if key in seen:
+                return
+            seen.add(key)
+            edges.append(_FakeEdge(other, relation_type, direction))
+
+        for relation in self._vault.relations_of(permalink):
+            target = self._vault.lookup(relation.target)
+            if target is not None:
+                add(target.permalink, relation.type, "out")
+        for other in sorted(self._vault.permalinks()):
+            for relation in self._vault.relations_of(other):
+                target = self._vault.lookup(relation.target)
+                if target is not None and target.permalink == permalink:
+                    add(other, relation.type, "in")
+        return edges
+
+    def note(self, permalink: str) -> NoteRecord | None:
+        return self._vault.note_at(permalink)
+
+
+if TYPE_CHECKING:
+    # Static-only (never executed): the fake must satisfy the same protocol
+    # the real adapter does, so a protocol change breaks the build here
+    # instead of at the first test that calls the missing method.
+    _typecheck: VaultService = FakeVaultService()
+    _view: GraphView = _FakeGraphView(FakeVaultService())
