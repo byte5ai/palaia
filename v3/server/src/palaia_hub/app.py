@@ -36,6 +36,7 @@ from .gateway.stash_tools import build_stash_gateway
 from .gateway.wiring import EngineVaultService
 from .hooks import OUTBOX_RELATIVE_PATH, HookDispatcher, HookOutbox, HookStore, build_hooks_router
 from .logging import setup_logging
+from .oauth import AuthorizationServer, build_oauth_router
 from .stash.service import StashService
 from .stash_api import build_stash_router
 from .static import mount_dashboard
@@ -56,6 +57,7 @@ def create_app(
     token_store: TokenStore | None = None,
     vault_services: Mapping[str, VaultService] | None = None,
     vault_registry: VaultRegistry | None = None,
+    oauth_server: AuthorizationServer | None = None,
     stash_service: StashService | None = None,
     hook_store: HookStore | None = None,
     hook_outbox: HookOutbox | None = None,
@@ -102,6 +104,14 @@ def create_app(
             (gateway-mounted-at-startup) ``vault_services`` mapping. Omitted
             (the default), the hub runs with no wizard/explorer REST surface
             at all, same as before this parameter existed.
+        oauth_server: the OAuth 2.1 authorization server (SPEC-203). Given,
+            mounts its discovery, ``/oauth/*`` and sign-in routes at the app
+            root (:func:`palaia_hub.oauth.build_oauth_router`). Omitted (the
+            default), the hub serves no OAuth endpoints at all, same as
+            before this parameter existed — the resource *side* is
+            independent of it (a profile's JWT verifier is wired into the
+            gateway, not here), so a split deployment can verify tokens
+            without hosting the endpoints that issue them.
         stash_service: the hub's stash cache (SPEC-202). Given, mounts the
             stash tool family at ``/mcp/stash`` and the ``/api/stash`` REST
             mirror, and wires its ``stash.*`` events onto ``event_bus``.
@@ -263,6 +273,12 @@ def create_app(
 
     if token_store is not None:
         app.include_router(build_auth_router(token_store))
+
+    # SPEC-203: the OAuth surface goes at the app root (RFC 8414/9728 fix the
+    # `.well-known` paths there) and before the dashboard mount, which claims
+    # "/" last.
+    if oauth_server is not None:
+        app.include_router(build_oauth_router(oauth_server))
 
     if vault_registry is not None:
         app.include_router(build_dashboard_router(vault_registry))

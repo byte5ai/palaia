@@ -33,14 +33,40 @@ _KV_SECRET_RE = re.compile(
     r"(\3)?"
 )
 
+# The OAuth 2.1 credential parameter names (SPEC-203). Kept as a second
+# pattern rather than folded into the alternation above because these are
+# exact, whole-word parameter names rather than secret-ish substrings — and
+# because `code` in particular must NOT match inside an innocent
+# `status_code=404` (it does not: `_` is a word character, so `\bcode\b`
+# cannot match the tail of `status_code`).
+#
+# These names travel in query strings and form bodies, which is exactly why
+# no handler in `palaia_hub.oauth.routes` logs a request line at all. This
+# filter is the second line of defense, not the first.
+# The separator group deliberately absorbs a closing quote after the key
+# name, so a JSON body (`{"refresh_token": "..."}`) is covered as well as a
+# query string (`refresh_token=...`) — token responses are JSON, and a log
+# line that echoed one would otherwise slip through.
+_OAUTH_SECRET_RE = re.compile(
+    r"(?i)\b(code|code_verifier|client_secret|refresh_token|access_token|id_token"
+    r"|assertion|session|csrf_token)\b"
+    r"([\"']?\s*[:=]\s*)"
+    r"([\"'])?"
+    r"([^\s\"',}&]{3,})"
+    r"(\3)?"
+)
+
+
+def _mask(match: re.Match[str]) -> str:
+    quote = match.group(3) or ""
+    return f"{match.group(1)}{match.group(2)}{quote}{REDACTED}{quote}"
+
 
 def redact(message: str) -> str:
     """Return ``message`` with any token/key/secret-shaped substrings masked."""
     message = _BEARER_RE.sub(f"Bearer {REDACTED}", message)
-    message = _KV_SECRET_RE.sub(
-        lambda m: f"{m.group(1)}{m.group(2)}{m.group(3) or ''}{REDACTED}{m.group(3) or ''}",
-        message,
-    )
+    message = _KV_SECRET_RE.sub(_mask, message)
+    message = _OAUTH_SECRET_RE.sub(_mask, message)
     return message
 
 

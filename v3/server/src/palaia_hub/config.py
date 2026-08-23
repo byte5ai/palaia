@@ -101,6 +101,31 @@ recall:
   # Recency score for a note carrying no created/modified date at all.
   # Undated is not evidence of stale, so the default sits in the middle.
   unknown_recency: 0.5
+
+# OAuth 2.1 authorization server (SPEC-203). Off by default: it needs an
+# `issuer` — the public https URL clients get redirected to — which cannot be
+# guessed from the bind address above. Turn it on to connect claude.ai,
+# ChatGPT or a phone as a remote connector; per-client `plt_` tokens keep
+# working alongside it either way.
+oauth:
+  enabled: false
+  # issuer: https://hub.example.com
+  # Access tokens are short-lived JWTs verified locally by each MCP profile.
+  access_token_ttl: 900
+  refresh_token_ttl: 2592000
+  authorization_code_ttl: 120
+  # How long a spent refresh token keeps working, so a connector fanned out
+  # over web/phone/desktop converges instead of tearing the grant down.
+  # Setting this to 0 means strict single-use — expect re-logins.
+  refresh_grace_window: 120
+  session_ttl: 43200
+  # Self-registered clients unused for this long are garbage-collected.
+  # Admin-provisioned machine clients are never pruned.
+  client_gc_ttl: 2592000
+  client_gc_interval: 3600
+  # MCP profile paths this server issues audience-scoped tokens for. Must
+  # match the gateway's profile paths.
+  profiles: []
 """
 
 
@@ -164,6 +189,61 @@ class RecallSettings(BaseModel):
     unknown_recency: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
+class OAuthSettings(BaseModel):
+    """The OAuth 2.1 authorization server's settings (SPEC-203).
+
+    Kept here, next to :class:`RecallSettings`, for the same reason: it is
+    part of the hub's own ``config.yaml`` surface, and the package that
+    consumes it (:mod:`palaia_hub.oauth`) must not be imported by this module
+    (it imports *this* one). Every field maps one-to-one onto behaviour in
+    that package.
+
+    ``enabled`` is off by default: turning the hub into an authorization
+    server requires an ``issuer`` — the public URL clients will be redirected
+    to — which cannot be guessed from a bind address.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    #: Public issuer identifier, e.g. ``https://hub.example.com``. Required
+    #: when ``enabled``; every metadata document, ``iss`` claim and canonical
+    #: audience is derived from it.
+    issuer: str | None = None
+    #: Access-token lifetime. Minutes, not hours: access tokens are
+    #: self-contained JWTs that the resource side verifies locally, so the
+    #: only thing bounding a leaked one is its expiry.
+    access_token_ttl: int = Field(default=900, ge=60, le=3600)
+    #: Refresh-token lifetime (sliding — each rotation issues a fresh TTL).
+    refresh_token_ttl: int = Field(default=30 * 24 * 3600, ge=300)
+    #: Authorization-code lifetime. RFC 6749 §4.1.2 recommends ≤ 10 minutes;
+    #: a code is exchanged within seconds in practice.
+    authorization_code_ttl: int = Field(default=120, ge=10, le=600)
+    #: How long a *spent* refresh token keeps working (the multi-device
+    #: fan-out lesson, MASTERPLAN §5.5). 0 means strict single-use, which is
+    #: exactly the setting that caused daily re-logins in the prototype.
+    refresh_grace_window: int = Field(default=120, ge=0, le=3600)
+    #: Browser login-session lifetime.
+    session_ttl: int = Field(default=12 * 3600, ge=300)
+    #: How long an unused self-registered client is kept before the GC prunes
+    #: it. Machine and admin clients are never pruned.
+    client_gc_ttl: int = Field(default=30 * 24 * 3600, ge=3600)
+    #: Minimum interval between GC passes (it is triggered opportunistically
+    #: from the token/registration endpoints).
+    client_gc_interval: int = Field(default=3600, ge=60)
+    #: Which MCP profile paths this authorization server issues tokens for.
+    #:
+    #: A bridge, not a permanent design: the profiles a hub serves are the
+    #: gateway's (:class:`palaia_hub.gateway.config.GatewayConfig`), which
+    #: does not reach ``config.yaml`` yet — ``palaia_hub.cli.serve`` still
+    #: mounts no gateway (see its comment). Until it does, an operator names
+    #: the profiles here so the ``serve`` entry point can host the OAuth
+    #: endpoints; a caller that builds a gateway itself passes the real
+    #: profile set to :meth:`palaia_hub.oauth.AuthorizationServer.build` and
+    #: ignores this list.
+    profiles: list[str] = Field(default_factory=list)
+
+
 class HubConfig(BaseModel):
     """Validated hub configuration, merged from defaults/file/env."""
 
@@ -177,6 +257,7 @@ class HubConfig(BaseModel):
     graceful_shutdown_timeout: float = 30.0
     auth_enabled: bool = True
     recall: RecallSettings = Field(default_factory=RecallSettings)
+    oauth: OAuthSettings = Field(default_factory=OAuthSettings)
 
     @model_validator(mode="after")
     def _check_operating_mode_policy(self) -> HubConfig:
@@ -193,14 +274,23 @@ class HubConfig(BaseModel):
         Funnel, cloudflared) terminating on a private address, not a direct
         public/wildcard bind. ``open`` mode has no such restriction — its
         whole point is that the dashboard itself is public too.
+
+        SPEC-203 deliverable #6: **OAuth satisfies the auth mandate too.** The
+        rule these modes enforce is "no publicly reachable MCP endpoint
+        without an authentication check", and an OAuth 2.1 authorization
+        server issuing audience-scoped access tokens is exactly such a check
+        — so ``oauth.enabled`` is accepted in place of ``auth_enabled``.
+        Turning *both* off in ``cloud``/``open`` is still refused.
         """
-        if self.mode in ("cloud", "open") and not self.auth_enabled:
+        if self.mode in ("cloud", "open") and not (self.auth_enabled or self.oauth.enabled):
             raise ValueError(
-                f"mode '{self.mode}' requires auth_enabled=true — MCP endpoints "
-                f"would otherwise be reachable over the network with no token "
+                f"mode '{self.mode}' requires an authentication method — MCP "
+                f"endpoints would otherwise be reachable over the network with no "
                 f"check at all. Fix: set `auth_enabled: true` in config.yaml (or "
-                f"PALAIA_AUTH_ENABLED=true), or set `mode: locked` if every "
-                f"client only ever reaches this hub over your own VPN/tailnet."
+                f"PALAIA_AUTH_ENABLED=true) for per-client bearer tokens, or enable "
+                f"the OAuth server (`oauth.enabled: true` plus an `oauth.issuer`); "
+                f"or set `mode: locked` if every client only ever reaches this hub "
+                f"over your own VPN/tailnet."
             )
         if self.mode == "cloud" and not _is_private_bind_host(self.host):
             raise ValueError(
