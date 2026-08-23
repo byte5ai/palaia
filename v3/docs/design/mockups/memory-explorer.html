@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>palaia &middot; Memory explorer (mockup)</title>
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap');
 /* ================================================================
    palaia design tokens v2 — Lume
    Source of truth: v3/docs/design/lume/colors_and_type.css (never invent
@@ -25,10 +26,12 @@
   --duration-instant:0ms; --duration-quick:100ms; --duration-smooth:200ms; --duration-condense:300ms;
   --easing-standard:cubic-bezier(.2,0,0,1); --easing-emphasis:cubic-bezier(.4,0,.2,1);
 
-  /* Three registers. No Google Fonts @import here on purpose (lume/README.md
-     decision 3): mockups stay CDN-free and self-contained; the fallback
-     stacks below carry the rendering. Dashboard build self-hosts the
-     variable files; MCP Apps bundle them. */
+  /* Three registers, loaded via the Google Fonts @import above so these
+     static mockups render in the real Lume typefaces for human review
+     (SPEC-005 redo, 2026-08-23) -- lume/README.md decision 3 still governs
+     shipped product code: the dashboard build self-hosts the variable
+     files and MCP Apps bundle them; only this preview HTML uses the CDN.
+     Fallback stacks below still carry rendering if the network is blocked. */
   --font-sans:  'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono:  'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   --font-serif: 'Source Serif 4', Charter, 'Iowan Old Style', Georgia, serif;
@@ -114,6 +117,7 @@
   --p-surface:linear-gradient(180deg, var(--bg-surface-top) 0%, var(--bg-surface-btm) 100%);
   --p-surface-2:linear-gradient(180deg, var(--bg-surface-sunken-top) 0%, var(--bg-surface-sunken-btm) 100%);
   --p-sunken:linear-gradient(180deg, var(--bg-surface-sunken-top) 0%, var(--bg-surface-sunken-btm) 100%);
+  --p-surface-raised:linear-gradient(180deg, var(--bg-surface-raised-top) 0%, var(--bg-surface-raised-btm) 100%);
   --p-line:var(--border-subtle-btm);
   --p-line-strong:var(--border-strong-btm);
   --p-ink:var(--text-primary); --p-ink-muted:var(--text-secondary); --p-ink-subtle:var(--text-tertiary);
@@ -164,6 +168,7 @@
   --p-surface:linear-gradient(180deg, var(--bg-surface-top) 0%, var(--bg-surface-btm) 100%);
   --p-surface-2:linear-gradient(180deg, var(--bg-surface-sunken-top) 0%, var(--bg-surface-sunken-btm) 100%);
   --p-sunken:linear-gradient(180deg, var(--bg-surface-sunken-top) 0%, var(--bg-surface-sunken-btm) 100%);
+  --p-surface-raised:linear-gradient(180deg, var(--bg-surface-raised-top) 0%, var(--bg-surface-raised-btm) 100%);
   --p-line:var(--border-subtle-btm); --p-line-strong:var(--border-strong-btm);
   --p-ink:var(--text-primary); --p-ink-muted:var(--text-secondary); --p-ink-subtle:var(--text-tertiary);
   --p-shadow-1:var(--shadow-raised); --p-shadow-2:var(--shadow-popover); --p-shadow-3:var(--shadow-modal);
@@ -206,6 +211,7 @@
   --p-surface:linear-gradient(180deg, var(--bg-surface-top) 0%, var(--bg-surface-btm) 100%);
   --p-surface-2:linear-gradient(180deg, var(--bg-surface-sunken-top) 0%, var(--bg-surface-sunken-btm) 100%);
   --p-sunken:linear-gradient(180deg, var(--bg-surface-sunken-top) 0%, var(--bg-surface-sunken-btm) 100%);
+  --p-surface-raised:linear-gradient(180deg, var(--bg-surface-raised-top) 0%, var(--bg-surface-raised-btm) 100%);
   --p-line:var(--border-subtle-btm); --p-line-strong:var(--border-strong-btm);
   --p-ink:var(--text-primary); --p-ink-muted:var(--text-secondary); --p-ink-subtle:var(--text-tertiary);
   --p-shadow-1:var(--shadow-raised); --p-shadow-2:var(--shadow-popover); --p-shadow-3:var(--shadow-modal);
@@ -352,7 +358,7 @@ svg{display:block}
   display:inline-flex;align-items:center;justify-content:center;gap:var(--p-space-2);
   height:36px;padding:0 var(--p-space-4);border-radius:var(--p-radius-md);
   border:1px solid var(--p-line-strong);border-top-color:var(--border-strong-top);
-  background:var(--p-surface);color:var(--p-ink);
+  background:var(--p-surface-raised);color:var(--p-ink);
   font-size:var(--p-size-sm);font-weight:550;cursor:pointer;white-space:nowrap;
   box-shadow:0 1px 0 var(--top-edge-highlight) inset;
   transition:background var(--p-dur-1) var(--p-ease),border-color var(--p-dur-1) var(--p-ease),
@@ -362,24 +368,24 @@ svg{display:block}
 .btn:active{transform:translateY(1px)}
 .btn--primary{
   background:linear-gradient(180deg, var(--accent-fill) 0%, var(--accent-fill-hover) 100%);
-  border-color:var(--accent-fill-hover);border-top-color:var(--top-edge-highlight);color:var(--p-on-accent);
-  box-shadow:0 0 4px var(--accent-glow-core), 0 4px 12px var(--accent-glow);
+  border-color:var(--accent-fill-hover);border-top-color:rgba(255,255,255,.22);color:var(--p-on-accent);
+  box-shadow:0 0 4px var(--accent-glow-core), 0 4px 12px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,.18);
 }
 .btn--primary:hover{
   background:linear-gradient(180deg, var(--accent-fill-hover) 0%, var(--accent-fill-active) 100%);
   border-color:var(--accent-fill-active);
-  box-shadow:0 0 6px var(--accent-glow-core), 0 6px 18px var(--accent-glow-strong);
+  box-shadow:0 0 6px var(--accent-glow-core), 0 6px 18px var(--accent-glow-strong), inset 0 1px 0 rgba(255,255,255,.18);
 }
 /* Signal — the single loud CTA, capped at one per view (see the element that uses it) */
 .btn--signal{
   background:linear-gradient(180deg, var(--signal-fill) 0%, var(--signal-fill-hover) 100%);
-  border-color:var(--signal-fill-hover);border-top-color:var(--top-edge-highlight);color:var(--p-on-accent);
-  box-shadow:0 0 4px var(--signal-glow-core), 0 4px 12px var(--signal-glow);
+  border-color:var(--signal-fill-hover);border-top-color:rgba(255,255,255,.28);color:var(--p-on-accent);
+  box-shadow:0 0 4px var(--signal-glow-core), 0 4px 12px var(--signal-glow), inset 0 1px 0 rgba(255,255,255,.22);
 }
 .btn--signal:hover{
   background:linear-gradient(180deg, var(--signal-fill-hover) 0%, var(--signal-fill-active) 100%);
   border-color:var(--signal-fill-active);
-  box-shadow:0 0 6px var(--signal-glow-core), 0 6px 18px var(--signal-glow-strong);
+  box-shadow:0 0 6px var(--signal-glow-core), 0 6px 18px var(--signal-glow-strong), inset 0 1px 0 rgba(255,255,255,.22);
 }
 .btn--ghost{background:transparent;border-color:transparent;border-top-color:transparent;color:var(--p-ink-muted);box-shadow:none}
 .btn--ghost:hover{background:var(--p-sunken);color:var(--p-ink);border-color:transparent}
@@ -399,7 +405,7 @@ svg{display:block}
 }
 
 /* ---------- surfaces ---------- */
-.card{background:var(--p-surface);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
+.card{background:var(--p-surface-raised);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
   border-radius:var(--p-radius-lg);box-shadow:var(--p-shadow-1), 0 1px 0 var(--top-edge-highlight) inset}
 .card--flat{box-shadow:none}
 .card--raised{box-shadow:var(--p-shadow-2), 0 1px 0 var(--top-edge-highlight) inset}
@@ -433,7 +439,7 @@ svg{display:block}
 
 /* ---------- tiles (metrics) ---------- */
 .tiles{display:grid;gap:var(--p-space-4);grid-template-columns:repeat(4,minmax(0,1fr))}
-.tile{background:var(--p-surface);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-lg);padding:var(--p-space-4) var(--p-space-5);
+.tile{background:var(--p-surface-raised);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-lg);padding:var(--p-space-4) var(--p-space-5);
   display:flex;flex-direction:column;gap:var(--p-space-1);box-shadow:var(--p-shadow-1), 0 1px 0 var(--top-edge-highlight) inset;position:relative;overflow:hidden}
 .tile__metric{font-family:var(--p-font-serif);font-size:var(--p-size-2xl);line-height:1.1;letter-spacing:var(--p-track-tight);font-weight:600;font-variant-numeric:tabular-nums;font-optical-sizing:auto}
 .tile__unit{font-family:var(--p-font-sans);font-size:var(--p-size-sm);font-weight:500;color:var(--p-ink-muted);letter-spacing:0}
@@ -484,7 +490,7 @@ svg{display:block}
 .field__label{font-size:var(--p-size-sm);font-weight:600}
 .field__hint{font-size:var(--p-size-xs);color:var(--p-ink-muted)}
 .input{height:38px;padding:0 var(--p-space-3);border:1px solid var(--p-line-strong);border-top-color:var(--border-strong-top);border-radius:var(--p-radius-md);
-  background:var(--p-surface);color:var(--p-ink);font:inherit;font-size:var(--p-size-sm);width:100%;
+  background:var(--p-surface-raised);color:var(--p-ink);font:inherit;font-size:var(--p-size-sm);width:100%;
   box-shadow:0 1px 0 var(--top-edge-highlight) inset}
 .input::placeholder{color:var(--p-ink-subtle)}
 .input:focus{outline:none;border-color:var(--accent-fill);
@@ -582,8 +588,9 @@ svg{display:block}
 .page-title{font-family:var(--p-font-serif);font-size:var(--p-size-xl);font-weight:600;letter-spacing:var(--p-track-tight)}
 .page-sub{font-size:var(--p-size-xs);color:var(--p-ink-muted)}
 .cmdk{display:flex;align-items:center;gap:var(--p-space-2);height:34px;padding:0 var(--p-space-3);
-  border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-md);background:var(--p-surface);
-  color:var(--p-ink-subtle);font-size:var(--p-size-sm);cursor:pointer;min-width:200px;white-space:nowrap}
+  border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-md);background:var(--p-surface-raised);
+  color:var(--p-ink-subtle);font-size:var(--p-size-sm);cursor:pointer;min-width:200px;white-space:nowrap;
+  box-shadow:0 1px 0 var(--top-edge-highlight) inset}
 .avatar{width:30px;height:30px;border-radius:50%;background:var(--p-accent-soft);color:var(--p-accent-ink);
   border:1px solid var(--p-accent-line);display:flex;align-items:center;justify-content:center;font-size:var(--p-size-xs);font-weight:600}
 .content{padding:var(--p-space-4) var(--p-space-6) var(--p-space-6);display:flex;flex-direction:column;gap:var(--p-space-4)}

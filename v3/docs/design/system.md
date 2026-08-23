@@ -12,6 +12,18 @@
 > bespoke "warm paper / verdigris" token system is retired; this document now
 > describes how palaia binds Lume, not an invented parallel system. Still
 > grounded in MASTERPLAN §3 (P7), §4 (UX doctrine), §5.5, §5.7 and §6.
+>
+> Version 2.1 — 2026-08-23 — the owner rejected version 2's mockups on sight:
+> the tokens were right (atelier reads correctly) but the **material** wasn't
+> implemented — primaries rendered as flat solid fills instead of Lume's
+> accent-gradient + top-edge-highlight + glow, cards/tiles as flat white
+> instead of the `bg-surface-raised` gradient pair with `--shadow-raised`, and
+> the Geist/Source Serif typefaces never loaded because the mockups shipped
+> with no font source at all. This pass fixes all three (§1 decision 3, §2
+> Actions/Surfaces, §4) and removes an accent-tinted hero panel on the home
+> screen that read as a second, larger accent block — Lume keeps the accent
+> to small, sparing touches (selection halos, dots, glows), never a panel
+> tint.
 
 ## 0. What palaia looks like, in one paragraph
 
@@ -64,8 +76,12 @@ document:
    `data-theme`; that name is retired in favour of Lume's own.)
 3. **Fonts** (Geist / Geist Mono / Source Serif 4) are self-hosted in the
    dashboard build and bundled in MCP Apps — never the Google Fonts `@import`
-   that appears in `colors_and_type.css` (a design-tool convenience only). The
-   mockups ship zero external requests; their fallback stacks carry rendering.
+   that appears in `colors_and_type.css` for shipped product code. The five
+   static mockups are the one deliberate exception: they carry that same
+   `@import` so a human reviewing them in a browser sees the real Lume
+   typefaces, not the fallback stacks. Fallback stacks stay in place under it
+   for offline/blocked-network rendering; the only external requests any
+   mockup makes are to `fonts.googleapis.com` and `fonts.gstatic.com`.
 4. **The Signal rule is binding UX doctrine**: at most one Signal element per
    view, never as a surface fill, never as a status pill. See §1.1 below and
    `principles.md` rule 6.
@@ -194,7 +210,7 @@ the minimum a component must render.
 |---|---|---|---|
 | `btn--primary` | 36px, accent gradient fill (top→hover stop), two-stop accent glow, optional leading icon | hover (deeper glow), active, focus-visible (Lume focus ring), disabled | **One per view.** The primary is the thing you most likely want next |
 | `btn--signal` | Same anatomy as `btn--primary`, palette-independent Signal fill/glow instead of accent | as above | **At most one across the entire dashboard's currently-visible view**, and only for the single most important, one-time commitment — see `principles.md` rule 6. Not a second `btn--primary`; do not reach for it for a routine action |
-| `btn` (secondary) | surface gradient + directional `line-strong` border + top-edge highlight | as above | For alternatives that are equally safe |
+| `btn` (secondary) | `bg-surface-raised` gradient (not the flatter `bg-surface` pane gradient) + directional `line-strong` border + top-edge highlight | as above | For alternatives that are equally safe |
 | `btn--quiet` / `btn--ghost` | border only / text only | as above | Row-level and tertiary actions |
 | `btn--risk` | transparent fill, border/text = `state.error.edge`/`state.error.fg` (the one semantic state with a real border token), low-alpha error wash on hover | as above | Revoke, reject, delete. Never filled red |
 | `btn--sm` / `btn--lg` | 28px / 44px | — | `sm` inside rows and cards, `lg` in the wizard |
@@ -204,14 +220,18 @@ the minimum a component must render.
 ### Surfaces & structure
 
 `card` (+`--flat`, `--raised`) with `card__head` / `card__body` / `card__foot` —
-every non-flat card is a Lume gradient surface with a directional border and a
-1px top-edge highlight, never a flat fill; `tile` (metric tile, `--attention`
-variant — text and icon colour only, **no fill or coloured border**, per the
-text-only state rule); `banner` (info / warn / ok — a neutral gradient surface
-whose icon and title take the state colour; the box itself never does. An
-explanation with an optional title, never a bare error string); `sep`;
-`scrollpane` (thin themed scrollbars); `pane` (explorer column with its own
-sticky head).
+every non-flat card sits on the `bg-surface-raised` gradient pair (not the
+flatter plain `bg-surface`), with a directional border and a 1px top-edge
+highlight plus `--shadow-raised`, never a flat fill; `tile` (metric tile, same
+raised-gradient recipe as `card`, `--attention` variant — text and icon colour
+only, **no fill or coloured border**, per the text-only state rule); `banner`
+(info / warn / ok — a neutral gradient surface whose icon and title take the
+state colour; the box itself never does. An explanation with an optional
+title, never a bare error string); `sep`; `scrollpane` (thin themed
+scrollbars); `pane` (explorer column with its own sticky head). No card, tile
+or hero panel is ever tinted with the accent as a background wash — accent
+stays confined to small touches (a dot, a glow, a 2px selection edge), per
+§1.1; a panel-sized accent tint reads as a second, competing accent block.
 
 ### Navigation
 
@@ -256,8 +276,8 @@ soft accent-glow underneath, on a sunken track — reads as lit, not painted).
 ### Forms
 
 `field` (label + control + hint — hints explain *why*, not *what*), `input`
-(gradient surface, directional border, top-edge highlight; focus = the Lume
-glow ring, not a flat outline; `+input--readonly` for machine-owned values like
+(`bg-surface-raised` gradient, directional border, top-edge highlight; focus =
+the Lume glow ring, not a flat outline; `+input--readonly` for machine-owned values like
 paths, which get a `Change…` button rather than becoming editable text),
 `switchrow` (toggle + label + consequence; the "on" thumb is accent-fill with a
 small glow), `radiocard` (a choice with its trade-offs: "choose this if…", what
@@ -335,9 +355,10 @@ finding.
 | [`mockups/review-queue.html`](mockups/review-queue.html) | Review queue (curator proposals) | populated · empty · in-client app |
 
 They are single static HTML files: inline CSS, inline SVG, no build step, no
-external fonts or CDNs, no network requests at all — deliberately, since Lume's
-own `colors_and_type.css` carries a Google Fonts `@import` for design-tool
-convenience that the mockups omit on purpose (§1, decision 3). Open one in a
+network requests beyond the Google Fonts `@import` for Geist / Geist Mono /
+Source Serif 4 (§1, decision 3) — the one exception to palaia's normal
+self-hosted/bundled font rule, made so a human reviewing a mockup in a browser
+sees Lume's real material instead of a system-font approximation. Open one in a
 browser — or several, at 360 / 768 / 1280 — and use the thin dashed bar at the
 top to switch state or force a theme (that bar is scaffolding, not product).
 Everything in them is fake data; nothing talks to a backend. Every mockup binds
