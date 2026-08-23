@@ -27,6 +27,8 @@ from typing import Protocol
 
 from pydantic import BaseModel, Field
 
+from palaia_hub.recall.models import ContextResult, RecallResult
+
 # The eight memory tool actions, in the order SPEC-105's deliverables list
 # them. This is the single source of truth for "what actions exist" — used
 # to build each vault's tool server (memory_tools.py) and to validate
@@ -50,6 +52,12 @@ MEMORY_TOOL_ACTIONS: tuple[str, ...] = (
 # exposed together in the same tool family server (memory_tools.py).
 INBOX_TOOL_ACTIONS: tuple[str, ...] = ("capture", "inbox_status")
 
+# SPEC-106's two recall actions, a separate tuple for the same reason as
+# INBOX_TOOL_ACTIONS above. Both are read-only (see
+# palaia_hub.auth.scopes.READ_ACTIONS) and both live in the same tool family
+# server as the rest.
+RECALL_TOOL_ACTIONS: tuple[str, ...] = ("recall", "build_context")
+
 
 class NoteSummary(BaseModel):
     """Enough to list, browse, or pick a note without fetching its body."""
@@ -66,12 +74,33 @@ class NoteSummary(BaseModel):
     status: str = ""
     capture_id: str = ""
 
+    @property
+    def timestamp(self) -> str:
+        """The note's age signal, matching :class:`palaia_hub.index.IndexedNote`.
+
+        Lets a summary stand in wherever the recall layer's traversal wants
+        something timestamped (``palaia_hub.recall.traversal.GraphView``).
+        """
+        return self.modified
+
 
 class NoteRecord(NoteSummary):
-    """A full note: everything in :class:`NoteSummary` plus its body."""
+    """A full note: everything in :class:`NoteSummary` plus its body.
+
+    ``body`` is always the note **as written** — the raw markdown, embeds
+    still embeds. ``resolved_body`` is that same body with value references
+    resolved live (format spec §5.3, SPEC-106) and per-model variants
+    applied, and is populated only when it actually differs. Both are
+    reported because they answer different questions: an agent about to
+    *edit* the note needs the source, an agent *reading* it needs the current
+    values. The tool's human-readable text uses the resolved form when there
+    is one.
+    """
 
     body: str = ""
     created: str = ""
+    resolved_body: str = ""
+    resolution_warnings: list[str] = Field(default_factory=list)
 
 
 class CaptureResult(BaseModel):
@@ -204,4 +233,34 @@ class VaultService(Protocol):
 
     async def inbox_status(self) -> InboxStatusResult:
         """Summarize ``inbox/``: uncurated count, oldest entry age, last capture."""
+        ...
+
+    async def recall(
+        self,
+        *,
+        query: str = "",
+        ref: str = "",
+        limit: int = 5,
+        model: str = "",
+    ) -> RecallResult:
+        """Recall from a query or a ``memory://`` reference (SPEC-106).
+
+        Unlike ``search``, which answers "what matches these words", recall
+        answers "what should I be looking at": results are decay-ranked,
+        per-model observation variants are resolved for ``model``, and value
+        references are resolved to their current source values.
+        """
+        ...
+
+    async def build_context(
+        self,
+        *,
+        ref: str = "",
+        query: str = "",
+        depth: int = 2,
+        timeframe: str = "",
+        max_tokens: int = 4000,
+        model: str = "",
+    ) -> ContextResult:
+        """Assemble a budgeted context package by walking relations (SPEC-106)."""
         ...

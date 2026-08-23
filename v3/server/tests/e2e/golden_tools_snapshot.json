@@ -1,4 +1,50 @@
 {
+  "build_context": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nAssemble the context around a starting point: resolve it, walk its relations to `depth` hops, and return one deduplicated, token-budgeted package. This is the 'continue where we left off' tool \u2014 it follows the links the notes actually declare instead of re-searching. Notes that do not fit `max_tokens` are shortened to their title plus key facts, never cut mid-note. `depth` is capped at 5; `timeframe` ('30d', '2w', or an ISO date) keeps the walk to what is still current.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "depth": {
+          "default": 2,
+          "description": "Relation hops to walk from the starting point, 0-5. 1 is 'this note and what it names'.",
+          "type": "integer"
+        },
+        "max_tokens": {
+          "default": 4000,
+          "description": "Token budget for the whole package. Notes that do not fit are summarized, then named \u2014 never cut mid-note.",
+          "type": "integer"
+        },
+        "model": {
+          "default": "",
+          "description": "The calling model, as 'provider/model' (e.g. 'anthropic/opus-5') or just 'provider'. Selects per-model observation variants; omitting it serves the default phrasing.",
+          "type": "string"
+        },
+        "query": {
+          "default": "",
+          "description": "What you are looking for, in your own words.",
+          "type": "string"
+        },
+        "ref": {
+          "default": "",
+          "description": "A memory:// reference to start from: a permalink, alias, title, path, memory:// URL, or a glob like 'projects/api-*'.",
+          "type": "string"
+        },
+        "timeframe": {
+          "default": "",
+          "description": "Only include notes at least this recent: '30d', '2w', '12h', or an ISO date. Empty means no time limit.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
   "capture": {
     "annotations": {
       "destructiveHint": false,
@@ -221,6 +267,42 @@
       "required": [
         "permalink"
       ],
+      "type": "object"
+    }
+  },
+  "recall": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nRecall what matters about a topic or a specific note. Prefer this over search when you want to *use* what the vault knows: results are ranked by relevance plus recency, how often they are used, and how load-bearing they are; shared values are resolved to their current source; and rules phrased per model family arrive already narrowed to yours. Pass a query, or a ref (permalink/title/memory:// URL/glob) when you know the address.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 5,
+          "description": "How many results to return, best first.",
+          "type": "integer"
+        },
+        "model": {
+          "default": "",
+          "description": "The calling model, as 'provider/model' (e.g. 'anthropic/opus-5') or just 'provider'. Selects per-model observation variants; omitting it serves the default phrasing.",
+          "type": "string"
+        },
+        "query": {
+          "default": "",
+          "description": "What you are looking for, in your own words.",
+          "type": "string"
+        },
+        "ref": {
+          "default": "",
+          "description": "A memory:// reference to start from: a permalink, alias, title, path, memory:// URL, or a glob like 'projects/api-*'.",
+          "type": "string"
+        }
+      },
       "type": "object"
     }
   },

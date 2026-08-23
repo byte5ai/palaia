@@ -2,7 +2,13 @@ from pathlib import Path
 
 import pytest
 
-from palaia_hub.config import ConfigError, config_file_path, load_config, palaia_home
+from palaia_hub.config import (
+    ConfigError,
+    RecallSettings,
+    config_file_path,
+    load_config,
+    palaia_home,
+)
 
 
 def test_defaults_when_no_file_and_creates_one(tmp_path: Path) -> None:
@@ -207,3 +213,54 @@ def test_locked_mode_with_wildcard_bind_host_is_allowed(tmp_path: Path) -> None:
     config = load_config(home=tmp_path)
 
     assert config.host == "0.0.0.0"
+
+
+# --- recall ranking weights (SPEC-106) -------------------------------------
+
+
+def test_the_generated_default_file_round_trips_to_the_default_weights(
+    tmp_path: Path,
+) -> None:
+    """The commented template must parse back to exactly the code defaults.
+
+    Worth its own test: the template is prose, so a typo there would ship a
+    config file that silently reranks every vault on first run.
+    """
+    from palaia_hub.recall import DEFAULT_WEIGHTS, weights_from_settings
+
+    load_config(home=tmp_path)  # writes the template
+    from_file = load_config(home=tmp_path)  # reads it back
+
+    assert from_file.recall == RecallSettings()
+    assert weights_from_settings(from_file.recall) == DEFAULT_WEIGHTS
+
+
+def test_recall_weights_can_be_overridden_in_the_file(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text(
+        "recall:\n  recency_weight: 0.9\n  half_life_days: 7\n", encoding="utf-8"
+    )
+
+    config = load_config(home=tmp_path)
+
+    assert config.recall.recency_weight == 0.9
+    assert config.recall.half_life_days == 7.0
+    # Unset keys keep their defaults rather than zeroing out.
+    assert config.recall.significance_weight == RecallSettings().significance_weight
+
+
+def test_a_negative_recall_weight_is_rejected_with_the_key_named(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("recall:\n  recency_weight: -1\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_config(home=tmp_path)
+
+    message = str(excinfo.value)
+    assert "recall.recency_weight" in message
+    assert "Fix:" in message
+
+
+def test_an_unknown_recall_key_is_rejected(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("recall:\n  recncy_weight: 0.5\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError):
+        load_config(home=tmp_path)

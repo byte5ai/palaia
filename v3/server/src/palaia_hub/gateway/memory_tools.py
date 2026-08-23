@@ -5,14 +5,17 @@ list / recent_activity, mounted once per configured vault (see
 :mod:`palaia_hub.gateway.build`). SPEC-107 adds two more tools to the same
 server — ``capture`` and ``inbox_status`` (the inbox/capture contract,
 ``v3/docs/vault-format.md`` §7); their composition logic lives in
-:mod:`palaia_hub.gateway.inbox`. Deliverable #4 (tool ergonomics) is
-implemented here directly on each tool:
+:mod:`palaia_hub.gateway.inbox`. SPEC-106 adds two more — ``recall`` and
+``build_context`` — backed by :mod:`palaia_hub.recall`; both are read-only,
+and both take the same ergonomics treatment as everything else here.
+Deliverable #4 (tool ergonomics) is implemented here directly on each tool:
 
 - **Behavior annotations** (``readOnlyHint``/``destructiveHint``/
   ``idempotentHint``) on every tool.
 - **Alias absorption**: ``search``'s ``query`` accepts ``q``/``text``;
-  every ``folder`` parameter accepts ``dir``/``path`` — the two alias
-  groups SPEC-105 names explicitly, via pydantic ``AliasChoices``. The
+  every ``folder`` parameter accepts ``dir``/``path``; ``ref`` accepts
+  ``permalink``/``memory``/``uri``/``url`` and ``model`` accepts
+  ``model_id``/``provider`` — via pydantic ``AliasChoices``. The
   published input schema still shows only the canonical name (verified in
   ``tests/gateway/test_memory_tools.py``); the aliases are absorbed
   silently, not documented as alternatives, so the schema an agent reads
@@ -45,6 +48,10 @@ from mcp.types import ToolAnnotations
 from pydantic import AliasChoices, BaseModel, Field
 
 from ..auth.enforcement import missing_scope_error
+from ..recall import budget as recall_budget
+from ..recall.models import ContextResult, RecallResult
+from ..recall.service import DEFAULT_RECALL_LIMIT, recall_text, render_context
+from ..recall.traversal import DEFAULT_DEPTH, MAX_DEPTH
 from .config import VaultMountConfig
 from .inbox import missing_capture_fields, missing_fields_message
 from .vault_protocol import (
@@ -72,12 +79,48 @@ QueryParam = Annotated[
         description="Search text.",
     ),
 ]
+OptionalQueryParam = Annotated[
+    str,
+    Field(
+        default="",
+        validation_alias=AliasChoices("query", "q", "text"),
+        description="What you are looking for, in your own words.",
+    ),
+]
 FolderParam = Annotated[
     str,
     Field(
         default="",
         validation_alias=AliasChoices("folder", "dir", "path"),
         description="Folder to scope to. Empty means the whole vault.",
+    ),
+]
+# SPEC-106's own alias groups, same principle as the two above. A
+# `memory://` reference is the parameter models most often misname (they
+# reach for `permalink`, `memory`, `uri` or `url` — all of which mean the
+# same thing here), and the calling model's identity arrives as `model`,
+# `model_id` or `provider` depending on the client.
+RefParam = Annotated[
+    str,
+    Field(
+        default="",
+        validation_alias=AliasChoices("ref", "permalink", "memory", "uri", "url"),
+        description=(
+            "A memory:// reference to start from: a permalink, alias, title, "
+            "path, memory:// URL, or a glob like 'projects/api-*'."
+        ),
+    ),
+]
+ModelParam = Annotated[
+    str,
+    Field(
+        default="",
+        validation_alias=AliasChoices("model", "model_id", "provider"),
+        description=(
+            "The calling model, as 'provider/model' (e.g. 'anthropic/opus-5') "
+            "or just 'provider'. Selects per-model observation variants; "
+            "omitting it serves the default phrasing."
+        ),
     ),
 ]
 
@@ -126,9 +169,11 @@ def vault_identity_block(vault: VaultMountConfig) -> str:
     return (
         f"{identity}\n"
         "Search before writing — check whether this already exists before "
-        "creating a new note. Use recent_activity to catch up on what "
-        "changed since you last looked. Read the ai_assistant_guide "
-        "resource for the full tool-by-tool workflow."
+        "creating a new note. Use recall to get what this vault knows about "
+        "a topic (ranked, with shared values resolved) and build_context to "
+        "pick up where a previous session left off. Use recent_activity to "
+        "catch up on what changed since you last looked. Read the "
+        "ai_assistant_guide resource for the full tool-by-tool workflow."
     )
 
 
@@ -192,7 +237,12 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
             note = await service.read(permalink)
         except VaultServiceError as exc:
             return _error_result(exc)
-        return ToolResult(content=note.body, structured_content=note)
+        # The human-readable half shows value references resolved to their
+        # current source values (format spec §5.3): a model reading a note
+        # should see what the rate limit *is*, not that there is an embed
+        # pointing at it. `structured_content.body` stays the note as
+        # written, for anything about to edit it.
+        return ToolResult(content=note.resolved_body or note.body, structured_content=note)
 
     @server.tool(
         name="write",
@@ -294,6 +344,100 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         return ToolResult(content=text, structured_content=RecentActivityResult(notes=notes))
 
     @server.tool(
+        name="recall",
+        description=desc(
+            "Recall what matters about a topic or a specific note. Prefer "
+            "this over search when you want to *use* what the vault knows: "
+            "results are ranked by relevance plus recency, how often they "
+            "are used, and how load-bearing they are; shared values are "
+            "resolved to their current source; and rules phrased per model "
+            "family arrive already narrowed to yours. Pass a query, or a ref "
+            "(permalink/title/memory:// URL/glob) when you know the address."
+        ),
+        annotations=ToolAnnotations(
+            readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False
+        ),
+    )
+    async def recall(
+        query: OptionalQueryParam = "",
+        ref: RefParam = "",
+        limit: Annotated[
+            int, Field(description="How many results to return, best first.")
+        ] = DEFAULT_RECALL_LIMIT,
+        model: ModelParam = "",
+    ) -> ToolResult:
+        if (err := scope_error("recall")) is not None:
+            return err
+        try:
+            result = await service.recall(query=query, ref=ref, limit=limit, model=model)
+        except VaultServiceError as exc:
+            return _error_result(exc)
+        return ToolResult(content=recall_text(result), structured_content=result)
+
+    @server.tool(
+        name="build_context",
+        description=desc(
+            "Assemble the context around a starting point: resolve it, walk "
+            "its relations to `depth` hops, and return one deduplicated, "
+            "token-budgeted package. This is the 'continue where we left "
+            "off' tool — it follows the links the notes actually declare "
+            "instead of re-searching. Notes that do not fit `max_tokens` are "
+            "shortened to their title plus key facts, never cut mid-note. "
+            f"`depth` is capped at {MAX_DEPTH}; `timeframe` ('30d', '2w', or "
+            "an ISO date) keeps the walk to what is still current."
+        ),
+        annotations=ToolAnnotations(
+            readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False
+        ),
+    )
+    async def build_context(
+        ref: RefParam = "",
+        query: OptionalQueryParam = "",
+        depth: Annotated[
+            int,
+            Field(
+                description=(
+                    f"Relation hops to walk from the starting point, 0-{MAX_DEPTH}. "
+                    "1 is 'this note and what it names'."
+                )
+            ),
+        ] = DEFAULT_DEPTH,
+        timeframe: Annotated[
+            str,
+            Field(
+                description=(
+                    "Only include notes at least this recent: '30d', '2w', '12h', "
+                    "or an ISO date. Empty means no time limit."
+                )
+            ),
+        ] = "",
+        max_tokens: Annotated[
+            int,
+            Field(
+                description=(
+                    "Token budget for the whole package. Notes that do not fit "
+                    "are summarized, then named — never cut mid-note."
+                )
+            ),
+        ] = recall_budget.DEFAULT_MAX_TOKENS,
+        model: ModelParam = "",
+    ) -> ToolResult:
+        if (err := scope_error("build_context")) is not None:
+            return err
+        try:
+            result = await service.build_context(
+                ref=ref,
+                query=query,
+                depth=depth,
+                timeframe=timeframe,
+                max_tokens=max_tokens,
+                model=model,
+            )
+        except VaultServiceError as exc:
+            return _error_result(exc)
+        return ToolResult(content=render_context(result), structured_content=result)
+
+    @server.tool(
         name="capture",
         description=desc(
             "Zero-friction drop target: capture something mid-work without "
@@ -362,6 +506,12 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
             f"# {vault.name} memory vault — assistant guide\n\n"
             f"{purpose}\n\n"
             "## Workflow\n"
+            "0. **recall** when you want to *use* what this vault knows — it "
+            "ranks by relevance plus recency/usage/significance, resolves "
+            "shared values to their current source, and narrows per-model "
+            "rules to yours. **build_context** when resuming work: give it a "
+            "starting note (or a query that finds one) and it walks the "
+            "relations around it into one token-budgeted package.\n"
             "1. **search** first — check whether this already exists before writing.\n"
             "2. **read** a hit's full body before deciding to edit vs. write new.\n"
             "3. **write** a new note when nothing matches; **edit** (replace or "
@@ -375,9 +525,15 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
             "it's worth keeping; a curator files it later. **inbox_status** "
             "shows how much is waiting.\n\n"
             "## Parameter notes\n"
-            "`search`'s query and every `folder` parameter accept a few common "
-            "misnamings (e.g. `q`, `dir`, `path`) — use the documented name "
-            "shown in the tool schema when in doubt."
+            "`search`'s query, every `folder` parameter, and recall's `ref` / "
+            "`model` accept a few common misnamings (e.g. `q`, `dir`, `path`, "
+            "`permalink`, `provider`) — use the documented name shown in the "
+            "tool schema when in doubt.\n"
+            "`ref` takes any address form: a permalink, an alias, an exact "
+            "title, a path, a `memory://` URL, a glob (`projects/api-*`), a "
+            "block (`note#^anchor`) or a search result's sub-note ref. If two "
+            "notes answer to the same name you get an error listing both — "
+            "pick one by permalink rather than guessing."
         )
 
     return server
@@ -394,4 +550,6 @@ _RESULT_MODELS: dict[str, type[Any]] = {
     "delete": DeleteResult,
     "capture": CaptureResult,
     "inbox_status": InboxStatusResult,
+    "recall": RecallResult,
+    "build_context": ContextResult,
 }

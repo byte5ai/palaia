@@ -15,7 +15,7 @@ from typing import Any, Literal
 
 import yaml
 from platformdirs import user_data_dir
-from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 APP_NAME = "palaia-hub"
 
@@ -75,6 +75,32 @@ graceful_shutdown_timeout: 30
 #   cloud/open  - mandatory; the hub refuses to start MCP endpoints
 #                 otherwise. Cannot be turned off in these modes.
 auth_enabled: true
+
+# Recall's decay-scoring weights (SPEC-106). Search decides which notes
+# *match*; these decide which of the matches come first. Each weight is how
+# much its factor may boost a result's relevance rank — with the defaults a
+# result can gain at most 65%, so a clearly better textual/semantic match
+# still wins. Set a weight to 0 to switch that factor off entirely.
+recall:
+  # How much a recently modified note is favored.
+  recency_weight: 0.25
+  # How much a note recall keeps serving is favored.
+  access_weight: 0.15
+  # How much a load-bearing note (its type, and how much points at it) is
+  # favored.
+  significance_weight: 0.25
+  # Days after which the recency boost has halved.
+  half_life_days: 30
+  # Access count at which the access boost is maxed out.
+  access_saturation: 20
+  # Inbound-link count at which the centrality half of significance is maxed.
+  centrality_saturation: 12
+  # Share of significance that comes from inbound links rather than the
+  # note's entry type (0 = type only, 1 = links only).
+  centrality_weight: 0.35
+  # Recency score for a note carrying no created/modified date at all.
+  # Undated is not evidence of stale, so the default sits in the middle.
+  unknown_recency: 0.5
 """
 
 
@@ -115,6 +141,29 @@ def _is_private_bind_host(host: str) -> bool:
     return bool(addr.is_private or addr.is_loopback or addr.is_link_local)
 
 
+class RecallSettings(BaseModel):
+    """Decay-scoring weights for recall ranking (SPEC-106).
+
+    Kept in the hub config rather than hardcoded because ranking quality is
+    corpus-shaped: a vault of dated meeting notes wants recency to dominate,
+    a vault of standing rules wants significance to. Every field maps
+    one-to-one onto :class:`palaia_hub.recall.RankingWeights`; the bounds
+    below are what keeps a typo from silently producing nonsense scores
+    (a negative weight would *penalize* fresh notes).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    recency_weight: float = Field(default=0.25, ge=0.0, le=10.0)
+    access_weight: float = Field(default=0.15, ge=0.0, le=10.0)
+    significance_weight: float = Field(default=0.25, ge=0.0, le=10.0)
+    half_life_days: float = Field(default=30.0, gt=0.0)
+    access_saturation: float = Field(default=20.0, gt=0.0)
+    centrality_saturation: float = Field(default=12.0, gt=0.0)
+    centrality_weight: float = Field(default=0.35, ge=0.0, le=1.0)
+    unknown_recency: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
 class HubConfig(BaseModel):
     """Validated hub configuration, merged from defaults/file/env."""
 
@@ -127,6 +176,7 @@ class HubConfig(BaseModel):
     log_format: Literal["human", "json"] = "human"
     graceful_shutdown_timeout: float = 30.0
     auth_enabled: bool = True
+    recall: RecallSettings = Field(default_factory=RecallSettings)
 
     @model_validator(mode="after")
     def _check_operating_mode_policy(self) -> HubConfig:

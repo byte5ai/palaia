@@ -3,7 +3,8 @@
 Every ``<nn>-<slug>.md`` / ``<nn>-<slug>.expected.json`` pair in
 ``docs/vault-format-conformance/`` (case numbers 01-53, the ``resolution/``
 subdirectory excluded per its own README: it tests SPEC-106 read-time embed
-resolution, not the parser) is asserted with the corpus's own matching rules:
+resolution, not the parser — see ``tests/recall/test_resolution_conformance.py``
+for that half) is asserted with the corpus's own matching rules:
 
 * Every key present in an ``expected.json`` must match the parser output
   exactly; keys absent from the expectation are unasserted.

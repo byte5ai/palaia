@@ -14,7 +14,11 @@ from fastmcp import Client
 from palaia_hub.gateway.config import VaultMountConfig
 from palaia_hub.gateway.fake_vault import FakeVaultService
 from palaia_hub.gateway.memory_tools import build_vault_server
-from palaia_hub.gateway.vault_protocol import INBOX_TOOL_ACTIONS, MEMORY_TOOL_ACTIONS
+from palaia_hub.gateway.vault_protocol import (
+    INBOX_TOOL_ACTIONS,
+    MEMORY_TOOL_ACTIONS,
+    RECALL_TOOL_ACTIONS,
+)
 
 
 @pytest.fixture
@@ -36,11 +40,13 @@ async def test_every_action_is_exposed_as_a_tool(server) -> None:  # noqa: ANN00
     async with Client(server) as client:
         tools = await client.list_tools()
     names = {t.name for t in tools}
-    # SPEC-107 adds capture/inbox_status to the same server as the original
-    # eight memory actions (see vault_protocol.INBOX_TOOL_ACTIONS's comment
-    # for why they're a separate tuple rather than folded into
-    # MEMORY_TOOL_ACTIONS).
-    assert names == set(MEMORY_TOOL_ACTIONS) | set(INBOX_TOOL_ACTIONS)
+    # SPEC-107 adds capture/inbox_status and SPEC-106 adds recall/build_context
+    # to the same server as the original eight memory actions (see
+    # vault_protocol.INBOX_TOOL_ACTIONS's comment for why each is a separate
+    # tuple rather than folded into MEMORY_TOOL_ACTIONS).
+    assert names == (
+        set(MEMORY_TOOL_ACTIONS) | set(INBOX_TOOL_ACTIONS) | set(RECALL_TOOL_ACTIONS)
+    )
 
 
 @pytest.mark.anyio

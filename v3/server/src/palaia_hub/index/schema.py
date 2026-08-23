@@ -21,7 +21,9 @@ Two deliberate deviations from the obvious design:
 from __future__ import annotations
 
 #: Bumping this drops the database file and triggers a full reindex.
-SCHEMA_VERSION = 1
+#:
+#: 2 — SPEC-106 added ``note_access``, the recall layer's access counters.
+SCHEMA_VERSION = 2
 
 #: Metadata keys stored in the ``meta`` table.
 META_SCHEMA_VERSION = "schema_version"
@@ -166,6 +168,19 @@ CREATE TABLE chunks (
 );
 CREATE INDEX chunks_state ON chunks(state);
 CREATE INDEX chunks_fingerprint ON chunks(fingerprint);
+
+-- Recall's access counters (SPEC-106 decay scoring). Deliberately keyed by
+-- *permalink*, with no foreign key into `notes`: unlike every other table
+-- here, this one is not derivable from files, so it must survive the two
+-- things that rewrite `notes` — an incremental upsert and a full reindex.
+-- Losing it is harmless (the access term degrades to zero for everyone,
+-- which is what a fresh index looks like anyway), which is why it is
+-- allowed to live in the disposable projection at all.
+CREATE TABLE note_access (
+    permalink   TEXT PRIMARY KEY,
+    hits        INTEGER NOT NULL DEFAULT 0,
+    last_access TEXT
+);
 """
 
 #: sqlite-vec's KNN table, created lazily once the embedding dimension is

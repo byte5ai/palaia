@@ -16,6 +16,19 @@ degrades to FTS while the embed backlog drains. Without an index the adapter
 keeps its original linear substring scan — SPEC-105's trade-off — so every
 caller that has not been taught about the index (and every test that wants
 search with no SQLite file on disk) still works unchanged.
+
+**Recall** (SPEC-106) needs that index unconditionally: identity resolution,
+the relation graph, the access counters and note bodies all live there. An
+adapter built without one answers ``recall``/``build_context`` with a
+tool-level error naming the omission, rather than degrading into a worse
+answer that looks like a real one.
+
+The ``ranking`` argument is where the hub's configured decay weights arrive —
+``EngineVaultService(engine, index, ranking=weights_from_settings(
+config.recall))``, with ``weights_from_settings`` from
+:mod:`palaia_hub.recall.ranking` and ``config.recall`` the ``recall:`` section
+of ``config.yaml``. Omitting it uses
+:data:`~palaia_hub.recall.DEFAULT_WEIGHTS`.
 """
 
 from __future__ import annotations
@@ -24,6 +37,12 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
 from palaia_hub.index import SearchFilters, VaultIndex
+from palaia_hub.recall import DEFAULT_WEIGHTS, RankingWeights
+from palaia_hub.recall.budget import DEFAULT_MAX_TOKENS
+from palaia_hub.recall.models import ContextResult, RecallResult
+from palaia_hub.recall.service import CALLER_ERRORS as _RECALL_CALLER_ERRORS
+from palaia_hub.recall.service import DEFAULT_RECALL_LIMIT, RecallService
+from palaia_hub.recall.traversal import DEFAULT_DEPTH
 from palaia_hub.vault import (
     AmbiguousReferenceError,
     ChecksumConflictError,
@@ -118,7 +137,11 @@ def _note_to_record(note: Note) -> NoteRecord:
 
 def _note_to_summary(note: Note) -> NoteSummary:
     record = _note_to_record(note)
-    return NoteSummary(**record.model_dump(exclude={"body", "created"}))
+    return NoteSummary(
+        **record.model_dump(
+            exclude={"body", "created", "resolved_body", "resolution_warnings"}
+        )
+    )
 
 
 class EngineVaultService:
@@ -130,9 +153,24 @@ class EngineVaultService:
     :class:`~palaia_hub.index.VaultIndex` to get indexed + hybrid search.
     """
 
-    def __init__(self, engine: VaultEngine, index: VaultIndex | None = None) -> None:
+    def __init__(
+        self,
+        engine: VaultEngine,
+        index: VaultIndex | None = None,
+        *,
+        ranking: RankingWeights = DEFAULT_WEIGHTS,
+    ) -> None:
         self._engine = engine
         self._index = index
+        # SPEC-106's recall layer works entirely off the index (identity
+        # lookups, the relation graph, access counters and note bodies all
+        # live there), so it exists only when an index does — see
+        # `_recall_service` for what an index-less adapter answers instead.
+        self._recall = (
+            RecallService(index, vault=engine.name, weights=ranking)
+            if index is not None
+            else None
+        )
 
     async def search(self, query: str, *, limit: int = 10) -> list[SearchHit]:
         if self._index is not None:
@@ -203,7 +241,79 @@ class EngineVaultService:
             note = await self._engine.read_note(permalink)
         except _ENGINE_CALLER_ERRORS as exc:
             raise VaultServiceError(str(exc)) from exc
-        return _note_to_record(note)
+        record = _note_to_record(note)
+        return await self._with_resolved_body(record)
+
+    async def _with_resolved_body(self, record: NoteRecord) -> NoteRecord:
+        """Attach the embed-resolved body, when there is an index to resolve with.
+
+        Resolution failures are deliberately swallowed: ``read`` answering
+        with the note as written is strictly better than ``read`` failing
+        because one value reference in it is broken (and §5.3's markers mean
+        a *resolvable* problem never raises in the first place).
+        """
+        if self._recall is None:
+            return record
+        try:
+            resolved = await self._recall.resolved_body(record.permalink)
+        except Exception:  # noqa: BLE001 - never fail a read over a reference
+            return record
+        if resolved.text == record.body or resolved.text.strip() == record.body.strip():
+            return record
+        return record.model_copy(
+            update={
+                "resolved_body": resolved.text,
+                "resolution_warnings": [str(warning) for warning in resolved.warnings],
+            }
+        )
+
+    # ----------------------------------------------------------------- recall
+
+    def _recall_service(self) -> RecallService:
+        if self._recall is None:
+            raise VaultServiceError(
+                "recall needs this vault's search index, and none is attached. "
+                "Fix: open a VaultIndex for the vault and pass it to "
+                "EngineVaultService(engine, index)."
+            )
+        return self._recall
+
+    async def recall(
+        self,
+        *,
+        query: str = "",
+        ref: str = "",
+        limit: int = DEFAULT_RECALL_LIMIT,
+        model: str = "",
+    ) -> RecallResult:
+        service = self._recall_service()
+        try:
+            return await service.recall(query=query, ref=ref, limit=limit, model=model)
+        except _RECALL_CALLER_ERRORS as exc:
+            raise VaultServiceError(str(exc)) from exc
+
+    async def build_context(
+        self,
+        *,
+        ref: str = "",
+        query: str = "",
+        depth: int = DEFAULT_DEPTH,
+        timeframe: str = "",
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+        model: str = "",
+    ) -> ContextResult:
+        service = self._recall_service()
+        try:
+            return await service.build_context(
+                ref=ref,
+                query=query,
+                depth=depth,
+                timeframe=timeframe,
+                max_tokens=max_tokens,
+                model=model,
+            )
+        except _RECALL_CALLER_ERRORS as exc:
+            raise VaultServiceError(str(exc)) from exc
 
     async def write(
         self,
