@@ -1,1 +1,60 @@
 @import "tailwindcss";
+@import "./styles/fonts.css";
+@import "./styles/tokens.css";
+@import "./styles/components.css";
+
+/* =============================================================
+   Tailwind v4 theme binding — Lume tokens, referenced not forked
+   =============================================================
+   `@theme inline` keeps these as live references to the runtime CSS
+   custom properties declared in tokens.css, so a Tailwind utility such
+   as `bg-canvas` or `text-primary` still resolves through data-mode /
+   data-accent and dark-mode media query switching — it is never a
+   frozen build-time copy of today's value. This is what SPEC-109 means
+   by "Tailwind config bound to the Lume tokens": no second palette,
+   just a Tailwind-facing name for the same custom property.
+   ============================================================= */
+@theme inline {
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-serif: var(--font-serif);
+
+  --color-canvas: var(--bg-canvas-top);
+  --color-surface: var(--bg-surface-top);
+  --color-surface-raised: var(--bg-surface-raised-top);
+  --color-surface-sunken: var(--bg-surface-sunken-top);
+  --color-border-subtle: var(--border-subtle-btm);
+  --color-border-strong: var(--border-strong-btm);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-text-disabled: var(--text-disabled);
+  --color-text-on-accent: var(--text-on-accent);
+  --color-accent: var(--accent-fill);
+  --color-accent-hover: var(--accent-fill-hover);
+  --color-accent-subtle: var(--accent-subtle);
+  --color-signal: var(--signal-fill);
+  --color-success: var(--state-success-fg);
+  --color-warning: var(--state-warning-fg);
+  --color-error: var(--state-error-fg);
+
+  --spacing-1: var(--space-1);
+  --spacing-2: var(--space-2);
+  --spacing-3: var(--space-3);
+  --spacing-4: var(--space-4);
+  --spacing-5: var(--space-5);
+  --spacing-6: var(--space-6);
+  --spacing-8: var(--space-8);
+  --spacing-10: var(--space-10);
+  --spacing-12: var(--space-12);
+  --spacing-16: var(--space-16);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-full: var(--radius-pill);
+
+  --ease-standard: var(--easing-standard);
+  --ease-emphasis: var(--easing-emphasis);
+}

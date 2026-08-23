@@ -23,6 +23,20 @@ Python core of the palaia v3 hub daemon.
   `pyproject.toml` reads it back dynamically via `[tool.hatch.version]`
   rather than restating it.
 
+<<<<<<< HEAD
+## Dashboard shell support (SPEC-109)
+
+- `palaia_hub.events` — `/api/events`, a Server-Sent Events stream:
+  periodic `health` snapshots plus `vault_changed` events from a
+  filesystem watcher (opt-in via `PALAIA_WATCH_DIR`; unset means health
+  events only — no error). Self-contained: it defines its own tiny
+  in-process event bus rather than depending on SPEC-102's vault engine
+  bus, since the two SPECs run in parallel on this package.
+- `palaia_hub.static` — serves the dashboard's `npm run build` output
+  (`v3/web/dist` by default, overridable via `PALAIA_WEB_DIST`) with SPA
+  fallback, mounted last so `/api/*` always wins. Serving is optional: a
+  checkout without a frontend build still starts with zero config.
+=======
 ## MCP gateway (SPEC-105)
 
 `palaia_hub.gateway` builds the streamable-HTTP MCP endpoint: one memory
@@ -99,6 +113,7 @@ PALAIA_KILL_TRIALS=25 uv run pytest server/tests/vault/test_kill_safety.py
 PALAIA_VAULT_SCALE=10000 uv run pytest server/tests/vault/test_performance.py -s -k scale
 PALAIA_VAULT_SCALE_WRITES=10000 uv run pytest server/tests/vault/test_performance.py -s -k scale
 ```
+>>>>>>> claude/palaia-major-rewrite-lj5v9x
 
 ## Running it
 
