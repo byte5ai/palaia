@@ -12,6 +12,13 @@ adapter — no ``FakeVaultService`` anywhere in this module), under one or
 more profile paths. A :class:`~palaia_hub.vault.VaultWatcher` is always
 started alongside the engine so external edits (S2) become visible to the
 gateway's tools without a manual refresh.
+
+Search runs through the real SPEC-104 index (:class:`~palaia_hub.index.VaultIndex`),
+subscribed to the same event bus the watcher publishes on — which is what
+makes S2's "searchable within budget" a statement about the index, not about
+a linear scan. Embeddings are switched **off** here: they would download a
+model into every e2e run and add nothing to what these scenarios assert, and
+FTS-only degradation is itself a SPEC-104 acceptance criterion.
 """
 
 from __future__ import annotations
@@ -28,7 +35,8 @@ from palaia_hub.config import HubConfig
 from palaia_hub.gateway.build import build_gateway
 from palaia_hub.gateway.config import GatewayConfig, ProfileConfig, VaultMountConfig
 from palaia_hub.gateway.wiring import EngineVaultService
-from palaia_hub.vault import VaultEngine, VaultWatcher
+from palaia_hub.index import EmbeddingConfig, VaultIndex
+from palaia_hub.vault import EventBus, VaultEngine, VaultWatcher
 
 logger = logging.getLogger("e2e.hub_server")
 
@@ -36,8 +44,10 @@ logger = logging.getLogger("e2e.hub_server")
 async def _run(
     *, host: str, port: int, vault_dir: Path, vault_key: str, vault_name: str, profiles: list[str]
 ) -> None:
-    engine = VaultEngine(vault_dir, vault_name)
+    engine = VaultEngine(vault_dir, vault_name, bus=EventBus())
     await engine.open(purpose=f"SPEC-113 e2e vault {vault_name!r}", create=True)
+    index = VaultIndex(engine, embedding=EmbeddingConfig(enabled=False))
+    await index.open()
     watcher = VaultWatcher(engine)
     await watcher.start()
 
@@ -51,7 +61,7 @@ async def _run(
         ],
         profiles=[ProfileConfig(path=p, vaults=[vault_key]) for p in profiles],
     )
-    gateway = build_gateway(gateway_config, {vault_key: EngineVaultService(engine)})
+    gateway = build_gateway(gateway_config, {vault_key: EngineVaultService(engine, index)})
     app = create_app(HubConfig(log_level="info"), gateway=gateway)
 
     server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="info"))
@@ -59,6 +69,7 @@ async def _run(
         await server.serve()
     finally:
         await watcher.stop()
+        await index.close()
         await engine.close()
 
 
