@@ -113,3 +113,97 @@ def test_palaia_home_expands_user(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PALAIA_HOME", "~/palaia-test-home")
 
     assert "~" not in str(palaia_home())
+
+
+# --- SPEC-108: operating-mode auth policy -----------------------------------
+
+
+def test_cloud_mode_defaults_to_auth_enabled_and_starts_fine(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("mode: cloud\n", encoding="utf-8")
+
+    config = load_config(home=tmp_path)
+
+    assert config.mode == "cloud"
+    assert config.auth_enabled is True
+
+
+def test_cloud_mode_with_auth_disabled_fails_startup_with_exact_fix(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("mode: cloud\nauth_enabled: false\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_config(home=tmp_path)
+
+    message = str(excinfo.value)
+    assert "auth_enabled: true" in message
+    assert "PALAIA_AUTH_ENABLED" in message
+    assert "Fix:" in message
+
+
+def test_open_mode_with_auth_disabled_fails_startup(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("mode: open\nauth_enabled: false\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_config(home=tmp_path)
+
+    assert "Fix:" in str(excinfo.value)
+
+
+def test_locked_mode_with_auth_disabled_is_allowed(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("mode: locked\nauth_enabled: false\n", encoding="utf-8")
+
+    config = load_config(home=tmp_path)
+
+    assert config.auth_enabled is False
+
+
+def test_auth_enabled_env_override_disables_and_fails_in_cloud_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "config.yaml").write_text("mode: cloud\n", encoding="utf-8")
+    monkeypatch.setenv("PALAIA_AUTH_ENABLED", "false")
+
+    with pytest.raises(ConfigError):
+        load_config(home=tmp_path)
+
+
+def test_cloud_mode_with_wildcard_bind_host_fails_startup(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("mode: cloud\nhost: 0.0.0.0\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_config(home=tmp_path)
+
+    message = str(excinfo.value)
+    assert "private" in message
+    assert "Fix:" in message
+
+
+def test_cloud_mode_with_public_ip_host_fails_startup(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("mode: cloud\nhost: 8.8.8.8\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError):
+        load_config(home=tmp_path)
+
+
+def test_cloud_mode_with_tailscale_range_host_is_allowed(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("mode: cloud\nhost: 100.64.1.2\n", encoding="utf-8")
+
+    config = load_config(home=tmp_path)
+
+    assert config.host == "100.64.1.2"
+
+
+def test_open_mode_with_wildcard_bind_host_is_allowed(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("mode: open\nhost: 0.0.0.0\n", encoding="utf-8")
+
+    config = load_config(home=tmp_path)
+
+    assert config.mode == "open"
+    assert config.host == "0.0.0.0"
+
+
+def test_locked_mode_with_wildcard_bind_host_is_allowed(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("mode: locked\nhost: 0.0.0.0\n", encoding="utf-8")
+
+    config = load_config(home=tmp_path)
+
+    assert config.host == "0.0.0.0"

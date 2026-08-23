@@ -13,6 +13,7 @@ dependencies = [
     "platformdirs>=4.2",
     "fastmcp==3.4.7",
     "watchfiles>=0.22",
+    "argon2-cffi>=23.1",
 ]
 
 [project.scripts]

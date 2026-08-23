@@ -44,6 +44,7 @@ from fastmcp.tools.base import ToolResult
 from mcp.types import ToolAnnotations
 from pydantic import AliasChoices, BaseModel, Field
 
+from ..auth.enforcement import missing_scope_error
 from .config import VaultMountConfig
 from .inbox import missing_capture_fields, missing_fields_message
 from .vault_protocol import (
@@ -151,6 +152,15 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
     def desc(detail: str) -> str:
         return f"{purpose}\n\n{detail}"
 
+    def scope_error(action: str) -> ToolResult | None:
+        """``None`` if this call's token (if any) covers ``action``; else a
+        ready-to-return ``ToolResult(is_error=True)`` naming the missing
+        scope (SPEC-108 — see :func:`palaia_hub.auth.enforcement.
+        missing_scope_error` for what "if any" means here).
+        """
+        message = missing_scope_error(vault.key, action)
+        return ToolResult(content=message, is_error=True) if message else None
+
     @server.tool(
         name="search",
         description=desc("Search this vault's notes. Returns best matches first."),
@@ -159,6 +169,8 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         ),
     )
     async def search(query: QueryParam, limit: int = 10) -> ToolResult:
+        if (err := scope_error("search")) is not None:
+            return err
         hits = await service.search(query, limit=limit)
         text = (
             f"{len(hits)} match(es) for {query!r}: "
@@ -174,6 +186,8 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True),
     )
     async def read(permalink: str) -> ToolResult:
+        if (err := scope_error("read")) is not None:
+            return err
         try:
             note = await service.read(permalink)
         except VaultServiceError as exc:
@@ -194,6 +208,8 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         type: str = "note",  # noqa: A002 - matches the vault-format field name
         tags: list[str] | None = None,
     ) -> ToolResult:
+        if (err := scope_error("write")) is not None:
+            return err
         try:
             note = await service.write(title, body, folder=folder, type=type, tags=tags)
         except VaultServiceError as exc:
@@ -213,6 +229,8 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         append: str | None = None,
         tags: list[str] | None = None,
     ) -> ToolResult:
+        if (err := scope_error("edit")) is not None:
+            return err
         try:
             note = await service.edit(permalink, body=body, append=append, tags=tags)
         except VaultServiceError as exc:
@@ -227,6 +245,8 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         ),
     )
     async def move(permalink: str, folder: FolderParam = "") -> ToolResult:
+        if (err := scope_error("move")) is not None:
+            return err
         try:
             note = await service.move(permalink, folder)
         except VaultServiceError as exc:
@@ -241,6 +261,8 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         ),
     )
     async def delete(permalink: str) -> ToolResult:
+        if (err := scope_error("delete")) is not None:
+            return err
         deleted = await service.delete(permalink)
         text = f"deleted {permalink!r}" if deleted else f"nothing to delete at {permalink!r}"
         return ToolResult(
@@ -253,6 +275,8 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True),
     )
     async def list_notes(folder: FolderParam = "") -> ToolResult:
+        if (err := scope_error("list")) is not None:
+            return err
         notes = await service.list_notes(folder=folder)
         text = f"{len(notes)} note(s)" + (f" in {folder!r}" if folder else "")
         return ToolResult(content=text, structured_content=ListResult(folder=folder, notes=notes))
@@ -263,6 +287,8 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True),
     )
     async def recent_activity(limit: int = 10) -> ToolResult:
+        if (err := scope_error("recent_activity")) is not None:
+            return err
         notes = await service.recent_activity(limit=limit)
         text = f"{len(notes)} recently modified note(s)"
         return ToolResult(content=text, structured_content=RecentActivityResult(notes=notes))

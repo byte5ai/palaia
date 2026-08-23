@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from fastmcp import FastMCP
+from fastmcp.server.auth import TokenVerifier
 from fastmcp.utilities.lifespan import combine_lifespans
 from starlette.types import ASGIApp
 
@@ -97,6 +98,7 @@ def _build_profile_server(
     profile: ProfileConfig,
     config: GatewayConfig,
     vault_servers: Mapping[str, FastMCP],
+    auth: TokenVerifier | None,
 ) -> FastMCP:
     # `mount()` does not propagate a mounted server's `instructions` to its
     # parent, so a real client connecting to this profile would otherwise
@@ -109,7 +111,16 @@ def _build_profile_server(
         if vault_configs
         else None
     )
-    server = FastMCP(name=f"palaia-gateway-{profile.path}", instructions=instructions)
+    # `auth` (SPEC-108): a TokenVerifier here makes FastMCP wrap this
+    # profile's HTTP endpoint in its own RequireAuthMiddleware/
+    # BearerAuthBackend — every request needs a bearer token this verifier
+    # accepts, with a missing/invalid one getting FastMCP's own RFC
+    # 6750-compliant 401 + WWW-Authenticate. `None` (the default) preserves
+    # this SPEC's exact prior behavior: no auth at all, same as before this
+    # parameter existed.
+    server = FastMCP(
+        name=f"palaia-gateway-{profile.path}", instructions=instructions, auth=auth
+    )
     for vault_config in vault_configs:
         tool_names = resolve_tool_names(vault_config.namespace, vault_config.tool_renames)
         server.mount(
@@ -121,9 +132,22 @@ def _build_profile_server(
 
 
 def build_gateway(
-    config: GatewayConfig, vault_services: Mapping[str, VaultService]
+    config: GatewayConfig,
+    vault_services: Mapping[str, VaultService],
+    *,
+    token_verifiers: Mapping[str, TokenVerifier] | None = None,
 ) -> GatewayASGI:
     """Build the full gateway from a validated config and its backing services.
+
+    Args:
+        config: the validated gateway shape.
+        vault_services: backing service per configured vault key.
+        token_verifiers: optional per-profile-path :class:`TokenVerifier`
+            (SPEC-108 — see :func:`palaia_hub.auth.wiring.
+            build_profile_verifiers`). A profile whose path has no entry
+            here is mounted with no auth at all, exactly as before this
+            parameter existed; a profile with an entry requires every
+            request to present a bearer token that verifier accepts.
 
     Raises :class:`GatewayConfigError` if a configured vault has no entry in
     ``vault_services``. Structural config problems (duplicate keys, unknown
@@ -136,7 +160,8 @@ def build_gateway(
     profile_servers: dict[str, FastMCP] = {}
     lifespans: list[Lifespan] = []
     for profile in config.profiles:
-        server = _build_profile_server(profile, config, vault_servers)
+        auth = (token_verifiers or {}).get(profile.path)
+        server = _build_profile_server(profile, config, vault_servers, auth)
         profile_servers[profile.path] = server
         asgi_app = server.http_app(path="/")
         mounts[f"/mcp/{profile.path}"] = asgi_app
