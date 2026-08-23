@@ -128,7 +128,26 @@ harness 113. With one agent per lane, Phase 1 is four concurrent tracks.
 | [112](specs/SPEC-112-packaging.md) | Docker, compose, mDNS, installer, GHCR | 101 | Sonnet 5 | medium | — |
 | [113](specs/SPEC-113-e2e-harness.md) | E2E harness & golden fixtures | 102, 105 | Sonnet 5 | medium | fixtures: Sonnet 4 low |
 
-## 5. Phase 2 work packages (SPECs written at Phase-1 gate)
+## 4b. Phase 2 SPEC index (written at the Phase-1 gate, 2026-08-23)
+
+Waves: **2a** = 201, 202, 203, 207, 210 (no mutual deps) → **2b** = 204, 205,
+206, 208 → **2c** = 209 + Phase-2 gate (exit criterion: *phone Claude
+remembers what desktop Codex learned* — a real remote client through OAuth).
+
+| SPEC | Title | Depends on | Model | Effort | Review gate |
+|---|---|---|---|---|---|
+| [201](specs/SPEC-201-events-hooks.md) | Event bus & hooks v1 | 102, 109 | Sonnet 5 | high | — |
+| [202](specs/SPEC-202-stash.md) | Stash tool family | 105, 108 | Sonnet 5 | low | — |
+| [203](specs/SPEC-203-oauth-server.md) | OAuth 2.1 authorization server | 108 | **Opus 5** | high | **Fable 5 security review (max)** |
+| [204](specs/SPEC-204-idp-signin.md) | IdP sign-in | 203 | Sonnet 5 | medium | Fable 5 review |
+| [205](specs/SPEC-205-modes-exposure.md) | Modes & exposure wizard | 203, 110 | Sonnet 5 | high | — |
+| [206](specs/SPEC-206-curator.md) | The curator (policy fixed in-spec) | 201, 106 | **Opus 5** | medium | Fable 5 review |
+| [207](specs/SPEC-207-autocapture-skills.md) | Auto-capture & memory-use skills | 107, 106 | **Opus 5** | high | effectiveness runs |
+| [208](specs/SPEC-208-mcp-apps.md) | MCP Apps (status, recall, review) | 110, 206 | Sonnet 5 | high | owner UX pass |
+| [209](specs/SPEC-209-client-matrix.md) | Client matrix validation | 203, 205 | Sonnet 5 | low | gate evidence |
+| [210](specs/SPEC-210-phase1-followups.md) | Phase-1 follow-ups | 104, 110, 111 | Sonnet 5 | medium | — |
+
+## 5. Phase 2 work packages (superseded by §4b — kept for provenance)
 
 | Package | Content | Model | Effort |
 |---|---|---|---|
