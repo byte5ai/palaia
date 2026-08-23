@@ -1,16 +1,15 @@
 """palaia v3 hub daemon package.
 
-Placeholder established by SPEC-001 (scaffolding). Application code — the
-actual hub daemon, vault engine, MCP endpoint, etc. — lands in later SPECs.
+This module is the single source of truth for the package version
+(``palaia_hub.__version__``). No other file — not ``pyproject.toml``, not a
+docs page, not a CLI flag — restates the version number; ``pyproject.toml``
+reads it back out dynamically via ``[tool.hatch.version]``. This is
+deliberate: v2's multi-file version sync (six places to update on every
+release) must not return in v3.
 """
 
-__version__ = "0.0.1"
+from __future__ import annotations
 
+__version__ = "0.1.0"
 
-def placeholder() -> str:
-    """Return a static greeting.
-
-    Exists only so the package is more than an empty shell and has something
-    concrete to test in CI. Later SPECs replace this module's contents.
-    """
-    return "palaia_hub scaffolding ok"
+__all__ = ["__version__"]
