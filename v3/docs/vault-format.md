@@ -1,4 +1,4 @@
-# palaia Vault Format — Specification v1.0-draft
+# palaia Vault Format — Specification v1.0
 
 > **Normative.** This document defines the on-disk format of a palaia v3 vault.
 > The conformance corpus in [`vault-format-conformance/`](vault-format-conformance/)

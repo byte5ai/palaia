@@ -1,6 +1,6 @@
 # ADR-003: Vault format v1 — what we adopted, changed, and rejected
 
-- **Status:** Proposed (owner sign-off pending — SPEC-004 acceptance)
+- **Status:** Accepted (owner sign-off 2026-08-22)
 - **Date:** 2026-08-22
 - **Deciders:** cwendler (sign-off), design per SPEC-004
 
