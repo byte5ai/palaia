@@ -20,8 +20,10 @@ import uvicorn
 from .app import create_app
 from .auth import TokenError, TokenStore
 from .config import ConfigError, load_config
+from .hooks import HookStore
 from .importers import ImportReport, ImportRunner, v2_source
 from .importers import basic_memory_source as bm_source
+from .vault import EventBus as VaultEventBus
 from .vault import VaultRegistry
 from .vault.engine import VaultEngine
 
@@ -103,7 +105,17 @@ def serve(host: str | None = None, port: int | None = None) -> None:
     # requires a config-driven GatewayConfig — SPEC-105/107/108's own CLI
     # surface), so a freshly wizard-created vault is dashboard-visible
     # immediately but needs a hub restart before an MCP client can reach it.
-    app = create_app(config, token_store=TokenStore(), vault_registry=VaultRegistry())
+    #
+    # SPEC-201: the registry's own vault.events.EventBus is what
+    # create_app() bridges onto the public event bus — every vault this
+    # registry opens shares it, so a write to any vault produces exactly
+    # one public memory.entry.* event, no matter which vault it hit.
+    app = create_app(
+        config,
+        token_store=TokenStore(),
+        vault_registry=VaultRegistry(bus=VaultEventBus()),
+        hook_store=HookStore(),
+    )
 
     uvicorn_config = uvicorn.Config(
         app,

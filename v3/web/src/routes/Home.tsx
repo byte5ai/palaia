@@ -4,7 +4,7 @@ import { Link, useOutletContext } from "react-router-dom";
 import { Badge, CardFoot, CardHead, EmptyState } from "../components";
 import type { InfoResponse, TokenInfo, VaultSummary } from "../lib/api/client";
 import { api } from "../lib/api/client";
-import type { EventStreamState } from "../lib/events";
+import type { EventStreamState, VaultChangeEntry } from "../lib/events";
 import { ClientsIcon, ExplorerIcon } from "../shell/icons";
 
 interface InboxAggregate {
@@ -24,6 +24,19 @@ function formatAgo(ms: number): string {
   if (seconds < 3600) return `${Math.round(seconds / 60)} min ago`;
   if (seconds < 86400) return `${Math.round(seconds / 3600)} h ago`;
   return `${Math.round(seconds / 86400)} d ago`;
+}
+
+const CHANGE_VERB: Record<string, string> = {
+  "memory.entry.created": "Created",
+  "memory.entry.updated": "Updated",
+  "memory.entry.deleted": "Deleted",
+  "memory.entry.moved": "Moved",
+};
+
+function describeChange(entry: VaultChangeEntry): string {
+  const verb = CHANGE_VERB[entry.event] ?? "Changed";
+  const target = entry.permalink ?? entry.data.path ?? "a note";
+  return `${verb} ${target}`;
 }
 
 function Tile({
@@ -224,14 +237,13 @@ export function Home() {
                   </span>
                   <div className="grow">
                     <p className="feed__text">
-                      {entry.count} file{entry.count === 1 ? "" : "s"} changed on disk
+                      {describeChange(entry)}
+                      {entry.vault ? ` in ${entry.vault}` : ""}
                     </p>
                     <div className="feed__meta">
-                      {entry.paths.slice(0, 3).map((path) => (
-                        <span className="chip chip--mono" key={path}>
-                          {path}
-                        </span>
-                      ))}
+                      {entry.data.path ? (
+                        <span className="chip chip--mono">{entry.data.path}</span>
+                      ) : null}
                       <span className="t-meta">{formatAgo(entry.ts)}</span>
                     </div>
                   </div>
