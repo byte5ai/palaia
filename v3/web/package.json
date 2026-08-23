@@ -1,23 +1,32 @@
 {
   "name": "palaia-v3-web",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "eslint .",
+    "lint": "eslint . && node scripts/lint-tokens.mjs",
     "typecheck": "tsc -b",
     "test": "vitest run",
-    "preview": "vite preview"
+    "test:a11y": "vitest run src/a11y.test.tsx",
+    "preview": "vite preview",
+    "storybook": "ladle serve",
+    "storybook:build": "ladle build",
+    "gen:api:schema": "uv run --project ../server python scripts/generate-openapi-schema.py",
+    "gen:api:types": "openapi-typescript openapi.json -o src/lib/api/schema.gen.ts",
+    "gen:api": "npm run gen:api:schema && npm run gen:api:types"
   },
   "dependencies": {
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.18.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@ladle/react": "^5.1.1",
     "@tailwindcss/vite": "^4.3.3",
+    "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^24.13.3",
@@ -25,11 +34,13 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
     "@vitest/ui": "^4.1.11",
+    "axe-core": "^4.13.0",
     "eslint": "^10.9.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.4",
     "globals": "^17.11.0",
     "jsdom": "^30.0.1",
+    "openapi-typescript": "^7.13.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.67.0",

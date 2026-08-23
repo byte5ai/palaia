@@ -11,13 +11,17 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI
 
 from . import __version__
 from .config import HubConfig, load_config
+from .events import EventBus, build_events_router, start_background_tasks, stop_background_tasks
 from .logging import setup_logging
+from .static import mount_dashboard
 
 # Name of the env var that, when set to a positive number of seconds, adds a
 # `/api/_test/slow` route that sleeps that long before responding. This
@@ -37,18 +41,28 @@ def create_app(config: HubConfig | None = None) -> FastAPI:
     setup_logging(config)
 
     start_time = time.monotonic()
+    event_bus = EventBus()
 
-    app = FastAPI(title="palaia-hub", version=__version__)
+    def health_snapshot() -> dict[str, Any]:
+        return {"status": "ok", "components": {"config": "ok"}}
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        tasks = start_background_tasks(event_bus, health_snapshot=health_snapshot)
+        try:
+            yield
+        finally:
+            await stop_background_tasks(tasks)
+
+    app = FastAPI(title="palaia-hub", version=__version__, lifespan=lifespan)
     app.state.config = config
     app.state.start_time = start_time
+    app.state.event_bus = event_bus
 
     @app.get("/api/health")
     async def health() -> dict[str, Any]:
         """Liveness + component readiness. No dependencies in this SPEC."""
-        return {
-            "status": "ok",
-            "components": {"config": "ok"},
-        }
+        return health_snapshot()
 
     @app.get("/api/info")
     async def info() -> dict[str, Any]:
@@ -59,7 +73,15 @@ def create_app(config: HubConfig | None = None) -> FastAPI:
             "uptime_seconds": round(time.monotonic() - start_time, 3),
         }
 
+    # SPEC-109: the dashboard's live-state layer (health + vault-change
+    # events) and, once `npm run build` has produced one, the static
+    # dashboard build itself. The dashboard mount goes last so it never
+    # shadows an /api/* route (see static.mount_dashboard).
+    app.include_router(build_events_router(event_bus, health_snapshot=health_snapshot))
+
     _maybe_add_test_slow_route(app)
+
+    mount_dashboard(app)
 
     return app
 
