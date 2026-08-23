@@ -84,6 +84,32 @@ export interface InboxStatus {
   last_captured_at: string | null;
 }
 
+/** SPEC-210 deliverable #3: one vault's index status, as
+ * `palaia_hub.dashboard_api.IndexStatusOut` returns it. */
+export interface EmbedStatus {
+  enabled: boolean;
+  available: boolean;
+  model: string;
+  dim: number;
+  total: number;
+  ready: number;
+  pending: number;
+  failed: number;
+  reason: string;
+}
+
+export interface IndexStatus {
+  vault: string;
+  schema_version: number;
+  notes: number;
+  observations: number;
+  relations: number;
+  unresolved_relations: number;
+  embeds: EmbedStatus;
+  embed_progress_percent: number;
+  embed_summary: string;
+}
+
 export interface TokenInfo {
   id: string;
   name: string;
@@ -184,6 +210,8 @@ export const api = {
     getJson<SearchHit[]>(`/api/vaults/${vaultKey}/search${queryString({ q })}`),
   inboxStatus: (vaultKey: string) =>
     getJson<InboxStatus>(`/api/vaults/${vaultKey}/inbox_status`),
+  indexStatus: (vaultKey: string) =>
+    getJson<IndexStatus>(`/api/vaults/${vaultKey}/index_status`),
 
   // ---- SPEC-108's token surface, consumed here for "connected clients" ----
   listTokens: () => getJson<TokenInfo[]>("/api/auth/tokens"),

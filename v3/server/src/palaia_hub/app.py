@@ -22,8 +22,9 @@ from .auth import TokenStore, build_auth_router, check_gateway_auth_policy
 from .config import HubConfig, load_config
 from .dashboard_api import build_dashboard_router
 from .events import EventBus, build_events_router, start_background_tasks, stop_background_tasks
-from .gateway import GatewayASGI, VaultService
+from .gateway import DynamicGateway, GatewayASGI, VaultService
 from .gateway.wiring import EngineVaultService
+from .index import VaultIndex
 from .logging import setup_logging
 from .static import mount_dashboard
 from .vault import VaultNotFoundError, VaultRegistry
@@ -40,9 +41,12 @@ def create_app(
     config: HubConfig | None = None,
     *,
     gateway: GatewayASGI | None = None,
+    dynamic_gateway: DynamicGateway | None = None,
     token_store: TokenStore | None = None,
     vault_services: Mapping[str, VaultService] | None = None,
     vault_registry: VaultRegistry | None = None,
+    indexes: dict[str, VaultIndex] | None = None,
+    event_bus: EventBus | None = None,
 ) -> FastAPI:
     """Build the hub's ASGI app.
 
@@ -86,6 +90,31 @@ def create_app(
             (gateway-mounted-at-startup) ``vault_services`` mapping. Omitted
             (the default), the hub runs with no wizard/explorer REST surface
             at all, same as before this parameter existed.
+        dynamic_gateway: the SPEC-210 dynamic gateway
+            (:class:`palaia_hub.gateway.dynamic.DynamicGateway`), mounted
+            once at ``/mcp`` when given — the production alternative to
+            ``gateway`` for a caller (the CLI's ``serve`` command) that
+            needs profiles rebuildable after startup, e.g. a vault the
+            wizard creates at runtime. Its own ``start()``/``aclose()`` are
+            driven from this app's lifespan below. Independent of
+            ``gateway`` — a caller passes one or the other; nothing here
+            stops both, but no production caller does.
+        indexes: the SPEC-104 :class:`~palaia_hub.index.VaultIndex` open for
+            each vault this hub serves, keyed the same as
+            ``vault_services``. Backs ``GET
+            /api/vaults/{vault_key}/index_status`` (mounted alongside the
+            wizard/explorer router, so it also needs ``vault_registry``)
+            and is closed, alongside ``dynamic_gateway``, from this app's
+            lifespan. Omitted, the hub runs with no index-status endpoint,
+            same as before this parameter existed.
+        event_bus: the dashboard's live-state bus (SPEC-109). A caller that
+            also wires SPEC-210's index-status live updates (a
+            :class:`~palaia_hub.index.VaultIndex` built with
+            ``on_backlog_drained=...`` publishing onto this same bus) must
+            build the bus first and pass it in here, since a
+            ``VaultIndex`` has to exist before ``create_app`` is called.
+            Omitted (the default), this app builds its own — identical to
+            this parameter never having existed.
     """
     config = config or load_config()
     vault_services = vault_services or {}
@@ -94,7 +123,7 @@ def create_app(
         check_gateway_auth_policy(config.mode, gateway.profile_servers)
 
     start_time = time.monotonic()
-    event_bus = EventBus()
+    event_bus = event_bus or EventBus()
 
     def health_snapshot() -> dict[str, Any]:
         return {"status": "ok", "components": {"config": "ok"}}
@@ -105,6 +134,8 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app_: FastAPI) -> AsyncIterator[None]:
         tasks = start_background_tasks(event_bus, health_snapshot=health_snapshot)
+        if dynamic_gateway is not None:
+            await dynamic_gateway.start()
         try:
             if gateway is not None:
                 async with gateway.lifespan(app_):
@@ -113,6 +144,11 @@ def create_app(
                 yield
         finally:
             await stop_background_tasks(tasks)
+            if dynamic_gateway is not None:
+                await dynamic_gateway.aclose()
+            if indexes is not None:
+                for index in indexes.values():
+                    await index.close()
 
     app = FastAPI(title="palaia-hub", version=__version__, lifespan=lifespan)
     app.state.config = config
@@ -121,6 +157,12 @@ def create_app(
     if gateway is not None:
         for path, mounted_app in gateway.mounts.items():
             app.mount(path, mounted_app)
+    if dynamic_gateway is not None:
+        # One mount, forever: DynamicGateway owns everything below "/mcp"
+        # and rebuilds its own internal routing as profiles come and go
+        # (see that class's docstring) — Starlette's own route list here
+        # never changes after this line.
+        app.mount("/mcp", dynamic_gateway.asgi_app)
 
     @app.get("/api/health")
     async def health() -> dict[str, Any]:
@@ -163,7 +205,13 @@ def create_app(
         app.include_router(build_auth_router(token_store))
 
     if vault_registry is not None:
-        app.include_router(build_dashboard_router(vault_registry))
+        app.include_router(
+            build_dashboard_router(
+                vault_registry,
+                indexes=indexes,
+                dynamic_gateway=dynamic_gateway,
+            )
+        )
 
     _maybe_add_test_slow_route(app)
 

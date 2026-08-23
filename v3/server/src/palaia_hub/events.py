@@ -48,7 +48,12 @@ WATCH_DIR_ENV = "PALAIA_WATCH_DIR"
 HEALTH_INTERVAL_ENV = "PALAIA_HEALTH_EVENT_INTERVAL_SECONDS"
 DEFAULT_HEALTH_INTERVAL_SECONDS = 15.0
 
-EventType = Literal["health", "vault_changed"]
+#: ``index_status`` (SPEC-210 deliverable #2/#3): published when a vault's
+#: embed backlog fully drains, so the dashboard's index-status tile updates
+#: live instead of only on its next poll. Data shape mirrors
+#: ``palaia_hub.index.IndexStatus`` (as a plain dict, via
+#: ``dataclasses.asdict``) plus a ``vault`` key.
+EventType = Literal["health", "vault_changed", "index_status"]
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

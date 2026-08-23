@@ -4,7 +4,10 @@ Both sources (:mod:`.v2_source`, :mod:`.basic_memory_source`) reduce to the
 same shape: an iterable of :class:`~.models.MappedNote` /
 :class:`~.models.SkippedItem`. :class:`ImportRunner` is the one place that
 actually talks to :class:`~palaia_hub.vault.engine.VaultEngine`, so
-idempotence, dry-run, and the cold-embed queue seam are implemented once.
+idempotence and dry-run are implemented once. Every written note also
+reaches the real SPEC-104 embed backlog automatically, via the engine's own
+change events — see :mod:`.embed_queue`'s module docstring for why that
+module's own JSONL queue is no longer the operative path.
 """
 
 from __future__ import annotations

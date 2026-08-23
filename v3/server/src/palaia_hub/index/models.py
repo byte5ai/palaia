@@ -156,6 +156,28 @@ class EmbedStatus:
         return self.enabled and self.available and self.ready > 0
 
 
+def embed_progress(embeds: EmbedStatus) -> tuple[int, str]:
+    """The embed backlog as a percentage + a one-line human summary.
+
+    SPEC-210 deliverable #2's UX text ("searchable now, semantic search
+    catching up — N%"), computed in one place so the dashboard's REST
+    surface, the dashboard's own tile, and the CLI import commands agree
+    on the wording instead of each re-deriving it.
+    """
+    total = embeds.ready + embeds.pending + embeds.failed
+    percent = 100 if total == 0 else round(100 * embeds.ready / total)
+    if not embeds.enabled:
+        return percent, "semantic search is disabled for this vault — full-text search only."
+    if not embeds.available:
+        return (
+            percent,
+            f"full-text search is current; semantic search is unavailable ({embeds.reason}).",
+        )
+    if embeds.pending == 0:
+        return percent, "searchable now — semantic search is fully caught up."
+    return percent, f"searchable now — semantic search catching up ({percent}%)."
+
+
 @dataclass(frozen=True, slots=True)
 class IndexStatus:
     """Everything the dashboard/CLI needs to describe one vault's index."""
@@ -180,6 +202,7 @@ __all__ = [
     "SearchHit",
     "SearchMode",
     "SearchResults",
+    "embed_progress",
     "fingerprint",
     "observation_permalink",
     "relation_permalink",

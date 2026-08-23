@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from .build import GatewayASGI, GatewayConfigError, build_gateway
 from .config import GatewayConfig, ProfileConfig, VaultMountConfig
+from .dynamic import DynamicGateway
 from .fake_vault import FakeVaultService
 from .vault_protocol import (
     INBOX_TOOL_ACTIONS,
@@ -41,6 +42,7 @@ __all__ = [
     "INBOX_TOOL_ACTIONS",
     "MEMORY_TOOL_ACTIONS",
     "CaptureResult",
+    "DynamicGateway",
     "EngineVaultService",
     "FakeVaultService",
     "GatewayASGI",
