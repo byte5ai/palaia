@@ -14,12 +14,20 @@ dependencies = [
     "fastmcp==3.4.7",
     "watchfiles>=0.22",
     "argon2-cffi>=23.1",
+    "sqlite-vec>=0.1.6",
 ]
 
 [project.scripts]
 palaia-hub = "palaia_hub.cli:main"
 
 [project.optional-dependencies]
+# Local embeddings for the SPEC-104 vector/hybrid lane. Kept an extra rather
+# than a core dependency: fastembed pulls onnxruntime plus a ~130 MB model
+# download, and the index degrades cleanly to FTS-only without it (SPEC-104
+# acceptance: "queries degrade to FTS cleanly while vectors are pending").
+embeddings = [
+    "fastembed>=0.4",
+]
 dev = [
     "pytest>=8",
     "ruff>=0.6",
@@ -49,6 +57,13 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
+
+# fastembed and sqlite-vec ship no py.typed marker (SPEC-104's optional
+# embedding backend and the KNN extension loader). Their surfaces are used
+# behind our own typed wrappers in palaia_hub.index.
+[[tool.mypy.overrides]]
+module = ["sqlite_vec.*", "fastembed.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

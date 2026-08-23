@@ -23,7 +23,6 @@ Python core of the palaia v3 hub daemon.
   `pyproject.toml` reads it back dynamically via `[tool.hatch.version]`
   rather than restating it.
 
-<<<<<<< HEAD
 ## Dashboard shell support (SPEC-109)
 
 - `palaia_hub.events` — `/api/events`, a Server-Sent Events stream:
@@ -36,7 +35,6 @@ Python core of the palaia v3 hub daemon.
   (`v3/web/dist` by default, overridable via `PALAIA_WEB_DIST`) with SPA
   fallback, mounted last so `/api/*` always wins. Serving is optional: a
   checkout without a frontend build still starts with zero config.
-=======
 ## MCP gateway (SPEC-105)
 
 `palaia_hub.gateway` builds the streamable-HTTP MCP endpoint: one memory
@@ -113,7 +111,45 @@ PALAIA_KILL_TRIALS=25 uv run pytest server/tests/vault/test_kill_safety.py
 PALAIA_VAULT_SCALE=10000 uv run pytest server/tests/vault/test_performance.py -s -k scale
 PALAIA_VAULT_SCALE_WRITES=10000 uv run pytest server/tests/vault/test_performance.py -s -k scale
 ```
->>>>>>> claude/palaia-major-rewrite-lj5v9x
+
+## Index & hybrid search (SPEC-104)
+
+`palaia_hub.index` — the disposable projection over one vault: SQLite (WAL)
+with FTS5 over notes, observations and relations, sqlite-vec KNN over chunk
+embeddings, and metadata filters (scope, type, tags, dates, custom
+frontmatter keys). Drop the file at any time; `reindex` rebuilds it from
+files and reproduces identical query results.
+
+```python
+from palaia_hub.index import VaultIndex
+from palaia_hub.vault import EventBus, VaultEngine
+
+engine = VaultEngine(path, "work", bus=EventBus())
+await engine.open()
+index = VaultIndex(engine)      # embeddings on by default
+await index.open()              # builds, subscribes to change events, starts the embed worker
+results = await index.search("who owns the gateway?", mode="hybrid", limit=5)
+index.status()                  # notes/observations/relations + embed backlog
+```
+
+- **Modes** `fts | vector | hybrid`. Hits are addressable below note
+  granularity: an observation hit carries its synthetic permalink
+  (`<permalink>/obs/<category>/<h8>`, format spec §9.2).
+- **Embeddings are always off the write path.** SPEC-003 measured 437 ms to
+  embed a note versus 0.6 ms to FTS-index it, so a write acks once chunks are
+  written as `pending` and a background worker drains them. Any query issued
+  meanwhile answers from FTS and says so (`SearchResults.degraded`).
+- **Default model** `sentence-transformers/all-MiniLM-L6-v2`, chosen by
+  benchmark (~10x faster than `bge-small-en-v1.5` at the same 384 dims on 4
+  vCPUs). Re-measure on your hardware:
+  `uv run python -m palaia_hub.index.bench --notes 200`.
+- **Incremental** from SPEC-102's change events, including forward references:
+  `- depends_on [[Q3 Roadmap]]` stays unresolved until a note answering to
+  that name appears, then resolves without a reindex.
+- **Doctor** — `index.verify()` runs SPEC-102's checks plus file↔index drift;
+  `index.reindex()` is the rebuild-from-files path.
+- Embeddings need the `embeddings` extra (`fastembed`); without it the index
+  is FTS-only and reports why.
 
 ## Running it
 
