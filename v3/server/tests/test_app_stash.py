@@ -55,6 +55,7 @@ def test_stash_events_are_wired_onto_the_hub_event_bus() -> None:
     service.publish("stash.set", {"namespace": "jobs", "key": "job-1"})
 
     event = queue.get_nowait()
-    assert event.type == "stash"
-    assert event.data["action"] == "stash.set"
+    assert event.event == "stash.set"
+    assert event.origin == "stash"
     assert event.data["namespace"] == "jobs"
+    assert event.data["key"] == "job-1"
