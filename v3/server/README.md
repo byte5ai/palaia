@@ -49,7 +49,12 @@ SPEC-104 is a disposable index.
   `reindex(sink)` as the rebuild-from-files hook.
 - Git backend: porcelain `git` via subprocess, staging **only changed paths**,
   with an explicit gc policy (`gc.auto` far below git's default plus a
-  scheduled `git gc`) — both bindings from the SPEC-003 findings.
+  scheduled `git gc`) — both bindings from the SPEC-003 findings. A vault
+  repository the engine creates also gets `commit.gpgsign=false`: a vault
+  commits on every write, and an inherited global signing program on that path
+  multiplies write latency and adds an outside failure mode. Set it back in
+  the vault repo if you want signed history — the engine writes the default
+  only at creation and never reconfigures a repository it adopts.
 
 Scale knobs for the performance tests:
 

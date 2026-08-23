@@ -167,8 +167,27 @@ class GitRepo:
         if not self.initialized:
             self._run(["init", "--initial-branch=main", "--quiet"])
             created = True
+            self._write_repo_defaults()
         self.apply_policy()
         return created
+
+    def _write_repo_defaults(self) -> None:
+        """Settings written **once**, when the engine creates the repository.
+
+        Commit signing is turned off for the vault's own repository. A vault
+        commits on every write, so an inherited global ``commit.gpgsign``
+        would put an external signing program on the write path: it multiplies
+        write latency and adds a failure mode outside the engine's control
+        (observed while benchmarking this SPEC — a sandbox's signing helper ran
+        out of file descriptors after ~5,500 commits and every subsequent
+        vault write failed). Vault history is a local memory log, not a
+        published artifact; a user who wants it signed can set
+        ``commit.gpgsign true`` in the vault repository and the engine will
+        respect it, since this is written only at creation time. Repositories
+        the engine adopts are never reconfigured.
+        """
+        for key, value in (("commit.gpgsign", "false"), ("tag.gpgsign", "false")):
+            self._run(["config", key, value])
 
     def apply_policy(self) -> None:
         """Write the housekeeping policy into the repository's own config.

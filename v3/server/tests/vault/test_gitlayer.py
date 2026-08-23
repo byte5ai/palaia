@@ -38,6 +38,50 @@ def test_init_writes_the_gc_policy(repo: GitRepo) -> None:
     assert repo.init() is False  # idempotent
 
 
+def test_new_repository_disables_commit_signing(repo: GitRepo) -> None:
+    assert git(repo.root, "config", "commit.gpgsign").strip() == "false"
+
+
+def test_commits_survive_a_broken_global_signing_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A vault write must not depend on the user's global signing setup.
+
+    A global ``commit.gpgsign`` puts an external program on every write; when
+    it fails (as a sandbox signer did while benchmarking this SPEC), every
+    vault write would fail with it. The vault repository opts out at creation.
+    """
+    global_config = tmp_path / "gitconfig"
+    global_config.write_text(
+        "[commit]\n\tgpgsign = true\n"
+        "[gpg]\n\tformat = ssh\n"
+        "\tprogram = /nonexistent/signer\n"
+        "[gpg \"ssh\"]\n\tprogram = /nonexistent/signer\n"
+        "[user]\n\tsigningkey = /nonexistent/key.pub\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(global_config))
+
+    repository = GitRepo(tmp_path / "vault", TEST_POLICY)
+    repository.root.mkdir(parents=True)
+    repository.init()
+    (repository.root / "a.md").write_text("a\n", encoding="utf-8")
+    assert repository.commit_paths(["a.md"], "test: add a", TEST_ATTRIBUTION) is not None
+
+
+def test_adopted_repository_keeps_its_own_signing_config(tmp_path: Path) -> None:
+    """Only repositories the engine creates get the signing default."""
+    root = tmp_path / "vault"
+    root.mkdir(parents=True)
+    subprocess.run(["git", "init", "--quiet", str(root)], check=True)
+    subprocess.run(
+        ["git", "-C", str(root), "config", "commit.gpgsign", "true"], check=True
+    )
+    repository = GitRepo(root, TEST_POLICY)
+    assert repository.init() is False
+    assert git(root, "config", "commit.gpgsign").strip() == "true"
+
+
 def test_commit_paths_stages_only_the_given_paths(repo: GitRepo) -> None:
     (repo.root / "a.md").write_text("a\n", encoding="utf-8")
     (repo.root / "b.md").write_text("b\n", encoding="utf-8")
