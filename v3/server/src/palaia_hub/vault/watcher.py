@@ -56,6 +56,7 @@ class WatcherStats:
     events: int = 0
     moves_detected: int = 0
     ignored: int = 0
+    echoes: int = 0
     per_kind: dict[str, int] = field(default_factory=dict)
 
     def record(self, event: ChangeEvent) -> None:
@@ -163,6 +164,11 @@ class VaultWatcher:
 
         Deleted/added pairs with equal content checksums inside the same batch
         are emitted as a single :class:`NoteMoved`, preserving the permalink.
+
+        Only *external* changes produce events. A change whose content the
+        catalog already knows is the engine's own write coming back through
+        inotify; the engine published that itself, so re-publishing it here
+        would make every write index twice. Those are counted as ``echoes``.
         """
         root = self.engine.root
         added: list[str] = []
@@ -268,11 +274,13 @@ class VaultWatcher:
             entry = self.engine.observe_external_change(relative)
             if entry is None:
                 continue
-            external = known is None or known.checksum != entry.checksum
+            if known is not None and known.checksum == entry.checksum:
+                self.stats.echoes += 1
+                continue
             events.append(
                 NoteCreated(
                     vault=self.engine.name,
-                    external=external,
+                    external=True,
                     path=relative,
                     permalink=entry.permalink,
                     checksum=entry.checksum,
@@ -288,17 +296,7 @@ class VaultWatcher:
             if entry is None:
                 continue
             if known is not None and known.checksum == entry.checksum:
-                # The engine's own write, already reflected in the catalog.
-                events.append(
-                    NoteModified(
-                        vault=self.engine.name,
-                        external=False,
-                        path=relative,
-                        permalink=entry.permalink,
-                        checksum=entry.checksum,
-                        previous_checksum=known.checksum,
-                    )
-                )
+                self.stats.echoes += 1
                 continue
             events.append(
                 NoteModified(
@@ -316,12 +314,17 @@ class VaultWatcher:
         events: list[ChangeEvent] = []
         for relative in deleted:
             entry = self.engine.observe_external_change(relative, deleted=True)
+            if entry is None:
+                # The engine already dropped it from the catalog: its own
+                # delete, which it published itself.
+                self.stats.echoes += 1
+                continue
             events.append(
                 NoteDeleted(
                     vault=self.engine.name,
-                    external=entry is not None,
+                    external=True,
                     path=relative,
-                    permalink=entry.permalink if entry else None,
+                    permalink=entry.permalink,
                 )
             )
         return events

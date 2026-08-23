@@ -60,6 +60,11 @@ def test_commit_paths_returns_none_when_nothing_changed(repo: GitRepo) -> None:
     (repo.root / "a.md").write_text("a\n", encoding="utf-8")
     repo.commit_paths(["a.md"], "test: add a", TEST_ATTRIBUTION)
     assert repo.commit_paths(["a.md"], "test: nothing", TEST_ATTRIBUTION) is None
+    # Same, with unrelated untracked files present (git words that case
+    # differently, and it must still not raise).
+    (repo.root / "untracked.md").write_text("u\n", encoding="utf-8")
+    assert repo.commit_paths(["a.md"], "test: still nothing", TEST_ATTRIBUTION) is None
+    assert repo.commit_paths([], "test: no paths", TEST_ATTRIBUTION) is None
 
 
 def test_commit_message_attribution_and_trailers(repo: GitRepo) -> None:

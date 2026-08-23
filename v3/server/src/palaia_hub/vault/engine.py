@@ -24,7 +24,7 @@ import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from . import frontmatter as fm
 from . import permalink as pl
@@ -77,6 +77,9 @@ from .models import (
     WriteResult,
     build_commit_message,
 )
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle: doctor builds on the engine
+    from .doctor import Finding, IndexView, ReindexSink
 
 logger = logging.getLogger("palaia_hub.vault.engine")
 
@@ -1254,6 +1257,29 @@ class VaultEngine:
         return await asyncio.to_thread(
             lambda: self.git.recover_stale_locks(stale_after=stale_after)
         )
+
+    # ------------------------------------------------------------ doctor hooks
+
+    async def verify(self, index: IndexView | None = None) -> list[Finding]:
+        """Run the doctor's consistency checks (see :class:`~.doctor.VaultDoctor`).
+
+        Pass the SPEC-104 index to include file↔index drift checks.
+        """
+        from .doctor import VaultDoctor
+
+        return await VaultDoctor(self).verify(index)
+
+    async def repair(self) -> list[Finding]:
+        """Perform the doctor's safe repairs (stale locks, orphaned temp files)."""
+        from .doctor import VaultDoctor
+
+        return await VaultDoctor(self).repair()
+
+    async def reindex(self, sink: ReindexSink) -> int:
+        """Feed every note to ``sink`` — the rebuild-from-files hook point."""
+        from .doctor import VaultDoctor
+
+        return await VaultDoctor(self).reindex(sink)
 
     async def assign_missing_permalinks(
         self, *, attribution: Attribution = ENGINE

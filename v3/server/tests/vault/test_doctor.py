@@ -175,6 +175,18 @@ async def test_manifest_and_format_version_findings(make_engine: EngineFactory) 
     assert "manifest-missing" not in counts  # re-open with create=True rewrote it
 
 
+async def test_engine_exposes_the_doctor_hook_points(make_engine: EngineFactory) -> None:
+    """SPEC-102 deliverable 4: verify()/repair()/reindex() on the engine itself."""
+    engine = await make_engine("work")
+    await engine.write_note("notes/a", body="x\n", title="A")
+    assert await engine.verify() == await VaultDoctor(engine).verify()
+    assert await engine.repair() == []
+
+    sink = RecordingSink()
+    assert await engine.reindex(sink) == 2
+    assert sink.finished is True
+
+
 async def test_reindex_feeds_every_note_from_files(make_engine: EngineFactory) -> None:
     engine = await make_engine("work")
     await engine.write_note("notes/a", body="a\n", title="A")

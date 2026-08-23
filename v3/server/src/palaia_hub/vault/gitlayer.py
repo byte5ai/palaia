@@ -50,8 +50,13 @@ _LOG_FORMAT = _UNIT.join(["%H", "%an", "%ae", "%aI", "%s", "%b"]) + _RECORD
 _COMMITTER_NAME = "palaia-hub"
 _COMMITTER_EMAIL = "hub@palaia.local"
 
-_NOTHING_TO_COMMIT = "nothing to commit"
-_NO_CHANGES_ADDED = "no changes added to commit"
+# Every way git says "there was nothing to record" (working tree clean,
+# untracked files only, nothing staged).
+_EMPTY_COMMIT_PHRASES = (
+    "nothing to commit",
+    "nothing added to commit",
+    "no changes added to commit",
+)
 
 # `git commit` prints e.g. "[main (root-commit) 1a2b3c4] subject".
 _COMMIT_SHA_RE = re.compile(r"^\[[^\]]*?\b([0-9a-f]{7,40})\]", re.MULTILINE)
@@ -285,7 +290,7 @@ class GitRepo:
         result = self._run(args, env=env, check=False)
         if result.returncode != 0:
             combined = f"{result.stdout}\n{result.stderr}"
-            if _NOTHING_TO_COMMIT in combined or _NO_CHANGES_ADDED in combined:
+            if any(phrase in combined for phrase in _EMPTY_COMMIT_PHRASES):
                 return None
             raise GitError(
                 f"git commit failed in {self.root} (exit {result.returncode}): "

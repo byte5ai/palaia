@@ -149,15 +149,25 @@ async def test_external_delete_is_reported(make_engine: EngineFactory) -> None:
     assert "notes/a.md" not in engine.catalog
 
 
-async def test_engine_writes_are_not_reported_as_external(make_engine: EngineFactory) -> None:
+async def test_engine_writes_are_echoes_not_watcher_events(
+    make_engine: EngineFactory,
+) -> None:
+    """The watcher must not re-publish the engine's own writes."""
     engine, watcher, collector = await watched(make_engine)
     try:
         await engine.write_note("notes/a", body="x\n", title="A")
+        await engine.edit_note(
+            "notes/a",
+            body="y\n",
+            expected_checksum=(await engine.read_note("notes/a")).checksum,
+        )
         events = await collector.drain(settle=0.8)
     finally:
         await watcher.stop()
-    watcher_events = [event for event in events if event.external]
-    assert watcher_events == []
+    # Only the engine's own (non-external) events reached the bus.
+    assert [event.external for event in events] == [False, False]
+    assert watcher.stats.events == 0
+    assert watcher.stats.echoes >= 1
 
 
 async def test_engine_private_paths_are_ignored(make_engine: EngineFactory) -> None:
