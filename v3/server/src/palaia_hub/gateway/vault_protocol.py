@@ -14,6 +14,11 @@ and SPEC-113 wires it in — can back the tools built in
 Field names below intentionally mirror ``v3/docs/vault-format.md`` (permalink,
 title, type, tags, folder) so a future real adapter is a thin pass-through,
 not a translation layer.
+
+SPEC-107 adds ``capture``/``inbox_status`` (the inbox/capture contract,
+format spec §7) to this same protocol, kept as their own
+:data:`INBOX_TOOL_ACTIONS` tuple rather than folded into
+:data:`MEMORY_TOOL_ACTIONS` — see that constant's comment.
 """
 
 from __future__ import annotations
@@ -37,6 +42,14 @@ MEMORY_TOOL_ACTIONS: tuple[str, ...] = (
     "recent_activity",
 )
 
+# SPEC-107's two inbox/capture actions. Kept as a separate tuple rather than
+# folded into MEMORY_TOOL_ACTIONS: that tuple is also used by
+# gateway/config.py to validate `tool_renames` keys against the eight
+# original actions specifically, and existing config/tests referencing "the
+# eight actions" should not silently start meaning ten. Both tuples are
+# exposed together in the same tool family server (memory_tools.py).
+INBOX_TOOL_ACTIONS: tuple[str, ...] = ("capture", "inbox_status")
+
 
 class NoteSummary(BaseModel):
     """Enough to list, browse, or pick a note without fetching its body."""
@@ -47,6 +60,11 @@ class NoteSummary(BaseModel):
     tags: list[str] = Field(default_factory=list)
     folder: str = ""
     modified: str = ""
+    # Format spec §2.1 schema keys, relevant beyond captures (any note may
+    # carry a lifecycle `status`) but populated in practice by SPEC-107's
+    # inbox contract: `status: uncurated` and a derived `capture_id`.
+    status: str = ""
+    capture_id: str = ""
 
 
 class NoteRecord(NoteSummary):
@@ -54,6 +72,32 @@ class NoteRecord(NoteSummary):
 
     body: str = ""
     created: str = ""
+
+
+class CaptureResult(BaseModel):
+    """What a ``capture`` call reports: where it landed, or that it didn't.
+
+    ``duplicate=True`` means an exact-duplicate capture already exists in
+    ``inbox/`` (format spec §7's dedup guard) — the call is acknowledged but
+    no second file is created; ``permalink``/``capture_id`` then identify the
+    existing entry.
+    """
+
+    permalink: str
+    title: str
+    capture_id: str
+    status: str = "uncurated"
+    duplicate: bool = False
+
+
+class InboxStatusResult(BaseModel):
+    """Inbox health: how many uncurated captures, the oldest, the newest."""
+
+    count: int
+    oldest_capture_id: str | None = None
+    oldest_age_seconds: float | None = None
+    last_capture_id: str | None = None
+    last_captured_at: str | None = None
 
 
 class SearchHit(BaseModel):
@@ -139,4 +183,25 @@ class VaultService(Protocol):
 
     async def recent_activity(self, *, limit: int = 10) -> list[NoteSummary]:
         """Return the most recently modified notes, most recent first."""
+        ...
+
+    async def capture(
+        self,
+        *,
+        what_it_concerns: str,
+        why_keep: str,
+        content: str,
+        source: str | None = None,
+    ) -> CaptureResult:
+        """Drop a zero-friction capture into ``inbox/`` (format spec §7).
+
+        ``what_it_concerns`` and ``why_keep`` are mandatory (never guessed
+        at by an implementation). An exact-duplicate of an existing
+        ``inbox/`` entry is acknowledged without creating a second file —
+        see :class:`CaptureResult`.
+        """
+        ...
+
+    async def inbox_status(self) -> InboxStatusResult:
+        """Summarize ``inbox/``: uncurated count, oldest entry age, last capture."""
         ...

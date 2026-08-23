@@ -12,7 +12,10 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 
+from . import inbox as inbox_shape
 from .vault_protocol import (
+    CaptureResult,
+    InboxStatusResult,
     NoteRecord,
     NoteSummary,
     SearchHit,
@@ -145,3 +148,80 @@ class FakeVaultService:
         return [
             NoteSummary(**note.model_dump(exclude={"body", "created"})) for note in notes[:limit]
         ]
+
+    def _inbox_notes(self) -> list[NoteRecord]:
+        return [note for note in self._notes.values() if note.folder == "inbox"]
+
+    async def capture(
+        self,
+        *,
+        what_it_concerns: str,
+        why_keep: str,
+        content: str,
+        source: str | None = None,
+    ) -> CaptureResult:
+        what_it_concerns = what_it_concerns.strip()
+        why_keep = why_keep.strip()
+        content = content.strip()
+        content_hash = inbox_shape.content_hash_for(what_it_concerns, why_keep, content)
+
+        for existing in self._inbox_notes():
+            if inbox_shape.extract_capture_hash(existing.body) == content_hash:
+                return CaptureResult(
+                    permalink=existing.permalink,
+                    title=existing.title,
+                    capture_id=existing.capture_id,
+                    status=existing.status,
+                    duplicate=True,
+                )
+
+        resolved_source = (source or "").strip() or inbox_shape.default_source()
+        slug = _slugify(what_it_concerns)
+        permalink = f"inbox/{slug}"
+        suffix = 2
+        while permalink in self._notes:
+            permalink = f"inbox/{slug}-{suffix}"
+            suffix += 1
+        capture_id = inbox_shape.capture_id_for(permalink)
+        body = inbox_shape.compose_capture_body(
+            what_it_concerns=what_it_concerns,
+            why_keep=why_keep,
+            content=content,
+            source=resolved_source,
+            content_hash=content_hash,
+        )
+        now = _now()
+        note = NoteRecord(
+            permalink=permalink,
+            title=what_it_concerns,
+            type="capture",
+            tags=["inbox"],
+            folder="inbox",
+            status="uncurated",
+            capture_id=capture_id,
+            body=body,
+            created=now,
+            modified=now,
+        )
+        self._notes[permalink] = note
+        return CaptureResult(
+            permalink=permalink, title=note.title, capture_id=capture_id, status="uncurated"
+        )
+
+    async def inbox_status(self) -> InboxStatusResult:
+        captures = [note for note in self._inbox_notes() if note.status == "uncurated"]
+        if not captures:
+            return InboxStatusResult(count=0)
+        captures.sort(key=lambda n: n.created)
+        oldest = captures[0]
+        newest = max(captures, key=lambda n: n.created)
+        now = datetime.now(UTC)
+        oldest_created = datetime.fromisoformat(oldest.created.replace("Z", "+00:00"))
+        age = (now - oldest_created).total_seconds()
+        return InboxStatusResult(
+            count=len(captures),
+            oldest_capture_id=oldest.capture_id,
+            oldest_age_seconds=max(age, 0.0),
+            last_capture_id=newest.capture_id,
+            last_captured_at=newest.created,
+        )

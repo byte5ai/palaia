@@ -20,6 +20,7 @@ an index-backed query, everything else already talks to the real vault.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
 from palaia_hub.vault import (
@@ -35,7 +36,16 @@ from palaia_hub.vault import (
 )
 from palaia_hub.vault import permalink as pl
 
-from .vault_protocol import NoteRecord, NoteSummary, SearchHit, VaultService, VaultServiceError
+from . import inbox as inbox_shape
+from .vault_protocol import (
+    CaptureResult,
+    InboxStatusResult,
+    NoteRecord,
+    NoteSummary,
+    SearchHit,
+    VaultService,
+    VaultServiceError,
+)
 
 # Every caller-facing engine failure this adapter might see, translated to
 # VaultServiceError (see vault_protocol.VaultService's docstring: tool
@@ -78,6 +88,17 @@ def _is_meta(note: Note) -> bool:
     ``meta/vault`` explicitly still gets it.
     """
     return str(note.frontmatter.get("type", "note")) == "meta"
+
+
+def _age_seconds(created_iso: str) -> float:
+    """Seconds since ``created_iso``; 0.0 when the timestamp is absent/unparseable."""
+    if not created_iso:
+        return 0.0
+    try:
+        created = datetime.fromisoformat(created_iso.replace("Z", "+00:00"))
+    except ValueError:
+        return 0.0
+    return max((datetime.now(UTC) - created).total_seconds(), 0.0)
 
 
 def _note_to_record(note: Note) -> NoteRecord:
@@ -172,6 +193,103 @@ class EngineVaultService:
             raise VaultServiceError(str(exc)) from exc
         assert result.note is not None  # write_note always returns a note
         return _note_to_record(result.note)
+
+    async def capture(
+        self,
+        *,
+        what_it_concerns: str,
+        why_keep: str,
+        content: str,
+        source: str | None = None,
+    ) -> CaptureResult:
+        what_it_concerns = what_it_concerns.strip()
+        why_keep = why_keep.strip()
+        content = content.strip()
+        content_hash = inbox_shape.content_hash_for(what_it_concerns, why_keep, content)
+
+        # Dedup guard (format spec §7): an identical capture is acked, not duplicated.
+        for existing in await self._inbox_captures():
+            existing_hash = inbox_shape.extract_capture_hash(existing.body)
+            if existing_hash == content_hash:
+                fm_status = str(existing.frontmatter.get("status") or "uncurated")
+                return CaptureResult(
+                    permalink=existing.permalink or existing.path,
+                    title=existing.title,
+                    capture_id=str(existing.frontmatter.get("capture_id") or ""),
+                    status=fm_status,
+                    duplicate=True,
+                )
+
+        resolved_source = (source or "").strip() or inbox_shape.default_source()
+        slug = pl.slugify(what_it_concerns) or "capture"
+        relative = f"inbox/{slug}.md"
+        suffix = 2
+        while self._path_exists(relative):
+            relative = f"inbox/{slug}-{suffix}.md"
+            suffix += 1
+        permalink = relative[: -len(".md")]
+        capture_id = inbox_shape.capture_id_for(permalink)
+        body = inbox_shape.compose_capture_body(
+            what_it_concerns=what_it_concerns,
+            why_keep=why_keep,
+            content=content,
+            source=resolved_source,
+            content_hash=content_hash,
+        )
+        frontmatter = dict(inbox_shape.capture_frontmatter(capture_id=capture_id))
+        try:
+            result = await self._engine.write_note(
+                relative,
+                body=body,
+                title=what_it_concerns,
+                frontmatter=frontmatter,
+                must_create=True,
+            )
+        except _ENGINE_CALLER_ERRORS as exc:
+            raise VaultServiceError(str(exc)) from exc
+        assert result.note is not None
+        return CaptureResult(
+            permalink=result.note.permalink or permalink,
+            title=result.note.title,
+            capture_id=capture_id,
+            status="uncurated",
+        )
+
+    async def inbox_status(self) -> InboxStatusResult:
+        captures = [
+            note
+            for note in await self._inbox_captures()
+            if str(note.frontmatter.get("status") or "") == "uncurated"
+        ]
+        if not captures:
+            return InboxStatusResult(count=0)
+
+        def created_of(note: Note) -> str:
+            return str(note.frontmatter.get("created") or "")
+
+        captures.sort(key=created_of)
+        oldest, newest = captures[0], captures[-1]
+        oldest_age = _age_seconds(created_of(oldest))
+        return InboxStatusResult(
+            count=len(captures),
+            oldest_capture_id=str(oldest.frontmatter.get("capture_id") or ""),
+            oldest_age_seconds=oldest_age,
+            last_capture_id=str(newest.frontmatter.get("capture_id") or ""),
+            last_captured_at=created_of(newest),
+        )
+
+    async def _inbox_captures(self) -> list[Note]:
+        notes: list[Note] = []
+        for entry in list(self._engine.catalog.values()):
+            if not entry.path.startswith("inbox/"):
+                continue
+            note = await self._engine.read_note(entry.path)
+            if str(note.frontmatter.get("type", "note")) == "capture":
+                notes.append(note)
+        return notes
+
+    def _path_exists(self, relative: str) -> bool:
+        return any(entry.path == relative for entry in self._engine.catalog.values())
 
     async def edit(
         self,

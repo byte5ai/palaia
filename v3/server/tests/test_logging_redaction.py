@@ -1,7 +1,9 @@
 import logging
+from pathlib import Path
 
 import pytest
 
+from palaia_hub.auth.store import TokenStore
 from palaia_hub.config import HubConfig
 from palaia_hub.logging import redact, setup_logging
 
@@ -53,6 +55,34 @@ def test_logging_json_format_redacts_token(capsys: pytest.CaptureFixture[str]) -
     captured = capsys.readouterr()
     assert SECRET not in captured.out
     assert "REDACTED" in captured.out
+
+
+# --- SPEC-108: the redaction filter covers real palaia client tokens too --
+
+
+def test_real_palaia_token_is_redacted_in_bearer_form() -> None:
+    token = "plt_AbCdEfGh12.zzZZzz09-_aaaBBBcccDDDeeeFFFggg1234567"
+    message = f"Authorization: Bearer {token}"
+
+    redacted = redact(message)
+
+    assert token not in redacted
+    assert "REDACTED" in redacted
+
+
+def test_token_store_never_logs_the_plaintext_secret(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO, logger="palaia_hub.auth.store")
+    store = TokenStore(home=tmp_path)
+
+    created = store.create("Codex on devbox", "default", ["vault:work:read"])
+    store.revoke(created.info.id)
+
+    secret_half = created.token.split(".", 1)[1]
+    log_text = "\n".join(record.getMessage() for record in caplog.records)
+    assert created.token not in log_text
+    assert secret_half not in log_text
 
 
 def test_component_level_override(capsys: pytest.CaptureFixture[str]) -> None:

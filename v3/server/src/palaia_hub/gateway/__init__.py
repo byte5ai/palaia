@@ -25,7 +25,10 @@ from .build import GatewayASGI, GatewayConfigError, build_gateway
 from .config import GatewayConfig, ProfileConfig, VaultMountConfig
 from .fake_vault import FakeVaultService
 from .vault_protocol import (
+    INBOX_TOOL_ACTIONS,
     MEMORY_TOOL_ACTIONS,
+    CaptureResult,
+    InboxStatusResult,
     NoteRecord,
     NoteSummary,
     SearchHit,
@@ -35,12 +38,15 @@ from .vault_protocol import (
 from .wiring import EngineVaultService
 
 __all__ = [
+    "INBOX_TOOL_ACTIONS",
     "MEMORY_TOOL_ACTIONS",
+    "CaptureResult",
     "EngineVaultService",
     "FakeVaultService",
     "GatewayASGI",
     "GatewayConfig",
     "GatewayConfigError",
+    "InboxStatusResult",
     "NoteRecord",
     "NoteSummary",
     "ProfileConfig",

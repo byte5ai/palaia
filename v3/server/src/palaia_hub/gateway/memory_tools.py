@@ -2,7 +2,10 @@
 
 Deliverable #2 of SPEC-105: search / read / write / edit / move / delete /
 list / recent_activity, mounted once per configured vault (see
-:mod:`palaia_hub.gateway.build`). Deliverable #4 (tool ergonomics) is
+:mod:`palaia_hub.gateway.build`). SPEC-107 adds two more tools to the same
+server — ``capture`` and ``inbox_status`` (the inbox/capture contract,
+``v3/docs/vault-format.md`` §7); their composition logic lives in
+:mod:`palaia_hub.gateway.inbox`. Deliverable #4 (tool ergonomics) is
 implemented here directly on each tool:
 
 - **Behavior annotations** (``readOnlyHint``/``destructiveHint``/
@@ -41,8 +44,18 @@ from fastmcp.tools.base import ToolResult
 from mcp.types import ToolAnnotations
 from pydantic import AliasChoices, BaseModel, Field
 
+from ..auth.enforcement import missing_scope_error
 from .config import VaultMountConfig
-from .vault_protocol import NoteRecord, NoteSummary, SearchHit, VaultService, VaultServiceError
+from .inbox import missing_capture_fields, missing_fields_message
+from .vault_protocol import (
+    CaptureResult,
+    InboxStatusResult,
+    NoteRecord,
+    NoteSummary,
+    SearchHit,
+    VaultService,
+    VaultServiceError,
+)
 
 # --- alias-absorbing parameter types ---------------------------------------
 # SPEC-105 deliverable #4 names these two alias groups explicitly: a query
@@ -139,6 +152,15 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
     def desc(detail: str) -> str:
         return f"{purpose}\n\n{detail}"
 
+    def scope_error(action: str) -> ToolResult | None:
+        """``None`` if this call's token (if any) covers ``action``; else a
+        ready-to-return ``ToolResult(is_error=True)`` naming the missing
+        scope (SPEC-108 — see :func:`palaia_hub.auth.enforcement.
+        missing_scope_error` for what "if any" means here).
+        """
+        message = missing_scope_error(vault.key, action)
+        return ToolResult(content=message, is_error=True) if message else None
+
     @server.tool(
         name="search",
         description=desc("Search this vault's notes. Returns best matches first."),
@@ -147,6 +169,8 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         ),
     )
     async def search(query: QueryParam, limit: int = 10) -> ToolResult:
+        if (err := scope_error("search")) is not None:
+            return err
         hits = await service.search(query, limit=limit)
         text = (
             f"{len(hits)} match(es) for {query!r}: "
@@ -162,6 +186,8 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True),
     )
     async def read(permalink: str) -> ToolResult:
+        if (err := scope_error("read")) is not None:
+            return err
         try:
             note = await service.read(permalink)
         except VaultServiceError as exc:
@@ -182,6 +208,8 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         type: str = "note",  # noqa: A002 - matches the vault-format field name
         tags: list[str] | None = None,
     ) -> ToolResult:
+        if (err := scope_error("write")) is not None:
+            return err
         try:
             note = await service.write(title, body, folder=folder, type=type, tags=tags)
         except VaultServiceError as exc:
@@ -201,6 +229,8 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         append: str | None = None,
         tags: list[str] | None = None,
     ) -> ToolResult:
+        if (err := scope_error("edit")) is not None:
+            return err
         try:
             note = await service.edit(permalink, body=body, append=append, tags=tags)
         except VaultServiceError as exc:
@@ -215,6 +245,8 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         ),
     )
     async def move(permalink: str, folder: FolderParam = "") -> ToolResult:
+        if (err := scope_error("move")) is not None:
+            return err
         try:
             note = await service.move(permalink, folder)
         except VaultServiceError as exc:
@@ -229,6 +261,8 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         ),
     )
     async def delete(permalink: str) -> ToolResult:
+        if (err := scope_error("delete")) is not None:
+            return err
         deleted = await service.delete(permalink)
         text = f"deleted {permalink!r}" if deleted else f"nothing to delete at {permalink!r}"
         return ToolResult(
@@ -241,6 +275,8 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True),
     )
     async def list_notes(folder: FolderParam = "") -> ToolResult:
+        if (err := scope_error("list")) is not None:
+            return err
         notes = await service.list_notes(folder=folder)
         text = f"{len(notes)} note(s)" + (f" in {folder!r}" if folder else "")
         return ToolResult(content=text, structured_content=ListResult(folder=folder, notes=notes))
@@ -251,9 +287,70 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True),
     )
     async def recent_activity(limit: int = 10) -> ToolResult:
+        if (err := scope_error("recent_activity")) is not None:
+            return err
         notes = await service.recent_activity(limit=limit)
         text = f"{len(notes)} recently modified note(s)"
         return ToolResult(content=text, structured_content=RecentActivityResult(notes=notes))
+
+    @server.tool(
+        name="capture",
+        description=desc(
+            "Zero-friction drop target: capture something mid-work without "
+            "deciding placement, dedup or structure — the curator files it "
+            "later. Writes an inbox/ note (format spec §7)."
+        ),
+        annotations=ToolAnnotations(
+            readOnlyHint=False, destructiveHint=False, idempotentHint=False
+        ),
+    )
+    async def capture(
+        what_it_concerns: str | None = None,
+        why_keep: str | None = None,
+        content: str | None = None,
+        source: str | None = None,
+    ) -> ToolResult:
+        missing = missing_capture_fields(
+            what_it_concerns=what_it_concerns, why_keep=why_keep, content=content
+        )
+        if missing:
+            return ToolResult(content=missing_fields_message(missing), is_error=True)
+        assert what_it_concerns is not None
+        assert why_keep is not None
+        assert content is not None
+        try:
+            result = await service.capture(
+                what_it_concerns=what_it_concerns,
+                why_keep=why_keep,
+                content=content,
+                source=source,
+            )
+        except VaultServiceError as exc:
+            return _error_result(exc)
+        text = (
+            f"already captured as {result.permalink!r} (capture_id {result.capture_id}) "
+            "— duplicate acknowledged, nothing new written"
+            if result.duplicate
+            else f"captured to {result.permalink!r} (capture_id {result.capture_id})"
+        )
+        return ToolResult(content=text, structured_content=result)
+
+    @server.tool(
+        name="inbox_status",
+        description=desc(
+            "Inbox health: how many uncurated captures are waiting, the "
+            "oldest entry's age, and the most recent capture."
+        ),
+        annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True),
+    )
+    async def inbox_status() -> ToolResult:
+        status = await service.inbox_status()
+        text = f"{status.count} uncurated capture(s)"
+        if status.oldest_age_seconds is not None:
+            text += f", oldest {status.oldest_age_seconds:.0f}s old"
+        if status.last_capture_id:
+            text += f", last capture {status.last_capture_id!r}"
+        return ToolResult(content=text, structured_content=status)
 
     @server.resource(
         f"guide://{vault.key}/ai_assistant_guide",
@@ -272,7 +369,11 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
             "4. **list** / **recent_activity** to browse or catch up without a "
             "specific query.\n"
             "5. **move** relocates a note without changing its identity "
-            "(permalink); **delete** removes it.\n\n"
+            "(permalink); **delete** removes it.\n"
+            "6. **capture** when you don't have time to place something "
+            "properly — drop it into inbox/ with what it concerns and why "
+            "it's worth keeping; a curator files it later. **inbox_status** "
+            "shows how much is waiting.\n\n"
             "## Parameter notes\n"
             "`search`'s query and every `folder` parameter accept a few common "
             "misnamings (e.g. `q`, `dir`, `path`) — use the documented name "
@@ -291,4 +392,6 @@ _RESULT_MODELS: dict[str, type[Any]] = {
     "list": ListResult,
     "recent_activity": RecentActivityResult,
     "delete": DeleteResult,
+    "capture": CaptureResult,
+    "inbox_status": InboxStatusResult,
 }

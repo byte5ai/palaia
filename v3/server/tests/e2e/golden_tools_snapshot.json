@@ -1,4 +1,64 @@
 {
+  "capture": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nZero-friction drop target: capture something mid-work without deciding placement, dedup or structure \u2014 the curator files it later. Writes an inbox/ note (format spec \u00a77).",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "what_it_concerns": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "why_keep": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object"
+    }
+  },
   "delete": {
     "annotations": {
       "destructiveHint": true,
@@ -76,6 +136,21 @@
       "required": [
         "permalink"
       ],
+      "type": "object"
+    }
+  },
+  "inbox_status": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nInbox health: how many uncurated captures are waiting, the oldest entry's age, and the most recent capture.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
       "type": "object"
     }
   },
