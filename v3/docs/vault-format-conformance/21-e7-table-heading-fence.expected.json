@@ -1,0 +1,10 @@
+{
+  "title": "E7 Table Heading Fence", "permalink": "notes/e7-table-heading-fence", "type": "note",
+  "observations": [
+    {"category": "genuine", "scope": null, "text": "real observation for contrast", "line": 12}
+  ],
+  "relations": [
+    {"type": "links_to", "target": "Table Link", "implicit": true, "line": 10}
+  ],
+  "warnings": []
+}

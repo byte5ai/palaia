@@ -1,0 +1,6 @@
+{
+  "title": "Primary Title", "permalink": "notes/list-title", "type": "note",
+  "warnings": [
+    {"code": "title-coerced", "line": 2}
+  ]
+}

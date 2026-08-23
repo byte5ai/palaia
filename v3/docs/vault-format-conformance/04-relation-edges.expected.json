@@ -1,0 +1,10 @@
+{
+  "title": "Stash", "permalink": "tools/stash", "type": "note",
+  "observations": [],
+  "relations": [
+    {"type": "links_to", "target": "SQLite", "implicit": true, "line": 6},
+    {"type": "links_to", "target": "Messenger", "implicit": false, "line": 7},
+    {"type": "supersedes", "target": "Memo System", "implicit": false, "line": 8}
+  ],
+  "warnings": []
+}

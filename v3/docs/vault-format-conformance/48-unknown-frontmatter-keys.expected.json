@@ -1,0 +1,10 @@
+{
+  "title": "Unknown Keys Preserved", "permalink": "notes/unknown-keys-preserved", "type": "note",
+  "frontmatter": {
+    "project_code": "ACME-42",
+    "owner": "cwendler",
+    "schema": "v0",
+    "aliases": ["Old Title", "old-permalink"]
+  },
+  "warnings": []
+}

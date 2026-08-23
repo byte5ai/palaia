@@ -1,0 +1,8 @@
+{
+  "title": "Type Unknown", "permalink": "notes/type-unknown", "type": "widget",
+  "observations": [],
+  "relations": [],
+  "warnings": [
+    {"code": "type-unknown", "line": 4}
+  ]
+}

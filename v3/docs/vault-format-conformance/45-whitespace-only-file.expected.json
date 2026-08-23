@@ -1,0 +1,15 @@
+{
+  "title": "45-whitespace-only-file",
+  "type": "note",
+  "observations": [],
+  "relations": [],
+  "embeds": [],
+  "warnings": [
+    {
+      "code": "permalink-missing"
+    },
+    {
+      "code": "title-defaulted"
+    }
+  ]
+}

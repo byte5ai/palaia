@@ -1,0 +1,8 @@
+{
+  "title": "Explicit Only Rule", "permalink": "notes/explicit-only-rule", "type": "note",
+  "tags": [],
+  "observations": [
+    {"category": "note", "scope": null, "text": "Just a note about something #project, now a real observation because of the category.", "tags": ["project"], "line": 7}
+  ],
+  "warnings": []
+}
