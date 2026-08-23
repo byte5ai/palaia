@@ -18,37 +18,68 @@ describe('useEventStream', () => {
     expect(result.current.health).toEqual({ status: 'ok' })
   })
 
-  it('increments the vault-change count on each vault_changed event — the badge that must update without reload', async () => {
+  it('increments the vault-change count on each memory.entry.* event — the badge that must update without reload', async () => {
     const { result } = renderHook(() => useEventStream(FakeEventSource as unknown as typeof EventSource))
     const source = FakeEventSource.instances.at(-1)!
 
     act(() => {
-      source.emit('vault_changed', { data: { count: 1, paths: ['note.md'] } })
+      source.emit('memory.entry.created', {
+        event: 'memory.entry.created',
+        vault: 'work',
+        permalink: 'note',
+        data: { path: 'note.md' },
+      })
     })
     await waitFor(() => expect(result.current.vaultChangeCount).toBe(1))
 
     act(() => {
-      source.emit('vault_changed', { data: { count: 2, paths: ['a.md', 'b.md'] } })
+      source.emit('memory.entry.updated', {
+        event: 'memory.entry.updated',
+        vault: 'work',
+        permalink: 'a',
+        data: { path: 'a.md' },
+      })
     })
-    await waitFor(() => expect(result.current.vaultChangeCount).toBe(3))
-    expect(result.current.lastVaultChange).toEqual({ count: 2, paths: ['a.md', 'b.md'] })
+    await waitFor(() => expect(result.current.vaultChangeCount).toBe(2))
+    expect(result.current.lastVaultChange).toMatchObject({
+      event: 'memory.entry.updated',
+      vault: 'work',
+      permalink: 'a',
+      data: { path: 'a.md' },
+    })
   })
 
-  it('keeps a bounded, newest-first history of vault_changed events for the activity feed', async () => {
+  it('keeps a bounded, newest-first history of memory.entry.* events for the activity feed', async () => {
     const { result } = renderHook(() => useEventStream(FakeEventSource as unknown as typeof EventSource))
     const source = FakeEventSource.instances.at(-1)!
 
     act(() => {
-      source.emit('vault_changed', { data: { count: 1, paths: ['note.md'] } })
+      source.emit('memory.entry.created', {
+        event: 'memory.entry.created',
+        vault: 'work',
+        permalink: 'note',
+        data: { path: 'note.md' },
+      })
     })
     await waitFor(() => expect(result.current.recentChanges).toHaveLength(1))
 
     act(() => {
-      source.emit('vault_changed', { data: { count: 2, paths: ['a.md', 'b.md'] } })
+      source.emit('memory.entry.deleted', {
+        event: 'memory.entry.deleted',
+        vault: 'work',
+        permalink: 'a',
+        data: { path: 'a.md' },
+      })
     })
     await waitFor(() => expect(result.current.recentChanges).toHaveLength(2))
-    expect(result.current.recentChanges[0]).toMatchObject({ count: 2, paths: ['a.md', 'b.md'] })
-    expect(result.current.recentChanges[1]).toMatchObject({ count: 1, paths: ['note.md'] })
+    expect(result.current.recentChanges[0]).toMatchObject({
+      event: 'memory.entry.deleted',
+      data: { path: 'a.md' },
+    })
+    expect(result.current.recentChanges[1]).toMatchObject({
+      event: 'memory.entry.created',
+      data: { path: 'note.md' },
+    })
   })
 
   it('reports reconnecting after a drop that follows a successful connection', async () => {

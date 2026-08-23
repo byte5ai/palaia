@@ -1,4 +1,5 @@
-"""Tests for the SPEC-109 live-state layer: /api/events (SSE).
+"""Tests for the hub's live-state layer: /api/events (SSE), unified onto
+the SPEC-201 public event envelope.
 
 A real streaming response never completes until the client disconnects,
 and httpx's in-process ASGI transport (which backs FastAPI's
@@ -20,6 +21,8 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+
+from webhook_receiver import LocalReceiver
 
 _STARTUP_TIMEOUT = 10.0
 _SHUTDOWN_TIMEOUT = 10.0
@@ -83,6 +86,18 @@ def _open_event_stream(port: int) -> tuple[http.client.HTTPConnection, http.clie
     return conn, resp
 
 
+def _post_json(port: int, path: str, body: dict[str, object]) -> dict[str, object]:
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=_LINE_TIMEOUT)
+    payload = json.dumps(body).encode("utf-8")
+    conn.request("POST", path, body=payload, headers={"Content-Type": "application/json"})
+    resp = conn.getresponse()
+    raw = resp.read()
+    conn.close()
+    assert resp.status < 300, f"POST {path} failed ({resp.status}): {raw!r}"
+    result: dict[str, object] = json.loads(raw)
+    return result
+
+
 def _read_one_sse_event(resp: http.client.HTTPResponse) -> dict[str, object]:
     """Read lines up to (and past) the next blank line and return its payload."""
     data: dict[str, object] | None = None
@@ -97,6 +112,17 @@ def _read_one_sse_event(resp: http.client.HTTPResponse) -> dict[str, object]:
             if data is not None:
                 return data
             # a blank keep-alive line with no preceding data: keep reading
+
+
+def _read_until(
+    resp: http.client.HTTPResponse, event_name: str, *, timeout: float = 15.0
+) -> dict[str, object]:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        event = _read_one_sse_event(resp)
+        if event["event"] == event_name:
+            return event
+    raise AssertionError(f"no {event_name!r} event arrived within {timeout}s")
 
 
 def test_events_stream_sends_an_immediate_health_snapshot(tmp_path: Path) -> None:
@@ -114,11 +140,16 @@ def test_events_stream_sends_an_immediate_health_snapshot(tmp_path: Path) -> Non
     finally:
         _stop_hub(proc)
 
-    assert event["type"] == "health"
+    assert event["event"] == "health"
     data = event["data"]
     assert isinstance(data, dict)
     assert data["status"] == "ok"
     assert "ts" in event
+    # The public envelope's full shape (SPEC-201) — every consumer, SSE
+    # included, sees the same fields.
+    assert event["origin"] == "hub"
+    assert event["schema_version"] == 1
+    assert "id" in event
 
 
 def test_events_stream_emits_periodic_health_ticks(tmp_path: Path) -> None:
@@ -135,50 +166,77 @@ def test_events_stream_emits_periodic_health_ticks(tmp_path: Path) -> None:
     finally:
         _stop_hub(proc)
 
-    assert first["type"] == second["type"] == "health"
+    assert first["event"] == second["event"] == "health"
 
 
-def test_vault_change_on_disk_publishes_a_vault_changed_event(tmp_path: Path) -> None:
-    """The acceptance-criterion scenario: a vault file touched on disk
-    produces an event on the stream without any page reload — the
-    client-side "reload" is exactly the SSE connection staying open.
-    """
-    watch_dir = tmp_path / "vault"
-    watch_dir.mkdir()
+def test_hub_started_is_observable_on_the_bus_before_any_sse_client(
+    tmp_path: Path, local_receiver: LocalReceiver
+) -> None:
+    """``hub.started`` (SPEC-201) fires during the app's lifespan startup —
+    before the SSE endpoint has any subscriber — so it can only be proven
+    on a consumer that was already attached at that point: a webhook.
+    A hook created *before* the hub restarts still observes it on the next
+    boot, which is exactly what this test does with a fresh process."""
     port = _free_port()
-    proc = _spawn_hub(
-        tmp_path / "home",
-        port,
-        extra_env={
-            "PALAIA_HEALTH_EVENT_INTERVAL_SECONDS": "60",
-            "PALAIA_WATCH_DIR": str(watch_dir),
-        },
-    )
+    proc = _spawn_hub(tmp_path, port, extra_env={"PALAIA_HEALTH_EVENT_INTERVAL_SECONDS": "60"})
+    try:
+        _wait_for_health(port)
+        _post_json(
+            port, "/api/hooks", {"url": local_receiver.url, "events": ["hub.started"]}
+        )
+    finally:
+        _stop_hub(proc)
+
+    # Restart the same hub home: the hook config persisted to hooks.yaml
+    # survives the restart, and the fresh process's own hub.started
+    # reaches it.
+    port2 = _free_port()
+    proc2 = _spawn_hub(tmp_path, port2, extra_env={"PALAIA_HEALTH_EVENT_INTERVAL_SECONDS": "60"})
+    try:
+        _wait_for_health(port2)
+        deadline = time.monotonic() + 15.0
+        while time.monotonic() < deadline and not local_receiver.requests:
+            time.sleep(0.1)
+    finally:
+        _stop_hub(proc2)
+
+    assert local_receiver.requests, "expected hub.started to reach the webhook receiver"
+    body = json.loads(local_receiver.requests[-1].body)
+    assert body["event"] == "hub.started"
+    assert body["origin"] == "hub"
+
+
+def test_vault_write_publishes_a_memory_entry_created_event(tmp_path: Path) -> None:
+    """The acceptance-criterion scenario: a vault write anywhere produces a
+    real ``memory.entry.created`` event on the SSE stream — the
+    SPEC-109 disk-watcher's raw ``vault_changed`` batches are retired in
+    favor of the vault engine's own, precise event vocabulary (SPEC-201:
+    "do not leave two parallel event systems")."""
+    port = _free_port()
+    proc = _spawn_hub(tmp_path, port, extra_env={"PALAIA_HEALTH_EVENT_INTERVAL_SECONDS": "60"})
     try:
         _wait_for_health(port)
         conn, resp = _open_event_stream(port)
         try:
             _read_one_sse_event(resp)  # the immediate health snapshot
 
-            (watch_dir / "note.md").write_text("# a note\n", encoding="utf-8")
+            _post_json(
+                port,
+                "/api/vaults",
+                {"key": "work", "purpose": "test vault", "template": True},
+            )
 
-            deadline = time.monotonic() + 15.0
-            vault_event: dict[str, object] | None = None
-            while time.monotonic() < deadline:
-                event = _read_one_sse_event(resp)
-                if event["type"] == "vault_changed":
-                    vault_event = event
-                    break
+            event = _read_until(resp, "memory.entry.created")
         finally:
             conn.close()
     finally:
         _stop_hub(proc)
 
-    assert vault_event is not None, "expected a vault_changed event within the debounce budget"
-    data = vault_event["data"]
+    assert event["vault"] == "work"
+    assert event["origin"] == "vault"
+    data = event["data"]
     assert isinstance(data, dict)
-    assert data["count"] >= 1
-    assert any("note.md" in path for path in data["paths"])
+    assert data["path"]
 
 
 def test_events_route_is_not_shadowed_by_the_dashboard_mount(tmp_path: Path) -> None:

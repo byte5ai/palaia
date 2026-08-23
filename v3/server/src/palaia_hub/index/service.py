@@ -32,6 +32,7 @@ import time
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 
+from palaia_hub.events.schema import HubEventHook
 from palaia_hub.vault import (
     ChangeEvent,
     EntityRenamed,
@@ -71,7 +72,13 @@ _MAX_EMBED_ATTEMPTS = 3
 
 
 class VaultIndex:
-    """One vault's searchable projection."""
+    """One vault's searchable projection.
+
+    ``on_event`` is SPEC-201's ``index.reindexed``/
+    ``index.embed_backlog_drained``/``doctor.finding`` hook point — see
+    :data:`~palaia_hub.events.schema.HubEventHook`. Omitted (the default),
+    this class behaves exactly as before this parameter existed.
+    """
 
     def __init__(
         self,
@@ -80,6 +87,7 @@ class VaultIndex:
         path: Path | None = None,
         embedding: EmbeddingConfig | None = None,
         embedder: Embedder | None = None,
+        on_event: HubEventHook | None = None,
     ) -> None:
         self._engine = engine
         self._embedding = embedding or EmbeddingConfig()
@@ -98,6 +106,20 @@ class VaultIndex:
         self._wake = asyncio.Event()
         self._closing = False
         self._last_indexed_at = 0.0
+        #: SPEC-201's ``index.reindexed``/``index.embed_backlog_drained``/
+        #: ``doctor.finding`` hook point — see :data:`HubEventHook`. ``None``
+        #: (the default) keeps this class's behavior identical to before
+        #: this hook existed. Named distinctly from :meth:`_on_event` below
+        #: (the vault change-event subscriber) to avoid shadowing it.
+        self._hub_event_hook = on_event
+
+    def _emit(self, name: str, data: dict[str, object]) -> None:
+        if self._hub_event_hook is None:
+            return
+        try:
+            self._hub_event_hook(name, {**data, "vault": self._engine.name})
+        except Exception:  # noqa: BLE001 - a hook must not break indexing
+            logger.exception("hub event hook failed", extra={"event": name})
 
     # ------------------------------------------------------------- lifecycle
 
@@ -152,11 +174,18 @@ class VaultIndex:
         self._last_indexed_at = time.monotonic()
         self._wake.set()
         logger.debug("reindexed %d note(s) of vault %s", count, self._engine.name)
+        self._emit("index.reindexed", {"count": count})
         return count
 
     async def verify(self) -> list[Finding]:
         """Doctor verification *including* file↔index drift for this index."""
-        return await self._doctor.verify(self)
+        findings = await self._doctor.verify(self)
+        for finding in findings:
+            self._emit(
+                "doctor.finding",
+                {"code": finding.code, "severity": finding.severity, "detail": finding.detail},
+            )
+        return findings
 
     # ------------------------------------------------------------ event intake
 
@@ -266,14 +295,24 @@ class VaultIndex:
             except TimeoutError:
                 pass
             self._wake.clear()
+            embedded_this_wake = 0
             try:
-                while await self.embed_next_batch():
-                    pass
+                while batch := await self.embed_next_batch():
+                    embedded_this_wake += batch
             except asyncio.CancelledError:  # pragma: no cover - shutdown
                 raise
             except Exception:  # noqa: BLE001 - the worker must survive anything
                 logger.exception("embed worker batch failed")
                 await asyncio.sleep(_WORKER_POLL_SECONDS)
+                continue
+            self._emit_backlog_drained_if_empty(embedded_this_wake)
+
+    def _emit_backlog_drained_if_empty(self, embedded: int) -> None:
+        """``index.embed_backlog_drained``: fires once the backlog actually
+        reaches zero, not on every batch — a hook is a "caught up" signal,
+        not a per-batch progress bar."""
+        if embedded > 0 and self.embed_status().pending == 0:
+            self._emit("index.embed_backlog_drained", {"embedded": embedded})
 
     async def embed_next_batch(self) -> int:
         """Embed one batch of pending chunks; returns how many were embedded.
@@ -316,6 +355,7 @@ class VaultIndex:
             if done == 0:
                 break
             total += done
+        self._emit_backlog_drained_if_empty(total)
         return total
 
     def _claim_batch(self) -> list[tuple[int, str]]:

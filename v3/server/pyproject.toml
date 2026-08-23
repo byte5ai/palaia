@@ -15,6 +15,8 @@ dependencies = [
     "watchfiles>=0.22",
     "argon2-cffi>=23.1",
     "sqlite-vec>=0.1.6",
+    # SPEC-201: outbound webhook delivery (palaia_hub.hooks.delivery).
+    "httpx>=0.27",
 ]
 
 [project.scripts]
@@ -32,7 +34,6 @@ dev = [
     "pytest>=8",
     "ruff>=0.6",
     "mypy>=1.11",
-    "httpx>=0.27",
     "types-PyYAML>=6.0",
     "anyio>=4",
 ]
