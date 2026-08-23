@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 import pytest
-from conftest import EngineFactory, write_raw
+from vault_helpers import EngineFactory, write_raw
 from watchfiles import Change
 
 from palaia_hub.vault import (

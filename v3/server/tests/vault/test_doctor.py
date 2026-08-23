@@ -6,7 +6,7 @@ import time
 from collections.abc import Iterable
 
 import pytest
-from conftest import TEST_POLICY, EngineFactory, write_raw
+from vault_helpers import TEST_POLICY, EngineFactory, write_raw
 
 from palaia_hub.vault import IndexEntry, Note, VaultDoctor
 from palaia_hub.vault.atomic import TEMP_SUFFIX

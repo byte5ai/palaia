@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from conftest import TEST_POLICY
+from vault_helpers import TEST_POLICY
 
 from palaia_hub.vault import (
     NoteNotFoundError,

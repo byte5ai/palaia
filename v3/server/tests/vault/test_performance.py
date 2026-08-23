@@ -37,7 +37,7 @@ import statistics
 import time
 
 import pytest
-from conftest import TEST_ATTRIBUTION, EngineFactory
+from vault_helpers import TEST_ATTRIBUTION, EngineFactory
 
 from palaia_hub.vault import VaultEngine
 

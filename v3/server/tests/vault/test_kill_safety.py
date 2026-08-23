@@ -29,7 +29,7 @@ import time
 from pathlib import Path
 
 import pytest
-from conftest import TEST_POLICY
+from vault_helpers import TEST_POLICY
 
 from palaia_hub.vault import VaultDoctor, VaultEngine
 from palaia_hub.vault import frontmatter as fm

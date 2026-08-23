@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from conftest import TEST_ATTRIBUTION, EngineFactory
+from vault_helpers import TEST_ATTRIBUTION, EngineFactory
 
 from palaia_hub.vault import EntityRenamed, EventBus, VaultDoctor, VolatileNameError
 from palaia_hub.vault.doctor import summarize

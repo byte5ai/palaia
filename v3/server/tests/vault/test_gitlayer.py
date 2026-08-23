@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 import pytest
-from conftest import TEST_ATTRIBUTION, TEST_POLICY, EngineFactory
+from vault_helpers import TEST_ATTRIBUTION, TEST_POLICY, EngineFactory
 
 from palaia_hub.vault import HUMAN, GitPolicy, GitRepo
 from palaia_hub.vault.models import build_commit_message

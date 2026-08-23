@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from conftest import TEST_ATTRIBUTION, TEST_POLICY, EngineFactory, write_raw
+from vault_helpers import TEST_ATTRIBUTION, TEST_POLICY, EngineFactory, write_raw
 
 from palaia_hub.vault import (
     ChecksumConflictError,
