@@ -877,6 +877,9 @@ svg{display:block}
    including the entry's own title. Everything outside memory content is sans. */
 .note__title{font-family:var(--p-font-serif);font-size:var(--p-size-2xl);line-height:32px;font-weight:600;
   font-optical-sizing:auto;letter-spacing:0}
+.note__body{font-family:var(--p-font-serif);font-size:var(--p-size-md);line-height:26px;
+  font-optical-sizing:auto;color:var(--p-ink);max-width:68ch;margin-top:var(--p-space-4)}
+.note__body a.wlink{font-family:inherit}
 .note__meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px}
 .note h3{font-family:var(--p-font-mono);font-size:var(--p-size-micro);line-height:14px;font-weight:500;
   letter-spacing:var(--p-track-micro);text-transform:uppercase;color:var(--p-ink-subtle);
@@ -1043,6 +1046,10 @@ svg{display:block}
     <span class="chip chip--accent">scope: project / billing</span>
     <span class="t-meta">updated 6 min ago &middot; 3 backlinks &middot; 1 forward reference</span>
   </div>
+  <p class="note__body">The service that turns usage into invoices. It owns dunning,
+  payment retries and the ledger export &mdash; everything downstream of
+  <a class="wlink" href="#">Acme Corp</a>&rsquo;s contract terms lands here first.
+  Migration to Stripe Billing is underway; until Q4 both paths run in parallel.</p>
 
   <h3>Observations</h3>
   <ul>
