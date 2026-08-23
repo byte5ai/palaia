@@ -48,7 +48,7 @@ WATCH_DIR_ENV = "PALAIA_WATCH_DIR"
 HEALTH_INTERVAL_ENV = "PALAIA_HEALTH_EVENT_INTERVAL_SECONDS"
 DEFAULT_HEALTH_INTERVAL_SECONDS = 15.0
 
-EventType = Literal["health", "vault_changed"]
+EventType = Literal["health", "vault_changed", "stash"]
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

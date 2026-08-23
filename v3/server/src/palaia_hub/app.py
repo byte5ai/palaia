@@ -12,7 +12,7 @@ import asyncio
 import os
 import time
 from collections.abc import AsyncIterator, Mapping
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -21,10 +21,19 @@ from . import __version__
 from .auth import TokenStore, build_auth_router, check_gateway_auth_policy
 from .config import HubConfig, load_config
 from .dashboard_api import build_dashboard_router
-from .events import EventBus, build_events_router, start_background_tasks, stop_background_tasks
+from .events import (
+    Event,
+    EventBus,
+    build_events_router,
+    start_background_tasks,
+    stop_background_tasks,
+)
 from .gateway import GatewayASGI, VaultService
+from .gateway.stash_tools import build_stash_gateway
 from .gateway.wiring import EngineVaultService
 from .logging import setup_logging
+from .stash.service import StashService
+from .stash_api import build_stash_router
 from .static import mount_dashboard
 from .vault import VaultNotFoundError, VaultRegistry
 
@@ -43,6 +52,7 @@ def create_app(
     token_store: TokenStore | None = None,
     vault_services: Mapping[str, VaultService] | None = None,
     vault_registry: VaultRegistry | None = None,
+    stash_service: StashService | None = None,
 ) -> FastAPI:
     """Build the hub's ASGI app.
 
@@ -86,6 +96,11 @@ def create_app(
             (gateway-mounted-at-startup) ``vault_services`` mapping. Omitted
             (the default), the hub runs with no wizard/explorer REST surface
             at all, same as before this parameter existed.
+        stash_service: the hub's stash cache (SPEC-202). Given, mounts the
+            stash tool family at ``/mcp/stash`` and the ``/api/stash`` REST
+            mirror, and wires its ``stash.*`` events onto ``event_bus``.
+            Omitted (the default), the hub runs with no stash surface at
+            all, same as before this parameter existed.
     """
     config = config or load_config()
     vault_services = vault_services or {}
@@ -99,17 +114,26 @@ def create_app(
     def health_snapshot() -> dict[str, Any]:
         return {"status": "ok", "components": {"config": "ok"}}
 
+    stash_gateway = None
+    if stash_service is not None:
+        stash_service.publish = lambda action, data: event_bus.publish(
+            Event(type="stash", data={"action": action, **data})
+        )
+        stash_gateway = build_stash_gateway(stash_service)
+
     # One lifespan runs BOTH concerns: the events background tasks (SPEC-109)
     # and, when a gateway is mounted, its session-manager lifespan (SPEC-105 —
-    # skipping it hangs the mounted profiles on their first request).
+    # skipping it hangs the mounted profiles on their first request). The
+    # stash server's own lifespan (SPEC-202) is combined in the same way.
     @asynccontextmanager
     async def lifespan(app_: FastAPI) -> AsyncIterator[None]:
         tasks = start_background_tasks(event_bus, health_snapshot=health_snapshot)
         try:
-            if gateway is not None:
-                async with gateway.lifespan(app_):
-                    yield
-            else:
+            async with AsyncExitStack() as stack:
+                if gateway is not None:
+                    await stack.enter_async_context(gateway.lifespan(app_))
+                if stash_gateway is not None:
+                    await stack.enter_async_context(stash_gateway.lifespan(app_))
                 yield
         finally:
             await stop_background_tasks(tasks)
@@ -121,6 +145,8 @@ def create_app(
     if gateway is not None:
         for path, mounted_app in gateway.mounts.items():
             app.mount(path, mounted_app)
+    if stash_gateway is not None:
+        app.mount("/mcp/stash", stash_gateway.app)
 
     @app.get("/api/health")
     async def health() -> dict[str, Any]:
@@ -164,6 +190,9 @@ def create_app(
 
     if vault_registry is not None:
         app.include_router(build_dashboard_router(vault_registry))
+
+    if stash_service is not None:
+        app.include_router(build_stash_router(stash_service))
 
     _maybe_add_test_slow_route(app)
 
