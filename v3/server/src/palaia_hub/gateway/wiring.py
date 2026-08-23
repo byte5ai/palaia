@@ -10,12 +10,12 @@ pass-through: field names already mirror ``vault-format.md`` on both sides
 no translation layer is needed beyond unpacking frontmatter and mapping
 engine exceptions to :class:`~.vault_protocol.VaultServiceError`.
 
-**Search** here is a linear substring scan over already-open notes — the
-same trade-off :class:`~.fake_vault.FakeVaultService` made, now over real
-files and frontmatter instead of an in-memory dict. SPEC-104 (the hybrid
-index) is not in this SPEC's ``depends_on`` and is not merged yet; when it
-lands, ``search`` is the one method here a future SPEC should replace with
-an index-backed query, everything else already talks to the real vault.
+**Search** is index-backed when a :class:`~palaia_hub.index.VaultIndex` is
+passed in (SPEC-104): the tool's query runs as a hybrid FTS+vector query and
+degrades to FTS while the embed backlog drains. Without an index the adapter
+keeps its original linear substring scan — SPEC-105's trade-off — so every
+caller that has not been taught about the index (and every test that wants
+search with no SQLite file on disk) still works unchanged.
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
+from palaia_hub.index import SearchFilters, VaultIndex
 from palaia_hub.vault import (
     AmbiguousReferenceError,
     ChecksumConflictError,
@@ -125,12 +126,50 @@ class EngineVaultService:
 
     The engine must already be opened (``await engine.open(...)``) — this
     adapter does not manage the engine's lifecycle, only translates calls.
+    The same goes for ``index``: pass an already-opened
+    :class:`~palaia_hub.index.VaultIndex` to get indexed + hybrid search.
     """
 
-    def __init__(self, engine: VaultEngine) -> None:
+    def __init__(self, engine: VaultEngine, index: VaultIndex | None = None) -> None:
         self._engine = engine
+        self._index = index
 
     async def search(self, query: str, *, limit: int = 10) -> list[SearchHit]:
+        if self._index is not None:
+            return await self._indexed_search(query, limit=limit)
+        return await self._scan_search(query, limit=limit)
+
+    async def _indexed_search(self, query: str, *, limit: int) -> list[SearchHit]:
+        """Hybrid search through the SPEC-104 index.
+
+        ``meta`` notes are excluded here rather than filtered afterwards
+        (format spec §6: meta is "excluded from normal recall"), so the
+        requested ``limit`` is a limit on results the caller can use.
+
+        The index addresses hits below note granularity (an observation's
+        synthetic permalink, §9.2). The MCP-visible :class:`SearchHit` stays
+        note-level on purpose — that is the tool contract SPEC-105 froze and
+        SPEC-113 snapshots — so a sub-note hit reports its note's permalink
+        and lets its snippet carry the matched line.
+        """
+        assert self._index is not None
+        results = await self._index.search(
+            query,
+            mode="hybrid",
+            limit=limit,
+            filters=SearchFilters(exclude_types=("meta",)),
+        )
+        return [
+            SearchHit(
+                permalink=hit.permalink,
+                title=hit.title,
+                snippet=hit.snippet,
+                score=round(hit.score, 6),
+            )
+            for hit in results.hits
+        ]
+
+    async def _scan_search(self, query: str, *, limit: int) -> list[SearchHit]:
         needle = query.lower()
         hits: list[SearchHit] = []
         # Snapshot before iterating: every step below `await`s (read_note),

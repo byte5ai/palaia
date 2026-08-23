@@ -9,15 +9,21 @@ exiting).
 from __future__ import annotations
 
 import argparse
+import asyncio
+import json
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 import uvicorn
 
 from .app import create_app
 from .auth import TokenError, TokenStore
 from .config import ConfigError, load_config
+from .importers import ImportReport, ImportRunner, v2_source
+from .importers import basic_memory_source as bm_source
 from .vault import VaultRegistry
+from .vault.engine import VaultEngine
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -47,7 +53,33 @@ def _build_parser() -> argparse.ArgumentParser:
     revoke_parser = token_subparsers.add_parser("revoke", help="Revoke a token by id")
     revoke_parser.add_argument("token_id", help="Token id, from 'token list'")
 
+    import_parser = subparsers.add_parser("import", help="Import notes from another store")
+    import_subparsers = import_parser.add_subparsers(dest="import_source", required=True)
+
+    v2_parser = import_subparsers.add_parser("v2", help="Import a palaia v2 .palaia/ store")
+    v2_parser.add_argument("path", help="Path to the v2 store (.palaia/ dir, or its parent)")
+    _add_import_args(v2_parser)
+
+    bm_parser = import_subparsers.add_parser("basic-memory", help="Import a basic-memory vault")
+    bm_parser.add_argument("path", help="Path to the basic-memory vault directory")
+    _add_import_args(bm_parser)
+
     return parser
+
+
+def _add_import_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--vault", required=True, help="Destination v3 vault root (created if absent)"
+    )
+    parser.add_argument(
+        "--vault-name", default="default", help="Vault name if the vault does not exist yet"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Report what would be imported without writing anything",
+    )
+    parser.add_argument("--json", action="store_true", help="Print the report as JSON")
 
 
 def serve(host: str | None = None, port: int | None = None) -> None:
@@ -120,6 +152,51 @@ def _token_revoke(token_id: str) -> None:
     print(f"Revoked token {info.id!r} ({info.name!r}).")
 
 
+async def _run_v2_import(
+    source_path: str, vault_root: str, vault_name: str, *, dry_run: bool
+) -> ImportReport:
+    engine = VaultEngine(Path(vault_root), name=vault_name)
+    await engine.open()
+    store_root = v2_source.find_store_root(Path(source_path))
+    entries = v2_source.iter_source_entries(store_root)
+    mapped = (v2_source.map_v2_entry(entry) for entry in entries)
+    runner = ImportRunner(engine)
+    return await runner.run("v2", str(store_root), mapped, dry_run=dry_run)
+
+
+async def _run_bm_import(
+    source_path: str, vault_root: str, vault_name: str, *, dry_run: bool
+) -> ImportReport:
+    engine = VaultEngine(Path(vault_root), name=vault_name)
+    await engine.open()
+    vault_path = Path(source_path)
+    entries = bm_source.iter_source_entries(vault_path)
+    mapped = (bm_source.map_bm_entry(entry) for entry in entries)
+    runner = ImportRunner(engine)
+    return await runner.run("basic-memory", str(vault_path), mapped, dry_run=dry_run)
+
+
+def _print_report(report: ImportReport, *, as_json: bool) -> None:
+    if as_json:
+        print(json.dumps(report.to_json(), indent=2))
+    else:
+        print(report.summary())
+
+
+def _import_v2(args: argparse.Namespace) -> None:
+    report = asyncio.run(
+        _run_v2_import(args.path, args.vault, args.vault_name, dry_run=args.dry_run)
+    )
+    _print_report(report, as_json=args.json)
+
+
+def _import_basic_memory(args: argparse.Namespace) -> None:
+    report = asyncio.run(
+        _run_bm_import(args.path, args.vault, args.vault_name, dry_run=args.dry_run)
+    )
+    _print_report(report, as_json=args.json)
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -132,6 +209,11 @@ def main(argv: Sequence[str] | None = None) -> None:
             _token_list()
         elif args.token_command == "revoke":
             _token_revoke(args.token_id)
+    elif args.command == "import":
+        if args.import_source == "v2":
+            _import_v2(args)
+        elif args.import_source == "basic-memory":
+            _import_basic_memory(args)
 
 
 if __name__ == "__main__":

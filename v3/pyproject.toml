@@ -20,6 +20,13 @@ python_version = "3.12"
 strict = true
 files = ["server/src"]
 
+# fastembed and sqlite-vec ship no py.typed marker (SPEC-104's optional
+# embedding backend and the KNN extension loader). Their surfaces are used
+# behind our own typed wrappers in palaia_hub.index.
+[[tool.mypy.overrides]]
+module = ["sqlite_vec.*", "fastembed.*"]
+ignore_missing_imports = true
+
 [tool.uv]
 package = false
 
@@ -27,7 +34,7 @@ package = false
 palaia-hub = { workspace = true }
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "palaia-hub[dev]"]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "palaia-hub[dev,embeddings]"]
 
 [tool.pytest.ini_options]
 testpaths = ["server/tests"]
