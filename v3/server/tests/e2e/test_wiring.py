@@ -104,3 +104,61 @@ async def test_search_finds_body_text(service: EngineVaultService) -> None:
     await service.write("Findable", "a distinctive phrase lives here")
     hits = await service.search("distinctive phrase")
     assert [h.permalink for h in hits] == ["findable"]
+
+
+# --- SPEC-201: the "inbox.captured" hub-event hook point ---------------
+
+
+async def test_capture_emits_inbox_captured_with_vault_and_capture_id(tmp_path: Path) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    engine = VaultEngine(tmp_path / "work", "work")
+    await engine.open(purpose="test vault")
+    service = EngineVaultService(
+        engine, on_event=lambda name, data: calls.append((name, data))
+    )
+
+    result = await service.capture(
+        what_it_concerns="API rate limit",
+        why_keep="chosen deliberately",
+        content="capped ingest at 100 req/min",
+    )
+
+    assert [c[0] for c in calls] == ["inbox.captured"]
+    data = calls[0][1]
+    assert data["vault"] == "work"
+    assert data["permalink"] == result.permalink
+    assert data["capture_id"] == result.capture_id
+    assert data["duplicate"] is False
+
+
+async def test_duplicate_capture_still_emits_inbox_captured_marked_duplicate(
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    engine = VaultEngine(tmp_path / "work", "work")
+    await engine.open(purpose="test vault")
+    service = EngineVaultService(
+        engine, on_event=lambda name, data: calls.append((name, data))
+    )
+    await service.capture(
+        what_it_concerns="X", why_keep="Y", content="Z"
+    )
+    calls.clear()
+
+    await service.capture(what_it_concerns="X", why_keep="Y", content="Z")
+
+    assert [c[0] for c in calls] == ["inbox.captured"]
+    assert calls[0][1]["duplicate"] is True
+
+
+async def test_a_failing_hook_does_not_break_a_capture(tmp_path: Path) -> None:
+    def bad(_name: str, _data: dict[str, object]) -> None:
+        raise RuntimeError("boom")
+
+    engine = VaultEngine(tmp_path / "work", "work")
+    await engine.open(purpose="test vault")
+    service = EngineVaultService(engine, on_event=bad)
+
+    result = await service.capture(what_it_concerns="X", why_keep="Y", content="Z")
+
+    assert result.duplicate is False

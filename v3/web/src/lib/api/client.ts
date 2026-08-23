@@ -127,6 +127,33 @@ export interface CreatedToken {
   token: string;
 }
 
+/** SPEC-201's webhook management surface — opt-in on the hub (present only
+ * when a `hook_store` is given to `create_app`), same reasoning as the
+ * token types above for why this is hand-written rather than generated. */
+export interface HookInfo {
+  id: string;
+  url: string;
+  events: string[];
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface CreatedHook {
+  info: HookInfo;
+  /** Shown once — signs every delivery; cannot be recovered afterward. */
+  secret: string;
+}
+
+export interface DeadLetter {
+  id: number;
+  hook_id: string;
+  event_id: string;
+  event_name: string;
+  attempts: number;
+  last_error: string;
+  created_at: string;
+}
+
 /** Base URL for API calls. Empty string = same-origin (the hub serves the
  * dashboard build itself, per this SPEC's static-serving deliverable), so
  * this only needs a value in local dev against a hub on another port. */
@@ -165,6 +192,24 @@ async function getJson<T>(path: string): Promise<T> {
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    let responseBody: unknown;
+    try {
+      responseBody = await response.json();
+    } catch {
+      responseBody = await response.text();
+    }
+    throw new ApiError(path, response.status, responseBody);
+  }
+  return (await response.json()) as T;
+}
+
+async function patchJson<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "PATCH",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -221,4 +266,17 @@ export const api = {
     fetch(`${API_BASE}/api/auth/tokens/${tokenId}`, { method: "DELETE" }).then((response) => {
       if (!response.ok) throw new ApiError("/api/auth/tokens", response.status, undefined);
     }),
+
+  // ---- SPEC-201's webhook surface ----
+  listHooks: () => getJson<HookInfo[]>("/api/hooks"),
+  createHook: (body: { url: string; events?: string[] }) =>
+    postJson<CreatedHook>("/api/hooks", body),
+  setHookEnabled: (hookId: string, enabled: boolean) =>
+    patchJson<HookInfo>(`/api/hooks/${hookId}`, { enabled }),
+  deleteHook: (hookId: string) =>
+    fetch(`${API_BASE}/api/hooks/${hookId}`, { method: "DELETE" }).then((response) => {
+      if (!response.ok) throw new ApiError("/api/hooks", response.status, undefined);
+    }),
+  hookDeadLetters: (hookId: string) =>
+    getJson<DeadLetter[]>(`/api/hooks/${hookId}/dead_letters`),
 };

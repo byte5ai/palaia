@@ -25,17 +25,28 @@ Public surface:
 
 from __future__ import annotations
 
-from .enforcement import missing_scope_error
+from .enforcement import missing_scope_error, missing_stash_scope_error
 from .models import CreatedToken, TokenInfo, TokenRecord
 from .policy import AuthPolicyError, check_gateway_auth_policy
 from .routes import build_auth_router
-from .scopes import READ_ACTIONS, WRITE_ACTIONS, required_scope_for_action, vault_scope
+from .scopes import (
+    READ_ACTIONS,
+    STASH_READ_ACTIONS,
+    STASH_WRITE_ACTIONS,
+    WRITE_ACTIONS,
+    required_scope_for_action,
+    required_scope_for_stash_action,
+    stash_scope,
+    vault_scope,
+)
 from .store import TokenError, TokenStore
 from .verifier import PalaiaTokenVerifier
 from .wiring import build_profile_verifiers
 
 __all__ = [
     "READ_ACTIONS",
+    "STASH_READ_ACTIONS",
+    "STASH_WRITE_ACTIONS",
     "WRITE_ACTIONS",
     "AuthPolicyError",
     "CreatedToken",
@@ -48,6 +59,9 @@ __all__ = [
     "build_profile_verifiers",
     "check_gateway_auth_policy",
     "missing_scope_error",
+    "missing_stash_scope_error",
     "required_scope_for_action",
+    "required_scope_for_stash_action",
+    "stash_scope",
     "vault_scope",
 ]

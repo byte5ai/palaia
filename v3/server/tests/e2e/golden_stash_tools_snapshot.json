@@ -1,0 +1,152 @@
+{
+  "stash_del": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": false,
+      "title": null
+    },
+    "description": "IDENTITY: this is the stash \u2014 a structured cross-session cache. Use it for data you need to survive between sessions but that is disposable: job state, a rate-limit counter, a work-in-progress draft, dedup markers. It is NOT memory: anything worth remembering \u2014 a fact, a decision, a preference, a rule \u2014 belongs in the memory tools' write, not here. Entries expire (TTL) and can be evicted under the size budget (least-recently-accessed first); never rely on a stash entry surviving indefinitely.\n\nDelete an entry by namespace/key. Irreversible.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "description": "The entry's key within its namespace.",
+          "type": "string"
+        },
+        "namespace": {
+          "description": "The cache namespace this key lives in.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "namespace",
+        "key"
+      ],
+      "type": "object"
+    }
+  },
+  "stash_get": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "IDENTITY: this is the stash \u2014 a structured cross-session cache. Use it for data you need to survive between sessions but that is disposable: job state, a rate-limit counter, a work-in-progress draft, dedup markers. It is NOT memory: anything worth remembering \u2014 a fact, a decision, a preference, a rule \u2014 belongs in the memory tools' write, not here. Entries expire (TTL) and can be evicted under the size budget (least-recently-accessed first); never rely on a stash entry surviving indefinitely.\n\nRead a value by namespace/key. Bumps the entry's last-accessed time (relevant to LRU eviction). Hard-expired entries read as not found; entries past their stale_after_seconds are still returned with stale=true.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "description": "The entry's key within its namespace.",
+          "type": "string"
+        },
+        "namespace": {
+          "description": "The cache namespace this key lives in.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "namespace",
+        "key"
+      ],
+      "type": "object"
+    }
+  },
+  "stash_list": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "IDENTITY: this is the stash \u2014 a structured cross-session cache. Use it for data you need to survive between sessions but that is disposable: job state, a rate-limit counter, a work-in-progress draft, dedup markers. It is NOT memory: anything worth remembering \u2014 a fact, a decision, a preference, a rule \u2014 belongs in the memory tools' write, not here. Entries expire (TTL) and can be evicted under the size budget (least-recently-accessed first); never rely on a stash entry surviving indefinitely.\n\nList every entry in a namespace, most recently updated first. Does not count as an access for LRU purposes.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "namespace": {
+          "description": "The cache namespace this key lives in.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "namespace"
+      ],
+      "type": "object"
+    }
+  },
+  "stash_set": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": false,
+      "title": null
+    },
+    "description": "IDENTITY: this is the stash \u2014 a structured cross-session cache. Use it for data you need to survive between sessions but that is disposable: job state, a rate-limit counter, a work-in-progress draft, dedup markers. It is NOT memory: anything worth remembering \u2014 a fact, a decision, a preference, a rule \u2014 belongs in the memory tools' write, not here. Entries expire (TTL) and can be evicted under the size budget (least-recently-accessed first); never rely on a stash entry surviving indefinitely.\n\nWrite a value into the stash under namespace/key. Optional ttl_seconds is the hard expiry; optional stale_after_seconds marks the entry stale (still returned by stash_get, flagged) before that. Overwrites any existing value at the same key.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "description": "The entry's key within its namespace.",
+          "type": "string"
+        },
+        "namespace": {
+          "description": "The cache namespace this key lives in.",
+          "type": "string"
+        },
+        "stale_after_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Seconds from now after which the entry is marked stale."
+        },
+        "ttl_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hard expiry in seconds from now. None = no expiry."
+        },
+        "value": {
+          "description": "JSON-serializable value to store."
+        }
+      },
+      "required": [
+        "namespace",
+        "key",
+        "value"
+      ],
+      "type": "object"
+    }
+  },
+  "stash_status": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "IDENTITY: this is the stash \u2014 a structured cross-session cache. Use it for data you need to survive between sessions but that is disposable: job state, a rate-limit counter, a work-in-progress draft, dedup markers. It is NOT memory: anything worth remembering \u2014 a fact, a decision, a preference, a rule \u2014 belongs in the memory tools' write, not here. Entries expire (TTL) and can be evicted under the size budget (least-recently-accessed first); never rely on a stash entry surviving indefinitely.\n\nOverall stash health: total entries, total bytes used, the configured size budget, and a per-namespace entry count.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    }
+  }
+}

@@ -25,10 +25,9 @@ handler — no restart, per that module's ``dynamic_gateway`` parameter.
 
 from __future__ import annotations
 
-import dataclasses
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI
 
@@ -36,11 +35,15 @@ from .app import create_app
 from .auth import TokenStore, build_profile_verifiers
 from .config import HubConfig
 from .dashboard_api import DEFAULT_GATEWAY_PROFILE
-from .events import Event, EventBus
+from .events import EventBus, publish_from_hook
+from .events.schema import HubEventHook
 from .gateway import DynamicGateway, VaultService
 from .gateway.config import GatewayConfig, ProfileConfig, VaultMountConfig
 from .gateway.wiring import EngineVaultService
-from .index import IndexStatus, VaultIndex
+from .hooks import HookStore
+from .index import VaultIndex
+from .oauth import AuthorizationServer
+from .vault import EventBus as VaultEventBus
 from .vault import VaultRegistry
 
 
@@ -57,22 +60,28 @@ class ProductionApp:
     token_store: TokenStore
 
 
-def _publish_index_drained(event_bus: EventBus, vault_key: str) -> Callable[[IndexStatus], None]:
-    """Build an ``on_backlog_drained`` closure that publishes onto ``event_bus``.
+def _index_event_hook(event_bus: EventBus, vault_key: str) -> HubEventHook:
+    """Build a :data:`HubEventHook` promoting one vault's index events onto the bus.
 
-    A plain function (not a lambda in the caller) so the ``vault_key``
+    Covers SPEC-201's whole index vocabulary (``index.reindexed``,
+    ``index.embed_backlog_drained``, ``doctor.finding``) — the drained event
+    is what updates the dashboard's index-status tile live (SPEC-210). A
+    plain function (not a lambda in the caller) so the ``vault_key``
     late-binding-in-a-loop mistake is structurally impossible.
     """
 
-    def _on_drained(status: IndexStatus) -> None:
-        event_bus.publish(
-            Event(type="index_status", data={"vault": vault_key, **dataclasses.asdict(status)})
-        )
+    def _hook(event: str, data: dict[str, Any]) -> None:
+        publish_from_hook(event_bus, event, {"vault": vault_key, **data}, origin="index")
 
-    return _on_drained
+    return _hook
 
 
-async def build_production_app(config: HubConfig, *, home: Path | None = None) -> ProductionApp:
+async def build_production_app(
+    config: HubConfig,
+    *,
+    home: Path | None = None,
+    oauth_server: AuthorizationServer | None = None,
+) -> ProductionApp:
     """Assemble the hub's real ``FastAPI`` app: registry, indexes, gateway.
 
     Args:
@@ -80,9 +89,18 @@ async def build_production_app(config: HubConfig, *, home: Path | None = None) -
         home: overrides the registry's/token store's data directory
             (``PALAIA_HOME`` otherwise) — mainly for tests that want an
             isolated, disposable hub home.
+        oauth_server: the SPEC-203 authorization server, mounted when given.
+            Built by the caller (``palaia_hub.cli``) because deciding whether
+            one should exist — and failing loudly on a half-configured one —
+            is CLI-surface behavior, not assembly.
     """
-    registry = VaultRegistry(home)
+    # SPEC-201: the registry's own vault.events.EventBus is what create_app()
+    # bridges onto the public event bus — every vault this registry opens
+    # shares it, so a write to any vault produces exactly one public
+    # memory.entry.* event, no matter which vault it hit.
+    registry = VaultRegistry(home, bus=VaultEventBus())
     token_store = TokenStore(home)
+    hook_store = HookStore(home)
     event_bus = EventBus()
     indexes: dict[str, VaultIndex] = {}
     vault_services: dict[str, VaultService] = {}
@@ -90,9 +108,7 @@ async def build_production_app(config: HubConfig, *, home: Path | None = None) -
 
     for record in registry.records():
         engine = await registry.get(record.name)
-        index = VaultIndex(
-            engine, on_backlog_drained=_publish_index_drained(event_bus, record.name)
-        )
+        index = VaultIndex(engine, on_event=_index_event_hook(event_bus, record.name))
         await index.open()
         indexes[record.name] = index
         vault_services[record.name] = EngineVaultService(engine, index)
@@ -131,6 +147,8 @@ async def build_production_app(config: HubConfig, *, home: Path | None = None) -
         vault_registry=registry,
         indexes=indexes,
         event_bus=event_bus,
+        oauth_server=oauth_server,
+        hook_store=hook_store,
     )
     return ProductionApp(
         app=app,
