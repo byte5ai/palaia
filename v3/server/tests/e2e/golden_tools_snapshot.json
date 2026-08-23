@@ -1,0 +1,248 @@
+{
+  "delete": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": false,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nDelete a note by permalink. Irreversible outside git history.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "permalink": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "permalink"
+      ],
+      "type": "object"
+    }
+  },
+  "edit": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nUpdate an existing note's body and/or tags.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "append": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "permalink": {
+          "type": "string"
+        },
+        "tags": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "permalink"
+      ],
+      "type": "object"
+    }
+  },
+  "list": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nList notes in this vault, optionally scoped to a folder.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "folder": {
+          "default": "",
+          "description": "Folder to scope to. Empty means the whole vault.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "move": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": false,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nMove a note to a different folder. Its permalink never changes.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "folder": {
+          "default": "",
+          "description": "Folder to scope to. Empty means the whole vault.",
+          "type": "string"
+        },
+        "permalink": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "permalink"
+      ],
+      "type": "object"
+    }
+  },
+  "read": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nRead one note in full by its permalink.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "permalink": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "permalink"
+      ],
+      "type": "object"
+    }
+  },
+  "recent_activity": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nThe most recently modified notes, most recent first.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 10,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "search": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nSearch this vault's notes. Returns best matches first.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 10,
+          "type": "integer"
+        },
+        "query": {
+          "description": "Search text.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    }
+  },
+  "write": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nCreate a new note in this vault.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "type": "string"
+        },
+        "folder": {
+          "default": "",
+          "description": "Folder to scope to. Empty means the whole vault.",
+          "type": "string"
+        },
+        "tags": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "title": {
+          "type": "string"
+        },
+        "type": {
+          "default": "note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "body"
+      ],
+      "type": "object"
+    }
+  }
+}

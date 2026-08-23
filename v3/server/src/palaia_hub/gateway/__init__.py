@@ -4,9 +4,13 @@ Public surface:
 
 - :class:`~palaia_hub.gateway.vault_protocol.VaultService` — the narrow
   protocol the memory tools are written against (search/read/write/edit/
-  move/delete/list/recent_activity). SPEC-102's real vault engine and this
-  SPEC's :class:`~palaia_hub.gateway.fake_vault.FakeVaultService` both
-  satisfy it; nothing in this package imports ``palaia_hub.vault``.
+  move/delete/list/recent_activity). :class:`~palaia_hub.gateway.fake_vault.FakeVaultService`
+  (in-memory, tests) and :class:`~palaia_hub.gateway.wiring.EngineVaultService`
+  (SPEC-113's real adapter over SPEC-102's vault engine) both satisfy it.
+  Everything else in this package (``build``, ``config``, ``memory_tools``,
+  ``naming``, ``vault_protocol``) is still independent of ``palaia_hub.vault``
+  by design — only ``wiring`` imports it, so the memory tool family stays
+  written against the protocol, not the engine.
 - :func:`~palaia_hub.gateway.build.build_gateway` — turns a
   :class:`~palaia_hub.gateway.config.GatewayConfig` plus a
   ``dict[str, VaultService]`` into a
@@ -28,9 +32,11 @@ from .vault_protocol import (
     VaultService,
     VaultServiceError,
 )
+from .wiring import EngineVaultService
 
 __all__ = [
     "MEMORY_TOOL_ACTIONS",
+    "EngineVaultService",
     "FakeVaultService",
     "GatewayASGI",
     "GatewayConfig",

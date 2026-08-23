@@ -39,7 +39,49 @@ jobs:
         run: uv run mypy server/src
 
       - name: pytest
-        run: uv run pytest
+        # SPEC-113's e2e scenario suite gets its own job below (dedicated
+        # timeout + failure-artifact capture), so it is excluded here to
+        # avoid running it twice on every push/PR.
+        run: uv run pytest --ignore=server/tests/e2e
+
+  e2e:
+    # SPEC-113: the Phase-1 exit-criterion harness (S1-S5) — real hub
+    # subprocesses over the golden vault fixture, real streamable HTTP,
+    # amd64 (this runner's arch).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: v3
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.8.x"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: uv sync
+        run: uv sync --all-packages
+
+      - name: e2e scenario suite
+        # --basetemp puts every scenario's tmp_path (hub subprocess logs,
+        # the golden-vault copy each scenario mutates, progress logs) under
+        # a directory this job controls, so a failure's reproducible bundle
+        # (SPEC-113 acceptance: "logs + vault + config") is exactly what
+        # gets uploaded below, pass or fail.
+        run: uv run pytest server/tests/e2e -v --basetemp=e2e-artifacts
+
+      - name: upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-bundle
+          path: v3/e2e-artifacts
+          retention-days: 14
 
   web:
     runs-on: ubuntu-latest
