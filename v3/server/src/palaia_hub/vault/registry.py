@@ -23,6 +23,7 @@ from typing import Any
 
 import yaml
 
+from ..config import palaia_home
 from .atomic import atomic_write_text
 from .engine import VaultEngine
 from .errors import VaultConfigError, VaultNotFoundError
@@ -56,16 +57,24 @@ class VaultRecord:
 
 
 class VaultRegistry:
-    """Tracks the hub's vaults and hands out opened engines."""
+    """Tracks the hub's vaults and hands out opened engines.
+
+    Args:
+        home: directory holding ``vaults.yaml``. Defaults to the hub's data
+            directory (``PALAIA_HOME`` or the platform data dir), so the
+            registry lands next to ``config.yaml`` without extra wiring.
+        bus: event bus handed to every engine this registry opens.
+        policy: git housekeeping policy for every vault.
+    """
 
     def __init__(
         self,
-        home: Path,
+        home: Path | None = None,
         *,
         bus: EventBus | None = None,
         policy: GitPolicy = DEFAULT_POLICY,
     ) -> None:
-        self.home = Path(home).expanduser()
+        self.home = Path(home).expanduser() if home is not None else palaia_home()
         self.bus = bus
         self.policy = policy
         self._records: dict[str, VaultRecord] = {}

@@ -133,6 +133,14 @@ async def test_register_refuses_a_directory_that_is_not_a_vault(
         await registry.register("plain", plain)
 
 
+def test_registry_defaults_to_the_hub_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PALAIA_HOME", str(tmp_path / "hub-home"))
+    registry = VaultRegistry()
+    assert registry.registry_path == tmp_path / "hub-home" / "vaults.yaml"
+
+
 async def test_broken_registry_file_fails_loudly(tmp_path: Path) -> None:
     home = tmp_path / "home"
     home.mkdir()
