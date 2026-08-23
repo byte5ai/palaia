@@ -951,6 +951,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "uvicorn" },
+    { name = "watchfiles" },
 ]
 
 [package.optional-dependencies]
@@ -977,6 +978,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },
     { name = "uvicorn", specifier = ">=0.30" },
+    { name = "watchfiles", specifier = ">=0.22" },
 ]
 provides-extras = ["dev"]
 
