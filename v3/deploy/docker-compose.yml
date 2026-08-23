@@ -1,0 +1,38 @@
+# palaia v3 hub — compose deployment.
+#
+# Usage:
+#   cd v3/deploy && docker compose up -d
+#   docker compose logs -f      # prints the reachable URL on startup
+#
+# Data (vault, index, config) lives in the `palaia_home` named volume, so it
+# survives `docker compose down` / container recreation — only
+# `docker compose down -v` discards it.
+services:
+  hub:
+    image: ghcr.io/byte5ai/palaia-hub:stable
+    container_name: palaia-hub
+    ports:
+      - "8420:8420"
+    volumes:
+      - palaia_home:/data
+    environment:
+      PALAIA_MODE: locked
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8420/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    # mDNS (advertising http://palaia.local) needs multicast to reach the
+    # LAN, which Docker's default bridge network does not forward. On a
+    # Linux host, uncomment the line below to put the container directly on
+    # the host's network stack so palaia.local resolves for other devices
+    # on the LAN. Not supported this way on Docker Desktop (macOS/Windows);
+    # the printed URL in `docker compose logs` always works there instead.
+    # When enabled, also remove the `ports:` mapping above — host
+    # networking exposes PALAIA_PORT directly.
+    # network_mode: host
+
+volumes:
+  palaia_home:

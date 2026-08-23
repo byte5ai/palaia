@@ -55,6 +55,19 @@ Python and web checks above on any push/PR to `main` that touches `v3/**`.
 It is independent of the v2 `ci.yml` (repo root), which ignores `v3/**`
 changes.
 
+### Running the packaged hub locally
+
+`v3/deploy/` (SPEC-112) has the Docker packaging: a multi-stage `Dockerfile`
+(web build → uv-installed hub → nginx + hub runtime), `docker-compose.yml`,
+an optional `install.sh` convenience script, and the mDNS announcer. See
+[`v3/deploy/README.md`](deploy/README.md) for the one-liner, the compose
+file, mDNS caveats (containerized networking honestly documented), and the
+manual verification checklist. Images are published to
+`ghcr.io/byte5ai/palaia-hub` by
+[`.github/workflows/v3-release.yml`](../.github/workflows/v3-release.yml)
+(`edge` on `main`, `stable`/`beta` on `v3.*` tags, `linux/amd64` +
+`linux/arm64`).
+
 ## Ground rules
 
 - v3 is developed **only** inside `v3/`. No imports or shared tooling with v2 code.
