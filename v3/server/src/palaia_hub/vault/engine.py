@@ -784,10 +784,20 @@ class VaultEngine:
         merged["permalink"] = resolved_permalink
         merged.setdefault("type", "note")
         merged.setdefault("created", now)
-        merged["modified"] = now
         origin = attribution.frontmatter_origin()
         if origin:
             merged["origin"] = origin
+
+        # `modified` is stamped only if something else actually changed —
+        # otherwise a re-write of identical content would produce a commit
+        # whose only diff is a timestamp, and `modified` would stop meaning
+        # "when this note last changed". A caller that sets `modified`
+        # explicitly keeps control of it.
+        caller_set_modified = "modified" in (extra or {})
+        if not caller_set_modified:
+            merged["modified"] = (
+                existing.frontmatter.get("modified", now) if existing is not None else now
+            )
 
         resolved_body = body if body is not None else (existing.body if existing else "")
         text = fm.render(merged, resolved_body)
@@ -797,6 +807,9 @@ class VaultEngine:
                 WriteResult(note=existing, commit=None, created=False, operation=operation),
                 [],
             )
+        if existing is not None and not caller_set_modified:
+            merged["modified"] = now
+            text = fm.render(merged, resolved_body)
 
         self._sweep_external_edits()
         data = atomic_write_text(target, text)

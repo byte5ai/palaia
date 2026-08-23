@@ -144,23 +144,37 @@ async def test_write_note_must_create_refuses_existing(make_engine: EngineFactor
 
 
 async def test_identical_write_makes_no_commit(make_engine: EngineFactory) -> None:
+    """Re-writing identical content is a no-op — not a timestamp-only commit."""
     engine = await make_engine("work")
     first = await engine.write_note("notes/a", body="one\n", title="A")
     assert first.note is not None
     text = (engine.root / "notes/a.md").read_text(encoding="utf-8")
     head = engine.git.head()
-    second = await engine.write_note(
-        "notes/a",
-        body=first.note.body,
-        title="A",
-        frontmatter={
-            "created": first.note.frontmatter["created"],
-            "modified": first.note.frontmatter["modified"],
-        },
-    )
+
+    second = await engine.write_note("notes/a", body="one\n", title="A")
     assert second.commit is None
     assert engine.git.head() == head
     assert (engine.root / "notes/a.md").read_text(encoding="utf-8") == text
+
+
+async def test_modified_is_stamped_only_on_a_real_change(
+    make_engine: EngineFactory,
+) -> None:
+    engine = await make_engine("work")
+    first = await engine.write_note("notes/a", body="one\n", title="A")
+    assert first.note is not None
+    original_modified = first.note.frontmatter["modified"]
+
+    unchanged = await engine.write_note("notes/a", body="one\n", title="A")
+    assert unchanged.note is not None
+    assert unchanged.note.frontmatter["modified"] == original_modified
+
+    changed = await engine.edit_note(
+        "notes/a", body="two\n", expected_checksum=unchanged.note.checksum
+    )
+    assert changed.note is not None
+    assert changed.note.frontmatter["modified"] >= original_modified
+    assert changed.commit is not None
 
 
 async def test_volatile_title_is_rejected(make_engine: EngineFactory) -> None:
