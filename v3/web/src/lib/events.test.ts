@@ -34,6 +34,23 @@ describe('useEventStream', () => {
     expect(result.current.lastVaultChange).toEqual({ count: 2, paths: ['a.md', 'b.md'] })
   })
 
+  it('keeps a bounded, newest-first history of vault_changed events for the activity feed', async () => {
+    const { result } = renderHook(() => useEventStream(FakeEventSource as unknown as typeof EventSource))
+    const source = FakeEventSource.instances.at(-1)!
+
+    act(() => {
+      source.emit('vault_changed', { data: { count: 1, paths: ['note.md'] } })
+    })
+    await waitFor(() => expect(result.current.recentChanges).toHaveLength(1))
+
+    act(() => {
+      source.emit('vault_changed', { data: { count: 2, paths: ['a.md', 'b.md'] } })
+    })
+    await waitFor(() => expect(result.current.recentChanges).toHaveLength(2))
+    expect(result.current.recentChanges[0]).toMatchObject({ count: 2, paths: ['a.md', 'b.md'] })
+    expect(result.current.recentChanges[1]).toMatchObject({ count: 1, paths: ['note.md'] })
+  })
+
   it('reports reconnecting after a drop that follows a successful connection', async () => {
     const { result } = renderHook(() => useEventStream(FakeEventSource as unknown as typeof EventSource))
     const source = FakeEventSource.instances.at(-1)!

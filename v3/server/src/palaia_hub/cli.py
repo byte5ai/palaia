@@ -22,6 +22,7 @@ from .auth import TokenError, TokenStore
 from .config import ConfigError, load_config
 from .importers import ImportReport, ImportRunner, v2_source
 from .importers import basic_memory_source as bm_source
+from .vault import VaultRegistry
 from .vault.engine import VaultEngine
 
 
@@ -97,7 +98,12 @@ def serve(host: str | None = None, port: int | None = None) -> None:
     if overrides:
         config = config.model_copy(update=overrides)
 
-    app = create_app(config, token_store=TokenStore())
+    # The wizard/explorer REST surface (SPEC-110) needs a registry to create
+    # and read vaults against; no MCP gateway is wired here yet (that still
+    # requires a config-driven GatewayConfig — SPEC-105/107/108's own CLI
+    # surface), so a freshly wizard-created vault is dashboard-visible
+    # immediately but needs a hub restart before an MCP client can reach it.
+    app = create_app(config, token_store=TokenStore(), vault_registry=VaultRegistry())
 
     uvicorn_config = uvicorn.Config(
         app,

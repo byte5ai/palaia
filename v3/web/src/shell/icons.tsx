@@ -119,3 +119,66 @@ export function SearchIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+/** Claude Code CLI's mark (onboarding.html / connect-client.html). */
+export function SparkleIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3.5l1.9 4.9 4.9 1.9-4.9 1.9L12 17.1l-1.9-4.9-4.9-1.9 4.9-1.9z" />
+    </Icon>
+  );
+}
+
+/** claude.ai / ChatGPT's mark — a connector, for anything that reaches the
+ * hub over the web rather than running on the operator's own machine. */
+export function LinkIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M10 13.8a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2" />
+      <path d="M14 10.2a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2" />
+    </Icon>
+  );
+}
+
+export function CheckIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M4.5 12.5 10 18 19.5 6.5" />
+    </Icon>
+  );
+}
+
+export function ArrowRightIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M4.5 12h14M13 6.5l5.5 5.5L13 17.5" />
+    </Icon>
+  );
+}
+
+export function CopyIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <rect x="9" y="9" width="10.5" height="10.5" rx="2" />
+      <path d="M15 9V6.5a2 2 0 0 0-2-2H6.5a2 2 0 0 0-2 2V13a2 2 0 0 0 2 2H9" />
+    </Icon>
+  );
+}
+
+export function InfoIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="8.2" />
+      <path d="M12 11v5.2M12 7.9h.01" />
+    </Icon>
+  );
+}
+
+export function WarningIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M12 4.2 21 20H3z" />
+      <path d="M12 10v4.2M12 17.2h.01" />
+    </Icon>
+  );
+}

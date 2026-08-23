@@ -4,8 +4,12 @@
 ``v3/web/dist``. This module mounts that build, with SPA fallback: any
 path that is not a real file under the build directory (a deep link like
 ``/explorer/some-note``) still receives ``index.html``, so client-side
-routing works on refresh. ``/api/*`` is never touched by the fallback —
-it is excluded before the static app ever sees the request.
+routing works on refresh. ``/api/*`` and ``/mcp/*`` are never touched by
+the fallback: a *registered* route under either is matched by Starlette
+before this mount is even considered, and :class:`SPAStaticFiles` itself
+refuses to fall back for either prefix when nothing matched — so a
+disabled/absent backend feature 404s like it should, rather than
+returning the dashboard shell with a 200.
 
 Serving is entirely optional: if no build directory is found, the hub
 still starts and answers ``/api/*`` (SPEC-101's "starts with zero
@@ -29,8 +33,14 @@ WEB_DIST_ENV = "PALAIA_WEB_DIST"
 
 
 def _default_dist_dir() -> Path:
-    # v3/server/src/palaia_hub/static.py -> parents[2] == v3/
-    return Path(__file__).resolve().parents[2] / "web" / "dist"
+    # v3/server/src/palaia_hub/static.py -> parents[0]=palaia_hub,
+    # [1]=src, [2]=server, [3]==v3/ (SPEC-110: the previous parents[2]
+    # here resolved to v3/server/, one level short of v3/ — every existing
+    # test overrides PALAIA_WEB_DIST, so a zero-config `palaia-hub serve`
+    # was the only path that ever exercised this default, and it silently
+    # served no dashboard at all. See tests/test_static.py's regression
+    # test for the default path itself, not just an overridden one.)
+    return Path(__file__).resolve().parents[3] / "web" / "dist"
 
 
 def resolve_dist_dir() -> Path | None:
@@ -51,7 +61,27 @@ class SPAStaticFiles(StaticFiles):
     404 only if the build itself has no ``index.html``.
     """
 
+    #: Path prefixes this mount never falls back to index.html for, even
+    #: unmatched — backend surfaces, not client-side routes. "api" is the
+    #: REST surface (some of it opt-in per create_app()'s parameters);
+    #: "mcp" is the gateway's mount namespace (palaia_hub.gateway.build,
+    #: "/mcp/<profile>"), absent entirely with no gateway given.
+    _BACKEND_PREFIXES = ("api", "mcp")
+
     async def get_response(self, path: str, scope: Scope) -> Response:
+        # SPEC-110 fix: reaching this mount at all with a backend-prefixed
+        # path means no route matched it — an opt-in REST endpoint whose
+        # backing store was never given to create_app() (no
+        # vault_registry/token_store), or an MCP profile with no gateway
+        # mounted at all — not a client-side route. Every *registered*
+        # backend route is already caught earlier by Starlette's routing
+        # (this class's own docstring, and mount_dashboard's), but nothing
+        # stopped an *unregistered* one from falling through to here and
+        # getting index.html back with a 200 — silently turning a disabled
+        # or absent feature into what looks like a successful response.
+        first_segment = path.split("/", 1)[0]
+        if first_segment in self._BACKEND_PREFIXES:
+            return Response(status_code=404)
         try:
             response = await super().get_response(path, scope)
         except HTTPException as exc:
