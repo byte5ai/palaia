@@ -873,6 +873,25 @@ def load_config(home: Path | None = None, *, create_if_missing: bool = True) -> 
     merged: dict[str, Any] = {**file_values, **env_values}
 
     try:
-        return HubConfig.model_validate(merged)
+        config = HubConfig.model_validate(merged)
     except ValidationError as exc:
         raise ConfigError(_format_validation_error(path, exc)) from exc
+    # Issue #242: `open` mode's contract (masterplan mode table) is a PUBLIC
+    # dashboard with mandatory sign-in — and the dashboard's owner sign-in
+    # does not exist yet. Until it does, an operator choosing `open` (here
+    # or via the dashboard's mode endpoint, which enforces the same rule)
+    # would put every admin endpoint — token minting, profile editing, mode
+    # changes, vault contents — on the public internet with no check at all.
+    # Refused at the operator entry points rather than in HubConfig's own
+    # validator, so the mode's internal semantics (rate limiting, policy,
+    # tunnel handling) stay implemented and tested for the SPEC that adds
+    # the admin-session gate and lifts this.
+    if config.mode == "open":
+        raise ConfigError(
+            f"{path}: mode 'open' is not available yet: it makes the dashboard "
+            f"itself public, and the dashboard sign-in that this requires is "
+            f"still being built. Fix: use `mode: cloud` — clients like "
+            f"claude.ai and ChatGPT connect exactly the same way there, only "
+            f"the dashboard stays on your own network."
+        )
+    return config
