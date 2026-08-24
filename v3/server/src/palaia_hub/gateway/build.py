@@ -35,6 +35,10 @@ from fastmcp.server.auth import TokenVerifier
 from fastmcp.utilities.lifespan import combine_lifespans
 from starlette.types import ASGIApp
 
+from .apps.recall_app import RESOURCE_URI as RECALL_EXPLORER_URI
+from .apps.recall_app import render_recall_explorer_html
+from .apps.review_app import RESOURCE_URI as REVIEW_QUEUE_URI
+from .apps.review_app import render_review_queue_html
 from .config import GatewayConfig, ProfileConfig
 from .memory_tools import build_vault_server, vault_identity_block
 from .naming import resolve_tool_names
@@ -128,7 +132,33 @@ def _build_profile_server(
             namespace=vault_config.namespace,
             tool_names=tool_names or None,
         )
+    _attach_app_resources(server)
     return server
+
+
+def _attach_app_resources(server: FastMCP) -> None:
+    """Register the recall-explorer/review-queue MCP App pages once per
+    profile (SPEC-208 deliverable #1).
+
+    Every vault mounted into this profile shares the exact same two ``ui://``
+    resources (their ``search``/``recall``/``review_queue`` tools all point
+    at the same literal URI, set in :mod:`palaia_hub.gateway.memory_tools` —
+    the per-call data, not the static page, is what varies per vault; see
+    ``gateway/apps/recall_app.py``'s docstring). Registering them here,
+    once per profile, rather than inside :func:`~.memory_tools.
+    build_vault_server` (called once per *vault*), is what avoids mounting
+    the identical resource URI twice when a profile includes more than one
+    vault — ``server.mount()`` would otherwise aggregate two providers each
+    claiming the same URI.
+    """
+
+    @server.resource(RECALL_EXPLORER_URI, name="recall_explorer_app")
+    def _recall_explorer_resource() -> str:
+        return render_recall_explorer_html()
+
+    @server.resource(REVIEW_QUEUE_URI, name="review_queue_app")
+    def _review_queue_resource() -> str:
+        return render_review_queue_html()
 
 
 def build_gateway(

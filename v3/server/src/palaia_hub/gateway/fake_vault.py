@@ -56,6 +56,9 @@ from .vault_protocol import (
     InboxStatusResult,
     NoteRecord,
     NoteSummary,
+    ProposalSummary,
+    ReviewDecideResult,
+    ReviewQueueResult,
     SearchHit,
     VaultService,
     VaultServiceError,
@@ -264,6 +267,42 @@ class FakeVaultService:
             last_capture_id=newest.capture_id,
             last_captured_at=newest.created,
         )
+
+    # -------------------------------------------------------- review (SPEC-208)
+
+    def _review_proposals(self) -> list[NoteRecord]:
+        return [
+            note
+            for note in self._notes.values()
+            if note.folder == "review" and note.type == "proposal"
+        ]
+
+    async def review_queue(self) -> ReviewQueueResult:
+        proposals = [
+            ProposalSummary(
+                permalink=note.permalink,
+                title=note.title,
+                status=note.status,
+                created=note.created,
+                body=note.body,
+            )
+            for note in self._review_proposals()
+        ]
+        proposals.sort(key=lambda p: p.created or p.permalink)
+        return ReviewQueueResult(proposals=proposals)
+
+    async def review_decide(self, permalink: str, decision: str) -> ReviewDecideResult:
+        note = await self.read(permalink)
+        if note.type != "proposal":
+            raise VaultServiceError(f"{permalink!r} is not a review proposal")
+        if note.status != "proposed":
+            raise VaultServiceError(
+                f"proposal {permalink!r} is not awaiting review "
+                f"(status: {note.status!r}, expected 'proposed')"
+            )
+        updated = note.model_copy(update={"status": decision, "modified": _now()})
+        self._notes[permalink] = updated
+        return ReviewDecideResult(permalink=permalink, status=decision)
 
     # -------------------------------------------------------- recall (SPEC-106)
 

@@ -58,6 +58,13 @@ INBOX_TOOL_ACTIONS: tuple[str, ...] = ("capture", "inbox_status")
 # server as the rest.
 RECALL_TOOL_ACTIONS: tuple[str, ...] = ("recall", "build_context")
 
+# SPEC-208's three MCP-Apps actions, same separate-tuple reasoning as above.
+# ``review_queue`` and ``recall_pick`` are read-only (added to
+# palaia_hub.auth.scopes.READ_ACTIONS); ``review_decide`` mutates a
+# proposal's frontmatter status and is deliberately left off that allow-list
+# so it falls through to the fail-closed "write" default.
+APP_TOOL_ACTIONS: tuple[str, ...] = ("review_queue", "review_decide", "recall_pick")
+
 
 class NoteSummary(BaseModel):
     """Enough to list, browse, or pick a note without fetching its body."""
@@ -136,6 +143,45 @@ class SearchHit(BaseModel):
     title: str
     snippet: str = ""
     score: float = 0.0
+
+
+class ProposalSummary(BaseModel):
+    """One curator maintenance proposal (format spec §8), for the review queue.
+
+    ``body`` is the proposal's full markdown — the human-readable
+    explanation plus, when present, the fenced ```json ``plan`` block and
+    any appended pre-images — passed through verbatim so the review-queue
+    app's diff view has something real to render without this module
+    needing its own proposal-body parser (that belongs with the curator,
+    SPEC-206, which writes the format this reads).
+    """
+
+    permalink: str
+    title: str
+    status: str
+    created: str = ""
+    body: str = ""
+
+
+class ReviewQueueResult(BaseModel):
+    """What one ``review_queue`` call answers: every pending proposal.
+
+    ``decide_tool`` is filled in by :mod:`palaia_hub.gateway.memory_tools`
+    (not by a :class:`VaultService` implementation) with this vault's own
+    mounted ``review_decide`` tool name — the review-queue app's JS learns
+    which tool to call back from this field rather than needing to know the
+    vault's namespace itself (see that module's docstring).
+    """
+
+    proposals: list[ProposalSummary] = Field(default_factory=list)
+    decide_tool: str = ""
+
+
+class ReviewDecideResult(BaseModel):
+    """What one ``review_decide`` call answers: the proposal's new status."""
+
+    permalink: str
+    status: str
 
 
 class VaultServiceError(RuntimeError):
@@ -263,4 +309,26 @@ class VaultService(Protocol):
         model: str = "",
     ) -> ContextResult:
         """Assemble a budgeted context package by walking relations (SPEC-106)."""
+        ...
+
+    async def review_queue(self) -> ReviewQueueResult:
+        """List every ``review/`` note with ``type: proposal`` (format spec §8).
+
+        ``decide_tool`` on the returned result is left empty here — the
+        tool wrapper (:mod:`palaia_hub.gateway.memory_tools`) fills it in,
+        since only it knows this vault's mounted namespace.
+        """
+        ...
+
+    async def review_decide(self, permalink: str, decision: str) -> ReviewDecideResult:
+        """Flip one proposal's ``status`` to ``decision`` (``"approved"`` or
+        ``"rejected"``) — the human-decision half of format spec §8; the
+        curator's later apply pass (SPEC-206, out of this SPEC's scope) is
+        what moves an ``approved`` proposal on to ``applied``/``apply-failed``.
+
+        Raises :class:`VaultServiceError` if ``permalink`` does not resolve,
+        is not a ``type: proposal`` note, or is not currently ``status:
+        proposed`` (format spec §8: "every apply run ends in a terminal
+        status" — a decided proposal is not redecided).
+        """
         ...
