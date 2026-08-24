@@ -83,6 +83,22 @@ class ModeChangeRequest(BaseModel):
 def _dotted_updates(body: ModeChangeRequest) -> dict[str, Any]:
     updates: dict[str, Any] = {}
     if body.mode is not None:
+        # Issue #242: same refusal as config.load_config — `open` makes the
+        # dashboard itself public, and the dashboard sign-in that requires
+        # does not exist yet. Refused at both operator entry points so
+        # neither a config edit nor this endpoint can reach an
+        # unauthenticated public admin surface.
+        if body.mode == "open":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Fully public isn't available yet: it would make this "
+                    "dashboard reachable from the internet, and the sign-in "
+                    "that requires is still being built. Choose 'Reachable "
+                    "for AI services' instead — claude.ai and ChatGPT "
+                    "connect exactly the same way there."
+                ),
+            )
         updates["mode"] = body.mode
     if body.host is not None:
         updates["host"] = body.host
