@@ -1,6 +1,7 @@
 import { Outlet, useLocation, useMatches } from "react-router-dom";
 
 import { useEventStream } from "../lib/events";
+import { initialsFor, useSession } from "../lib/session";
 import { NAV_GROUPS } from "./navConfig";
 import { Sidebar } from "./Sidebar";
 import { type HealthState, Topbar } from "./Topbar";
@@ -31,6 +32,7 @@ function healthStateFrom(status: string | undefined, connection: string): Health
  * at all"). */
 export function AppShell() {
   const stream = useEventStream();
+  const { session, signOut } = useSession();
   const location = useLocation();
   const matches = useMatches();
   const title = currentPageTitle(location.pathname);
@@ -44,7 +46,9 @@ export function AppShell() {
           title={title}
           subtitle={subtitle}
           health={healthStateFrom(stream.health?.status, stream.connection)}
-          userInitials="PA"
+          userInitials={initialsFor(session?.username ?? null)}
+          signedInAs={session?.signed_in ? session.username : null}
+          onSignOut={signOut}
         />
         <div className="content">
           <Outlet context={stream} />
