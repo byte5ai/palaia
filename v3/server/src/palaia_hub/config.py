@@ -19,6 +19,24 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 APP_NAME = "palaia-hub"
 
+# The default curator runner command, duplicated here as a plain tuple rather
+# than imported from palaia_hub.curator.session: this module must stay
+# importable without pulling in the curator package (which imports the
+# gateway, which imports fastmcp) — config load happens first, always.
+# palaia_hub.curator.session.DEFAULT_RUNNER_COMMAND is the same list, and a
+# test asserts the two never drift apart.
+_DEFAULT_CURATOR_COMMAND: tuple[str, ...] = (
+    "claude",
+    "-p",
+    "--mcp-config",
+    "{mcp_config}",
+    "--strict-mcp-config",
+    "--allowed-tools",
+    "{allowed_tools}",
+    "--output-format",
+    "text",
+)
+
 _ENV_PREFIX = "PALAIA_"
 
 # The config keys that may be overridden by PALAIA_<KEY> env vars. Kept as an
@@ -126,6 +144,79 @@ oauth:
   # MCP profile paths this server issues audience-scoped tokens for. Must
   # match the gateway's profile paths.
   profiles: []
+  # Sign in with an identity provider instead of the local password
+  # (SPEC-204). Uncomment ONE of the blocks below. Setting this removes the
+  # password sign-in route entirely — "one door only" (MASTERPLAN §5.5):
+  # two doors into the same room mean the weaker one decides how strong the
+  # room is. The provider's token is used once, to read the signed-in
+  # username, and is never stored.
+  # idp:
+  #   provider: github
+  #   github:
+  #     client_id: "..."
+  #     client_secret: "..."
+  #     allowed_users: ["your-github-username"]
+  # idp:
+  #   provider: oidc
+  #   oidc:
+  #     discovery_url: "https://accounts.example.com/.well-known/openid-configuration"
+  #     client_id: "..."
+  #     client_secret: "..."
+  #     allowed_users: ["you@example.com"]
+  #     display_name: "Example Workspace"
+
+# Public exposure (SPEC-205): how this hub is reached from outside the
+# operator's own network in 'cloud'/'open' mode. Purely descriptive — it
+# does not change what the hub binds to (see 'host'/'mode' above) — but the
+# exposure wizard (dashboard) uses it to fill in the connect-a-client page
+# and to run its honest public-URL reachability self-test.
+exposure:
+  # The https URL this hub is reachable at from outside (a tunnel hostname,
+  # or your own reverse proxy's public name). Unset until the wizard's
+  # self-test passes, or you set it here yourself.
+  # public_url: https://hub.example.com
+  # How the public URL above is served: 'tailscale', 'cloudflared', or
+  # 'reverse_proxy' (bring-your-own). Purely informational.
+  tunnel: null
+
+# The curator (SPEC-206): the background job that turns inbox captures into
+# well-placed vault notes. Off by default — it runs a model, which costs
+# money. Adding knowledge is autonomous; rewriting, merging or retiring an
+# existing note is never autonomous, it becomes a proposal in review/ that
+# you approve by flipping its `status` to `approved`.
+curator:
+  enabled: false
+  # The command that runs one curation session. The prompt arrives on the
+  # command's stdin; {mcp_config}, {allowed_tools}, {endpoint}, {vault} and
+  # {capture_id} are filled in per session. Any CLI that reads a prompt from
+  # stdin works here — this is not tied to one provider.
+  runner_command:
+    - claude
+    - -p
+    - --mcp-config
+    - '{mcp_config}'
+    - --strict-mcp-config
+    - --allowed-tools
+    - '{allowed_tools}'
+    - --output-format
+    - text
+  # Seconds one session may take before it is killed.
+  session_timeout: 300
+  # Wait this long after a capture arrives, so a burst becomes one pass.
+  debounce_seconds: 30
+  # Fallback pass interval, for captures written into inbox/ by hand.
+  interval_seconds: 900
+  # Attempts before a capture is left alone with `status: curation-failed`.
+  max_attempts: 3
+  # Apply approved proposals in the same pass (no model is ever involved in
+  # applying one). Turn off to apply them yourself with
+  # `palaia-hub curator apply`.
+  auto_apply: true
+  # The curator's own token, from `palaia-hub curator token`. Prefer the
+  # PALAIA_CURATOR_TOKEN environment variable over writing it here.
+  # token:
+  # Where a session reaches this hub. Defaults to http://<host>:<port>.
+  # endpoint:
 """
 
 
@@ -189,6 +280,91 @@ class RecallSettings(BaseModel):
     unknown_recency: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
+class GitHubIdpSettings(BaseModel):
+    """"Sign in with GitHub" (SPEC-204). Zero scopes are ever requested —
+    the token is used once to read the signed-in username, then discarded.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    client_id: str
+    client_secret: str
+    #: Usernames allowed to sign in, compared case-folded (GitHub usernames
+    #: are themselves case-insensitive, so this matches the provider's own
+    #: notion of identity rather than a stricter one of ours).
+    allowed_users: list[str] = Field(min_length=1)
+
+
+class OidcIdpSettings(BaseModel):
+    """A generic OpenID Connect provider (SPEC-204), discovery-configured.
+
+    Only the discovery URL, a client id/secret and an allow-list are asked
+    for — every endpoint the flow needs comes from the provider's own
+    ``/.well-known/openid-configuration`` document, fetched once and reused
+    for the life of the process.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    discovery_url: str
+    client_id: str
+    client_secret: str
+    allowed_users: list[str] = Field(min_length=1)
+    #: The claim in the provider's user-info response that carries the
+    #: username to check against ``allowed_users``. ``preferred_username``
+    #: is the OIDC-standard field for this; some providers only populate
+    #: ``email``, so it is configurable.
+    username_claim: str = "preferred_username"
+    #: The provider's plain-language name, e.g. ``"Acme Workspace"``. Shown
+    #: on the sign-in button as "Sign in with {display_name}" — the jargon
+    #: rule (no protocol acronyms user-facing) means this hub cannot invent
+    #: a generic label on the operator's behalf.
+    display_name: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _check_discovery_url(self) -> OidcIdpSettings:
+        if not self.discovery_url.lower().startswith("https://"):
+            raise ValueError(
+                "oauth.idp.oidc.discovery_url must be an https URL. Fix: use the "
+                "provider's `.well-known/openid-configuration` https URL."
+            )
+        return self
+
+
+class IdpSettings(BaseModel):
+    """Which identity provider (if any) fronts sign-in, and its settings.
+
+    **One door only** (MASTERPLAN §5.5): when this is set, the local owner
+    password route is not registered at all — see
+    :mod:`palaia_hub.oauth.routes`. Exactly one of ``github``/``oidc`` must
+    be present, matching ``provider``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Literal["github", "oidc"]
+    github: GitHubIdpSettings | None = None
+    oidc: OidcIdpSettings | None = None
+
+    @model_validator(mode="after")
+    def _check_matching_block(self) -> IdpSettings:
+        block = self.github if self.provider == "github" else self.oidc
+        if block is None:
+            raise ValueError(
+                f"oauth.idp.provider is {self.provider!r} but oauth.idp.{self.provider} "
+                f"is not set. Fix: add an `oauth.idp.{self.provider}:` block with its "
+                f"settings, or change `provider`."
+            )
+        other = "oidc" if self.provider == "github" else "github"
+        if getattr(self, other) is not None:
+            raise ValueError(
+                f"oauth.idp.provider is {self.provider!r} but oauth.idp.{other} is also "
+                f"set. Fix: remove the `oauth.idp.{other}:` block — only one identity "
+                f"provider may be configured at a time."
+            )
+        return self
+
+
 class OAuthSettings(BaseModel):
     """The OAuth 2.1 authorization server's settings (SPEC-203).
 
@@ -242,6 +418,83 @@ class OAuthSettings(BaseModel):
     #: profile set to :meth:`palaia_hub.oauth.AuthorizationServer.build` and
     #: ignores this list.
     profiles: list[str] = Field(default_factory=list)
+    #: An identity provider fronting sign-in (SPEC-204). ``None`` (default)
+    #: keeps the local owner password as the only door; setting this removes
+    #: the password route entirely rather than adding a second door next to
+    #: it (MASTERPLAN §5.5's "one door only" rule).
+    idp: IdpSettings | None = None
+
+
+class ExposureSettings(BaseModel):
+    """Public-exposure metadata (SPEC-205): descriptive, not enforcing.
+
+    Distinct from ``mode``/``host``/``auth_enabled`` above: those decide
+    what the hub *does* (bind address, whether it refuses to start without
+    auth); this section records what the operator has told the hub about
+    how a tunnel or reverse proxy makes it reachable, so the exposure
+    wizard can fill in the connect-a-client page and self-test the public
+    URL without asking twice. Leaving it unset changes nothing else.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The https URL this hub is reachable at from outside the operator's
+    #: own network. Not validated against ``host``/``mode`` here — the
+    #: wizard's self-test (``palaia_hub.modes.selftest``) is what actually
+    #: confirms it resolves and answers, honestly, rather than this model
+    #: pretending to.
+    public_url: str | None = None
+    #: How ``public_url`` is served. Purely informational — it only
+    #: changes which copy-paste config the wizard offers, never the hub's
+    #: own behavior.
+    tunnel: Literal["tailscale", "cloudflared", "reverse_proxy"] | None = None
+
+
+class CuratorSettings(BaseModel):
+    """The curator's settings (SPEC-206).
+
+    ``enabled`` is off by default: the curator spends money. Turning it on
+    mounts the curator MCP profile (``/mcp/curator``, narrowed and guarded —
+    see :mod:`palaia_hub.curator.profile`) and starts the scheduled runner.
+
+    ``runner_command`` is the provider-neutral seam the SPEC requires: the
+    default is a headless ``claude -p`` reading its prompt from stdin, but
+    any CLI that does the same works. Placeholders ``{mcp_config}``,
+    ``{allowed_tools}``, ``{endpoint}``, ``{vault}`` and ``{capture_id}`` are
+    substituted per session (:class:`palaia_hub.curator.session.
+    SubprocessSessionRunner`).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    #: The command that runs one curation session. See the class docstring.
+    runner_command: list[str] = Field(
+        default_factory=lambda: list(_DEFAULT_CURATOR_COMMAND)
+    )
+    #: Seconds a single session may take before it is killed.
+    session_timeout: float = Field(default=300.0, gt=0.0, le=3600.0)
+    #: Seconds to wait after an ``inbox.captured`` event, so a burst of
+    #: captures coalesces into one curation pass.
+    debounce_seconds: float = Field(default=30.0, ge=0.0, le=3600.0)
+    #: Seconds between fallback passes when no event arrives (captures
+    #: written into ``inbox/`` by hand produce no event).
+    interval_seconds: float = Field(default=900.0, ge=60.0)
+    #: Attempts before a capture is retired with ``status: curation-failed``.
+    max_attempts: int = Field(default=3, ge=1, le=10)
+    #: Apply approved proposals automatically in the same pass. The apply
+    #: path has no model in it (SPEC-206 rule 4), so this only decides *when*
+    #: an approved proposal is executed, never *whether* a human approved it.
+    auto_apply: bool = True
+    #: The curator token (profile ``curator``). Prefer the
+    #: ``PALAIA_CURATOR_TOKEN`` environment variable — a token in a config
+    #: file is a secret in a config file. Mint one with
+    #: ``palaia-hub curator token``.
+    token: str | None = None
+    #: The base URL a curation session reaches this hub at. Defaults to
+    #: ``http://<host>:<port>`` from the settings above, which is right for
+    #: the normal case (the session runs on the same machine as the hub).
+    endpoint: str | None = None
 
 
 class HubConfig(BaseModel):
@@ -258,6 +511,16 @@ class HubConfig(BaseModel):
     auth_enabled: bool = True
     recall: RecallSettings = Field(default_factory=RecallSettings)
     oauth: OAuthSettings = Field(default_factory=OAuthSettings)
+    curator: CuratorSettings = Field(default_factory=CuratorSettings)
+    exposure: ExposureSettings = Field(default_factory=ExposureSettings)
+
+    def curator_endpoint(self) -> str:
+        """The base URL a curation session reaches this hub at (SPEC-206)."""
+        configured = (self.curator.endpoint or "").strip().rstrip("/")
+        if configured:
+            return configured
+        host = "127.0.0.1" if self.host in ("0.0.0.0", "::") else self.host
+        return f"http://{host}:{self.port}"
 
     @model_validator(mode="after")
     def _check_operating_mode_policy(self) -> HubConfig:

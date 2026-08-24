@@ -118,6 +118,28 @@ def test_unregistered_mcp_path_404s_even_with_a_build_mounted(
     assert "palaia" not in response.text
 
 
+def test_unregistered_oauth_path_404s_even_with_a_build_mounted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Same regression, for the SPEC-203/204 authorization server's
+    surface: no ``oauth_server`` given to ``create_app()`` means no
+    ``/oauth/*`` route exists at all, so an unregistered one (or, with an
+    IdP configured, the deliberately-absent ``/oauth/login``) must 404 —
+    not silently come back as the dashboard shell with a 200, which would
+    mask SPEC-204's "one door only" rule from ever actually taking effect
+    on a hub that has run ``npm run build``.
+    """
+    dist = _make_fake_build(tmp_path)
+    monkeypatch.setenv(WEB_DIST_ENV, str(dist))
+    app = create_app(HubConfig())
+    client = TestClient(app)
+
+    response = client.get("/oauth/login")
+
+    assert response.status_code == 404
+    assert "palaia" not in response.text
+
+
 def test_api_routes_are_never_shadowed_by_the_spa_fallback(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

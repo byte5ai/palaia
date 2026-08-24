@@ -44,6 +44,8 @@ from .login import CSRF_COOKIE, CSRF_FIELD, SESSION_COOKIE, new_csrf_token
 from .models import ClientInfo
 from .service import (
     AUTHORIZE_PATH,
+    IDP_CALLBACK_PATH,
+    IDP_START_PATH,
     JWKS_PATH,
     LOGIN_PATH,
     REGISTER_PATH,
@@ -173,7 +175,12 @@ def build_oauth_router(server: AuthorizationServer) -> APIRouter:
             # user an error rather than redirecting to an unvalidated URI.
             return _authorize_error_page(exc)
         if isinstance(outcome, LoginRequired):
-            location = f"{LOGIN_PATH}?next={_quote(outcome.next_url)}"
+            # One door only (MASTERPLAN §5.5): with an IdP configured, there
+            # is exactly one way in, so this goes straight to it rather than
+            # through an interstitial page offering a password door that
+            # does not exist.
+            start = IDP_START_PATH if server.idp_configured else LOGIN_PATH
+            location = f"{start}?next={_quote(outcome.next_url)}"
             return RedirectResponse(location, status_code=303, headers=NO_STORE)
         assert isinstance(outcome, AuthorizeRedirect)  # noqa: S101 - exhaustive union
         return RedirectResponse(outcome.location, status_code=303, headers=NO_STORE)
@@ -244,54 +251,103 @@ def build_oauth_router(server: AuthorizationServer) -> APIRouter:
         )
 
     # ----------------------------------------------------------------- login
+    #
+    # One door only (MASTERPLAN §5.5, SPEC-204 deliverable #3): neither of
+    # these routes is registered when an IdP is configured. `authorize()`
+    # above sends an unauthenticated browser straight to the IdP flow in
+    # that case, so there is no interstitial page offering a password door
+    # that does not exist — and a request to either verb here 404s exactly
+    # like any other path this server never served, rather than 403ing
+    # (which would still confirm the door exists, just locked).
 
-    @router.get(LOGIN_PATH)
-    async def login_form(request: Request) -> Response:
-        """The owner sign-in form (this SPEC's only identity; IdPs are SPEC-204)."""
-        next_url = request.query_params.get("next", "")
-        csrf = new_csrf_token()
-        response = HTMLResponse(
-            _login_page(next_url=next_url if _is_safe_next(next_url) else "", csrf=csrf, error=""),
-            headers=NO_STORE,
-        )
-        _set_cookie(response, CSRF_COOKIE, csrf, secure=secure_cookies, max_age=600)
-        return response
+    if not server.idp_configured:
 
-    @router.post(LOGIN_PATH)
-    async def login_submit(request: Request) -> Response:
-        """Verify the owner's password, open a session, continue to ``next``."""
-        form = dict(await request.form())
-        next_url = str(form.get("next", "") or "")
-        submitted_csrf = str(form.get(CSRF_FIELD, "") or "")
-        cookie_csrf = request.cookies.get(CSRF_COOKIE, "")
-        if not cookie_csrf or submitted_csrf != cookie_csrf:
-            # Double-submit mismatch: either a stale form or a cross-site POST.
-            return _login_failure(
-                next_url,
-                "This sign-in form expired. Please try again.",
-                secure=secure_cookies,
+        @router.get(LOGIN_PATH)
+        async def login_form(request: Request) -> Response:
+            """The owner sign-in form."""
+            next_url = request.query_params.get("next", "")
+            csrf = new_csrf_token()
+            response = HTMLResponse(
+                _login_page(
+                    next_url=next_url if _is_safe_next(next_url) else "", csrf=csrf, error=""
+                ),
+                headers=NO_STORE,
             )
-        username = str(form.get("username", "") or "")
-        password = str(form.get("password", "") or "")
-        try:
-            session, expires_at = await asyncio.to_thread(server.sign_in, username, password)
-        except OAuthError:
-            return _login_failure(
-                next_url,
-                "Sign-in failed. Check the username and password.",
+            _set_cookie(response, CSRF_COOKIE, csrf, secure=secure_cookies, max_age=600)
+            return response
+
+        @router.post(LOGIN_PATH)
+        async def login_submit(request: Request) -> Response:
+            """Verify the owner's password, open a session, continue to ``next``."""
+            form = dict(await request.form())
+            next_url = str(form.get("next", "") or "")
+            submitted_csrf = str(form.get(CSRF_FIELD, "") or "")
+            cookie_csrf = request.cookies.get(CSRF_COOKIE, "")
+            if not cookie_csrf or submitted_csrf != cookie_csrf:
+                # Double-submit mismatch: either a stale form or a cross-site POST.
+                return _login_failure(
+                    next_url,
+                    "This sign-in form expired. Please try again.",
+                    secure=secure_cookies,
+                )
+            username = str(form.get("username", "") or "")
+            password = str(form.get("password", "") or "")
+            try:
+                session, expires_at = await asyncio.to_thread(server.sign_in, username, password)
+            except OAuthError:
+                return _login_failure(
+                    next_url,
+                    "Sign-in failed. Check the username and password.",
+                    secure=secure_cookies,
+                )
+            target = next_url if _is_safe_next(next_url) else "/"
+            response = RedirectResponse(target, status_code=303, headers=NO_STORE)
+            _set_cookie(
+                response,
+                SESSION_COOKIE,
+                session,
                 secure=secure_cookies,
+                max_age=max(0, expires_at - server.now()),
             )
-        target = next_url if _is_safe_next(next_url) else "/"
-        response = RedirectResponse(target, status_code=303, headers=NO_STORE)
-        _set_cookie(
-            response,
-            SESSION_COOKIE,
-            session,
-            secure=secure_cookies,
-            max_age=max(0, expires_at - server.now()),
-        )
-        response.delete_cookie(CSRF_COOKIE, path="/")
-        return response
+            response.delete_cookie(CSRF_COOKIE, path="/")
+            return response
+
+    # ------------------------------------------------------------- idp (204)
+
+    if server.idp_configured:
+
+        @router.get(IDP_START_PATH)
+        async def idp_start(request: Request) -> Response:
+            """Redirect the browser to the configured provider."""
+            next_url = request.query_params.get("next", "")
+            if not _is_safe_next(next_url):
+                return _authorize_error_page(
+                    OAuthError(
+                        "invalid_request",
+                        "this sign-in link is invalid. Fix: start from the sign-in page.",
+                    )
+                )
+            location = await server.start_idp_signin(next_url)
+            return RedirectResponse(location, status_code=303, headers=NO_STORE)
+
+        @router.get(IDP_CALLBACK_PATH)
+        async def idp_callback(request: Request) -> Response:
+            """The provider sends the browser back here with ``code``/``state``."""
+            params = dict(request.query_params)
+            try:
+                session, expires_at, next_url = await server.finish_idp_signin(params)
+            except OAuthError as exc:
+                return _authorize_error_page(exc)
+            target = next_url if _is_safe_next(next_url) else "/"
+            response = RedirectResponse(target, status_code=303, headers=NO_STORE)
+            _set_cookie(
+                response,
+                SESSION_COOKIE,
+                session,
+                secure=secure_cookies,
+                max_age=max(0, expires_at - server.now()),
+            )
+            return response
 
     @router.post(LOGOUT_PATH)
     async def logout(request: Request) -> Response:

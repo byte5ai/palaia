@@ -55,6 +55,7 @@ from .models import (
     ClientSource,
     CodeRow,
     GrantRow,
+    IdpStateRow,
     PruneReport,
     RefreshRow,
     RotationOutcome,
@@ -138,6 +139,14 @@ CREATE TABLE IF NOT EXISTS login_sessions (
     username     TEXT NOT NULL,
     created_at   INTEGER NOT NULL,
     expires_at   INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS idp_states (
+    state_hash TEXT PRIMARY KEY,
+    provider   TEXT NOT NULL,
+    next_url   TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
 );
 """
 
@@ -768,6 +777,45 @@ class OAuthStore:
             conn.execute(
                 "DELETE FROM login_sessions WHERE session_hash = ?", (hash_secret(session),)
             )
+
+    # --------------------------------------------------------------- idp (204)
+
+    def create_idp_state(self, *, provider: str, next_url: str, now: int, ttl: int) -> str:
+        """Mint a fresh single-use sign-in ticket (returned plaintext, stored hashed).
+
+        ``next_url`` is the ``/oauth/authorize`` continuation the browser
+        started from — held here rather than round-tripped through the IdP,
+        per SPEC-204's "ticket never in the URL" rule.
+        """
+        state = new_secret()
+        expires_at = now + ttl
+        with self._write() as conn:
+            conn.execute("DELETE FROM idp_states WHERE expires_at < ?", (now,))
+            conn.execute(
+                "INSERT INTO idp_states(state_hash, provider, next_url, created_at, expires_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (hash_secret(state), provider, next_url, now, expires_at),
+            )
+        return state
+
+    def consume_idp_state(self, state: str, *, now: int) -> IdpStateRow | None:
+        """Fetch-and-delete the ticket matching ``state``, or ``None``.
+
+        Deleting on every lookup — whether the ticket is found live, found
+        expired, or not found at all — is what makes a ticket single-use: a
+        second presentation of the same ``state`` (a replay, or the browser's
+        back button) always misses, because the row is already gone.
+        """
+        state_hash = hash_secret(state)
+        with self._write() as conn:
+            row = conn.execute(
+                "SELECT provider, next_url, expires_at FROM idp_states WHERE state_hash = ?",
+                (state_hash,),
+            ).fetchone()
+            conn.execute("DELETE FROM idp_states WHERE state_hash = ?", (state_hash,))
+        if row is None or int(row["expires_at"]) <= now:
+            return None
+        return IdpStateRow(provider=str(row["provider"]), next_url=str(row["next_url"]))
 
 
 # ------------------------------------------------------------- row adapters

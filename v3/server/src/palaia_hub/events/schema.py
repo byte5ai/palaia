@@ -40,6 +40,7 @@ SCHEMA_VERSION = 1
 #: working on the same one bus rather than a second parallel mechanism.
 EventName = Literal[
     "hub.started",
+    "hub.mode_changed",
     "client.connected",
     "memory.entry.created",
     "memory.entry.updated",
@@ -49,6 +50,17 @@ EventName = Literal[
     "index.reindexed",
     "index.embed_backlog_drained",
     "doctor.finding",
+    # SPEC-206 (the curator): one event per capture outcome, one per applied
+    # proposal, one per run. Additive to the v1 vocabulary — a consumer that
+    # has never heard of them ignores them (docs/events.md "Evolution rule").
+    "curator.capture.ingested",
+    "curator.capture.needs_review",
+    "curator.capture.unverified",
+    "curator.capture.retired",
+    "curator.run.finished",
+    "curator.proposal.applied",
+    "curator.proposal.apply_failed",
+    "curator.proposal.manual",
     "stash.set",
     "stash.get",
     "stash.del",

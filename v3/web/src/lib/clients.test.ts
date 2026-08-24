@@ -44,10 +44,24 @@ describe("client integration catalog", () => {
     expect(lockedReason).toMatch(/locked mode/i);
     expect(lockedReason).toMatch(/cloud|open/i);
 
+    // SPEC-205: sign-in now genuinely exists (the OAuth server, SPEC-203)
+    // — what remains is turning it on, which this reason must say plainly
+    // rather than claiming the whole feature is unbuilt.
     const cloudReason = claudeAi.reason("cloud");
-    expect(cloudReason).toMatch(/oauth/i);
-    expect(cloudReason).toMatch(/phase 2/i);
+    expect(cloudReason).toMatch(/sign-in/i);
+    expect(cloudReason).toMatch(/access mode/i);
+    expect(cloudReason).not.toMatch(/phase 2/i);
     expect(cloudReason).not.toBe(lockedReason);
+  });
+
+  it("cloud connectors carry an oauthConnect fallback for once sign-in is on", () => {
+    for (const id of ["claude-ai", "chatgpt", "grok"]) {
+      const client = CLIENTS.find((c) => c.id === id);
+      if (client?.kind !== "notYet") throw new Error(`expected ${id} to be notYet`);
+      const connect = client.oauthConnect?.("https://hub.example.com", "default");
+      expect(connect?.url).toBe("https://hub.example.com/mcp/default");
+      expect(connect?.note).toMatch(new RegExp(client.name.replace(".", "\\."), "i"));
+    }
   });
 
   it("Claude Desktop's reason names the MCPB bundle and does not depend on mode", () => {

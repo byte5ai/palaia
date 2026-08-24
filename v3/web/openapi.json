@@ -29,7 +29,7 @@
     "/api/info": {
       "get": {
         "summary": "Info",
-        "description": "Version, operating mode, uptime.",
+        "description": "Version, operating mode, uptime, and how the owner signs in.\n\n``sign_in`` is non-secret (no client id, no allow-list) and is what\nthe dashboard's settings section (SPEC-204 deliverable #4) reads to\nshow \"Sign in with GitHub\" / a configured provider's name / the\nlocal password, in plain language.",
         "operationId": "info_api_info_get",
         "responses": {
           "200": {
@@ -104,10 +104,258 @@
           }
         }
       }
+    },
+    "/api/mode": {
+      "get": {
+        "tags": [
+          "modes"
+        ],
+        "summary": "Get Mode",
+        "operationId": "get_mode_api_mode_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModeStatusOut"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "modes"
+        ],
+        "summary": "Post Mode",
+        "operationId": "post_mode_api_mode_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModeChangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModeStatusOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/exposure": {
+      "get": {
+        "tags": [
+          "modes"
+        ],
+        "summary": "Get Exposure",
+        "operationId": "get_exposure_api_exposure_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExposureOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/exposure/tunnel": {
+      "post": {
+        "tags": [
+          "modes"
+        ],
+        "summary": "Post Tunnel Guidance",
+        "operationId": "post_tunnel_guidance_api_exposure_tunnel_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TunnelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelGuidanceOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/exposure/selftest": {
+      "post": {
+        "tags": [
+          "modes"
+        ],
+        "summary": "Post Selftest",
+        "operationId": "post_selftest_api_exposure_selftest_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelfTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelfTestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "ChecklistItemOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "auto": {
+            "type": "boolean",
+            "title": "Auto"
+          },
+          "passed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passed"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "detail",
+          "auto",
+          "passed"
+        ],
+        "title": "ChecklistItemOut"
+      },
+      "DetectionOut": {
+        "properties": {
+          "tailscale": {
+            "type": "boolean",
+            "title": "Tailscale"
+          },
+          "cloudflared": {
+            "type": "boolean",
+            "title": "Cloudflared"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "tailscale",
+          "cloudflared"
+        ],
+        "title": "DetectionOut"
+      },
+      "ExposureOut": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/ModeStatusOut"
+          },
+          "detected": {
+            "$ref": "#/components/schemas/DetectionOut"
+          },
+          "checklist": {
+            "items": {
+              "$ref": "#/components/schemas/ChecklistItemOut"
+            },
+            "type": "array",
+            "title": "Checklist"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "detected",
+          "checklist"
+        ],
+        "title": "ExposureOut"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -120,6 +368,320 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "ModeChangeRequest": {
+        "properties": {
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "locked",
+                  "cloud",
+                  "open"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "auth_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth Enabled"
+          },
+          "oauth_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oauth Enabled"
+          },
+          "oauth_issuer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oauth Issuer"
+          },
+          "public_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Url"
+          },
+          "tunnel": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "tailscale",
+                  "cloudflared",
+                  "reverse_proxy"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tunnel"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ModeChangeRequest",
+        "description": "The wizard's \"change mode\" step. Every field is optional \u2014 send only\nwhat you are changing; omitted fields keep their current value."
+      },
+      "ModeStatusOut": {
+        "properties": {
+          "active_mode": {
+            "type": "string",
+            "enum": [
+              "locked",
+              "cloud",
+              "open"
+            ],
+            "title": "Active Mode"
+          },
+          "configured_mode": {
+            "type": "string",
+            "enum": [
+              "locked",
+              "cloud",
+              "open"
+            ],
+            "title": "Configured Mode"
+          },
+          "restart_required": {
+            "type": "boolean",
+            "title": "Restart Required"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host"
+          },
+          "auth_enabled": {
+            "type": "boolean",
+            "title": "Auth Enabled"
+          },
+          "oauth_enabled": {
+            "type": "boolean",
+            "title": "Oauth Enabled"
+          },
+          "oauth_issuer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oauth Issuer"
+          },
+          "public_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Url"
+          },
+          "tunnel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tunnel"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "active_mode",
+          "configured_mode",
+          "restart_required",
+          "host",
+          "auth_enabled",
+          "oauth_enabled",
+          "oauth_issuer",
+          "public_url",
+          "tunnel"
+        ],
+        "title": "ModeStatusOut"
+      },
+      "SelfTestOut": {
+        "properties": {
+          "checked_url": {
+            "type": "string",
+            "title": "Checked Url"
+          },
+          "reachable": {
+            "type": "boolean",
+            "title": "Reachable"
+          },
+          "status_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Code"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "error": {
+            "type": "string",
+            "title": "Error"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "checked_url",
+          "reachable",
+          "status_code",
+          "latency_ms",
+          "error"
+        ],
+        "title": "SelfTestOut"
+      },
+      "SelfTestRequest": {
+        "properties": {
+          "public_url": {
+            "type": "string",
+            "title": "Public Url"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "public_url"
+        ],
+        "title": "SelfTestRequest"
+      },
+      "TunnelGuidanceOut": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "config": {
+            "type": "string",
+            "title": "Config"
+          },
+          "commands": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Commands"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "config",
+          "commands",
+          "note"
+        ],
+        "title": "TunnelGuidanceOut"
+      },
+      "TunnelRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "tailscale",
+              "cloudflared"
+            ],
+            "title": "Kind"
+          },
+          "local_port": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Port"
+          },
+          "hostname": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hostname"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "TunnelRequest"
       },
       "ValidationError": {
         "properties": {

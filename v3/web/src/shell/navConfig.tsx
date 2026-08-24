@@ -7,6 +7,7 @@ import {
   HealthIcon,
   HomeIcon,
   InboxIcon,
+  LinkIcon,
   ReviewIcon,
   SettingsIcon,
   ToolsIcon,
@@ -55,6 +56,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
     label: "System",
     items: [
       { path: "/automations", label: "Automations", icon: AutomationsIcon },
+      { path: "/exposure", label: "Access mode", icon: LinkIcon },
       { path: "/health", label: "Health", icon: HealthIcon },
       { path: "/settings", label: "Settings", icon: SettingsIcon },
     ],

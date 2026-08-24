@@ -10,12 +10,39 @@
  * here instead of a runtime surprise in a component.
  */
 
-import type { paths } from "./schema.gen";
+import type { components, paths } from "./schema.gen";
 
 export type HealthResponse =
   paths["/api/health"]["get"]["responses"][200]["content"]["application/json"];
 export type InfoResponse =
   paths["/api/info"]["get"]["responses"][200]["content"]["application/json"];
+
+/** SPEC-205's exposure-wizard surface — generated (unlike the wizard/
+ * explorer types below), since `/api/mode` and `/api/exposure` are mounted
+ * unconditionally, same as `/api/health`/`/api/info`. */
+export type ModeStatus =
+  paths["/api/mode"]["get"]["responses"][200]["content"]["application/json"];
+export type ModeChangeRequest =
+  paths["/api/mode"]["post"]["requestBody"]["content"]["application/json"];
+export type ExposureStatus =
+  paths["/api/exposure"]["get"]["responses"][200]["content"]["application/json"];
+export type ChecklistItem =
+  components["schemas"]["ChecklistItemOut"];
+export type TunnelGuidance =
+  paths["/api/exposure/tunnel"]["post"]["responses"][200]["content"]["application/json"];
+export type SelfTestResult =
+  paths["/api/exposure/selftest"]["post"]["responses"][200]["content"]["application/json"];
+
+/**
+ * `/api/info`'s `sign_in` field (SPEC-204 deliverable #4). Hand-written for
+ * the same reason as the block below: `create_app(HubConfig())` — what the
+ * generator runs — never has an OAuth server attached, so the committed
+ * schema types this field as `unknown` rather than this shape.
+ */
+export interface SignInInfo {
+  method: "password" | "idp" | "none";
+  provider_name: string | null;
+}
 
 /**
  * SPEC-110's dashboard endpoints (wizard vault creation, memory explorer,
@@ -279,4 +306,13 @@ export const api = {
     }),
   hookDeadLetters: (hookId: string) =>
     getJson<DeadLetter[]>(`/api/hooks/${hookId}/dead_letters`),
+
+  // ---- SPEC-205: the exposure wizard ----
+  mode: () => getJson<ModeStatus>("/api/mode"),
+  changeMode: (body: ModeChangeRequest) => postJson<ModeStatus>("/api/mode", body),
+  exposure: () => getJson<ExposureStatus>("/api/exposure"),
+  tunnelGuidance: (body: { kind: "tailscale" | "cloudflared"; local_port?: number; hostname?: string }) =>
+    postJson<TunnelGuidance>("/api/exposure/tunnel", body),
+  selfTest: (publicUrl: string) =>
+    postJson<SelfTestResult>("/api/exposure/selftest", { public_url: publicUrl }),
 };

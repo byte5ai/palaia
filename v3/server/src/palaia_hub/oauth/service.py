@@ -59,6 +59,7 @@ from . import pkce
 from .cimd import CimdFetcher, match_redirect_uri
 from .clients import register_dcr_client, resolve_client
 from .errors import OAuthError
+from .idp import HttpxIdpHttp, IdpHttp, IdpProvider, build_idp_provider, is_allowed_user
 from .keys import ALGORITHM, SigningKey, now_seconds
 from .login import LoginThrottle, verify_owner_password
 from .models import ClientRow, IssuedTokens
@@ -85,6 +86,15 @@ TOKEN_PATH = "/oauth/token"
 REVOKE_PATH = "/oauth/revoke"
 REGISTER_PATH = "/oauth/register"
 JWKS_PATH = "/.well-known/jwks.json"
+#: The IdP sign-in hop (SPEC-204): started from the login page, comes back
+#: here with the provider's ``code``/``state``.
+IDP_START_PATH = "/oauth/idp/start"
+IDP_CALLBACK_PATH = "/oauth/idp/callback"
+
+#: How long a sign-in ticket (the opaque ``state``) lives before it expires
+#: unused. Generous enough for a real browser hop through a provider's
+#: consent screen, short enough that an abandoned ticket does not linger.
+IDP_STATE_TTL_SECONDS = 600
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,6 +129,11 @@ class AuthorizationServer:
         throttle: failed-sign-in throttle (shared with the login routes).
         clock: seconds-resolution time source; injectable so the grace-window
             tests do not have to sleep.
+        idp_http: how the SPEC-204 sign-in flow talks to the configured
+            identity provider. The default is the real (https-only, no
+            redirects, size-capped) transport; tests substitute
+            :class:`palaia_hub.oauth.idp.StaticIdpHttp`. Unused when
+            ``settings.idp`` is ``None``.
     """
 
     def __init__(
@@ -131,6 +146,7 @@ class AuthorizationServer:
         cimd_fetcher: CimdFetcher | None = None,
         throttle: LoginThrottle | None = None,
         clock: Callable[[], int] = now_seconds,
+        idp_http: IdpHttp | None = None,
     ) -> None:
         if not settings.issuer:
             raise ValueError(
@@ -147,6 +163,14 @@ class AuthorizationServer:
         self.cimd = cimd_fetcher or CimdFetcher()
         self.throttle = throttle or LoginThrottle()
         self._clock = clock
+        # Built once, for the process's lifetime: an OIDC provider caches its
+        # discovery document on this instance, so it is fetched at most once
+        # per restart rather than once per sign-in.
+        self._idp: IdpProvider | None = (
+            build_idp_provider(settings.idp, http=idp_http or HttpxIdpHttp())
+            if settings.idp is not None
+            else None
+        )
 
     # ------------------------------------------------------------ construction
 
@@ -159,6 +183,7 @@ class AuthorizationServer:
         home: Path | None = None,
         cimd_fetcher: CimdFetcher | None = None,
         clock: Callable[[], int] = now_seconds,
+        idp_http: IdpHttp | None = None,
     ) -> AuthorizationServer:
         """Assemble a server from hub config: load/create the key, open the store."""
         resolved_home = Path(home) if home is not None else palaia_home()
@@ -172,6 +197,7 @@ class AuthorizationServer:
             key=key,
             cimd_fetcher=cimd_fetcher,
             clock=clock,
+            idp_http=idp_http,
         )
 
     @property
@@ -410,6 +436,116 @@ class AuthorizationServer:
         if not session:
             return None
         return self.store.get_login_session(session, self.now())
+
+    # --------------------------------------------------------------- idp (204)
+
+    @property
+    def idp_configured(self) -> bool:
+        """Is an identity provider configured?
+
+        The one-door rule (MASTERPLAN §5.5, SPEC-204 deliverable #3) reads
+        this everywhere it decides whether the local password route exists
+        at all.
+        """
+        return self._idp is not None
+
+    @property
+    def idp_display_name(self) -> str:
+        """The provider's plain-language name for the sign-in button.
+
+        ``"GitHub"`` for that provider (it needs no operator-supplied name);
+        the configured ``display_name`` for a generic OIDC provider (the
+        jargon rule means this hub cannot invent a label on the operator's
+        behalf — see :class:`palaia_hub.config.OidcIdpSettings`). Empty when
+        no IdP is configured.
+        """
+        idp = self.settings.idp
+        if idp is None:
+            return ""
+        if idp.provider == "github":
+            return "GitHub"
+        assert idp.oidc is not None  # noqa: S101 - IdpSettings validated this
+        return idp.oidc.display_name
+
+    async def start_idp_signin(self, next_url: str) -> str:
+        """Begin the SPEC-204 flow: mint a ticket, return the provider's URL.
+
+        Raises:
+            OAuthError: ``server_error`` if no IdP is configured (a routing
+                bug, not something a caller can trigger through normal use —
+                the route is not registered without one).
+        """
+        idp_settings = self.settings.idp
+        if self._idp is None or idp_settings is None:
+            raise OAuthError("server_error", "no sign-in provider is configured.")
+        now = self.now()
+        state = self.store.create_idp_state(
+            provider=idp_settings.provider,
+            next_url=next_url,
+            now=now,
+            ttl=IDP_STATE_TTL_SECONDS,
+        )
+        return await self._idp.authorize_url(state=state, redirect_uri=self._idp_redirect_uri())
+
+    async def finish_idp_signin(self, params: Mapping[str, str]) -> tuple[str, int, str]:
+        """Complete the SPEC-204 callback. Returns ``(session, expires_at, next_url)``.
+
+        Raises:
+            OAuthError: ``access_denied`` for an expired/replayed/mismatched
+                ticket, a provider-reported error, a failed exchange, or a
+                username outside the allow-list — one code for all of them,
+                the same "reveal nothing about which part failed" discipline
+                :func:`palaia_hub.oauth.login.verify_owner_password` follows.
+        """
+        idp_settings = self.settings.idp
+        if self._idp is None or idp_settings is None:
+            raise OAuthError("server_error", "no sign-in provider is configured.")
+        now = self.now()
+        state = params.get("state") or ""
+        ticket = self.store.consume_idp_state(state, now=now) if state else None
+        denied = OAuthError(
+            "access_denied",
+            "sign-in failed or expired. Fix: start the sign-in again from the "
+            "beginning.",
+        )
+        if ticket is None or ticket.provider != idp_settings.provider:
+            raise denied
+        if params.get("error"):
+            logger.info(
+                "sign-in via %s was cancelled or failed at the provider", idp_settings.provider
+            )
+            raise denied
+        code = params.get("code")
+        if not code:
+            raise denied
+        try:
+            username = await self._idp.resolve_username(
+                code=code, redirect_uri=self._idp_redirect_uri()
+            )
+        except OAuthError as exc:
+            logger.info("sign-in via %s failed: %s", idp_settings.provider, exc.error)
+            raise denied from exc
+        allowed_users = (
+            idp_settings.github.allowed_users
+            if idp_settings.provider == "github" and idp_settings.github is not None
+            else idp_settings.oidc.allowed_users
+            if idp_settings.oidc is not None
+            else []
+        )
+        if not is_allowed_user(username, allowed_users):
+            logger.warning(
+                "sign-in via %s rejected: the account is not on the allow-list",
+                idp_settings.provider,
+            )
+            raise denied
+        session, expires_at = self.store.create_login_session(
+            username, now=now, ttl=self.settings.session_ttl
+        )
+        logger.info("owner signed in via %s", idp_settings.provider)
+        return session, expires_at, ticket.next_url
+
+    def _idp_redirect_uri(self) -> str:
+        return f"{self.issuer}{IDP_CALLBACK_PATH}"
 
     # ------------------------------------------------------------------- token
 
@@ -711,6 +847,9 @@ __all__ = [
     "GRANT_AUTHORIZATION_CODE",
     "GRANT_CLIENT_CREDENTIALS",
     "GRANT_REFRESH_TOKEN",
+    "IDP_CALLBACK_PATH",
+    "IDP_START_PATH",
+    "IDP_STATE_TTL_SECONDS",
     "JWKS_PATH",
     "LOGIN_PATH",
     "REGISTER_PATH",

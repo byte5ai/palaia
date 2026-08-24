@@ -26,12 +26,13 @@ Binding findings this module follows exactly (SPEC-002,
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from fastmcp import FastMCP
 from fastmcp.server.auth import TokenVerifier
+from fastmcp.server.middleware import Middleware
 from fastmcp.utilities.lifespan import combine_lifespans
 from starlette.types import ASGIApp
 
@@ -103,6 +104,7 @@ def _build_profile_server(
     config: GatewayConfig,
     vault_servers: Mapping[str, FastMCP],
     auth: TokenVerifier | None,
+    middleware: Sequence[Middleware] = (),
 ) -> FastMCP:
     # `mount()` does not propagate a mounted server's `instructions` to its
     # parent, so a real client connecting to this profile would otherwise
@@ -125,6 +127,12 @@ def _build_profile_server(
     server = FastMCP(
         name=f"palaia-gateway-{profile.path}", instructions=instructions, auth=auth
     )
+    # `middleware` (SPEC-206): per-profile request middleware, applied here
+    # rather than after the fact, so a profile *rebuilt* at runtime
+    # (DynamicGateway) never comes back without the policy it was mounted
+    # with. Empty (the default) leaves the server exactly as before.
+    for item in middleware:
+        server.add_middleware(item)
     for vault_config in vault_configs:
         tool_names = resolve_tool_names(vault_config.namespace, vault_config.tool_renames)
         server.mount(
@@ -166,6 +174,7 @@ def build_gateway(
     vault_services: Mapping[str, VaultService],
     *,
     token_verifiers: Mapping[str, TokenVerifier] | None = None,
+    profile_middleware: Mapping[str, Sequence[Middleware]] | None = None,
 ) -> GatewayASGI:
     """Build the full gateway from a validated config and its backing services.
 
@@ -178,6 +187,12 @@ def build_gateway(
             here is mounted with no auth at all, exactly as before this
             parameter existed; a profile with an entry requires every
             request to present a bearer token that verifier accepts.
+        profile_middleware: optional per-profile-path fastmcp middleware
+            (SPEC-206 — see :func:`palaia_hub.curator.profile.
+            curator_profile_middleware`). Attached while the profile's
+            server is built, so a later rebuild of that profile carries the
+            same middleware. A profile with no entry is built exactly as
+            before this parameter existed.
 
     Raises :class:`GatewayConfigError` if a configured vault has no entry in
     ``vault_services``. Structural config problems (duplicate keys, unknown
@@ -191,7 +206,8 @@ def build_gateway(
     lifespans: list[Lifespan] = []
     for profile in config.profiles:
         auth = (token_verifiers or {}).get(profile.path)
-        server = _build_profile_server(profile, config, vault_servers, auth)
+        middleware = (profile_middleware or {}).get(profile.path, ())
+        server = _build_profile_server(profile, config, vault_servers, auth, middleware)
         profile_servers[profile.path] = server
         asgi_app = server.http_app(path="/")
         mounts[f"/mcp/{profile.path}"] = asgi_app

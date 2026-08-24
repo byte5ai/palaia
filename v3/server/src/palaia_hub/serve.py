@@ -34,6 +34,8 @@ from fastapi import FastAPI
 from .app import create_app
 from .auth import TokenStore, build_profile_verifiers
 from .config import HubConfig
+from .curator import curator_profile
+from .curator.wiring import CuratorWiring, build_curator
 from .dashboard_api import DEFAULT_GATEWAY_PROFILE
 from .events import EventBus, publish_from_hook
 from .events.schema import HubEventHook
@@ -44,7 +46,7 @@ from .hooks import HookStore
 from .index import VaultIndex
 from .oauth import AuthorizationServer
 from .vault import EventBus as VaultEventBus
-from .vault import VaultRegistry
+from .vault import VaultEngine, VaultRegistry
 
 
 @dataclass
@@ -58,6 +60,10 @@ class ProductionApp:
     indexes: dict[str, VaultIndex]
     event_bus: EventBus
     token_store: TokenStore
+    #: The wired-up curator (SPEC-206), or ``None`` when
+    #: ``curator.enabled`` is off. Its scheduler is started and stopped by
+    #: the app's own lifespan; its stash handle is closed here.
+    curator: CuratorWiring | None = None
 
 
 def _index_event_hook(event_bus: EventBus, vault_key: str) -> HubEventHook:
@@ -72,6 +78,15 @@ def _index_event_hook(event_bus: EventBus, vault_key: str) -> HubEventHook:
 
     def _hook(event: str, data: dict[str, Any]) -> None:
         publish_from_hook(event_bus, event, {"vault": vault_key, **data}, origin="index")
+
+    return _hook
+
+
+def _curator_event_hook(event_bus: EventBus) -> HubEventHook:
+    """Promote the curator's ``curator.*``/``doctor.finding`` reports onto the bus."""
+
+    def _hook(event: str, data: dict[str, Any]) -> None:
+        publish_from_hook(event_bus, event, data, origin="curator")
 
     return _hook
 
@@ -105,12 +120,14 @@ async def build_production_app(
     indexes: dict[str, VaultIndex] = {}
     vault_services: dict[str, VaultService] = {}
     mounts: list[VaultMountConfig] = []
+    engines: dict[str, VaultEngine] = {}
 
     for record in registry.records():
         engine = await registry.get(record.name)
         index = VaultIndex(engine, on_event=_index_event_hook(event_bus, record.name))
         await index.open()
         indexes[record.name] = index
+        engines[record.name] = engine
         vault_services[record.name] = EngineVaultService(engine, index)
         mounts.append(
             VaultMountConfig(
@@ -125,18 +142,40 @@ async def build_production_app(
         if mounts
         else []
     )
+
+    # SPEC-206: the curator gets its own profile over the same vaults —
+    # narrowed to seven actions and guarded by its own middleware (see
+    # palaia_hub.curator.profile). Built before the gateway so the middleware
+    # is attached while each profile's server is constructed, which is what
+    # makes it survive a later profile rebuild.
+    curator: CuratorWiring | None = None
+    if config.curator.enabled and mounts:
+        curator = build_curator(
+            config,
+            engines,
+            mounts,
+            home=home,
+            publish=_curator_event_hook(event_bus),
+            subscribe=event_bus.on,
+        )
+        profiles.append(curator_profile([m.key for m in mounts]))
+
     gateway_config = GatewayConfig(vaults=mounts, profiles=profiles)
     # `auth_enabled` (config.py): mandatory in cloud/open (already enforced
     # at config-load time), on by default in locked mode too — see that
     # field's docstring. Building verifiers here, unconditionally on the
     # flag rather than on `mode`, matches that documented behavior exactly.
     token_verifiers = (
-        build_profile_verifiers([DEFAULT_GATEWAY_PROFILE], token_store)
+        build_profile_verifiers([p.path for p in profiles], token_store)
         if config.auth_enabled
         else {}
     )
     dynamic_gateway = DynamicGateway(
-        gateway_config, vault_services, mode=config.mode, token_verifiers=token_verifiers
+        gateway_config,
+        vault_services,
+        mode=config.mode,
+        token_verifiers=token_verifiers,
+        profile_middleware=curator.profile_middleware if curator else None,
     )
 
     app = create_app(
@@ -149,6 +188,8 @@ async def build_production_app(
         event_bus=event_bus,
         oauth_server=oauth_server,
         hook_store=hook_store,
+        curator=curator.scheduler if curator else None,
+        home=home,
     )
     return ProductionApp(
         app=app,
@@ -157,6 +198,7 @@ async def build_production_app(
         indexes=indexes,
         event_bus=event_bus,
         token_store=token_store,
+        curator=curator,
     )
 
 
