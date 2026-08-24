@@ -28,6 +28,7 @@ import yaml
 
 from ..config import GatewaySettings, HubConfig
 from ..modes.patch import replace_config_section
+from ..upstream.models import UpstreamConfig
 from .config import ProfileConfig, VaultMountConfig
 
 
@@ -99,6 +100,7 @@ def resolve_profiles(
         return [ProfileConfig(path=default_profile, vaults=list(vault_keys))]
 
     known = set(vault_keys)
+    known_upstreams = {u.key for u in settings.upstreams}
     resolved: list[ProfileConfig] = []
     for profile in settings.profiles:
         unknown = [v for v in profile.vaults if v not in known]
@@ -109,15 +111,41 @@ def resolve_profiles(
                 f"has: {sorted(known) or 'none'}). Fix: create the vault first, or "
                 f"remove it from this profile's `vaults` list in config.yaml."
             )
+        unknown_upstreams = [u for u in profile.upstreams if u not in known_upstreams]
+        if unknown_upstreams:
+            raise GatewaySettingsError(
+                f"config.yaml: gateway.profiles[path={profile.path!r}] references "
+                f"external server(s) {unknown_upstreams} that are not listed under "
+                f"`gateway.upstreams` (it lists: {sorted(known_upstreams) or 'none'}). "
+                "Fix: add the server there, or remove it from this profile's "
+                "`upstreams` list."
+            )
         resolved.append(
             ProfileConfig(
                 path=profile.path,
                 label=profile.label,
                 vaults=list(profile.vaults),
                 stash=profile.stash,
+                upstreams=list(profile.upstreams),
             )
         )
     return resolved
+
+
+def resolve_upstreams(settings: GatewaySettings | None) -> list[UpstreamConfig]:
+    """The external servers ``config.yaml`` connects (SPEC-302 deliverable #1).
+
+    No ``gateway:`` section, or one with no ``upstreams``: an empty list —
+    a hub with no external servers, which is every hub until someone
+    connects one. The models are already validated (they *are*
+    :class:`~palaia_hub.upstream.models.UpstreamConfig` — see
+    :class:`palaia_hub.config.GatewaySettings`), so this is a pass-through
+    that exists to keep every caller reading the section through this one
+    module rather than reaching into ``config.gateway`` themselves.
+    """
+    if settings is None:
+        return []
+    return list(settings.upstreams)
 
 
 def resolve_full_gateway_profiles(
@@ -172,4 +200,5 @@ __all__ = [
     "render_gateway_section",
     "resolve_full_gateway_profiles",
     "resolve_profiles",
+    "resolve_upstreams",
 ]

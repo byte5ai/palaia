@@ -30,7 +30,7 @@ from collections.abc import Iterable, Sequence
 
 from fastmcp.server.middleware import Middleware
 
-from ..gateway.config import ProfileConfig, VaultMountConfig
+from ..gateway.config import CURATOR_PROFILE_PATH, ProfileConfig, VaultMountConfig
 from ..gateway.naming import compose_tool_name, resolve_tool_names
 from ..gateway.vault_protocol import (
     INBOX_TOOL_ACTIONS,
@@ -41,8 +41,10 @@ from .middleware import CuratorScopeMiddleware
 from .policy import CURATOR_TOOL_ACTIONS, ActiveCaptures
 from .session import MCP_SERVER_NAME
 
-#: The profile path the curator connects to: ``/mcp/curator``.
-CURATOR_PROFILE_PATH = "curator"
+# `CURATOR_PROFILE_PATH` (``"curator"``) is imported above and re-exported
+# here for every existing caller. The literal itself now lives in
+# `palaia_hub.gateway.config`, so `ProfileConfig` can fence this path against
+# external servers (SPEC-302 deliverable #6) without importing this module.
 
 #: Every action the memory tool family exposes, curator-relevant or not. The
 #: middleware needs all of them: mapping a *forbidden* tool name to its

@@ -27,6 +27,7 @@ handler — no restart, per that module's ``dynamic_gateway`` parameter.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -43,7 +44,11 @@ from .events import EventBus, publish_from_hook
 from .events.schema import HubEventHook
 from .gateway import DynamicGateway, VaultService
 from .gateway.config import DEFAULT_GATEWAY_PROFILE, GatewayConfig, VaultMountConfig
-from .gateway.settings_bridge import apply_vault_overrides, resolve_full_gateway_profiles
+from .gateway.settings_bridge import (
+    apply_vault_overrides,
+    resolve_full_gateway_profiles,
+    resolve_upstreams,
+)
 from .gateway.wiring import EngineVaultService
 from .hooks import HookStore
 from .index import VaultIndex
@@ -55,6 +60,9 @@ from .oauth.verifier import build_profile_auth
 from .registry import RegistryClient
 from .stash.service import StashService
 from .stash.store import StashStore
+from .upstream.monitor import UpstreamHealthMonitor
+from .upstream.secrets import SecretStore
+from .upstream.service import UpstreamService
 from .vault import EventBus as VaultEventBus
 from .vault import VaultEngine, VaultRegistry
 
@@ -78,6 +86,13 @@ class ProductionApp:
     #: ``/mcp/stash`` tool family and, when the curator is on, its audit
     #: trail. Closed at shutdown, same as ``registry``/``indexes``.
     stash_store: StashStore | None = None
+    #: The external-server registry (SPEC-302). Its connections — including
+    #: any ``stdio`` child process — are closed by the app's own lifespan;
+    #: the handle is here so a caller can inspect health.
+    upstream_service: UpstreamService | None = None
+    #: The encrypted credential store backing those servers. Closed here,
+    #: same as ``stash_store``.
+    secret_store: SecretStore | None = None
 
 
 def _index_event_hook(event_bus: EventBus, vault_key: str) -> HubEventHook:
@@ -103,6 +118,19 @@ def _curator_event_hook(event_bus: EventBus) -> HubEventHook:
         publish_from_hook(event_bus, event, data, origin="curator")
 
     return _hook
+
+
+def _upstream_event_hook(event_bus: EventBus) -> Callable[[str, dict[str, Any]], None]:
+    """Promote ``gateway.upstream.up``/``down`` onto the public bus (SPEC-302).
+
+    :class:`~palaia_hub.upstream.service.UpstreamService` publishes only on a
+    *change* of reachability, so this is quiet for a healthy hub.
+    """
+
+    def _publish(event: str, data: dict[str, Any]) -> None:
+        publish_from_hook(event_bus, event, data, origin="gateway")
+
+    return _publish
 
 
 async def build_production_app(
@@ -221,7 +249,23 @@ async def build_production_app(
             subscribe=event_bus.on,
         )
 
-    gateway_config = GatewayConfig(vaults=mounts, profiles=profiles)
+    # SPEC-302: external MCP servers. The secret store is opened
+    # unconditionally (it creates its own key/db, 0600, on first use — and
+    # the dashboard can store a credential before any server is connected);
+    # the service starts with whatever `gateway.upstreams` names. Nothing
+    # here touches the network: the first reachability probe happens in the
+    # background, from the health monitor started by the app's lifespan, so
+    # a hub whose upstream is down still starts instantly.
+    secret_store = SecretStore(stash_home)
+    upstream_service = UpstreamService(
+        resolve_upstreams(config.gateway),
+        secret_store=secret_store,
+        publish=_upstream_event_hook(event_bus),
+    )
+
+    gateway_config = GatewayConfig(
+        vaults=mounts, profiles=profiles, upstreams=resolve_upstreams(config.gateway)
+    )
     # `auth_enabled` (config.py): mandatory in cloud/open (already enforced
     # at config-load time), on by default in locked mode too — see that
     # field's docstring. SPEC-301: combine it with the OAuth server's own
@@ -243,6 +287,10 @@ async def build_production_app(
         token_verifiers=token_verifiers,  # type: ignore[arg-type]
         profile_middleware=curator.profile_middleware if curator else None,
         stash_service=stash_service,
+        upstream_service=upstream_service,
+    )
+    upstream_monitor = UpstreamHealthMonitor(
+        upstream_service, on_change=dynamic_gateway.refresh_upstreams
     )
 
     app = create_app(
@@ -262,6 +310,9 @@ async def build_production_app(
         automation_outbox=automation_outbox,
         notification_store=notification_store,
         curator_wiring=curator,
+        upstream_service=upstream_service,
+        upstream_monitor=upstream_monitor,
+        secret_store=secret_store,
         home=home,
     )
     return ProductionApp(
@@ -273,6 +324,8 @@ async def build_production_app(
         token_store=token_store,
         curator=curator,
         stash_store=stash_store,
+        upstream_service=upstream_service,
+        secret_store=secret_store,
     )
 
 

@@ -35,7 +35,16 @@ def test_list_profiles_reports_the_live_shape(tmp_path: Path) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body == [
-        {"path": "default", "label": None, "vaults": ["work"], "stash": False, "managed": False}
+        {
+            "path": "default",
+            "label": None,
+            "vaults": ["work"],
+            "stash": False,
+            # SPEC-302: external servers this profile mounts — empty until
+            # one is connected, which is every hub until someone does.
+            "upstreams": [],
+            "managed": False,
+        }
     ]
 
 
