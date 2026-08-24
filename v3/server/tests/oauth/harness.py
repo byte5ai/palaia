@@ -26,6 +26,7 @@ from palaia_hub.gateway.config import GatewayConfig, ProfileConfig, VaultMountCo
 from palaia_hub.gateway.fake_vault import FakeVaultService
 from palaia_hub.oauth import (
     AuthorizationServer,
+    IdpHttp,
     OAuthStore,
     ResourceRegistry,
     SigningKey,
@@ -100,6 +101,7 @@ def build_harness(
     settings: OAuthSettings | None = None,
     with_owner: bool = True,
     with_plt_tokens: bool = True,
+    idp_http: IdpHttp | None = None,
 ) -> Harness:
     """Assemble the app, the authorization server, and the resource side."""
     clock = Clock()
@@ -120,8 +122,9 @@ def build_harness(
         key=key,
         cimd_fetcher=cimd,
         clock=clock,
+        idp_http=idp_http,
     )
-    if with_owner:
+    if with_owner and oauth_settings.idp is None:
         set_owner_password(store, OWNER_USERNAME, OWNER_PASSWORD, now=clock())
 
     token_store = TokenStore(home=home)

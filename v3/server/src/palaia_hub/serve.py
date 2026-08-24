@@ -189,6 +189,7 @@ async def build_production_app(
         oauth_server=oauth_server,
         hook_store=hook_store,
         curator=curator.scheduler if curator else None,
+        home=home,
     )
     return ProductionApp(
         app=app,

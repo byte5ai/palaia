@@ -1,0 +1,19 @@
+{
+  "TCP": {
+    "443": {
+      "HTTPS": true
+    }
+  },
+  "Web": {
+    "myhub.tailnet.ts.net:443": {
+      "Handlers": {
+        "/": {
+          "Proxy": "http://127.0.0.1:8420"
+        }
+      }
+    }
+  },
+  "AllowFunnel": {
+    "myhub.tailnet.ts.net:443": true
+  }
+}

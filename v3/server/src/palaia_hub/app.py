@@ -38,6 +38,7 @@ from .gateway.wiring import EngineVaultService
 from .hooks import OUTBOX_RELATIVE_PATH, HookDispatcher, HookOutbox, HookStore, build_hooks_router
 from .index import VaultIndex
 from .logging import setup_logging
+from .modes import AuthRateLimitMiddleware, ModeAuditLog, build_modes_router
 from .oauth import AuthorizationServer, build_oauth_router
 from .stash.service import StashService
 from .stash_api import build_stash_router
@@ -67,11 +68,17 @@ def create_app(
     hook_store: HookStore | None = None,
     hook_outbox: HookOutbox | None = None,
     curator: CuratorScheduler | None = None,
+    home: Path | None = None,
 ) -> FastAPI:
     """Build the hub's ASGI app.
 
     Args:
         config: hub configuration; loaded via :func:`load_config` if omitted.
+        home: the hub's home directory (``PALAIA_HOME``/platform data dir if
+            omitted) — where ``config.yaml`` and the SPEC-205 mode-change
+            audit log live. Passed through to
+            :func:`palaia_hub.modes.build_modes_router`, which is always
+            mounted (see below) since every hub has an operating mode.
         gateway: the MCP gateway (SPEC-105, ``palaia_hub.gateway.build_gateway``),
             mounted at its configured profile paths when given. Real wiring
             of vault services into a gateway happens in a later SPEC
@@ -275,6 +282,11 @@ def create_app(
     app.state.config = config
     app.state.start_time = start_time
     app.state.event_bus = event_bus
+    if config.mode in ("cloud", "open"):
+        # SPEC-205 deliverable #4: these endpoints become reachable off the
+        # operator's own network in these two modes — 'locked' has no such
+        # surface to throttle, so this middleware never exists there.
+        app.add_middleware(AuthRateLimitMiddleware)
     if gateway is not None:
         for path, mounted_app in gateway.mounts.items():
             app.mount(path, mounted_app)
@@ -297,11 +309,25 @@ def create_app(
 
     @app.get("/api/info")
     async def info() -> dict[str, Any]:
-        """Version, operating mode, uptime."""
+        """Version, operating mode, uptime, and how the owner signs in.
+
+        ``sign_in`` is non-secret (no client id, no allow-list) and is what
+        the dashboard's settings section (SPEC-204 deliverable #4) reads to
+        show "Sign in with GitHub" / a configured provider's name / the
+        local password, in plain language.
+        """
+        sign_in: dict[str, str | None]
+        if oauth_server is not None and oauth_server.idp_configured:
+            sign_in = {"method": "idp", "provider_name": oauth_server.idp_display_name}
+        elif oauth_server is not None:
+            sign_in = {"method": "password", "provider_name": None}
+        else:
+            sign_in = {"method": "none", "provider_name": None}
         return {
             "version": __version__,
             "mode": config.mode,
             "uptime_seconds": round(time.monotonic() - start_time, 3),
+            "sign_in": sign_in,
         }
 
     # SPEC-107: inbox visibility outside the MCP surface (deliverable #3).
@@ -326,6 +352,22 @@ def create_app(
     # dashboard build itself. The dashboard mount goes last so it never
     # shadows an /api/* route (see static.mount_dashboard).
     app.include_router(build_events_router(event_bus, health_snapshot=health_snapshot))
+
+    # SPEC-205: always mounted, like /api/health and /api/info — every hub
+    # has an operating mode, so this needs no opt-in parameter. `hub_home`
+    # is only ever used lazily, inside request handlers (config.yaml is
+    # read/patched per-request, never at app-build time) — mounting this
+    # router has no filesystem side effect by itself.
+    hub_home = home or palaia_home()
+    app.include_router(
+        build_modes_router(
+            config,
+            home=hub_home,
+            event_bus=event_bus,
+            audit_log=ModeAuditLog(hub_home),
+            oauth_store=oauth_server.store if oauth_server is not None else None,
+        )
+    )
 
     if token_store is not None:
         app.include_router(build_auth_router(token_store))

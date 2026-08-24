@@ -144,6 +144,40 @@ oauth:
   # MCP profile paths this server issues audience-scoped tokens for. Must
   # match the gateway's profile paths.
   profiles: []
+  # Sign in with an identity provider instead of the local password
+  # (SPEC-204). Uncomment ONE of the blocks below. Setting this removes the
+  # password sign-in route entirely — "one door only" (MASTERPLAN §5.5):
+  # two doors into the same room mean the weaker one decides how strong the
+  # room is. The provider's token is used once, to read the signed-in
+  # username, and is never stored.
+  # idp:
+  #   provider: github
+  #   github:
+  #     client_id: "..."
+  #     client_secret: "..."
+  #     allowed_users: ["your-github-username"]
+  # idp:
+  #   provider: oidc
+  #   oidc:
+  #     discovery_url: "https://accounts.example.com/.well-known/openid-configuration"
+  #     client_id: "..."
+  #     client_secret: "..."
+  #     allowed_users: ["you@example.com"]
+  #     display_name: "Example Workspace"
+
+# Public exposure (SPEC-205): how this hub is reached from outside the
+# operator's own network in 'cloud'/'open' mode. Purely descriptive — it
+# does not change what the hub binds to (see 'host'/'mode' above) — but the
+# exposure wizard (dashboard) uses it to fill in the connect-a-client page
+# and to run its honest public-URL reachability self-test.
+exposure:
+  # The https URL this hub is reachable at from outside (a tunnel hostname,
+  # or your own reverse proxy's public name). Unset until the wizard's
+  # self-test passes, or you set it here yourself.
+  # public_url: https://hub.example.com
+  # How the public URL above is served: 'tailscale', 'cloudflared', or
+  # 'reverse_proxy' (bring-your-own). Purely informational.
+  tunnel: null
 
 # The curator (SPEC-206): the background job that turns inbox captures into
 # well-placed vault notes. Off by default — it runs a model, which costs
@@ -246,6 +280,91 @@ class RecallSettings(BaseModel):
     unknown_recency: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
+class GitHubIdpSettings(BaseModel):
+    """"Sign in with GitHub" (SPEC-204). Zero scopes are ever requested —
+    the token is used once to read the signed-in username, then discarded.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    client_id: str
+    client_secret: str
+    #: Usernames allowed to sign in, compared case-folded (GitHub usernames
+    #: are themselves case-insensitive, so this matches the provider's own
+    #: notion of identity rather than a stricter one of ours).
+    allowed_users: list[str] = Field(min_length=1)
+
+
+class OidcIdpSettings(BaseModel):
+    """A generic OpenID Connect provider (SPEC-204), discovery-configured.
+
+    Only the discovery URL, a client id/secret and an allow-list are asked
+    for — every endpoint the flow needs comes from the provider's own
+    ``/.well-known/openid-configuration`` document, fetched once and reused
+    for the life of the process.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    discovery_url: str
+    client_id: str
+    client_secret: str
+    allowed_users: list[str] = Field(min_length=1)
+    #: The claim in the provider's user-info response that carries the
+    #: username to check against ``allowed_users``. ``preferred_username``
+    #: is the OIDC-standard field for this; some providers only populate
+    #: ``email``, so it is configurable.
+    username_claim: str = "preferred_username"
+    #: The provider's plain-language name, e.g. ``"Acme Workspace"``. Shown
+    #: on the sign-in button as "Sign in with {display_name}" — the jargon
+    #: rule (no protocol acronyms user-facing) means this hub cannot invent
+    #: a generic label on the operator's behalf.
+    display_name: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _check_discovery_url(self) -> OidcIdpSettings:
+        if not self.discovery_url.lower().startswith("https://"):
+            raise ValueError(
+                "oauth.idp.oidc.discovery_url must be an https URL. Fix: use the "
+                "provider's `.well-known/openid-configuration` https URL."
+            )
+        return self
+
+
+class IdpSettings(BaseModel):
+    """Which identity provider (if any) fronts sign-in, and its settings.
+
+    **One door only** (MASTERPLAN §5.5): when this is set, the local owner
+    password route is not registered at all — see
+    :mod:`palaia_hub.oauth.routes`. Exactly one of ``github``/``oidc`` must
+    be present, matching ``provider``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Literal["github", "oidc"]
+    github: GitHubIdpSettings | None = None
+    oidc: OidcIdpSettings | None = None
+
+    @model_validator(mode="after")
+    def _check_matching_block(self) -> IdpSettings:
+        block = self.github if self.provider == "github" else self.oidc
+        if block is None:
+            raise ValueError(
+                f"oauth.idp.provider is {self.provider!r} but oauth.idp.{self.provider} "
+                f"is not set. Fix: add an `oauth.idp.{self.provider}:` block with its "
+                f"settings, or change `provider`."
+            )
+        other = "oidc" if self.provider == "github" else "github"
+        if getattr(self, other) is not None:
+            raise ValueError(
+                f"oauth.idp.provider is {self.provider!r} but oauth.idp.{other} is also "
+                f"set. Fix: remove the `oauth.idp.{other}:` block — only one identity "
+                f"provider may be configured at a time."
+            )
+        return self
+
+
 class OAuthSettings(BaseModel):
     """The OAuth 2.1 authorization server's settings (SPEC-203).
 
@@ -299,6 +418,36 @@ class OAuthSettings(BaseModel):
     #: profile set to :meth:`palaia_hub.oauth.AuthorizationServer.build` and
     #: ignores this list.
     profiles: list[str] = Field(default_factory=list)
+    #: An identity provider fronting sign-in (SPEC-204). ``None`` (default)
+    #: keeps the local owner password as the only door; setting this removes
+    #: the password route entirely rather than adding a second door next to
+    #: it (MASTERPLAN §5.5's "one door only" rule).
+    idp: IdpSettings | None = None
+
+
+class ExposureSettings(BaseModel):
+    """Public-exposure metadata (SPEC-205): descriptive, not enforcing.
+
+    Distinct from ``mode``/``host``/``auth_enabled`` above: those decide
+    what the hub *does* (bind address, whether it refuses to start without
+    auth); this section records what the operator has told the hub about
+    how a tunnel or reverse proxy makes it reachable, so the exposure
+    wizard can fill in the connect-a-client page and self-test the public
+    URL without asking twice. Leaving it unset changes nothing else.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The https URL this hub is reachable at from outside the operator's
+    #: own network. Not validated against ``host``/``mode`` here — the
+    #: wizard's self-test (``palaia_hub.modes.selftest``) is what actually
+    #: confirms it resolves and answers, honestly, rather than this model
+    #: pretending to.
+    public_url: str | None = None
+    #: How ``public_url`` is served. Purely informational — it only
+    #: changes which copy-paste config the wizard offers, never the hub's
+    #: own behavior.
+    tunnel: Literal["tailscale", "cloudflared", "reverse_proxy"] | None = None
 
 
 class CuratorSettings(BaseModel):
@@ -363,6 +512,7 @@ class HubConfig(BaseModel):
     recall: RecallSettings = Field(default_factory=RecallSettings)
     oauth: OAuthSettings = Field(default_factory=OAuthSettings)
     curator: CuratorSettings = Field(default_factory=CuratorSettings)
+    exposure: ExposureSettings = Field(default_factory=ExposureSettings)
 
     def curator_endpoint(self) -> str:
         """The base URL a curation session reaches this hub at (SPEC-206)."""

@@ -50,6 +50,13 @@ export interface NotYetClient {
   subtitle: string;
   /** Truthful, mode-aware explanation — never just "not available". */
   reason: (mode: HubMode) => string;
+  /** SPEC-205 deliverable #3: once Cloud/Open mode has sign-in actually
+   * turned on and configured (the Access mode page), a cloud connector
+   * unlocks here instead of staying stuck on `reason` above — the address
+   * to paste into the client's own "custom connector" settings. Present
+   * only on clients that connect through sign-in rather than through
+   * this hub's own per-client tokens (claude.ai, ChatGPT, Grok). */
+  oauthConnect?: (issuer: string, profile: string) => { url: string; note: string };
 }
 
 export type ClientEntry = GuidedClient | NotYetClient;
@@ -59,9 +66,15 @@ const CLOUD_CONNECTOR_REASON = (name: string, planNote: string) => (mode: HubMod
     ? `${name} connects from its own cloud, not from this device — Locked mode only answers ` +
       `inside your network, so it would time out whatever you paste into it. Switch to Cloud or ` +
       `Open mode to expose an endpoint it can reach.`
-    : `${name}'s connector needs sign-in (OAuth) to reach a hub that is not on Anthropic's or ` +
-      `OpenAI's own infrastructure — that sign-in flow is Phase 2 work and is not built yet. ` +
-      `${planNote}`;
+    : `${name} needs sign-in turned on for this hub, and it is not yet — turn it on from the ` +
+      `Access mode page (Cloud and Open both support it), then come back here. ${planNote}`;
+
+const OAUTH_CONNECT = (name: string) => (issuer: string, profile: string) => ({
+  url: `${issuer.replace(/\/$/, "")}/mcp/${profile}`,
+  note:
+    `Paste this address into ${name}'s custom connector settings, then sign in with your ` +
+    `palaia account when it asks.`,
+});
 
 export const CLIENTS: ClientEntry[] = [
   {
@@ -105,8 +118,9 @@ export const CLIENTS: ClientEntry[] = [
     subtitle: "Web, desktop, mobile and Cowork — custom connector on every plan",
     reason: CLOUD_CONNECTOR_REASON(
       "claude.ai",
-      "Once it ships, every plan (including Free) can add palaia as a custom connector.",
+      "Every plan (including Free) can add palaia as a custom connector.",
     ),
+    oauthConnect: OAUTH_CONNECT("claude.ai"),
   },
   {
     kind: "notYet",
@@ -116,9 +130,10 @@ export const CLIENTS: ClientEntry[] = [
     subtitle: "Developer mode / custom connectors",
     reason: CLOUD_CONNECTOR_REASON(
       "ChatGPT",
-      "Once it ships: write access needs a Business, Enterprise or Edu workspace — Plus/Pro will " +
-        "get a read-only profile so recall still works.",
+      "Write access needs a Business, Enterprise or Edu workspace — Plus/Pro get a read-only " +
+        "profile so recall still works.",
     ),
+    oauthConnect: OAUTH_CONNECT("ChatGPT"),
   },
   {
     kind: "guided",
@@ -139,7 +154,8 @@ export const CLIENTS: ClientEntry[] = [
     name: "Grok",
     icon: ClientsIcon,
     subtitle: "Custom (bring-your-own) MCP connectors — web/iOS/Android",
-    reason: CLOUD_CONNECTOR_REASON("Grok", "Once it ships, connect from web, iOS or Android."),
+    reason: CLOUD_CONNECTOR_REASON("Grok", "Connect from web, iOS or Android once it is on."),
+    oauthConnect: OAUTH_CONNECT("Grok"),
   },
   {
     kind: "guided",
