@@ -84,6 +84,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 from collections.abc import Mapping, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
@@ -97,9 +98,18 @@ from starlette.types import ASGIApp
 
 from ..auth.policy import check_gateway_auth_policy
 from ..stash.service import StashService
-from .build import GatewayConfigError, _build_profile_server, _build_vault_servers
+from ..upstream.models import UpstreamConfig
+from ..upstream.service import UpstreamCredentialError, UpstreamService
+from .build import (
+    GatewayConfigError,
+    UpstreamMount,
+    _build_profile_server,
+    _build_vault_servers,
+)
 from .config import GatewayConfig, ProfileConfig, VaultMountConfig
 from .vault_protocol import VaultService
+
+logger = logging.getLogger("palaia_hub.gateway.dynamic")
 
 #: Sentinel telling the background task to stop and close everything.
 _STOP = object()
@@ -156,6 +166,18 @@ class DynamicGateway:
         stash_service: the hub-wide stash (SPEC-202), mounted into any
             profile whose ``stash`` flag is set (SPEC-301) — same contract
             as :func:`~.build.build_gateway`.
+        upstream_service: the external-server registry (SPEC-302). Given,
+            a profile's ``upstreams`` entries are mounted **only while the
+            upstream's last probe said it was reachable** — a down or
+            switched-off server contributes no tools and, crucially, no
+            wait: nothing in a profile build or a ``tools/list`` reaches
+            for an unreachable endpoint. :meth:`start` deliberately does
+            **not** probe (SPEC-302 deliverable #4: "the mount must not
+            block hub startup"), so a freshly started hub mounts no
+            upstream at all until
+            :class:`palaia_hub.upstream.monitor.UpstreamHealthMonitor`'s
+            first pass reports one up and calls
+            :meth:`refresh_upstreams`.
     """
 
     def __init__(
@@ -167,8 +189,10 @@ class DynamicGateway:
         token_verifiers: Mapping[str, TokenVerifier] | None = None,
         profile_middleware: Mapping[str, Sequence[Middleware]] | None = None,
         stash_service: StashService | None = None,
+        upstream_service: UpstreamService | None = None,
     ) -> None:
         self._config = config
+        self._upstream_service = upstream_service
         self._vault_services: dict[str, VaultService] = dict(vault_services)
         self._vault_servers: dict[str, FastMCP] = _build_vault_servers(config, self._vault_services)
         self._mode = mode
@@ -232,6 +256,19 @@ class DynamicGateway:
                 raise GatewayConfigError(
                     f"vault key {vault.key!r} is already mounted at this gateway"
                 )
+            # SPEC-302 deliverable #5, the other direction: a *vault* created
+            # at runtime must not silently shadow an already-connected
+            # external server's tool prefix either. `model_copy` below does
+            # not re-run GatewayConfig's validators, so the check is explicit.
+            clashing = [u for u in self._config.upstreams if u.mount_namespace == vault.namespace]
+            if clashing:
+                raise GatewayConfigError(
+                    f"vault {vault.key!r} would use the tool prefix "
+                    f"{vault.namespace!r}, which the connected external server "
+                    f"{clashing[0].key!r} ({clashing[0].display_name}) already "
+                    "uses. Fix: name the vault differently, or give that server "
+                    "another namespace."
+                )
             self._config = self._config.model_copy(update={"vaults": [*self._config.vaults, vault]})
             self._vault_services[vault.key] = service
             self._vault_servers[vault.key] = _build_vault_servers(
@@ -257,6 +294,29 @@ class DynamicGateway:
 
         check_gateway_auth_policy(self._mode, self._profile_servers)
 
+    async def refresh_upstreams(self, keys: Sequence[str] | None = None) -> list[str]:
+        """Rebuild every profile that mounts one of ``keys`` (SPEC-302).
+
+        Called whenever an external server's *mountability* changed — it
+        came up, went down, was switched off, had its renames edited, or was
+        just added. ``None`` refreshes every profile that mounts any
+        upstream at all.
+
+        Returns the profile paths that were actually rebuilt, so a caller
+        can log or report it. A profile that mounts no affected upstream is
+        left completely alone (no rebuild, no retired session manager).
+        """
+        async with self._lock:
+            affected = [
+                profile
+                for profile in self._config.profiles
+                if profile.upstreams
+                and (keys is None or any(key in profile.upstreams for key in keys))
+            ]
+            for profile in affected:
+                await self._request_mount(profile)
+        return [profile.path for profile in affected]
+
     async def upsert_profile(
         self,
         path: str,
@@ -266,6 +326,7 @@ class DynamicGateway:
         stash: bool = False,
         hidden_tools: Sequence[str] = (),
         semantic_routing: bool = False,
+        upstreams: Sequence[str] | None = None,
         auth: TokenVerifier | None = None,
     ) -> None:
         """Create a new profile, or fully replace an existing one's shape.
@@ -292,6 +353,12 @@ class DynamicGateway:
             semantic_routing: whether this profile should expose
                 ``find_tool``/``invoke_tool`` instead of its full surface
                 (SPEC-305 deliverable #4).
+            upstreams: every external server (SPEC-302) this profile should
+                mount, by key — replacing whatever it mounted before, the
+                same whole-list contract ``vault_keys`` follows. ``None``
+                keeps an existing profile's list untouched (and means "none"
+                for a brand-new one), so a caller editing only the vault
+                list never silently unmounts a connected server.
             auth: the verifier this path should use for every future
                 rebuild, recorded into ``self._token_verifiers``. Pass this
                 for a genuinely new path if the hub's mode requires auth
@@ -316,6 +383,23 @@ class DynamicGateway:
                 )
             if auth is not None:
                 self._token_verifiers[path] = auth
+            profiles_by_path = {p.path: p for p in self._config.profiles}
+            if upstreams is None:
+                previous = profiles_by_path.get(path)
+                resolved_upstreams = list(previous.upstreams) if previous is not None else []
+            else:
+                resolved_upstreams = list(upstreams)
+            unknown_upstreams = [
+                key
+                for key in resolved_upstreams
+                if key not in {u.key for u in self._config.upstreams}
+            ]
+            if unknown_upstreams:
+                raise GatewayConfigError(
+                    f"cannot mount profile {path!r}: no external server is "
+                    f"configured under {unknown_upstreams}. Fix: connect the "
+                    "server first."
+                )
             new_profile = ProfileConfig(
                 path=path,
                 label=label,
@@ -323,8 +407,8 @@ class DynamicGateway:
                 stash=stash,
                 hidden_tools=list(hidden_tools),
                 semantic_routing=semantic_routing,
+                upstreams=resolved_upstreams,
             )
-            profiles_by_path = {p.path: p for p in self._config.profiles}
             profiles_by_path[path] = new_profile
             self._config = self._config.model_copy(
                 update={"profiles": list(profiles_by_path.values())}
@@ -381,14 +465,102 @@ class DynamicGateway:
             )
             await self._request_unmount(path)
 
+    async def register_upstream(self, upstream: UpstreamConfig) -> None:
+        """Add or replace an external server in this gateway's own config.
+
+        Only the *registry* changes here — no profile mounts it until a
+        caller names it in :meth:`upsert_profile`'s ``upstreams``. The
+        replacement is validated by :class:`~.config.GatewayConfig` itself,
+        so a namespace that collides with a vault or another upstream is
+        refused here rather than at mount time (SPEC-302 deliverable #5).
+        """
+        async with self._lock:
+            others = [u for u in self._config.upstreams if u.key != upstream.key]
+            # A fresh `GatewayConfig(...)` rather than `model_copy(update=...)`:
+            # only the constructor re-runs the model validators, which is
+            # where the namespace-conflict refusal lives.
+            self._config = GatewayConfig(
+                vaults=list(self._config.vaults),
+                profiles=list(self._config.profiles),
+                upstreams=[*others, upstream],
+            )
+
+    async def remove_upstream(self, key: str) -> list[str]:
+        """Drop an external server and rebuild every profile that mounted it.
+
+        Returns the profile paths rebuilt. Raises :class:`KeyError` when no
+        such upstream is configured.
+        """
+        async with self._lock:
+            if key not in {u.key for u in self._config.upstreams}:
+                raise KeyError(f"no external server configured under {key!r}")
+            profiles = [
+                profile.model_copy(
+                    update={"upstreams": [k for k in profile.upstreams if k != key]}
+                )
+                if key in profile.upstreams
+                else profile
+                for profile in self._config.profiles
+            ]
+            affected = [
+                profile.path
+                for profile, before in zip(profiles, self._config.profiles, strict=True)
+                if profile.upstreams != before.upstreams
+            ]
+            self._config = GatewayConfig(
+                vaults=list(self._config.vaults),
+                profiles=profiles,
+                upstreams=[u for u in self._config.upstreams if u.key != key],
+            )
+            for profile in profiles:
+                if profile.path in affected:
+                    await self._request_mount(profile)
+        return affected
+
+    async def _upstream_mounts_for(self, profile: ProfileConfig) -> dict[str, UpstreamMount]:
+        """The subset of ``profile.upstreams`` that is actually mountable now.
+
+        An upstream is mounted only when it is enabled *and* its last probe
+        found it reachable — see the class docstring's ``upstream_service``
+        note for why an unreachable one is left out entirely rather than
+        mounted and allowed to time out on every ``tools/list``.
+        """
+        service = self._upstream_service
+        if service is None or not profile.upstreams:
+            return {}
+        mounts: dict[str, UpstreamMount] = {}
+        for key in profile.upstreams:
+            config = service.configs.get(key)
+            if config is None or not config.enabled or not service.is_up(key):
+                continue
+            try:
+                proxy = await service.proxy_for(key)
+            except UpstreamCredentialError as exc:
+                logger.warning(
+                    "not mounting external server %r on profile %r: %s",
+                    key,
+                    profile.path,
+                    exc,
+                )
+                continue
+            mounts[key] = UpstreamMount(config=config, server=proxy)
+        return mounts
+
     async def _request_mount(self, profile: ProfileConfig) -> None:
         """Build one profile's FastMCP app (plain construction — safe in the
         caller's own task) and hand it to the lifecycle task to actually
         mount. Caller holds ``self._lock``."""
         auth = self._token_verifiers.get(profile.path)
         middleware = self._profile_middleware.get(profile.path, ())
+        upstream_mounts = await self._upstream_mounts_for(profile)
         server = _build_profile_server(
-            profile, self._config, self._vault_servers, auth, middleware, self._stash_service
+            profile,
+            self._config,
+            self._vault_servers,
+            auth,
+            middleware,
+            self._stash_service,
+            upstream_mounts,
         )
         asgi_app = server.http_app(path="/")
         done: asyncio.Future[None] = asyncio.get_running_loop().create_future()

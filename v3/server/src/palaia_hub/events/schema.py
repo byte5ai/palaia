@@ -71,6 +71,15 @@ EventName = Literal[
     "gateway.profile.created",
     "gateway.profile.updated",
     "gateway.profile.deleted",
+    # SPEC-302 (external servers): one pair for reachability — emitted only
+    # when it *changes*, so a healthy server is silent — plus one per
+    # connect/edit/disconnect through `/api/gateway/upstreams`. Additive to
+    # the v1 vocabulary.
+    "gateway.upstream.up",
+    "gateway.upstream.down",
+    "gateway.upstream.connected",
+    "gateway.upstream.updated",
+    "gateway.upstream.disconnected",
     # SPEC-303: the curated marketplace index was (re)fetched — fresh or a
     # refused/offline fallback, named honestly in the event's own data.
     # Additive to the v1 vocabulary, same rule as the curator events above.

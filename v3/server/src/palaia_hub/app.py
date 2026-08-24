@@ -56,6 +56,14 @@ from .oauth import AuthorizationServer, build_oauth_router
 from .stash.service import StashService
 from .stash_api import build_stash_router
 from .static import mount_dashboard
+from .upstream.api import (
+    build_secret_change_hook,
+    build_secrets_router,
+    build_upstreams_router,
+)
+from .upstream.monitor import UpstreamHealthMonitor
+from .upstream.secrets import SecretStore
+from .upstream.service import UpstreamService
 from .vault import VaultNotFoundError, VaultRegistry
 
 # Name of the env var that, when set to a positive number of seconds, adds a
@@ -86,6 +94,9 @@ def create_app(
     automation_outbox: AutomationOutbox | None = None,
     notification_store: NotificationStore | None = None,
     curator_wiring: CuratorWiring | None = None,
+    upstream_service: UpstreamService | None = None,
+    upstream_monitor: UpstreamHealthMonitor | None = None,
+    secret_store: SecretStore | None = None,
     home: Path | None = None,
 ) -> FastAPI:
     """Build the hub's ASGI app.
@@ -201,6 +212,22 @@ def create_app(
             wired into :mod:`palaia_hub.dashboard_api`'s ``create_vault``).
             Omitted, a wizard-created vault stays off the curator until a
             restart, exactly as before this parameter existed.
+        upstream_service: the external-server registry (SPEC-302). Given
+            together with ``dynamic_gateway``, mounts
+            ``/api/gateway/upstreams`` and every connection it holds
+            (including a ``stdio`` upstream's child process) is closed by
+            this app's own lifespan. Omitted, the hub serves no external
+            servers at all, same as before this parameter existed.
+        upstream_monitor: the periodic reachability probe for those servers
+            (:class:`~palaia_hub.upstream.monitor.UpstreamHealthMonitor`).
+            Started at the *end* of startup — deliberately after the gateway
+            has mounted its profiles, so a hub whose external server is
+            unreachable still starts instantly (SPEC-302 deliverable #4) —
+            and stopped before the connections are reaped.
+        secret_store: the encrypted credential store (SPEC-302). Given,
+            mounts the write-only ``/api/secrets`` surface — independent of
+            ``dynamic_gateway`` on purpose, so a credential can be entered
+            before anything is connected — and is closed at shutdown.
         hook_outbox: the durable delivery queue backing ``hook_store``.
             Defaults to :class:`~palaia_hub.hooks.HookOutbox` at its
             standard path under the hub's data directory when ``hook_store``
@@ -356,6 +383,12 @@ def create_app(
             tasks.append(asyncio.create_task(automation_dispatcher.run_forever()))
         if curator is not None:
             await curator.start()
+        # SPEC-302: the first external-server probe pass runs here, in the
+        # background — after the gateway has already mounted every profile,
+        # so a hub whose upstream is unreachable still starts instantly and
+        # the profile picks the server up on the pass that finds it.
+        if upstream_monitor is not None:
+            await upstream_monitor.start()
         publish_event(
             event_bus,
             "hub.started",
@@ -375,6 +408,16 @@ def create_app(
             await stop_background_tasks(tasks)
             if curator is not None:
                 await curator.aclose()
+            # Stop probing before the gateway goes away, then reap every
+            # upstream connection — for a `stdio` upstream that is what
+            # kills its child process (SPEC-302 acceptance: "process reaped
+            # on hub shutdown").
+            if upstream_monitor is not None:
+                await upstream_monitor.aclose()
+            if upstream_service is not None:
+                await upstream_service.aclose()
+            if secret_store is not None:
+                secret_store.close()
             if dynamic_gateway is not None:
                 await dynamic_gateway.aclose()
             if indexes is not None:
@@ -512,6 +555,32 @@ def create_app(
                 event_bus=event_bus,
                 oauth_server=oauth_server,
                 token_store=token_store,
+            )
+        )
+    # SPEC-302: external MCP servers, and the write-only secret store their
+    # credentials live in. The upstream surface needs a live gateway to
+    # mount onto (same gate as the profile editor above); the secret surface
+    # only needs the store, so a credential can be entered before anything
+    # is connected.
+    if secret_store is not None:
+        app.include_router(
+            build_secrets_router(
+                secret_store,
+                on_secret_changed=(
+                    build_secret_change_hook(upstream_service, dynamic_gateway)
+                    if upstream_service is not None and dynamic_gateway is not None
+                    else None
+                ),
+            )
+        )
+    if dynamic_gateway is not None and upstream_service is not None:
+        app.include_router(
+            build_upstreams_router(
+                dynamic_gateway,
+                upstream_service,
+                home=hub_home,
+                config=config,
+                event_bus=event_bus,
             )
         )
     # SPEC-306: the Claude Desktop connect-page "Download bundle" button.

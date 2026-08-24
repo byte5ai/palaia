@@ -18,6 +18,12 @@ import yaml
 from platformdirs import user_data_dir
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+# SPEC-302: the external-server schema, imported rather than duplicated.
+# `palaia_hub.upstream.models` (and its package `__init__`) import nothing
+# from the rest of `palaia_hub` and nothing from fastmcp, precisely so this
+# module can use it while still loading before any transport layer exists.
+from .upstream.models import UpstreamConfig as GatewayUpstreamSettings
+
 APP_NAME = "palaia-hub"
 
 # The default curator runner command, duplicated here as a plain tuple rather
@@ -210,6 +216,39 @@ exposure:
 #       label: Default
 #       vaults: [work]
 #       stash: false
+#       # Other MCP servers this profile also offers, by key (see below).
+#       upstreams: [linear]
+#   # Other people's MCP servers, connected once here instead of in every
+#   # client's own config file. `kind: http` is a server on the internet;
+#   # `kind: stdio` is a program palaia starts on this machine and talks to.
+#   # Their tools appear as `<namespace>_<tool>` on whichever profiles list
+#   # them above, and you can rename any of them.
+#   #
+#   # API keys and tokens NEVER go in this file. Store the value once (the
+#   # dashboard, or `PUT /api/secrets/<name>`) and refer to it by name here;
+#   # it is encrypted in secrets.sqlite3 and never shown again.
+#   #
+#   # palaia does not log in to other services for you: if a service issues
+#   # you a token, paste it in yourself. (palaia's own `oauth:` server above
+#   # is a different thing — that is how your clients log in to palaia.)
+#   upstreams:
+#     - key: linear
+#       kind: http
+#       display_name: Linear
+#       url: https://mcp.linear.app/mcp
+#       namespace: linear
+#       enabled: true
+#       auth:
+#         header: Authorization
+#         value_template: "Bearer {secret}"
+#         secret_name: linear-token
+#     - key: weather
+#       kind: stdio
+#       display_name: Weather box
+#       command: /usr/local/bin/weather-mcp
+#       args: ["--stdio"]
+#       env_secrets:
+#         WEATHER_API_KEY: weather-key
 
 # The curator (SPEC-206): the background job that turns inbox captures into
 # well-placed vault notes. Off by default — it runs a model, which costs
@@ -560,6 +599,11 @@ class GatewayProfileSettings(BaseModel):
     #: Expose ``find_tool``/``invoke_tool`` instead of the full surface
     #: (SPEC-305 deliverable #4). See ``ProfileConfig``.
     semantic_routing: bool = False
+    #: External MCP servers (SPEC-302) mounted into this profile, by key —
+    #: each has to appear in ``gateway.upstreams`` below. Listing a server
+    #: there connects it; listing it *here* is what exposes its tools to the
+    #: clients using this profile.
+    upstreams: list[str] = Field(default_factory=list)
 
 
 class GatewaySettings(BaseModel):
@@ -587,6 +631,20 @@ class GatewaySettings(BaseModel):
 
     vaults: list[GatewayVaultSettings] = Field(default_factory=list)
     profiles: list[GatewayProfileSettings] = Field(default_factory=list)
+    #: External MCP servers this hub connects (SPEC-302). Unlike the two
+    #: lists above, this one is **not** duplicated from the gateway package
+    #: — :class:`palaia_hub.upstream.models.UpstreamConfig` is imported
+    #: directly, because that module was written to be import-free with
+    #: respect to the rest of ``palaia_hub`` for exactly this reason (see
+    #: its docstring). One shape, no twin to keep in sync; the "duplicate it
+    #: to stay fastmcp-free" rule the two settings classes above follow is
+    #: satisfied here by the *model* being fastmcp-free instead.
+    #:
+    #: Credentials are never stored here: an entry names the secret it needs
+    #: (:class:`~palaia_hub.upstream.models.UpstreamAuthConfig.secret_name`,
+    #: ``env_secrets``) and the value lives encrypted in
+    #: ``<home>/secrets.sqlite3``.
+    upstreams: list[GatewayUpstreamSettings] = Field(default_factory=list)
 
 
 class CuratorSettings(BaseModel):
@@ -821,6 +879,25 @@ def load_config(home: Path | None = None, *, create_if_missing: bool = True) -> 
     merged: dict[str, Any] = {**file_values, **env_values}
 
     try:
-        return HubConfig.model_validate(merged)
+        config = HubConfig.model_validate(merged)
     except ValidationError as exc:
         raise ConfigError(_format_validation_error(path, exc)) from exc
+    # Issue #242: `open` mode's contract (masterplan mode table) is a PUBLIC
+    # dashboard with mandatory sign-in — and the dashboard's owner sign-in
+    # does not exist yet. Until it does, an operator choosing `open` (here
+    # or via the dashboard's mode endpoint, which enforces the same rule)
+    # would put every admin endpoint — token minting, profile editing, mode
+    # changes, vault contents — on the public internet with no check at all.
+    # Refused at the operator entry points rather than in HubConfig's own
+    # validator, so the mode's internal semantics (rate limiting, policy,
+    # tunnel handling) stay implemented and tested for the SPEC that adds
+    # the admin-session gate and lifts this.
+    if config.mode == "open":
+        raise ConfigError(
+            f"{path}: mode 'open' is not available yet: it makes the dashboard "
+            f"itself public, and the dashboard sign-in that this requires is "
+            f"still being built. Fix: use `mode: cloud` — clients like "
+            f"claude.ai and ChatGPT connect exactly the same way there, only "
+            f"the dashboard stays on your own network."
+        )
+    return config

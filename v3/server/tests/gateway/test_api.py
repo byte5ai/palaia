@@ -43,6 +43,9 @@ def test_list_profiles_reports_the_live_shape(tmp_path: Path) -> None:
             "hidden_tools": [],
             "semantic_routing": False,
             "tool_count": 15,
+            # SPEC-302: external servers this profile mounts — empty until
+            # one is connected, which is every hub until someone does.
+            "upstreams": [],
             "managed": False,
         }
     ]

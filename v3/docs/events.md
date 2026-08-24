@@ -100,21 +100,34 @@ of them ignores them.
 | `curator.proposal.apply_failed` | same shape | An operation failed mid-plan; the proposal is stamped `apply-failed` and a `doctor.finding` is raised. |
 | `curator.proposal.manual` | same shape | The proposal carries no executable plan (or an unparseable one) — a human has to apply it. |
 
-<<<<<<< HEAD
 ### 3.2 Marketplace event (SPEC-303, additive)
 
 | Event | Origin | `data` fields | Fires when |
 |---|---|---|---|
 | `market.index.updated` | `market` | `generated_at`, `entry_count`, `stale`, `warning` | The curated add-on index (`palaia_hub.market.curated.CuratedIndexClient`) is (re)fetched — on a fresh, verified document `stale` is `false` and `warning` empty; on a refused/tampered document or an offline network, `stale` is `true` and `warning` names the exact reason (the same reason logged as a WARNING), and `generated_at`/`entry_count` describe whichever copy (last-verified, or none) was served instead. |
-=======
-### 3.2 Gateway profile events (SPEC-301, additive)
+
+### 3.3 Gateway profile events (SPEC-301, additive)
 
 | Event | Origin | `data` fields | Fires when |
 |---|---|---|---|
 | `gateway.profile.created` | `gateway` | `path`, `vaults`, `stash` | `POST /api/gateway/profiles` creates a new MCP profile. |
 | `gateway.profile.updated` | `gateway` | `path`, `vaults`, `stash` | `PATCH /api/gateway/profiles/{path}` changes an existing profile's label, mounted vaults, or stash flag. |
 | `gateway.profile.deleted` | `gateway` | `path` | `DELETE /api/gateway/profiles/{path}` removes a profile. |
->>>>>>> origin/claude/palaia-major-rewrite-lj5v9x
+
+### 3.4 External MCP server events (SPEC-302, additive)
+
+Reachability is reported only when it **changes** — a healthy external server
+is silent, so these are safe to route to a phone. No event here ever carries a
+credential: an upstream's stored secrets are referenced by name and never
+included in `data` at all.
+
+| Event | Origin | `data` fields | Fires when |
+|---|---|---|---|
+| `gateway.upstream.up` | `gateway` | `upstream`, `display_name`, `namespace`, `kind`, `detail`, `tool_count` | A probe (periodic or `POST /api/gateway/upstreams/{key}/probe`) reaches an external server that was previously unreachable or never checked. `detail` is the same one-line status the REST surface shows. |
+| `gateway.upstream.down` | `gateway` | same shape (`tool_count` is `0`) | A probe cannot reach a server that was up, or the first check of a server fails. `detail` says why, in plain language. |
+| `gateway.upstream.connected` | `gateway` | `upstream`, `display_name`, `kind`, `namespace`, `profiles` | `POST /api/gateway/upstreams` connects a new external server. |
+| `gateway.upstream.updated` | `gateway` | `upstream`, `display_name`, `enabled`, `profiles` | `PATCH /api/gateway/upstreams/{key}` changes one (including switching it off). |
+| `gateway.upstream.disconnected` | `gateway` | `upstream` | `DELETE /api/gateway/upstreams/{key}` removes one; every profile that mounted it is rebuilt without it. |
 
 `health` also travels the same bus and wire format (SSE only; it is not a
 webhook-filterable v1 name — see §6) — it is the dashboard's periodic

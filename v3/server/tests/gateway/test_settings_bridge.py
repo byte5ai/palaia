@@ -156,4 +156,7 @@ def test_persist_gateway_settings_replaces_an_existing_section(tmp_path: Path) -
 def test_render_gateway_section_empty_settings_is_valid_yaml() -> None:
     body = render_gateway_section(GatewaySettings())
     parsed = yaml.safe_load(f"gateway:\n{body}")
-    assert parsed == {"gateway": {"vaults": [], "profiles": []}}
+    # `upstreams` joined the section in SPEC-302; an empty list means
+    # "no external servers connected", which is every hub until someone
+    # connects one.
+    assert parsed == {"gateway": {"vaults": [], "profiles": [], "upstreams": []}}

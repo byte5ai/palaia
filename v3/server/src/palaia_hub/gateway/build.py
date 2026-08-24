@@ -16,12 +16,14 @@ Binding findings this module follows exactly (SPEC-002,
   loudly.
 - **``tool_names`` renames are pre-namespace** (Q4) — handled once, in
   :mod:`palaia_hub.gateway.naming`, not re-derived here.
-- No ``FastMCP.as_proxy()`` / ``create_proxy()`` appears here because vault
-  tool servers are mounted in-process (no remote upstream in this SPEC's
-  scope — external upstreams are Phase 3, MASTERPLAN §5.2/§5.3). If a
-  future SPEC proxies a remote MCP server into a profile, it MUST use
-  ``fastmcp.server.create_proxy()`` — ``FastMCP.as_proxy()`` is deprecated
-  (Q1).
+- Vault tool servers are mounted in-process (no network hop). **External**
+  MCP servers (SPEC-302) arrive here as already-built client-backed proxies
+  in :class:`UpstreamMount` — created by
+  :meth:`palaia_hub.upstream.service.UpstreamService.proxy_for` with
+  ``fastmcp.server.create_proxy()``, never the deprecated
+  ``FastMCP.as_proxy()`` (Q1). Building them is the async caller's job so
+  that this function stays synchronous and, more importantly, so that no
+  network round-trip can ever happen inside a profile build.
 """
 
 from __future__ import annotations
@@ -37,11 +39,12 @@ from fastmcp.utilities.lifespan import combine_lifespans
 from starlette.types import ASGIApp
 
 from ..stash.service import StashService
+from ..upstream.models import UpstreamConfig
 from .apps.recall_app import RESOURCE_URI as RECALL_EXPLORER_URI
 from .apps.recall_app import render_recall_explorer_html
 from .apps.review_app import RESOURCE_URI as REVIEW_QUEUE_URI
 from .apps.review_app import render_review_queue_html
-from .config import GatewayConfig, ProfileConfig
+from .config import CURATOR_PROFILE_PATH, GatewayConfig, ProfileConfig
 from .memory_tools import build_vault_server, vault_identity_block
 from .naming import resolve_tool_names
 from .semantic_routing import build_semantic_routing_server
@@ -55,6 +58,39 @@ from .vault_protocol import VaultService
 # that shape is exactly what `combine_lifespans` already produces (verified
 # against `FastAPI(lifespan=...)` directly; see the module docstring).
 Lifespan = Any
+
+
+@dataclass(frozen=True)
+class UpstreamMount:
+    """One external MCP server, ready to mount (SPEC-302 deliverable #1).
+
+    ``server`` is the client-backed proxy
+    (:func:`fastmcp.server.create_proxy`) whose every tool call is forwarded
+    over its own MCP connection to the real upstream. Constructing it costs
+    no I/O, and a proxy whose upstream is unreachable mounts perfectly well
+    — fastmcp 3.4.7's tool aggregator logs and skips a provider whose
+    ``list_tools`` fails, so the profile serves everything else. That is
+    exactly the degradation SPEC-302 deliverable #4 asks for.
+    """
+
+    config: UpstreamConfig
+    server: FastMCP
+
+
+def upstream_identity_block(config: UpstreamConfig) -> str:
+    """The IDENTITY line marking an upstream's tools as somebody else's.
+
+    SPEC-302 deliverable #6: an upstream's own tool descriptions pass
+    through untouched, so the profile's instructions are where provenance
+    gets stated — in plain language, naming who connected it, so a model
+    reading the surface can tell palaia's own memory tools apart from a
+    third party's.
+    """
+    return (
+        f"IDENTITY: tools named {config.mount_namespace}_* come from "
+        f"{config.display_name} — an outside service, connected by you. palaia "
+        "passes their descriptions through unchanged and does not vouch for them."
+    )
 
 
 class GatewayConfigError(ValueError):
@@ -109,18 +145,34 @@ def _build_profile_server(
     auth: TokenVerifier | None,
     middleware: Sequence[Middleware] = (),
     stash_service: StashService | None = None,
+    upstream_mounts: Mapping[str, UpstreamMount] | None = None,
 ) -> FastMCP:
+    # SPEC-302 deliverable #6, second half of the fence: `ProfileConfig`
+    # already refuses to *hold* upstreams on the curator path, so reaching
+    # this line means a caller built the profile some other way. Fail
+    # closed and loudly rather than mount anything.
+    if profile.path == CURATOR_PROFILE_PATH and profile.upstreams:
+        raise GatewayConfigError(
+            "refusing to mount an external server on the curator profile: the "
+            "curator runs a model over your own notes, and an outside tool in "
+            f"that session could exfiltrate them (asked for: {sorted(profile.upstreams)})"
+        )
     # `mount()` does not propagate a mounted server's `instructions` to its
     # parent, so a real client connecting to this profile would otherwise
     # see none at all (SPEC-105 deliverable #4: "server instructions with
     # an IDENTITY line per vault"). Compose one IDENTITY block per mounted
     # vault into *this* server's own instructions instead.
     vault_configs = [config.vault(key) for key in profile.vaults]
-    instructions = (
-        "\n\n".join(vault_identity_block(v) for v in vault_configs)
-        if vault_configs
-        else None
-    )
+    # Only upstreams the caller actually built a proxy for are mounted: a
+    # disabled or unreachable one is simply absent from `upstream_mounts`,
+    # which is how a down external server degrades to absent tools instead
+    # of a broken profile (SPEC-302 deliverable #4).
+    mounted_upstreams = [
+        (upstream_mounts or {})[key] for key in profile.upstreams if key in (upstream_mounts or {})
+    ]
+    identity_blocks = [vault_identity_block(v) for v in vault_configs]
+    identity_blocks += [upstream_identity_block(m.config) for m in mounted_upstreams]
+    instructions = "\n\n".join(identity_blocks) if identity_blocks else None
     # `auth` (SPEC-108): a TokenVerifier here makes FastMCP wrap this
     # profile's HTTP endpoint in its own RequireAuthMiddleware/
     # BearerAuthBackend — every request needs a bearer token this verifier
@@ -153,6 +205,18 @@ def _build_profile_server(
     # of the service existing.
     if profile.stash and stash_service is not None:
         server.mount(build_stash_server(stash_service))
+    # SPEC-302: external servers, namespaced and renamable exactly like a
+    # vault's tool family. `tool_names` values are pre-namespace (FINDINGS
+    # Q4) — the one composition rule `gateway.naming` owns, applied here
+    # through the same helper the vault mounts use.
+    for mount in mounted_upstreams:
+        renames = resolve_tool_names(mount.config.mount_namespace, mount.config.tool_renames)
+        server.mount(
+            mount.server,
+            namespace=mount.config.mount_namespace,
+            tool_names=renames or None,
+        )
+
     # `profile.hidden_tools` (SPEC-305 deliverable #3): a global (not
     # session-scoped) `Provider.disable()` transform on *this profile's own*
     # `FastMCP` instance — every profile already gets its own instance (the
@@ -161,7 +225,9 @@ def _build_profile_server(
     # without touching the shared vault tool server another profile might
     # also mount. `disable()` only ever marks a `model_copy` of the
     # component (see fastmcp.server.transforms.visibility) — the mounted
-    # vault/stash servers' own tool objects are never mutated.
+    # vault/stash servers' own tool objects are never mutated. Applied
+    # after every mount (vaults, stash, upstreams), since the names it
+    # hides are final post-namespace names.
     if profile.hidden_tools:
         server.disable(names=set(profile.hidden_tools))
     _attach_app_resources(server)
@@ -206,6 +272,7 @@ def build_gateway(
     token_verifiers: Mapping[str, TokenVerifier] | None = None,
     profile_middleware: Mapping[str, Sequence[Middleware]] | None = None,
     stash_service: StashService | None = None,
+    upstream_mounts: Mapping[str, UpstreamMount] | None = None,
 ) -> GatewayASGI:
     """Build the full gateway from a validated config and its backing services.
 
@@ -229,6 +296,13 @@ def build_gateway(
             default) leaves every profile exactly as before this parameter
             existed, even one with ``stash: true`` — the flag only takes
             effect once a service exists to back it.
+        upstream_mounts: external MCP servers ready to mount (SPEC-302),
+            keyed by upstream key — built by the async caller via
+            :meth:`palaia_hub.upstream.service.UpstreamService.proxy_for`.
+            A profile's ``upstreams`` entry with no key here contributes no
+            tools, which is how a switched-off or unreachable server
+            degrades. ``None`` (the default) leaves every profile exactly as
+            before this parameter existed.
 
     Raises :class:`GatewayConfigError` if a configured vault has no entry in
     ``vault_services``. Structural config problems (duplicate keys, unknown
@@ -244,7 +318,7 @@ def build_gateway(
         auth = (token_verifiers or {}).get(profile.path)
         middleware = (profile_middleware or {}).get(profile.path, ())
         server = _build_profile_server(
-            profile, config, vault_servers, auth, middleware, stash_service
+            profile, config, vault_servers, auth, middleware, stash_service, upstream_mounts
         )
         profile_servers[profile.path] = server
         asgi_app = server.http_app(path="/")
@@ -263,4 +337,10 @@ def build_gateway(
     )
 
 
-__all__ = ["GatewayASGI", "GatewayConfigError", "build_gateway"]
+__all__ = [
+    "GatewayASGI",
+    "GatewayConfigError",
+    "UpstreamMount",
+    "build_gateway",
+    "upstream_identity_block",
+]
