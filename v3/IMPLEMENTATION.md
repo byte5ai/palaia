@@ -165,6 +165,23 @@ foundation and integrates first) → **3b** = 302, 305 (both need 301) →
 | [307](specs/SPEC-307-automations.md) | Automations editor | 201 | Sonnet 5 | medium | — |
 | [308](specs/SPEC-308-phase3-gate.md) | Phase-3 gate evidence | 301–306 | Sonnet 5 | medium | gate evidence |
 
+## 4d. Phase 4 SPEC index (written at the Phase-3 gate, 2026-08-24)
+
+Waves: **4a** = 401, 402, 406 (no mutual deps; 401 is security-critical
+and integrates first) → **4b** = 403 (needs 402) → **4c** = 404, 405 (both
+need 403), then 407 + Phase-4 gate (exit criterion: *two agents on
+different providers hand off work through palaia*).
+
+| SPEC | Title | Depends on | Model | Effort | Review gate |
+|---|---|---|---|---|---|
+| [401](specs/SPEC-401-dashboard-signin.md) | Dashboard sign-in (admin session gate, closes #242) | 203, 204, 205 | **Opus 5** | medium | **Fable 5 security review (max)** |
+| [402](specs/SPEC-402-session-directory.md) | Session directory | 105, 201 | Sonnet 5 | high | Fable 5 review (session secret) |
+| [403](specs/SPEC-403-messenger.md) | Messenger core (envelope fixed in-spec) | 402, 106 | **Opus 5** | medium | Fable 5 review (inbox auth) |
+| [404](specs/SPEC-404-messaging-skills.md) | Messaging skills + push adapters | 403, 207 | Sonnet 5 | high | effectiveness runs |
+| [405](specs/SPEC-405-observability.md) | Team observability (screens + 2 MCP Apps) | 402, 403, 208 | Sonnet 5 | high | owner UX pass |
+| [406](specs/SPEC-406-addon-sdk.md) | Add-on SDK + submission flow | 303, 304 | Sonnet 5 | medium | — |
+| [407](specs/SPEC-407-phase4-gate.md) | Phase-4 gate evidence | 401–405 | Sonnet 5 | medium | gate evidence |
+
 ## 5. Phase 2 work packages (superseded by §4b — kept for provenance)
 
 | Package | Content | Model | Effort |
