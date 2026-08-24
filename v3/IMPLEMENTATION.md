@@ -147,6 +147,24 @@ remembers what desktop Codex learned* — a real remote client through OAuth).
 | [209](specs/SPEC-209-client-matrix.md) | Client matrix validation | 203, 205 | Sonnet 5 | low | gate evidence |
 | [210](specs/SPEC-210-phase1-followups.md) | Phase-1 follow-ups | 104, 110, 111 | Sonnet 5 | medium | — |
 
+## 4c. Phase 3 SPEC index (written at the Phase-2 gate, 2026-08-24)
+
+Waves: **3a** = 301, 303, 306, 307 (no mutual deps; 301 is the shared
+foundation and integrates first) → **3b** = 302, 305 (both need 301) →
+**3c** = 304 (needs 302 + 303), then 308 + Phase-3 gate (exit criterion:
+*install a tool once, every AI has it*).
+
+| SPEC | Title | Depends on | Model | Effort | Review gate |
+|---|---|---|---|---|---|
+| [301](specs/SPEC-301-gateway-config.md) | Gateway config in config.yaml | 210, 203, 205, 206 | Sonnet 5 | high | Fable 5 review (audience wiring) |
+| [302](specs/SPEC-302-external-servers.md) | External servers + secret store | 301 | **Opus 5** | medium | **Fable 5 security review (max)** |
+| [303](specs/SPEC-303-registry-index.md) | Registry client + curated index | 101 | Sonnet 5 | medium | Fable 5 review (index signing) |
+| [304](specs/SPEC-304-marketplace.md) | Marketplace v1 + MCP App | 302, 303 | Sonnet 5 | high | owner UX pass |
+| [305](specs/SPEC-305-profile-editor.md) | Profile editor | 301 | Sonnet 5 | medium | — |
+| [306](specs/SPEC-306-mcpb-bundles.md) | MCPB + one-click bundles | 203, 205 | Sonnet 5 | high | Fable 5 review (signing story) |
+| [307](specs/SPEC-307-automations.md) | Automations editor | 201 | Sonnet 5 | medium | — |
+| [308](specs/SPEC-308-phase3-gate.md) | Phase-3 gate evidence | 301–306 | Sonnet 5 | medium | gate evidence |
+
 ## 5. Phase 2 work packages (superseded by §4b — kept for provenance)
 
 | Package | Content | Model | Effort |
