@@ -42,6 +42,7 @@ from .hooks import OUTBOX_RELATIVE_PATH, HookDispatcher, HookOutbox, HookStore, 
 from .index import VaultIndex
 from .logging import setup_logging
 from .market import MarketService, build_market_router
+from .mcpb import build_mcpb_router
 from .modes import AuthRateLimitMiddleware, ModeAuditLog, build_modes_router
 from .oauth import AuthorizationServer, build_oauth_router
 from .stash.service import StashService
@@ -122,7 +123,10 @@ def create_app(
             runtime is inbox-visible without also needing an entry in the
             (gateway-mounted-at-startup) ``vault_services`` mapping. Omitted
             (the default), the hub runs with no wizard/explorer REST surface
-            at all, same as before this parameter existed.
+            at all, same as before this parameter existed. Also mounts
+            ``/api/connect/mcpb`` (SPEC-306, :mod:`palaia_hub.mcpb`) — the
+            Claude Desktop connect-page download, which needs it to know
+            what scopes a minted token may carry.
         dynamic_gateway: the SPEC-210 dynamic gateway
             (:class:`palaia_hub.gateway.dynamic.DynamicGateway`), mounted
             once at ``/mcp`` when given — the production alternative to
@@ -451,6 +455,20 @@ def create_app(
                 event_bus=event_bus,
                 oauth_server=oauth_server,
                 token_store=token_store,
+            )
+        )
+    # SPEC-306: the Claude Desktop connect-page "Download bundle" button.
+    # Mounted whenever there is a vault registry to compute scopes from,
+    # same gating as the dashboard router above — the route itself answers
+    # 501 if neither auth path (token_store, oauth_server) is configured,
+    # rather than 404ing as if the feature did not exist.
+    if vault_registry is not None:
+        app.include_router(
+            build_mcpb_router(
+                vault_registry=vault_registry,
+                token_store=token_store,
+                oauth_server=oauth_server,
+                home=hub_home,
             )
         )
 
