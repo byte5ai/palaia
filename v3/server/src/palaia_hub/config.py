@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import warnings
 from pathlib import Path
 from typing import Any, Literal
 
@@ -125,6 +126,11 @@ recall:
 # guessed from the bind address above. Turn it on to connect claude.ai,
 # ChatGPT or a phone as a remote connector; per-client `plt_` tokens keep
 # working alongside it either way.
+#
+# Which MCP resources this server issues audience-scoped tokens for is no
+# longer set here (SPEC-301): it always follows the gateway's own profiles
+# below (or the single `default` profile over every vault, when no `gateway:`
+# section is present) — one source of truth for "what this hub serves".
 oauth:
   enabled: false
   # issuer: https://hub.example.com
@@ -141,9 +147,6 @@ oauth:
   # Admin-provisioned machine clients are never pruned.
   client_gc_ttl: 2592000
   client_gc_interval: 3600
-  # MCP profile paths this server issues audience-scoped tokens for. Must
-  # match the gateway's profile paths.
-  profiles: []
   # Sign in with an identity provider instead of the local password
   # (SPEC-204). Uncomment ONE of the blocks below. Setting this removes the
   # password sign-in route entirely — "one door only" (MASTERPLAN §5.5):
@@ -178,6 +181,35 @@ exposure:
   # How the public URL above is served: 'tailscale', 'cloudflared', or
   # 'reverse_proxy' (bring-your-own). Purely informational.
   tunnel: null
+
+# The gateway's shape (SPEC-301): which MCP profiles this hub serves, which
+# vaults each one mounts, and any per-vault tool renames or per-profile
+# built-ins (like the stash tools). Absent (the default, as below) — every
+# registered vault is served on one profile named 'default', exactly as
+# before this section existed; nothing to change for a zero-config hub.
+#
+# Uncomment and edit to shape it yourself, or use the dashboard's profile
+# editor / `POST /api/gateway/profiles` — either way edits here are picked
+# up live, no restart needed, and a REST-made edit is written back here.
+#
+# gateway:
+#   # Per-vault identity overrides (optional — a vault not listed here uses
+#   # its own name/purpose and no tool renames, same as always).
+#   vaults:
+#     - key: work
+#       name: work
+#       purpose: "Work notes and decisions."
+#       tool_renames:
+#         search: find
+#   # Which profiles exist, and what each one mounts. A profile's `path` is
+#   # its identity (the MCP URL segment, and the OAuth resource audience if
+#   # OAuth is on) — set once, never renamed; give it a `label` instead if
+#   # you want a friendlier display name.
+#   profiles:
+#     - path: default
+#       label: Default
+#       vaults: [work]
+#       stash: false
 
 # The curator (SPEC-206): the background job that turns inbox captures into
 # well-placed vault notes. Off by default — it runs a model, which costs
@@ -414,22 +446,35 @@ class OAuthSettings(BaseModel):
     #: Minimum interval between GC passes (it is triggered opportunistically
     #: from the token/registration endpoints).
     client_gc_interval: int = Field(default=3600, ge=60)
-    #: Which MCP profile paths this authorization server issues tokens for.
-    #:
-    #: A bridge, not a permanent design: the profiles a hub serves are the
-    #: gateway's (:class:`palaia_hub.gateway.config.GatewayConfig`), which
-    #: does not reach ``config.yaml`` yet — ``palaia_hub.cli.serve`` still
-    #: mounts no gateway (see its comment). Until it does, an operator names
-    #: the profiles here so the ``serve`` entry point can host the OAuth
-    #: endpoints; a caller that builds a gateway itself passes the real
-    #: profile set to :meth:`palaia_hub.oauth.AuthorizationServer.build` and
-    #: ignores this list.
+    #: **Deprecated (SPEC-301), ignored.** Used to be how an operator named
+    #: which MCP profiles this authorization server issues tokens for — a
+    #: bridge from before the gateway's own shape reached ``config.yaml``.
+    #: Now the AS always reads that from the gateway's own profiles (the
+    #: ``gateway:`` section below, or the single ``default`` profile when
+    #: that section is absent) — one source of truth for "what this hub
+    #: serves", per SPEC-301 deliverable #3. Kept only so an old
+    #: ``config.yaml`` that still sets this parses without error; see
+    #: :func:`load_config`'s deprecation warning. Fix: delete this key.
     profiles: list[str] = Field(default_factory=list)
     #: An identity provider fronting sign-in (SPEC-204). ``None`` (default)
     #: keeps the local owner password as the only door; setting this removes
     #: the password route entirely rather than adding a second door next to
     #: it (MASTERPLAN §5.5's "one door only" rule).
     idp: IdpSettings | None = None
+
+    @model_validator(mode="after")
+    def _warn_deprecated_profiles(self) -> OAuthSettings:
+        if self.profiles:
+            warnings.warn(
+                "config.yaml: `oauth.profiles` is deprecated and no longer read — "
+                "the OAuth server now always issues tokens for the gateway's own "
+                "profiles (the `gateway:` section, or the single 'default' profile "
+                "when that section is absent). Fix: remove `oauth.profiles` from "
+                "config.yaml.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        return self
 
 
 class ExposureSettings(BaseModel):
@@ -455,6 +500,87 @@ class ExposureSettings(BaseModel):
     #: changes which copy-paste config the wizard offers, never the hub's
     #: own behavior.
     tunnel: Literal["tailscale", "cloudflared", "reverse_proxy"] | None = None
+
+
+class GatewayVaultSettings(BaseModel):
+    """One vault's gateway identity override (SPEC-301 deliverable #1).
+
+    A vault registered with :class:`~palaia_hub.vault.VaultRegistry` but
+    absent from ``gateway.vaults`` uses its own name/purpose and no tool
+    renames — exactly as before this section existed. Listing it here
+    overrides the display name, one-line purpose, and/or per-tool renames
+    (SPEC-105's ``tool_renames``: base action name → desired tool name,
+    applied wherever this vault is mounted) that the gateway actually
+    builds tools from.
+
+    Deliberately duplicated here rather than importing
+    :class:`palaia_hub.gateway.config.VaultMountConfig` directly: this
+    module must stay importable without pulling in the gateway package
+    (which imports fastmcp) — see :data:`_DEFAULT_CURATOR_COMMAND`'s
+    comment above for the same rule applied to the curator. A test
+    (``tests/gateway/test_settings_bridge.py``) asserts the two shapes
+    never drift apart.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    #: Display name shown in tool names (e.g. ``work`` → ``work_memory_*``).
+    #: ``None`` keeps the vault's own name (the registry key, normally).
+    name: str | None = None
+    #: One-line purpose leading every one of this vault's tool descriptions.
+    #: ``None`` keeps whatever the vault's own manifest declares.
+    purpose: str | None = None
+    #: Base action name → desired tool name (pre-namespace). Invalid
+    #: characters are sanitized with a warning at build time, same as any
+    #: other rename (SPEC-105).
+    tool_renames: dict[str, str] = Field(default_factory=dict)
+
+
+class GatewayProfileSettings(BaseModel):
+    """One MCP profile's shape (SPEC-301 deliverable #1).
+
+    ``path`` is this profile's permanent identity — the MCP mount segment
+    and (when OAuth is on) its resource audience. It is set once, here or
+    via ``POST /api/gateway/profiles``, and never renamed afterwards; use
+    ``label`` for a friendly display name instead. See
+    :class:`palaia_hub.gateway.config.ProfileConfig`'s docstring for why.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str
+    label: str | None = None
+    vaults: list[str] = Field(default_factory=list)
+    #: Mount the stash tool family inside this profile too (SPEC-202/301).
+    stash: bool = False
+
+
+class GatewaySettings(BaseModel):
+    """The ``gateway:`` config.yaml section (SPEC-301): profiles as
+    first-class, operator-editable configuration.
+
+    Absent (``None`` on :class:`HubConfig`, the default) — the gateway is
+    built exactly as it always has been: one profile named ``default``
+    mounting every registered vault, no renames, no stash. Present with an
+    empty ``profiles`` list — same default, so adding ``gateway:\\n  vaults:
+    ...`` alone (identity overrides, no profile shape yet) changes nothing
+    about which profiles exist. Present with ``profiles`` populated — that
+    list is authoritative for which profiles exist and what each mounts;
+    see :mod:`palaia_hub.gateway.settings_bridge` for how it is resolved
+    against the vaults actually registered, and how a runtime
+    create/edit/delete through ``POST /api/gateway/profiles`` is written
+    back here.
+
+    The curator's own profile (``/mcp/curator``, SPEC-206) is never listed
+    here — it is synthesized separately from ``curator.enabled``, the same
+    way it always was; this section is only ever the *ordinary* profiles.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    vaults: list[GatewayVaultSettings] = Field(default_factory=list)
+    profiles: list[GatewayProfileSettings] = Field(default_factory=list)
 
 
 class CuratorSettings(BaseModel):
@@ -541,6 +667,11 @@ class HubConfig(BaseModel):
     curator: CuratorSettings = Field(default_factory=CuratorSettings)
     exposure: ExposureSettings = Field(default_factory=ExposureSettings)
     market: MarketSettings = Field(default_factory=MarketSettings)
+    #: The gateway's profiles/vault-identity shape (SPEC-301). ``None`` (the
+    #: default, and what an old config.yaml with no ``gateway:`` section
+    #: parses to) means "today's zero-config behavior": every vault on one
+    #: ``default`` profile. See :class:`GatewaySettings`.
+    gateway: GatewaySettings | None = None
 
     def curator_endpoint(self) -> str:
         """The base URL a curation session reaches this hub at (SPEC-206)."""

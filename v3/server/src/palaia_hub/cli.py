@@ -23,7 +23,8 @@ from .auth.scopes import vault_scope
 from .config import ConfigError, HubConfig, load_config, palaia_home
 from .curator import CURATOR_PROFILE_PATH, ApplyReport, CuratorRunReport, ProposalApplier
 from .curator.wiring import TOKEN_ENV, CuratorWiring, build_curator
-from .gateway.config import VaultMountConfig
+from .gateway.config import DEFAULT_GATEWAY_PROFILE, ProfileConfig, VaultMountConfig
+from .gateway.settings_bridge import GatewaySettingsError, resolve_full_gateway_profiles
 from .importers import ImportReport, ImportRunner, v2_source
 from .importers import basic_memory_source as bm_source
 from .index import VaultIndex, embed_progress
@@ -192,7 +193,11 @@ def serve(host: str | None = None, port: int | None = None) -> None:
     if overrides:
         config = config.model_copy(update=overrides)
 
-    asyncio.run(_serve_async(config))
+    try:
+        asyncio.run(_serve_async(config))
+    except GatewaySettingsError as exc:
+        print(f"palaia-hub: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
 
 
 async def _serve_async(config: HubConfig) -> None:
@@ -218,18 +223,49 @@ async def _serve_async(config: HubConfig) -> None:
     await server.serve()
 
 
-def _profile_scopes(profiles: Sequence[str], vault_keys: Sequence[str]) -> dict[str, list[str]]:
-    """``{profile: grantable scopes}`` for every profile, over ``vault_keys``.
-
-    Until the gateway's own config reaches ``config.yaml`` (see
-    ``OAuthSettings.profiles``), the scope ceiling is derived from the vault
-    registry: every registered vault contributes a read and a write scope.
-    That is the same vocabulary SPEC-108 tokens use
-    (:func:`palaia_hub.auth.scopes.vault_scope`), so a client's scopes mean
-    the same thing whichever credential carried them.
+def _profile_scopes(profiles: Sequence[ProfileConfig]) -> dict[str, list[str]]:
+    """``{profile: grantable scopes}``, one entry per profile, scoped to
+    exactly the vaults *that* profile mounts (SPEC-301) — every vault a
+    profile serves contributes a read and a write scope, the same
+    vocabulary SPEC-108 tokens use (:func:`palaia_hub.auth.scopes.
+    vault_scope`), so a client's scopes mean the same thing whichever
+    credential carried them.
     """
-    scopes = [scope for key in vault_keys for scope in (f"vault:{key}:read", f"vault:{key}:write")]
-    return {profile: list(scopes) for profile in profiles}
+    return {
+        profile.path: [
+            scope
+            for key in profile.vaults
+            for scope in (f"vault:{key}:read", f"vault:{key}:write")
+        ]
+        for profile in profiles
+    }
+
+
+def _gateway_profiles_for_oauth(config: HubConfig) -> list[ProfileConfig]:
+    """The profiles the OAuth server should issue tokens for — the *same*
+    resolution ``palaia_hub.serve.build_production_app`` uses to build the
+    real gateway (SPEC-301 deliverable #3's "one source of truth"), so the
+    CLI's OAuth-server assembly (built before the gateway exists, see
+    ``_maybe_oauth_server``'s caller) never disagrees with it.
+
+    Falls back to the deprecated ``oauth.profiles`` list only when nothing
+    resolves from the gateway's own shape at all (no ``gateway:`` section
+    *and* no vault registered yet) — "an old config still works" (SPEC-301
+    acceptance criterion), for the one case that genuinely has nothing
+    else to go on. The moment even one vault exists, the gateway's own
+    ``default`` profile resolves and takes over, same as any other config.
+    """
+    vault_keys = sorted(VaultRegistry().names())
+    try:
+        profiles = resolve_full_gateway_profiles(
+            config, vault_keys, default_profile=DEFAULT_GATEWAY_PROFILE
+        )
+    except GatewaySettingsError as exc:
+        print(f"palaia-hub: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+    if not profiles and config.oauth.profiles:
+        profiles = [ProfileConfig(path=legacy) for legacy in config.oauth.profiles]
+    return profiles
 
 
 def _maybe_oauth_server(config: HubConfig) -> AuthorizationServer | None:
@@ -244,20 +280,19 @@ def _maybe_oauth_server(config: HubConfig) -> AuthorizationServer | None:
             file=sys.stderr,
         )
         raise SystemExit(1)
-    vault_keys = sorted(VaultRegistry().names())
-    profiles = config.oauth.profiles
+    profiles = _gateway_profiles_for_oauth(config)
     if not profiles:
         print(
-            "palaia-hub: oauth.enabled is true but oauth.profiles is empty, so no MCP "
-            "resource can be named in a token. Fix: list your gateway's profile paths "
-            "under `oauth.profiles` in config.yaml.",
+            "palaia-hub: oauth.enabled is true but this hub serves no MCP profiles "
+            "yet, so no resource can be named in a token. Fix: create a vault first "
+            "(the wizard, or `palaia-hub import ...`).",
             file=sys.stderr,
         )
         raise SystemExit(1)
-    server = AuthorizationServer.build(config, _profile_scopes(profiles, vault_keys))
+    server = AuthorizationServer.build(config, _profile_scopes(profiles))
     print(
         f"OAuth 2.1 authorization server enabled (issuer {server.issuer}); "
-        f"profiles: {', '.join(profiles)}"
+        f"profiles: {', '.join(p.path for p in profiles)}"
     )
     return server
 
@@ -294,7 +329,8 @@ def _oauth_machine_client(name: str, profile: str, scopes: list[str]) -> None:
             file=sys.stderr,
         )
         raise SystemExit(1)
-    registry = ResourceRegistry(config.oauth.issuer, config.oauth.profiles or [profile])
+    profile_paths = [p.path for p in _gateway_profiles_for_oauth(config)] or [profile]
+    registry = ResourceRegistry(config.oauth.issuer, profile_paths)
     try:
         audience = registry.audience(profile)
         provisioned = provision_machine_client(

@@ -23,6 +23,7 @@ from . import __version__
 from .auth import TokenRecord, TokenStore, build_auth_router, check_gateway_auth_policy
 from .config import HubConfig, load_config, palaia_home
 from .curator import CuratorScheduler
+from .curator.wiring import CuratorWiring
 from .dashboard_api import build_dashboard_router
 from .events import (
     EventBus,
@@ -33,6 +34,7 @@ from .events import (
     stop_background_tasks,
 )
 from .gateway import DynamicGateway, GatewayASGI, VaultService
+from .gateway.api import build_gateway_profiles_router
 from .gateway.apps.hub_status_app import HubStatusDeps, build_hub_status_server
 from .gateway.stash_tools import build_stash_gateway
 from .gateway.wiring import EngineVaultService
@@ -71,6 +73,7 @@ def create_app(
     hook_store: HookStore | None = None,
     hook_outbox: HookOutbox | None = None,
     curator: CuratorScheduler | None = None,
+    curator_wiring: CuratorWiring | None = None,
     home: Path | None = None,
 ) -> FastAPI:
     """Build the hub's ASGI app.
@@ -175,6 +178,14 @@ def create_app(
             automation living inside the hub, not a second daemon (MASTERPLAN
             §5.1). Omitted (the default), no curation ever runs from this
             process; ``palaia-hub curator run`` still works on demand.
+        curator_wiring: the same curator, as its whole
+            :class:`~palaia_hub.curator.wiring.CuratorWiring` rather than
+            just its scheduler (SPEC-301). Given, a vault created through
+            the wizard also joins this curator's vault set live (see
+            :meth:`~palaia_hub.curator.wiring.CuratorWiring.add_vault`,
+            wired into :mod:`palaia_hub.dashboard_api`'s ``create_vault``).
+            Omitted, a wizard-created vault stays off the curator until a
+            restart, exactly as before this parameter existed.
         hook_outbox: the durable delivery queue backing ``hook_store``.
             Defaults to :class:`~palaia_hub.hooks.HookOutbox` at its
             standard path under the hub's data directory when ``hook_store``
@@ -422,6 +433,24 @@ def create_app(
                 vault_registry,
                 indexes=indexes,
                 dynamic_gateway=dynamic_gateway,
+                curator=curator_wiring,
+            )
+        )
+
+    # SPEC-301 deliverable #2: the runtime profile-editor REST surface.
+    # Needs a live gateway to apply an edit to and `home` to persist it to
+    # `config.yaml` — the same opt-in-on-`dynamic_gateway` gate the
+    # dashboard router above uses, since there is nothing to edit without
+    # one.
+    if dynamic_gateway is not None:
+        app.include_router(
+            build_gateway_profiles_router(
+                dynamic_gateway,
+                home=hub_home,
+                config=config,
+                event_bus=event_bus,
+                oauth_server=oauth_server,
+                token_store=token_store,
             )
         )
 

@@ -36,6 +36,7 @@ from fastmcp.server.middleware import Middleware
 from fastmcp.utilities.lifespan import combine_lifespans
 from starlette.types import ASGIApp
 
+from ..stash.service import StashService
 from .apps.recall_app import RESOURCE_URI as RECALL_EXPLORER_URI
 from .apps.recall_app import render_recall_explorer_html
 from .apps.review_app import RESOURCE_URI as REVIEW_QUEUE_URI
@@ -43,6 +44,7 @@ from .apps.review_app import render_review_queue_html
 from .config import GatewayConfig, ProfileConfig
 from .memory_tools import build_vault_server, vault_identity_block
 from .naming import resolve_tool_names
+from .stash_tools import build_stash_server
 from .vault_protocol import VaultService
 
 # `combine_lifespans`'s return type is generic over the ASGI app it will be
@@ -105,6 +107,7 @@ def _build_profile_server(
     vault_servers: Mapping[str, FastMCP],
     auth: TokenVerifier | None,
     middleware: Sequence[Middleware] = (),
+    stash_service: StashService | None = None,
 ) -> FastMCP:
     # `mount()` does not propagate a mounted server's `instructions` to its
     # parent, so a real client connecting to this profile would otherwise
@@ -140,6 +143,15 @@ def _build_profile_server(
             namespace=vault_config.namespace,
             tool_names=tool_names or None,
         )
+    # `profile.stash` (SPEC-301): mount the stash tool family's five tools
+    # (unnamespaced — see gateway/stash_tools.py's module docstring) into
+    # *this* profile too, alongside its vaults, so one MCP connection
+    # carries both. `stash_service is None` (no hub-wide stash configured
+    # at all) silently mounts nothing, same as a profile with `stash: false`
+    # — a profile never fails to build just because the flag is set ahead
+    # of the service existing.
+    if profile.stash and stash_service is not None:
+        server.mount(build_stash_server(stash_service))
     _attach_app_resources(server)
     return server
 
@@ -175,6 +187,7 @@ def build_gateway(
     *,
     token_verifiers: Mapping[str, TokenVerifier] | None = None,
     profile_middleware: Mapping[str, Sequence[Middleware]] | None = None,
+    stash_service: StashService | None = None,
 ) -> GatewayASGI:
     """Build the full gateway from a validated config and its backing services.
 
@@ -193,6 +206,11 @@ def build_gateway(
             server is built, so a later rebuild of that profile carries the
             same middleware. A profile with no entry is built exactly as
             before this parameter existed.
+        stash_service: the hub-wide stash (SPEC-202), mounted into any
+            profile whose ``stash`` flag is set (SPEC-301). ``None`` (the
+            default) leaves every profile exactly as before this parameter
+            existed, even one with ``stash: true`` — the flag only takes
+            effect once a service exists to back it.
 
     Raises :class:`GatewayConfigError` if a configured vault has no entry in
     ``vault_services``. Structural config problems (duplicate keys, unknown
@@ -207,7 +225,9 @@ def build_gateway(
     for profile in config.profiles:
         auth = (token_verifiers or {}).get(profile.path)
         middleware = (profile_middleware or {}).get(profile.path, ())
-        server = _build_profile_server(profile, config, vault_servers, auth, middleware)
+        server = _build_profile_server(
+            profile, config, vault_servers, auth, middleware, stash_service
+        )
         profile_servers[profile.path] = server
         asgi_app = server.http_app(path="/")
         mounts[f"/mcp/{profile.path}"] = asgi_app
