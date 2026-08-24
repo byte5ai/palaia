@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { SearchIcon } from "./icons";
+import { NotificationBell } from "./NotificationBell";
 
 export type HealthState = "ok" | "warn" | "risk" | "connecting";
 
@@ -44,9 +45,12 @@ export function Topbar({
           </span>
         </button>
         <span className="badge badge--ok" title={HEALTH_LABEL[health]}>
-          <span className={["dot", HEALTH_DOT[health]].filter(Boolean).join(" ")} />
+          <span
+            className={["dot", HEALTH_DOT[health]].filter(Boolean).join(" ")}
+          />
           {HEALTH_LABEL[health]}
         </span>
+        <NotificationBell />
         <span className="avatar" aria-hidden="true">
           {userInitials}
         </span>

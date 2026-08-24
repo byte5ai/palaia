@@ -21,6 +21,13 @@ from fastapi import FastAPI, HTTPException
 
 from . import __version__
 from .auth import TokenRecord, TokenStore, build_auth_router, check_gateway_auth_policy
+from .automations import (
+    AutomationDispatcher,
+    AutomationOutbox,
+    AutomationStore,
+    build_automations_router,
+)
+from .automations.outbox import OUTBOX_RELATIVE_PATH as AUTOMATIONS_OUTBOX_RELATIVE_PATH
 from .config import HubConfig, load_config, palaia_home
 from .curator import CuratorScheduler
 from .dashboard_api import build_dashboard_router
@@ -40,6 +47,7 @@ from .hooks import OUTBOX_RELATIVE_PATH, HookDispatcher, HookOutbox, HookStore, 
 from .index import VaultIndex
 from .logging import setup_logging
 from .modes import AuthRateLimitMiddleware, ModeAuditLog, build_modes_router
+from .notifications import NotificationStore, build_notifications_router
 from .oauth import AuthorizationServer, build_oauth_router
 from .stash.service import StashService
 from .stash_api import build_stash_router
@@ -69,6 +77,9 @@ def create_app(
     hook_store: HookStore | None = None,
     hook_outbox: HookOutbox | None = None,
     curator: CuratorScheduler | None = None,
+    automation_store: AutomationStore | None = None,
+    automation_outbox: AutomationOutbox | None = None,
+    notification_store: NotificationStore | None = None,
     home: Path | None = None,
 ) -> FastAPI:
     """Build the hub's ASGI app.
@@ -172,6 +183,27 @@ def create_app(
             standard path under the hub's data directory when ``hook_store``
             is given and this is omitted; pass one explicitly in tests that
             need an isolated path.
+        automation_store: the trigger -> condition -> action editor's
+            configuration (SPEC-307). Given, mounts the ``/api/automations``
+            REST surface and starts the delivery worker that turns every
+            matching, enabled automation into a ``memory_write``/
+            ``stash_set``/``notification`` action. The ``memory_write``
+            action kind needs ``vault_registry`` and the ``stash_set`` kind
+            needs ``stash_service`` — a delivery whose action kind has no
+            backing service configured fails with a plain-language error
+            rather than crashing the worker. Omitted (the default), the hub
+            runs with no automations surface at all.
+        automation_outbox: the durable delivery queue backing
+            ``automation_store``. Defaults to
+            :class:`~palaia_hub.automations.AutomationOutbox` at its
+            standard path when ``automation_store`` is given and this is
+            omitted.
+        notification_store: the dashboard notification center (SPEC-307).
+            Given, mounts ``/api/notifications`` and is what the
+            ``notification`` automation action kind writes to. Independent
+            of ``automation_store`` on purpose, same as ``stash_service``
+            vs. ``hook_store`` — a caller can expose the bell without
+            automations, though nothing else writes to it today.
     """
     config = config or load_config()
     vault_services = vault_services or {}
@@ -257,6 +289,29 @@ def create_app(
         dispatcher = HookDispatcher(hook_store, outbox)
         event_bus.on(dispatcher.on_event)
 
+    # SPEC-307: the automations dispatcher, same "in-process bus consumer"
+    # posture as the hooks dispatcher above — nothing about the bus knows
+    # automations exist either.
+    automation_dispatcher: AutomationDispatcher | None = None
+    automation_outbox_: AutomationOutbox | None = None
+    if automation_store is not None:
+        automation_outbox_ = automation_outbox or AutomationOutbox(
+            _default_automations_outbox_path()
+        )
+
+        def _emit_automation_event(event_name: str, data: dict[str, Any]) -> None:
+            publish_event(event_bus, event_name, origin="automations", data=data)
+
+        automation_dispatcher = AutomationDispatcher(
+            automation_store,
+            automation_outbox_,
+            vault_registry=vault_registry,
+            stash_service=stash_service,
+            notification_store=notification_store,
+            emit=_emit_automation_event,
+        )
+        event_bus.on(automation_dispatcher.on_event)
+
     # One lifespan runs every background concern: the events ticker
     # (SPEC-109), the webhook delivery worker (SPEC-201), and, when a
     # gateway is mounted, its session-manager lifespan (SPEC-105 —
@@ -268,6 +323,8 @@ def create_app(
             await dynamic_gateway.start()
         if dispatcher is not None:
             tasks.append(asyncio.create_task(dispatcher.run_forever()))
+        if automation_dispatcher is not None:
+            tasks.append(asyncio.create_task(automation_dispatcher.run_forever()))
         if curator is not None:
             await curator.start()
         publish_event(
@@ -416,6 +473,14 @@ def create_app(
     if hook_store is not None:
         assert outbox is not None  # built above, together with hook_store's dispatcher
         app.include_router(build_hooks_router(hook_store, outbox))
+    if notification_store is not None:
+        app.include_router(build_notifications_router(notification_store))
+    if automation_store is not None:
+        assert automation_outbox_ is not None  # built above, with automation_store's dispatcher
+        assert automation_dispatcher is not None
+        app.include_router(
+            build_automations_router(automation_store, automation_outbox_, automation_dispatcher)
+        )
 
     _maybe_add_test_slow_route(app)
 
@@ -427,6 +492,11 @@ def create_app(
 def _default_outbox_path() -> Path:
     """Where the hooks outbox lives when ``create_app`` is not given one explicitly."""
     return palaia_home() / OUTBOX_RELATIVE_PATH
+
+
+def _default_automations_outbox_path() -> Path:
+    """Where the automations outbox lives when ``create_app`` is not given one explicitly."""
+    return palaia_home() / AUTOMATIONS_OUTBOX_RELATIVE_PATH
 
 
 def _maybe_add_test_slow_route(app: FastAPI) -> None:

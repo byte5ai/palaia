@@ -65,6 +65,15 @@ EventName = Literal[
     "stash.get",
     "stash.del",
     "stash.evicted",
+    # SPEC-307 (automations): one event per delivery outcome. Additive to
+    # the v1 vocabulary, same as the curator's events above. Guarded against
+    # a loop by a fixed rule enforced in two places: an automation is
+    # refused at create time if its trigger event starts with
+    # "automation." (palaia_hub.automations.store), and the dispatcher
+    # itself never matches an automation.* event even against a "*"
+    # trigger (palaia_hub.automations.dispatcher).
+    "automation.fired",
+    "automation.failed",
     "health",
 ]
 
