@@ -23,6 +23,7 @@ from . import __version__
 from .auth import TokenRecord, TokenStore, build_auth_router, check_gateway_auth_policy
 from .config import HubConfig, load_config, palaia_home
 from .curator import CuratorScheduler
+from .curator.wiring import CuratorWiring
 from .dashboard_api import build_dashboard_router
 from .events import (
     EventBus,
@@ -33,12 +34,14 @@ from .events import (
     stop_background_tasks,
 )
 from .gateway import DynamicGateway, GatewayASGI, VaultService
+from .gateway.api import build_gateway_profiles_router
 from .gateway.apps.hub_status_app import HubStatusDeps, build_hub_status_server
 from .gateway.stash_tools import build_stash_gateway
 from .gateway.wiring import EngineVaultService
 from .hooks import OUTBOX_RELATIVE_PATH, HookDispatcher, HookOutbox, HookStore, build_hooks_router
 from .index import VaultIndex
 from .logging import setup_logging
+from .market import MarketService, build_market_router
 from .mcpb import build_mcpb_router
 from .modes import AuthRateLimitMiddleware, ModeAuditLog, build_modes_router
 from .oauth import AuthorizationServer, build_oauth_router
@@ -67,9 +70,11 @@ def create_app(
     event_bus: EventBus | None = None,
     oauth_server: AuthorizationServer | None = None,
     stash_service: StashService | None = None,
+    market_service: MarketService | None = None,
     hook_store: HookStore | None = None,
     hook_outbox: HookOutbox | None = None,
     curator: CuratorScheduler | None = None,
+    curator_wiring: CuratorWiring | None = None,
     home: Path | None = None,
 ) -> FastAPI:
     """Build the hub's ASGI app.
@@ -160,6 +165,12 @@ def create_app(
             mirror, and wires its ``stash.*`` events onto ``event_bus``.
             Omitted (the default), the hub runs with no stash surface at
             all, same as before this parameter existed.
+        market_service: the marketplace read model (SPEC-303 — official
+            registry + curated index + manual entries, merged). Given,
+            mounts ``/api/market/*`` and wires its
+            ``market.index.updated`` event onto ``event_bus``. Omitted
+            (the default), the hub runs with no marketplace surface at
+            all, same as before this parameter existed.
         hook_store: outbound-webhook configuration (SPEC-201). Given, mounts
             the ``/api/hooks`` REST surface and starts the delivery worker
             that turns every published event into a signed webhook POST for
@@ -171,6 +182,14 @@ def create_app(
             automation living inside the hub, not a second daemon (MASTERPLAN
             §5.1). Omitted (the default), no curation ever runs from this
             process; ``palaia-hub curator run`` still works on demand.
+        curator_wiring: the same curator, as its whole
+            :class:`~palaia_hub.curator.wiring.CuratorWiring` rather than
+            just its scheduler (SPEC-301). Given, a vault created through
+            the wizard also joins this curator's vault set live (see
+            :meth:`~palaia_hub.curator.wiring.CuratorWiring.add_vault`,
+            wired into :mod:`palaia_hub.dashboard_api`'s ``create_vault``).
+            Omitted, a wizard-created vault stays off the curator until a
+            restart, exactly as before this parameter existed.
         hook_outbox: the durable delivery queue backing ``hook_store``.
             Defaults to :class:`~palaia_hub.hooks.HookOutbox` at its
             standard path under the hub's data directory when ``hook_store``
@@ -196,6 +215,12 @@ def create_app(
 
         stash_service.publish = _publish_stash
         stash_gateway = build_stash_gateway(stash_service)
+
+    if market_service is not None:
+        def _publish_market(action: str, data: dict[str, Any]) -> None:
+            publish_event(event_bus, action, origin="market", data=data)
+
+        market_service.publish = _publish_market
 
     # SPEC-208 deliverable #2: the hub_status MCP App, mounted at
     # `/mcp/hub` — hub-level (not per-vault, unlike the memory tool
@@ -412,6 +437,24 @@ def create_app(
                 vault_registry,
                 indexes=indexes,
                 dynamic_gateway=dynamic_gateway,
+                curator=curator_wiring,
+            )
+        )
+
+    # SPEC-301 deliverable #2: the runtime profile-editor REST surface.
+    # Needs a live gateway to apply an edit to and `home` to persist it to
+    # `config.yaml` — the same opt-in-on-`dynamic_gateway` gate the
+    # dashboard router above uses, since there is nothing to edit without
+    # one.
+    if dynamic_gateway is not None:
+        app.include_router(
+            build_gateway_profiles_router(
+                dynamic_gateway,
+                home=hub_home,
+                config=config,
+                event_bus=event_bus,
+                oauth_server=oauth_server,
+                token_store=token_store,
             )
         )
         # SPEC-306: the Claude Desktop connect-page "Download bundle"
@@ -431,6 +474,8 @@ def create_app(
 
     if stash_service is not None:
         app.include_router(build_stash_router(stash_service))
+    if market_service is not None:
+        app.include_router(build_market_router(market_service))
     if hook_store is not None:
         assert outbox is not None  # built above, together with hook_store's dispatcher
         app.include_router(build_hooks_router(hook_store, outbox))

@@ -14,9 +14,12 @@ import pytest
 from fastmcp import Client
 
 from palaia_hub.auth.policy import AuthPolicyError
+from palaia_hub.gateway.build import GatewayConfigError
 from palaia_hub.gateway.config import GatewayConfig, ProfileConfig, VaultMountConfig
 from palaia_hub.gateway.dynamic import DynamicGateway
 from palaia_hub.gateway.fake_vault import FakeVaultService
+from palaia_hub.stash.service import StashService
+from palaia_hub.stash.store import StashStore
 
 pytestmark = pytest.mark.anyio
 
@@ -126,5 +129,153 @@ async def test_add_vault_with_a_duplicate_key_raises() -> None:
             FakeVaultService(),
             profile_paths=["default"],
         )
+
+    await gateway.aclose()
+
+
+# ------------------------------------------------------------------ SPEC-301
+
+
+async def test_upsert_profile_creates_a_brand_new_one() -> None:
+    config = GatewayConfig(vaults=[VaultMountConfig(key="work", name="work")])
+    gateway = DynamicGateway(config, {"work": FakeVaultService()})
+    await gateway.start()
+
+    await gateway.upsert_profile("personal", ["work"], label="Personal")
+
+    assert {p.path for p in gateway.config.profiles} == {"personal"}
+    assert gateway.config.profiles[0].label == "Personal"
+    async with Client(gateway.profile_servers["personal"]) as client:
+        names = {t.name for t in await client.list_tools()}
+    assert "work_memory_search" in names
+
+    await gateway.aclose()
+
+
+async def test_upsert_profile_replaces_an_existing_one_shape() -> None:
+    config = GatewayConfig(
+        vaults=[
+            VaultMountConfig(key="work", name="work"),
+            VaultMountConfig(key="personal", name="personal"),
+        ],
+        profiles=[ProfileConfig(path="default", vaults=["work"])],
+    )
+    gateway = DynamicGateway(
+        config, {"work": FakeVaultService(), "personal": FakeVaultService()}
+    )
+    await gateway.start()
+
+    await gateway.upsert_profile("default", ["work", "personal"], stash=True)
+
+    updated = next(p for p in gateway.config.profiles if p.path == "default")
+    assert set(updated.vaults) == {"work", "personal"}
+    assert updated.stash is True
+    async with Client(gateway.profile_servers["default"]) as client:
+        names = {t.name for t in await client.list_tools()}
+    assert "personal_memory_search" in names
+
+    await gateway.aclose()
+
+
+async def test_upsert_profile_with_unknown_vault_raises() -> None:
+    gateway = DynamicGateway(GatewayConfig(), {})
+    await gateway.start()
+
+    with pytest.raises(GatewayConfigError):
+        await gateway.upsert_profile("default", ["nope"])
+
+    await gateway.aclose()
+
+
+async def test_upsert_profile_in_cloud_mode_without_auth_raises() -> None:
+    gateway = DynamicGateway(GatewayConfig(), {}, mode="cloud")
+    await gateway.start()
+
+    with pytest.raises(AuthPolicyError):
+        await gateway.upsert_profile("default", [])
+
+    await gateway.aclose()
+
+
+async def test_remove_profile_unmounts_it() -> None:
+    config = GatewayConfig(
+        vaults=[VaultMountConfig(key="work", name="work")],
+        profiles=[ProfileConfig(path="default", vaults=["work"])],
+    )
+    gateway = DynamicGateway(config, {"work": FakeVaultService()})
+    await gateway.start()
+
+    await gateway.remove_profile("default")
+
+    assert gateway.config.profiles == []
+    assert "default" not in gateway.profile_servers
+    router = gateway.asgi_app
+    assert not any(getattr(r, "path", None) == "/default" for r in router.routes)  # type: ignore[attr-defined]
+
+    await gateway.aclose()
+
+
+async def test_remove_profile_leaves_an_in_flight_session_running() -> None:
+    """The retiring generation's own already-open session keeps answering —
+    same deliberate-leak rule a rebuild's old generation follows."""
+    config = GatewayConfig(
+        vaults=[VaultMountConfig(key="work", name="work")],
+        profiles=[ProfileConfig(path="default", vaults=["work"])],
+    )
+    gateway = DynamicGateway(config, {"work": FakeVaultService()})
+    await gateway.start()
+
+    old_server = gateway.profile_servers["default"]
+    async with Client(old_server) as old_client:
+        await gateway.remove_profile("default")
+        names = {t.name for t in await old_client.list_tools()}
+    assert "work_memory_search" in names
+
+    await gateway.aclose()
+
+
+async def test_remove_profile_unknown_path_raises() -> None:
+    gateway = DynamicGateway(GatewayConfig(), {})
+    await gateway.start()
+
+    with pytest.raises(KeyError):
+        await gateway.remove_profile("nope")
+
+    await gateway.aclose()
+
+
+async def test_profile_with_stash_true_mounts_the_stash_tools_too() -> None:
+    config = GatewayConfig(
+        vaults=[VaultMountConfig(key="work", name="work")],
+        profiles=[ProfileConfig(path="default", vaults=["work"], stash=True)],
+    )
+    stash_service = StashService(StashStore(":memory:"))
+    gateway = DynamicGateway(
+        config, {"work": FakeVaultService()}, stash_service=stash_service
+    )
+    await gateway.start()
+
+    async with Client(gateway.profile_servers["default"]) as client:
+        names = {t.name for t in await client.list_tools()}
+    assert "stash_set" in names
+    assert "work_memory_search" in names
+
+    await gateway.aclose()
+
+
+async def test_profile_with_stash_false_has_no_stash_tools() -> None:
+    config = GatewayConfig(
+        vaults=[VaultMountConfig(key="work", name="work")],
+        profiles=[ProfileConfig(path="default", vaults=["work"])],
+    )
+    stash_service = StashService(StashStore(":memory:"))
+    gateway = DynamicGateway(
+        config, {"work": FakeVaultService()}, stash_service=stash_service
+    )
+    await gateway.start()
+
+    async with Client(gateway.profile_servers["default"]) as client:
+        names = {t.name for t in await client.list_tools()}
+    assert "stash_set" not in names
 
     await gateway.aclose()

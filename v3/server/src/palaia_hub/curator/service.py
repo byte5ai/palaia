@@ -104,6 +104,22 @@ class CuratorScheduler:
         """Ask for a pass soon (debounced). Safe to call from a callback."""
         self._nudged.set()
 
+    def add_vault(
+        self,
+        key: str,
+        runner: CuratorRunner,
+        applier: ProposalApplier | None = None,
+    ) -> None:
+        """Add a vault created at runtime (SPEC-301 deliverable #4).
+
+        Safe to call between passes (:meth:`run_all` snapshots its own
+        runner/applier lists before awaiting anything, so a vault added
+        mid-pass is simply picked up starting the *next* pass, never a
+        half-iterated one)."""
+        self._runners[key] = runner
+        if applier is not None:
+            self._appliers[key] = applier
+
     # ------------------------------------------------------------------ loop
 
     async def _loop(self) -> None:
@@ -129,14 +145,20 @@ class CuratorScheduler:
         """One pass: curate every vault's inbox, then apply what was approved."""
         runs: list[CuratorRunReport] = []
         applies: list[ApplyReport] = []
-        for vault, runner in self._runners.items():
+        # Snapshot both mappings before awaiting anything: `add_vault` can
+        # be called from a different coroutine (a wizard-created vault,
+        # SPEC-301) while a pass is in flight, and mutating a dict while
+        # `.items()` iterates it raises `RuntimeError: dictionary changed
+        # size during iteration` — a vault added mid-pass is simply first
+        # curated on the *next* pass instead.
+        for vault, runner in list(self._runners.items()):
             try:
                 runs.append(await runner.run_once())
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001 - one vault must not stop the rest
                 logger.exception("curator: run failed for vault %r", vault)
-        for vault, applier in self._appliers.items():
+        for vault, applier in list(self._appliers.items()):
             try:
                 applies.append(await applier.run_once())
             except asyncio.CancelledError:

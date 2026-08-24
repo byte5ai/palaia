@@ -45,7 +45,9 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 
-from .gateway.config import VaultMountConfig
+from .curator.profile import CURATOR_PROFILE_PATH
+from .curator.wiring import CuratorWiring
+from .gateway.config import DEFAULT_GATEWAY_PROFILE, VaultMountConfig
 from .gateway.dynamic import DynamicGateway
 from .gateway.vault_protocol import (
     NoteRecord,
@@ -70,13 +72,6 @@ from .vault import (
 )
 from .vault import permalink as pl
 from .vault.links import iter_links
-
-#: The gateway profile a vault created through the wizard/API is mounted
-#: under when a :class:`~.gateway.dynamic.DynamicGateway` is wired in
-#: (SPEC-210 deliverable #1). Matches the single-profile convention every
-#: other production/e2e assembly in this codebase already uses (see
-#: ``tests/e2e/support/hub_server.py``'s ``--profile`` default).
-DEFAULT_GATEWAY_PROFILE = "default"
 
 # Two starter notes offered by the wizard's "start from a template" switch
 # (deliverable #1). Deliberately small and deletable — a template is a
@@ -256,6 +251,7 @@ def build_dashboard_router(
     *,
     indexes: dict[str, VaultIndex] | None = None,
     dynamic_gateway: DynamicGateway | None = None,
+    curator: CuratorWiring | None = None,
 ) -> APIRouter:
     """Build the wizard + explorer router, bound to ``registry``.
 
@@ -277,6 +273,13 @@ def build_dashboard_router(
             (unchanged default), a wizard-created vault stays
             dashboard/REST-visible only, exactly as documented in this
             module's docstring before this parameter existed.
+        curator: the hub's wired-up curator (SPEC-206/301), when
+            ``curator.enabled``. Given, a vault created here also joins the
+            curator profile's vault set and its guard's tool-action map —
+            closing SPEC-206's documented "curator starts curating that
+            vault's inbox after the next hub restart" gap (SPEC-301
+            deliverable #4). Omitted, behavior is unchanged: the vault is
+            still mounted on :data:`DEFAULT_GATEWAY_PROFILE` alone.
     """
     router = APIRouter(tags=["dashboard"])
 
@@ -304,7 +307,16 @@ def build_dashboard_router(
                 name=body.key,
                 purpose=body.purpose or "A palaia memory vault.",
             )
-            await dynamic_gateway.add_vault(mount, service, profile_paths=[DEFAULT_GATEWAY_PROFILE])
+            # Curator wiring first: by the time the curator profile becomes
+            # reachable with this vault mounted (next), its guard already
+            # recognizes the vault's tools — fail-closed in between rather
+            # than briefly wide open.
+            if curator is not None:
+                await curator.add_vault(engine, mount)
+            profile_paths = [DEFAULT_GATEWAY_PROFILE]
+            if curator is not None:
+                profile_paths.append(CURATOR_PROFILE_PATH)
+            await dynamic_gateway.add_vault(mount, service, profile_paths=profile_paths)
 
         return _vault_out(body.key, engine.info())
 

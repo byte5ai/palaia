@@ -82,13 +82,49 @@ class VaultMountConfig(BaseModel):
         return f"{sanitize_tool_name(self.name).value}_memory"
 
 
+#: The gateway profile a vault is mounted under when nothing more specific
+#: is configured — the "every vault on one profile" shape this SPEC's
+#: zero-config default preserves byte-for-byte (SPEC-301 deliverable #1).
+#: Lives here (the schema module) rather than in ``dashboard_api`` (its
+#: previous home): every module that resolves or persists gateway config —
+#: ``dashboard_api``, ``serve``, ``cli``, ``gateway.settings_bridge`` — needs
+#: this same literal, and importing it from the schema is the one direction
+#: that adds no cycle.
+DEFAULT_GATEWAY_PROFILE = "default"
+
+
 class ProfileConfig(BaseModel):
-    """One addressable profile: a URL path segment and which vaults it exposes."""
+    """One addressable profile: a URL path segment and which vaults it exposes.
+
+    ``path`` is the profile's identity: it is the MCP mount segment
+    (``/mcp/<path>``) a client connects to *and* the OAuth resource audience
+    it is granted a token for (SPEC-203's ``<issuer>/<path>``) — renaming it
+    would silently move every already-connected client and invalidate every
+    already-minted token's audience. So ``path`` is set once, at creation,
+    and never changed again (SPEC-301 deliverable #2): the runtime profile
+    CRUD surface (``palaia_hub.gateway.api``) can create or delete a profile
+    by its path, and can edit its ``label``/``vaults``/``stash``, but has no
+    "rename path" operation at all — a client that wants a new URL gets a
+    new profile, not a mutated one.
+
+    ``label`` is the free-text display name shown in the dashboard's profile
+    editor (SPEC-305) — purely cosmetic, defaults to ``path`` when unset, and
+    safe to change at any time since nothing outside the dashboard reads it.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     path: str
+    label: str | None = None
     vaults: list[str] = Field(default_factory=list)
+    #: Mount the stash tool family (``stash_set``/``stash_get``/...,
+    #: SPEC-202) inside this profile too, alongside its vaults' memory
+    #: tools — SPEC-301 deliverable #1's "enabled built-ins like stash".
+    #: ``False`` (default) leaves a profile exactly as before this field
+    #: existed; the hub-wide ``/mcp/stash`` mount (SPEC-202) is unaffected
+    #: either way — this only decides whether *this* profile's own MCP
+    #: connection also carries those five tools.
+    stash: bool = False
 
     @field_validator("path")
     @classmethod
@@ -101,6 +137,11 @@ class ProfileConfig(BaseModel):
         if any(not v for v in value):
             raise ValueError("profile vaults list must not contain empty entries")
         return value
+
+    @property
+    def display_label(self) -> str:
+        """``label`` if set, else ``path`` — what a UI should show."""
+        return self.label or self.path
 
 
 class GatewayConfig(BaseModel):

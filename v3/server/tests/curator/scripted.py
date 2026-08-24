@@ -26,12 +26,24 @@ Script = Callable[[Client, SessionRequest], Awaitable[None]]
 
 @dataclass
 class ScriptedSessionRunner:
-    """Runs ``script`` against ``server`` instead of spawning a model."""
+    """Runs ``script`` against ``server`` instead of spawning a model.
+
+    ``server_factory``, given, is called fresh on every :meth:`run` instead
+    of connecting to the fixed ``server`` object — for a curator profile
+    that gets *rebuilt* under a :class:`~palaia_hub.gateway.dynamic.
+    DynamicGateway` (SPEC-301 deliverable #4: a vault added at runtime
+    swaps in a brand-new profile server), so the scripted runner always
+    talks to whichever generation is current, exactly the way a real
+    session (HTTP, through a URL that always dispatches to the current
+    mount) already does. ``server`` is still required as a fallback/type
+    anchor and stays the only thing every pre-existing caller sets.
+    """
 
     server: FastMCP
     script: Script
     stdout: str = ""
     exit_code: int = 0
+    server_factory: Callable[[], FastMCP] | None = None
     #: Every request this runner was asked to run, in order — so a test can
     #: assert that an empty inbox launched no session at all.
     requests: list[SessionRequest] = field(default_factory=list)
@@ -40,7 +52,8 @@ class ScriptedSessionRunner:
 
     async def run(self, request: SessionRequest) -> SessionResult:
         self.requests.append(request)
-        async with Client(self.server) as client:
+        server = self.server_factory() if self.server_factory is not None else self.server
+        async with Client(server) as client:
             recorder = _RecordingClient(client, self.calls)
             await self.script(recorder, request)  # type: ignore[arg-type]
         return SessionResult(exit_code=self.exit_code, stdout=self.stdout)
