@@ -294,3 +294,104 @@ a bundle from a reachable hub and double-clicking it, would close both
 gaps — the same "needs a real device/account this sandbox cannot fake
 honestly" situation §0 and the Phase-2 gate note already describe for the
 phone-Claude half of the exit criterion.
+
+## 7. Phase-3 gate: tools follow the profile (SPEC-308, 2026-08-24)
+
+The Phase-3 exit criterion is narrower than the client matrix above and
+was checked separately: **install a tool once (marketplace), and it is
+available to every connected AI — different clients, different profiles,
+no per-client setup.** Scripted evidence lives in
+[`v3/server/tests/e2e/test_spec308_phase3_gate.py`](../server/tests/e2e/test_spec308_phase3_gate.py),
+against a new hub subprocess,
+[`support/hub_server_market.py`](../server/tests/e2e/support/hub_server_market.py),
+that wires `palaia_hub.serve.build_production_app` exactly the way
+`palaia-hub serve` does — real `VaultEngine`, real `AuthorizationServer`,
+real marketplace/install machinery, two gateway profiles (`default`,
+`mobile`) both accepting OAuth *and* SPEC-108 `plt_` tokens at once — over
+a real `uvicorn` socket.
+
+### 7.1 What was actually run
+
+```
+$ cd v3 && uv run pytest server/tests/e2e/test_spec308_phase3_gate.py -q
+..                                                                       [100%]
+2 passed in 32.84s
+```
+Run three times in a row (32.84s, 30.39s, 35.38s) with no flakes. The full
+`tests/e2e/` directory (33 tests, including SPEC-209's and SPEC-306's own
+suites) was also run twice end-to-end with this new file added, both green
+(176.40s, 174.65s) — no regression in the pre-existing harness.
+
+### 7.2 One install, two differently-authenticated clients, two profiles
+
+`test_one_install_answers_on_two_differently_authenticated_clients`:
+
+1. A **curated-index entry** — a genuinely Ed25519-signed one-entry
+   document (a freshly-generated, throwaway signing key; see
+   `hub_server_market.py`'s docstring for why that is honest evidence for
+   "a signed curated document verifies" without needing palaia's real,
+   non-public index key) naming a real second FastMCP server
+   (`tests/upstream/fixture_http_server.py`, SPEC-302's own fixture) as a
+   `remote` upstream — is fetched and verified through the real
+   `GET /api/market/search?source=curated`.
+2. `POST /api/market/entry/{id}/consent` → `POST
+   /api/market/entry/{id}/install` with `profiles: ["default", "mobile"]`
+   — the same consent-token-gated REST flow SPEC-304's own tests exercise,
+   run here for real over a live socket. One call, both profiles:
+   ```
+   {"upstream_key": "acme-spec308-fixture", ..., "up": true,
+    "profiles": ["default", "mobile"], ...}
+   ```
+3. **Client A — a scripted `fastmcp.Client` with a real SPEC-108 `plt_`
+   token** (minted through `POST /api/auth/tokens`, zero client-side tool
+   configuration), against the `mobile` profile: `list_tools()` already
+   contains `acme_spec308_fixture_echo`; calling it returns
+   `"hello from the plt_ client"`.
+4. **Client B — the real `claude` CLI**, over a real scripted OAuth 2.1 +
+   PKCE code flow (SPEC-209's own machinery, reused verbatim) against the
+   `default` profile: `claude mcp add --transport http ... --header
+   "Authorization: Bearer <token>"`, `claude mcp get` reports `√
+   Connected`, and `claude -p "Call
+   mcp__palaia-spec308-e2e__acme_spec308_fixture_echo ..."` returns
+   `"hello from claude CLI"`.
+
+Same upstream, same tool, one install call — reached by two clients with
+completely different credential shapes, on two different profiles, with no
+client-side tool declaration on either side. This is the exit criterion,
+demonstrated for real, on the same loopback-hub basis §2's note already
+explains (a local CLI/scripted client never goes through a vendor cloud in
+the first place, so it reaches this listener exactly as it would reach a
+tunnel's local termination point).
+
+### 7.3 The same install, through the SPEC-306 stdio proxy, no bundle change
+
+`test_the_install_is_visible_through_the_mcpb_stdio_proxy_without_bundle_changes`:
+the real `palaia-proxy.mjs` (Node subprocess, real stdio transport — same
+proof shape as `test_mcpb_proxy.py`) is pointed at the `mobile` profile
+with a freshly-minted `plt_` token, **after** the install above, with no
+change to the proxy script, no rebuild, no bundle edit. `list_tools()`
+already contains `acme_spec308_fixture_echo`; calling it through the proxy
+returns `"hello through the stdio proxy"`. The stdio path is not a
+separately-curated tool list — it mirrors whatever the profile serves,
+live, exactly as the HTTP paths do.
+
+### 7.4 Honest gaps
+
+- **The dashboard's own UI** was not driven for this evidence — only the
+  REST surface it calls. Whether the marketplace page's own React state
+  updates live (rather than needing a reload) after an install is
+  unverified here; SPEC-304's own dashboard work is the place that would
+  be checked, not this gate.
+- **A real public tunnel** in front of the hub was not part of this
+  evidence, for the same reason §2's note gives: this sandbox cannot add
+  one honestly, and none of the three clients above go through a vendor
+  cloud to reach a *local* hub anyway.
+- **Claude Desktop's own MCPB install dialog** remains exactly as
+  unverified as §6 already says — SPEC-308 adds no new evidence there; the
+  stdio proxy itself (§7.3) is the part of that path this sandbox can
+  drive for real.
+- No quirks were found while writing this evidence (unlike SPEC-209's
+  #232/#233) — the existing `build_production_app`/`build_profile_auth`
+  combination (SPEC-301) and the marketplace install flow (SPEC-304) both
+  worked exactly as documented on the first real run against two profiles
+  at once.

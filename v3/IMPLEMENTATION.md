@@ -204,3 +204,24 @@ foundation and integrates first) → **3b** = 302, 305 (both need 301) →
   this environment can fake honestly. Reviewer: **Fable 5** (writes the
   Phase-3 SPECs at this gate) + owner (phone test + UX pass on the new
   exposure/settings/review screens).
+- **Gate P3→P4 (draft — the architect holds the gate):** SPEC-308 assembled
+  the evidence for the Phase-3 exit criterion, *"install a tool once, every
+  AI has it"* — it does not itself decide whether the gate is met; that
+  judgment is the architect's (Fable 5 + owner), same as every prior gate.
+  What SPEC-308 put on the table: a curated-index entry, installed exactly
+  once through the real `/api/market/*` REST flow (consent token included)
+  onto two gateway profiles at once, then read back by two differently
+  authenticated real clients with zero client-side tool configuration — the
+  real `claude` CLI over a real OAuth 2.1 + PKCE code flow, and a scripted
+  `fastmcp.Client` carrying a real SPEC-108 `plt_` token — and, separately,
+  through the real SPEC-306 stdio proxy with no bundle rebuild in between
+  (`v3/docs/client-matrix-results.md` §7 has the full trace, run three times
+  with no flakes). No new quirks were filed this time (SPEC-301's
+  OAuth+`plt_` combination and SPEC-304's install flow both behaved exactly
+  as documented on the first real two-profile run). What this evidence does
+  **not** cover, honestly: the dashboard's own UI (only its REST surface was
+  driven), a real public tunnel in front of the hub, and Claude Desktop's
+  own MCPB install dialog (§6 already carries that gap; SPEC-308 adds
+  nothing new there). Whether that residual scope is acceptable for the
+  gate, and what Phase 4 should look like, is the architect's call to make
+  at the review this paragraph is drafted for.
