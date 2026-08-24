@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from ..upstream.models import UpstreamConfig, check_namespace_conflicts
 from .vault_protocol import MEMORY_TOOL_ACTIONS
 
 # MCP profile path segments and vault keys share the tool-name charset
@@ -92,6 +93,15 @@ class VaultMountConfig(BaseModel):
 #: that adds no cycle.
 DEFAULT_GATEWAY_PROFILE = "default"
 
+#: The curator's own profile path (SPEC-206). Defined here, in the schema
+#: module, because three unrelated modules need the same literal to *fence*
+#: it: :mod:`palaia_hub.curator.profile` (which synthesizes the profile),
+#: :mod:`palaia_hub.gateway.api` (which refuses to edit it), and
+#: :class:`ProfileConfig` below (which refuses to let an external server be
+#: mounted on it at all — SPEC-302 deliverable #6). Importing it from the
+#: schema is the one direction that adds no cycle.
+CURATOR_PROFILE_PATH = "curator"
+
 
 class ProfileConfig(BaseModel):
     """One addressable profile: a URL path segment and which vaults it exposes.
@@ -125,11 +135,38 @@ class ProfileConfig(BaseModel):
     #: either way — this only decides whether *this* profile's own MCP
     #: connection also carries those five tools.
     stash: bool = False
+    #: External MCP servers (SPEC-302) mounted into this profile, by their
+    #: :attr:`palaia_hub.upstream.models.UpstreamConfig.key`. An upstream
+    #: that is disabled or currently unreachable contributes no tools and
+    #: does not stop the profile from building — see
+    #: :func:`palaia_hub.gateway.build.build_gateway`.
+    upstreams: list[str] = Field(default_factory=list)
 
     @field_validator("path")
     @classmethod
     def _check_path(cls, value: str) -> str:
         return _validate_key(value, what="profile path")
+
+    @model_validator(mode="after")
+    def _no_upstreams_on_the_curator(self) -> ProfileConfig:
+        """The curator never sees an external server (SPEC-302 deliverable #6).
+
+        Enforced in the schema, not only at mount time, so there is no way
+        to *express* the mistake — a config.yaml, a REST payload and a
+        runtime rebuild all fail the same way, with the same reason. The
+        second half of the fence lives in
+        :func:`palaia_hub.gateway.build._build_profile_server`, which
+        refuses to mount an upstream onto this path even if a future caller
+        ever constructed the profile some other way.
+        """
+        if self.path == CURATOR_PROFILE_PATH and self.upstreams:
+            raise ValueError(
+                "the curator profile never mounts an external server: it runs a "
+                "model over your own notes, and an outside tool in that session "
+                "could exfiltrate them. Fix: mount "
+                f"{sorted(self.upstreams)} on a profile your clients use instead."
+            )
+        return self
 
     @field_validator("vaults")
     @classmethod
@@ -151,6 +188,10 @@ class GatewayConfig(BaseModel):
 
     vaults: list[VaultMountConfig] = Field(default_factory=list)
     profiles: list[ProfileConfig] = Field(default_factory=list)
+    #: External MCP servers this hub knows about (SPEC-302). Listing one
+    #: here does not expose it — a profile has to name it in its own
+    #: ``upstreams`` list.
+    upstreams: list[UpstreamConfig] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _check_references(self) -> GatewayConfig:
@@ -160,13 +201,31 @@ class GatewayConfig(BaseModel):
         profile_paths = [p.path for p in self.profiles]
         if len(set(profile_paths)) != len(profile_paths):
             raise ValueError(f"duplicate profile paths in gateway config: {profile_paths}")
+        upstream_keys = [u.key for u in self.upstreams]
+        if len(set(upstream_keys)) != len(upstream_keys):
+            raise ValueError(f"duplicate upstream keys in gateway config: {upstream_keys}")
         known = set(vault_keys)
+        known_upstreams = set(upstream_keys)
         for profile in self.profiles:
             unknown = [v for v in profile.vaults if v not in known]
             if unknown:
                 raise ValueError(
                     f"profile {profile.path!r} references unknown vault key(s) {unknown}"
                 )
+            unknown_up = [u for u in profile.upstreams if u not in known_upstreams]
+            if unknown_up:
+                raise ValueError(
+                    f"profile {profile.path!r} references unknown external server(s) "
+                    f"{unknown_up}"
+                )
+        # SPEC-302 deliverable #5: two upstreams (or an upstream and a
+        # vault's memory tool family) claiming the same tool-name prefix is
+        # refused here, at config time — never resolved by letting whichever
+        # mounted last win.
+        check_namespace_conflicts(
+            self.upstreams,
+            reserved={v.namespace: f"vault {v.key!r}" for v in self.vaults},
+        )
         return self
 
     def vault(self, key: str) -> VaultMountConfig:
@@ -174,3 +233,9 @@ class GatewayConfig(BaseModel):
             if vault.key == key:
                 return vault
         raise KeyError(f"no vault configured with key {key!r}")
+
+    def upstream(self, key: str) -> UpstreamConfig:
+        for upstream in self.upstreams:
+            if upstream.key == key:
+                return upstream
+        raise KeyError(f"no external server configured with key {key!r}")

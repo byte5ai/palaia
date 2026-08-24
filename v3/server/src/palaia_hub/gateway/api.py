@@ -34,15 +34,14 @@ from ..events import EventBus, publish_event
 from ..oauth import AuthorizationServer
 from ..oauth.verifier import build_profile_auth
 from .build import GatewayConfigError
-from .config import ProfileConfig
+from .config import CURATOR_PROFILE_PATH, ProfileConfig
 from .dynamic import DynamicGateway
 from .settings_bridge import persist_gateway_settings
 
-# Kept as a plain string (not imported from `palaia_hub.curator.profile`):
-# this module has no other reason to pull in the curator package, and the
-# path itself is what matters here — protecting it from the generic CRUD
-# below, see the module docstring.
-_CURATOR_PROFILE_PATH = "curator"
+# `CURATOR_PROFILE_PATH` is imported from `.config` (not from
+# `palaia_hub.curator.profile`): this module has no other reason to pull in
+# the curator package, and the path itself is what matters here — protecting
+# it from the generic CRUD below, see the module docstring.
 
 
 class GatewayProfileOut(BaseModel):
@@ -54,6 +53,10 @@ class GatewayProfileOut(BaseModel):
     label: str | None
     vaults: list[str]
     stash: bool
+    #: External MCP servers this profile mounts (SPEC-302), by key. The
+    #: profile editor (SPEC-305) assigns them through this same surface
+    #: rather than a second write path.
+    upstreams: list[str]
     #: The curator's own profile is listed (so the editor can show it) but
     #: every write route below refuses to touch it — see the module
     #: docstring.
@@ -71,6 +74,7 @@ class CreateGatewayProfileRequest(BaseModel):
     label: str | None = None
     vaults: list[str] = []
     stash: bool = False
+    upstreams: list[str] = []
 
 
 class UpdateGatewayProfileRequest(BaseModel):
@@ -83,6 +87,9 @@ class UpdateGatewayProfileRequest(BaseModel):
     label: str | None = None
     vaults: list[str] | None = None
     stash: bool | None = None
+    #: Same whole-list contract as ``vaults`` (SPEC-302): given, it replaces
+    #: the profile's external-server list entirely.
+    upstreams: list[str] | None = None
 
 
 def _out(profile: ProfileConfig) -> GatewayProfileOut:
@@ -91,7 +98,8 @@ def _out(profile: ProfileConfig) -> GatewayProfileOut:
         label=profile.label,
         vaults=list(profile.vaults),
         stash=profile.stash,
-        managed=profile.path == _CURATOR_PROFILE_PATH,
+        upstreams=list(profile.upstreams),
+        managed=profile.path == CURATOR_PROFILE_PATH,
     )
 
 
@@ -143,16 +151,24 @@ def build_gateway_profiles_router(
     def _persist() -> None:
         existing_vaults = config.gateway.vaults if config.gateway is not None else []
         profiles = [
-            p for p in dynamic_gateway.config.profiles if p.path != _CURATOR_PROFILE_PATH
+            p for p in dynamic_gateway.config.profiles if p.path != CURATOR_PROFILE_PATH
         ]
         settings = GatewaySettings(
             vaults=existing_vaults,
             profiles=[
                 GatewayProfileSettings(
-                    path=p.path, label=p.label, vaults=list(p.vaults), stash=p.stash
+                    path=p.path,
+                    label=p.label,
+                    vaults=list(p.vaults),
+                    stash=p.stash,
+                    upstreams=list(p.upstreams),
                 )
                 for p in profiles
             ],
+            # SPEC-302: carried through from the live gateway, not from
+            # `config` — a profile edit must never blank out the external
+            # servers someone connected since this process started.
+            upstreams=list(dynamic_gateway.config.upstreams),
         )
         persist_gateway_settings(path, settings)
 
@@ -161,7 +177,7 @@ def build_gateway_profiles_router(
             publish_event(event_bus, event, origin="gateway", data=data)
 
     def _require_editable(profile_path: str) -> None:
-        if profile_path == _CURATOR_PROFILE_PATH:
+        if profile_path == CURATOR_PROFILE_PATH:
             raise HTTPException(
                 status_code=400,
                 detail=(
@@ -187,7 +203,13 @@ def build_gateway_profiles_router(
                 "PATCH it instead, or choose a different path.",
             )
         try:
-            ProfileConfig(path=body.path, label=body.label, vaults=body.vaults, stash=body.stash)
+            ProfileConfig(
+                path=body.path,
+                label=body.label,
+                vaults=body.vaults,
+                stash=body.stash,
+                upstreams=body.upstreams,
+            )
         except ValidationError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -197,6 +219,7 @@ def build_gateway_profiles_router(
                 body.vaults,
                 label=body.label,
                 stash=body.stash,
+                upstreams=body.upstreams,
                 auth=_new_profile_auth(body.path),  # type: ignore[arg-type]
             )
         except GatewayConfigError as exc:
@@ -227,8 +250,15 @@ def build_gateway_profiles_router(
         label = body.label if body.label is not None else current.label
         vaults = body.vaults if body.vaults is not None else list(current.vaults)
         stash = body.stash if body.stash is not None else current.stash
+        upstreams = body.upstreams if body.upstreams is not None else list(current.upstreams)
         try:
-            ProfileConfig(path=profile_path, label=label, vaults=vaults, stash=stash)
+            ProfileConfig(
+                path=profile_path,
+                label=label,
+                vaults=vaults,
+                stash=stash,
+                upstreams=upstreams,
+            )
         except ValidationError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -236,7 +266,12 @@ def build_gateway_profiles_router(
             # `auth=None`: this path already has a verifier from creation
             # (or none, in locked mode) — an edit never changes that.
             await dynamic_gateway.upsert_profile(
-                profile_path, vaults, label=label, stash=stash, auth=None
+                profile_path,
+                vaults,
+                label=label,
+                stash=stash,
+                upstreams=upstreams,
+                auth=None,
             )
         except GatewayConfigError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
