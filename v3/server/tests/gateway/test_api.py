@@ -249,3 +249,20 @@ def test_update_vault_identity_unknown_key_is_404(tmp_path: Path) -> None:
     with _client(tmp_path, gateway=_gateway()) as client:
         response = client.patch("/api/gateway/vaults/ghost", json={"name": "x"})
     assert response.status_code == 404
+
+
+def test_delete_default_profile_is_refused_server_side(tmp_path: Path) -> None:
+    """SPEC-305 deliverable #5's guardrail is not UI-only: the API itself
+    refuses to delete the default profile."""
+    config = GatewayConfig(
+        vaults=[VaultMountConfig(key="work", name="work")],
+        profiles=[ProfileConfig(path="default", vaults=["work"])],
+    )
+    gateway = DynamicGateway(config, {"work": FakeVaultService()})
+    with _client(tmp_path, gateway=gateway) as client:
+        response = client.delete("/api/gateway/profiles/default")
+        assert response.status_code == 400
+        assert "cannot be deleted" in response.json()["detail"]
+
+        listing = client.get("/api/gateway/profiles").json()
+        assert {p["path"] for p in listing} == {"default"}

@@ -43,7 +43,12 @@ from ..events import EventBus, publish_event
 from ..oauth import AuthorizationServer
 from ..oauth.verifier import build_profile_auth
 from .build import GatewayConfigError
-from .config import CURATOR_PROFILE_PATH, ProfileConfig, VaultMountConfig
+from .config import (
+    CURATOR_PROFILE_PATH,
+    DEFAULT_GATEWAY_PROFILE,
+    ProfileConfig,
+    VaultMountConfig,
+)
 from .dynamic import DynamicGateway
 from .naming import sanitize_tool_name
 from .settings_bridge import persist_gateway_settings
@@ -464,6 +469,18 @@ def build_gateway_profiles_router(
     @router.delete("/api/gateway/profiles/{profile_path}", status_code=204)
     async def delete_profile(profile_path: str) -> None:
         _require_editable(profile_path)
+        # SPEC-305 deliverable #5's guardrail, server-side (the UI hides the
+        # control, but an API caller must hit the same wall): the default
+        # profile is what every zero-config client connects to.
+        if profile_path == DEFAULT_GATEWAY_PROFILE:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "the default profile cannot be deleted — it is where "
+                    "clients connect when nothing else is configured. Fix: "
+                    "create another profile and point clients at it instead."
+                ),
+            )
         try:
             await dynamic_gateway.remove_profile(profile_path)
         except KeyError as exc:
