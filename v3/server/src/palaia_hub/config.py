@@ -216,6 +216,7 @@ exposure:
 #       label: Default
 #       vaults: [work]
 #       stash: false
+#       directory: false
 #       # Other MCP servers this profile also offers, by key (see below).
 #       upstreams: [linear]
 #   # Other people's MCP servers, connected once here instead of in every
@@ -593,6 +594,9 @@ class GatewayProfileSettings(BaseModel):
     vaults: list[str] = Field(default_factory=list)
     #: Mount the stash tool family inside this profile too (SPEC-202/301).
     stash: bool = False
+    #: Mount the session directory tool family inside this profile too
+    #: (SPEC-402), same opt-in shape as ``stash`` above.
+    directory: bool = False
     #: Final (post-namespace) tool names hidden from this profile (SPEC-305
     #: deliverable #3). See ``palaia_hub.gateway.config.ProfileConfig``.
     hidden_tools: list[str] = Field(default_factory=list)

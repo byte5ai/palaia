@@ -40,6 +40,8 @@ from .automations import AutomationOutbox, AutomationStore
 from .automations.outbox import OUTBOX_RELATIVE_PATH as AUTOMATIONS_OUTBOX_RELATIVE_PATH
 from .config import HubConfig, palaia_home
 from .curator.wiring import STASH_FILENAME, CuratorWiring, build_curator
+from .directory.service import DirectoryService
+from .directory.store import DirectoryStore
 from .events import EventBus, publish_from_hook
 from .events.schema import HubEventHook
 from .gateway import DynamicGateway, VaultService
@@ -66,6 +68,11 @@ from .upstream.service import UpstreamService
 from .vault import EventBus as VaultEventBus
 from .vault import VaultEngine, VaultRegistry
 
+#: The hub's one session-directory database (SPEC-402), named after
+#: ``STASH_FILENAME``'s own convention — one file per hub-level store,
+#: living next to it under the hub's home directory.
+DIRECTORY_FILENAME = "directory.db"
+
 
 @dataclass
 class ProductionApp:
@@ -86,6 +93,10 @@ class ProductionApp:
     #: ``/mcp/stash`` tool family and, when the curator is on, its audit
     #: trail. Closed at shutdown, same as ``registry``/``indexes``.
     stash_store: StashStore | None = None
+    #: The hub's one session-directory database (SPEC-402), backing the
+    #: ``/mcp/directory`` tool family and the ``/api/directory`` REST
+    #: mirror. Closed at shutdown, same as ``stash_store``.
+    directory_store: DirectoryStore | None = None
     #: The external-server registry (SPEC-302). Its connections — including
     #: any ``stdio`` child process — are closed by the app's own lifespan;
     #: the handle is here so a caller can inspect health.
@@ -236,6 +247,12 @@ async def build_production_app(
     stash_store = StashStore(stash_home / STASH_FILENAME)
     stash_service = StashService(stash_store)
 
+    # One session directory for the whole hub (SPEC-402): backs the
+    # hub-wide `/mcp/directory` mount and any profile with `directory:
+    # true`, same "one home, one file" reasoning as the stash store above.
+    directory_store = DirectoryStore(stash_home / DIRECTORY_FILENAME)
+    directory_service = DirectoryService(directory_store)
+
     # SPEC-206: the curator gets its own profile over the same vaults —
     # narrowed to seven actions and guarded by its own middleware (see
     # palaia_hub.curator.profile). Built before the gateway so the middleware
@@ -292,6 +309,7 @@ async def build_production_app(
         profile_middleware=curator.profile_middleware if curator else None,
         stash_service=stash_service,
         upstream_service=upstream_service,
+        directory_service=directory_service,
     )
     upstream_monitor = UpstreamHealthMonitor(
         upstream_service, on_change=dynamic_gateway.refresh_upstreams
@@ -324,6 +342,7 @@ async def build_production_app(
         event_bus=event_bus,
         oauth_server=oauth_server,
         stash_service=stash_service,
+        directory_service=directory_service,
         hook_store=hook_store,
         market_service=market_service,
         install_service=install_service,
@@ -346,6 +365,7 @@ async def build_production_app(
         token_store=token_store,
         curator=curator,
         stash_store=stash_store,
+        directory_store=directory_store,
         upstream_service=upstream_service,
         secret_store=secret_store,
         install_service=install_service,

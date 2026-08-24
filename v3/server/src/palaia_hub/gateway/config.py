@@ -135,6 +135,12 @@ class ProfileConfig(BaseModel):
     #: either way — this only decides whether *this* profile's own MCP
     #: connection also carries those five tools.
     stash: bool = False
+    #: Mount the session directory tool family (``directory_register``/
+    #: ``directory_heartbeat``/..., SPEC-402) inside this profile too,
+    #: same opt-in shape as ``stash`` above. ``False`` (default) leaves a
+    #: profile exactly as before this field existed; the hub-wide
+    #: ``/mcp/directory`` mount is unaffected either way.
+    directory: bool = False
     #: Final (post-namespace) tool names to hide from this profile's own
     #: surface, e.g. ``"work_memory_delete"`` (SPEC-305 deliverable #3): a
     #: profile can mount a whole vault family yet not expose one of its

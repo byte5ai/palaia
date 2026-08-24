@@ -40,6 +40,7 @@ def test_list_profiles_reports_the_live_shape(tmp_path: Path) -> None:
             "label": None,
             "vaults": ["work"],
             "stash": False,
+            "directory": False,
             "hidden_tools": [],
             "semantic_routing": False,
             "tool_count": 15,
@@ -95,6 +96,30 @@ def test_update_profile_changes_vaults_and_stash_live(tmp_path: Path) -> None:
         assert body["stash"] is True
         assert body["label"] == "Everything"
         assert body["vaults"] == ["work"]  # omitted field keeps its value
+
+
+def test_update_profile_changes_directory_flag_live(tmp_path: Path) -> None:
+    gateway = _gateway()
+    with _client(tmp_path, gateway=gateway) as client:
+        response = client.patch("/api/gateway/profiles/default", json={"directory": True})
+        assert response.status_code == 200
+        body = response.json()
+        assert body["directory"] is True
+        assert body["stash"] is False  # omitted field keeps its value
+
+
+def test_create_profile_with_directory_true_is_persisted(tmp_path: Path) -> None:
+    with _client(tmp_path, gateway=_gateway()) as client:
+        response = client.post(
+            "/api/gateway/profiles",
+            json={"path": "personal", "vaults": ["work"], "directory": True},
+        )
+        assert response.status_code == 200
+        assert response.json()["directory"] is True
+
+    on_disk = yaml.safe_load((config_file_path(tmp_path)).read_text(encoding="utf-8"))
+    profiles = on_disk["gateway"]["profiles"]
+    assert next(p for p in profiles if p["path"] == "personal")["directory"] is True
 
 
 def test_update_profile_cannot_touch_the_curator_profile(tmp_path: Path) -> None:

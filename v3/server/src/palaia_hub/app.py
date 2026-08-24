@@ -32,6 +32,8 @@ from .config import HubConfig, load_config, palaia_home
 from .curator import CuratorScheduler
 from .curator.wiring import CuratorWiring
 from .dashboard_api import build_dashboard_router
+from .directory.service import DirectoryService
+from .directory_api import build_directory_router
 from .events import (
     EventBus,
     bridge_vault_events,
@@ -44,6 +46,7 @@ from .gateway import DynamicGateway, GatewayASGI, VaultService
 from .gateway.api import build_gateway_profiles_router
 from .gateway.apps.hub_status_app import HubStatusDeps, build_hub_status_server
 from .gateway.apps.market_app import MarketAppDeps, build_market_server
+from .gateway.directory_tools import build_directory_gateway
 from .gateway.stash_tools import build_stash_gateway
 from .gateway.wiring import EngineVaultService
 from .hooks import OUTBOX_RELATIVE_PATH, HookDispatcher, HookOutbox, HookStore, build_hooks_router
@@ -93,6 +96,7 @@ def create_app(
     event_bus: EventBus | None = None,
     oauth_server: AuthorizationServer | None = None,
     stash_service: StashService | None = None,
+    directory_service: DirectoryService | None = None,
     market_service: MarketService | None = None,
     install_service: InstallService | None = None,
     hook_store: HookStore | None = None,
@@ -195,6 +199,12 @@ def create_app(
             mirror, and wires its ``stash.*`` events onto ``event_bus``.
             Omitted (the default), the hub runs with no stash surface at
             all, same as before this parameter existed.
+        directory_service: the hub's session directory (SPEC-402). Given,
+            mounts the ``directory_*`` tool family at ``/mcp/directory``
+            and the ``/api/directory`` read-only REST mirror, and wires its
+            ``session.*`` events onto ``event_bus``. Omitted (the
+            default), the hub runs with no session directory surface at
+            all, same as before this parameter existed.
         market_service: the marketplace read model (SPEC-303 — official
             registry + curated index + manual entries, merged). Given,
             mounts ``/api/market/*`` and wires its
@@ -296,6 +306,14 @@ def create_app(
 
         stash_service.publish = _publish_stash
         stash_gateway = build_stash_gateway(stash_service)
+
+    directory_gateway = None
+    if directory_service is not None:
+        def _publish_directory(action: str, data: dict[str, Any]) -> None:
+            publish_event(event_bus, action, origin="directory", data=data)
+
+        directory_service.publish = _publish_directory
+        directory_gateway = build_directory_gateway(directory_service)
 
     if market_service is not None:
         def _publish_market(action: str, data: dict[str, Any]) -> None:
@@ -439,6 +457,8 @@ def create_app(
                     await stack.enter_async_context(gateway.lifespan(app_))
                 if stash_gateway is not None:
                     await stack.enter_async_context(stash_gateway.lifespan(app_))
+                if directory_gateway is not None:
+                    await stack.enter_async_context(directory_gateway.lifespan(app_))
                 if hub_status_asgi_app is not None:
                     await stack.enter_async_context(hub_status_asgi_app.lifespan(app_))
                 if market_asgi_app is not None:
@@ -486,6 +506,8 @@ def create_app(
     # gateway would shadow them.
     if stash_gateway is not None:
         app.mount("/mcp/stash", stash_gateway.app)
+    if directory_gateway is not None:
+        app.mount("/mcp/directory", directory_gateway.app)
     if hub_status_asgi_app is not None:
         app.mount("/mcp/hub", hub_status_asgi_app)
     if market_asgi_app is not None:
@@ -642,6 +664,8 @@ def create_app(
 
     if stash_service is not None:
         app.include_router(build_stash_router(stash_service))
+    if directory_service is not None:
+        app.include_router(build_directory_router(directory_service))
     if market_service is not None:
         app.include_router(build_market_router(market_service))
     if install_service is not None:
