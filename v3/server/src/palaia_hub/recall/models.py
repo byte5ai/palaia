@@ -70,6 +70,12 @@ class RecallResult(BaseModel):
     degraded_reason: str = ""
     warnings: list[str] = Field(default_factory=list)
 
+    pick_tool: str = ""
+    """SPEC-208: this vault's mounted ``recall_pick`` tool name, filled in
+    by :mod:`palaia_hub.gateway.memory_tools` (not by the recall service
+    itself, which has no notion of a mount namespace) — the recall-explorer
+    app's "add to context" action calls this tool name back."""
+
 
 class ContextNode(BaseModel):
     """One note in an assembled context package."""

@@ -33,8 +33,23 @@ Permission = Literal["read", "write"]
 # disposable index (palaia_hub.index.schema's `note_access`), which is not
 # vault content and cannot change what any note says — the same reason both
 # tools also carry `readOnlyHint`.
+#
+# SPEC-208's `review_queue` (lists review/ proposals) and `recall_pick`
+# (re-reads notes the recall-explorer app's user already selected) are read
+# actions by the same reasoning; `review_decide` (flips a proposal's
+# status) is deliberately NOT on this list, so it falls through to the
+# fail-closed `write` default below.
 READ_ACTIONS: frozenset[str] = frozenset(
-    {"search", "read", "list", "recent_activity", "recall", "build_context"}
+    {
+        "search",
+        "read",
+        "list",
+        "recent_activity",
+        "recall",
+        "build_context",
+        "review_queue",
+        "recall_pick",
+    }
 )
 WRITE_ACTIONS: frozenset[str] = frozenset({"write", "edit", "move", "delete"})
 

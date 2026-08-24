@@ -64,6 +64,9 @@ from .vault_protocol import (
     InboxStatusResult,
     NoteRecord,
     NoteSummary,
+    ProposalSummary,
+    ReviewDecideResult,
+    ReviewQueueResult,
     SearchHit,
     VaultService,
     VaultServiceError,
@@ -135,6 +138,14 @@ def _note_to_record(note: Note) -> NoteRecord:
         folder=_folder_of(note.path),
         modified=str(frontmatter.get("modified") or ""),
         created=str(frontmatter.get("created") or ""),
+        # `status`/`capture_id` are format-spec §2.1 schema keys "relevant
+        # beyond captures" (see NoteSummary's own field comment) — SPEC-208
+        # is the first caller that needs a non-capture note's status (a
+        # review/ proposal's `proposed`/`approved`/`rejected`/...), so this
+        # is populated generically here rather than only where SPEC-107's
+        # capture/inbox_status methods construct a result by hand.
+        status=str(frontmatter.get("status") or ""),
+        capture_id=str(frontmatter.get("capture_id") or ""),
         body=note.body,
     )
 
@@ -562,6 +573,58 @@ class EngineVaultService:
                 continue
             summaries.append(_note_to_summary(note))
         return summaries
+
+    # ------------------------------------------------------- review (SPEC-208)
+
+    async def _review_proposals(self) -> list[Note]:
+        notes: list[Note] = []
+        for entry in list(self._engine.catalog.values()):
+            if not entry.path.startswith("review/"):
+                continue
+            note = await self._engine.read_note(entry.path)
+            if str(note.frontmatter.get("type", "note")) == "proposal":
+                notes.append(note)
+        return notes
+
+    async def review_queue(self) -> ReviewQueueResult:
+        proposals = [
+            ProposalSummary(
+                permalink=note.permalink or note.path,
+                title=note.title,
+                status=str(note.frontmatter.get("status") or ""),
+                created=str(note.frontmatter.get("created") or ""),
+                body=note.body,
+            )
+            for note in await self._review_proposals()
+        ]
+        proposals.sort(key=lambda p: p.created or p.permalink)
+        return ReviewQueueResult(proposals=proposals)
+
+    async def review_decide(self, permalink: str, decision: str) -> ReviewDecideResult:
+        try:
+            current = await self._engine.read_note(permalink)
+        except _ENGINE_CALLER_ERRORS as exc:
+            raise VaultServiceError(str(exc)) from exc
+        if str(current.frontmatter.get("type", "note")) != "proposal":
+            raise VaultServiceError(f"{permalink!r} is not a review proposal")
+        current_status = str(current.frontmatter.get("status") or "")
+        if current_status != "proposed":
+            raise VaultServiceError(
+                f"proposal {permalink!r} is not awaiting review "
+                f"(status: {current_status!r}, expected 'proposed')"
+            )
+        try:
+            result = await self._engine.edit_note(
+                permalink,
+                frontmatter={"status": decision},
+                expected_checksum=current.checksum,
+            )
+        except _ENGINE_CALLER_ERRORS as exc:
+            raise VaultServiceError(str(exc)) from exc
+        assert result.note is not None
+        return ReviewDecideResult(
+            permalink=result.note.permalink or permalink, status=decision
+        )
 
 
 if TYPE_CHECKING:

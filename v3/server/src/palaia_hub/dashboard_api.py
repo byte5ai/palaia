@@ -11,6 +11,13 @@ same opt-in pattern as ``gateway``/``token_store`` — a caller that only
 needs the MCP surface, or only the inbox-status endpoint, does not gain an
 unused router.
 
+SPEC-208 adds the review queue's REST mirror here too (``GET .../review``,
+``POST .../review/{permalink}/decision``): the future dashboard
+review-queue screen and the review-queue MCP App both end up calling the
+same :meth:`~palaia_hub.gateway.vault_protocol.VaultService.review_decide`
+underneath, so "approve from the app" and "approve from the dashboard" are
+one code path, not two that could drift.
+
 Every route talks to the real vault engine through
 :class:`~palaia_hub.gateway.wiring.EngineVaultService` (SPEC-113's
 adapter) for the actions that protocol already covers (list/read/search);
@@ -33,13 +40,21 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 
 from .gateway.config import VaultMountConfig
 from .gateway.dynamic import DynamicGateway
-from .gateway.vault_protocol import NoteRecord, NoteSummary, SearchHit, VaultServiceError
+from .gateway.vault_protocol import (
+    NoteRecord,
+    NoteSummary,
+    ReviewDecideResult,
+    ReviewQueueResult,
+    SearchHit,
+    VaultServiceError,
+)
 from .gateway.wiring import EngineVaultService
 from .index import IndexStatus, VaultIndex, embed_progress
 from .vault import (
@@ -113,6 +128,18 @@ class CreateVaultRequest(BaseModel):
     #: Seed the two starter notes above (onboarding.html's "Start from a
     #: template" switch).
     template: bool = False
+
+
+class ReviewDecisionRequest(BaseModel):
+    """The review-queue screen's approve/reject action (SPEC-208, format
+    spec §8) — the identical decision the review-queue MCP App's
+    ``review_decide`` tool makes, through the same
+    :meth:`~palaia_hub.gateway.vault_protocol.VaultService.review_decide`
+    call, so both paths flip a proposal's status the exact same way."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["approved", "rejected"]
 
 
 class CommitOut(BaseModel):
@@ -311,6 +338,24 @@ def build_dashboard_router(
                 detail=f"no index open for vault {vault_key!r}",
             )
         return IndexStatusOut.from_status(index.status())
+
+    @router.get("/api/vaults/{vault_key}/review", response_model=ReviewQueueResult)
+    async def list_review_queue(vault_key: str) -> ReviewQueueResult:
+        engine = await _get_engine(registry, vault_key)
+        return await EngineVaultService(engine).review_queue()
+
+    @router.post(
+        "/api/vaults/{vault_key}/review/{permalink:path}/decision",
+        response_model=ReviewDecideResult,
+    )
+    async def decide_review(
+        vault_key: str, permalink: str, body: ReviewDecisionRequest
+    ) -> ReviewDecideResult:
+        engine = await _get_engine(registry, vault_key)
+        try:
+            return await EngineVaultService(engine).review_decide(permalink, body.decision)
+        except VaultServiceError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @router.get(
         "/api/vaults/{vault_key}/notes/{permalink:path}/history",

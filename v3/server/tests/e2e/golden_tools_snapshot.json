@@ -306,6 +306,31 @@
       "type": "object"
     }
   },
+  "recall_pick": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nApp-only helper for the recall-explorer UI: fetch the full content of one or more search/recall results the user selected, so only those enter the model's context \u2014 SPEC-208's selective-context mechanism, not a general-purpose batch-read tool.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "refs"
+      ],
+      "type": "object"
+    }
+  },
   "recent_activity": {
     "annotations": {
       "destructiveHint": false,
@@ -323,6 +348,51 @@
           "type": "integer"
         }
       },
+      "type": "object"
+    }
+  },
+  "review_decide": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nApp-only action for the review-queue UI: approve or reject one curator proposal, flipping its frontmatter `status` (format spec \u00a78) \u2014 the exact same effect as doing so in the dashboard or by editing the note directly. Only valid on a proposal whose status is currently 'proposed'.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "enum": [
+            "approved",
+            "rejected"
+          ],
+          "type": "string"
+        },
+        "permalink": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "permalink",
+        "decision"
+      ],
+      "type": "object"
+    }
+  },
+  "review_queue": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nList every curator maintenance proposal awaiting review (format spec \u00a78) \u2014 the review-queue app's data source. Each proposal is a card: title, status, and its full body (a human-readable explanation, sometimes with a diff/plan).",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
       "type": "object"
     }
   },

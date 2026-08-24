@@ -33,6 +33,7 @@ from .events import (
     stop_background_tasks,
 )
 from .gateway import DynamicGateway, GatewayASGI, VaultService
+from .gateway.apps.hub_status_app import HubStatusDeps, build_hub_status_server
 from .gateway.stash_tools import build_stash_gateway
 from .gateway.wiring import EngineVaultService
 from .hooks import OUTBOX_RELATIVE_PATH, HookDispatcher, HookOutbox, HookStore, build_hooks_router
@@ -192,6 +193,24 @@ def create_app(
         stash_service.publish = _publish_stash
         stash_gateway = build_stash_gateway(stash_service)
 
+    # SPEC-208 deliverable #2: the hub_status MCP App, mounted at
+    # `/mcp/hub` — hub-level (not per-vault, unlike the memory tool
+    # family), same opt-in-on-vault_registry gating as the dashboard router
+    # below, since there is nothing to report without one. Independent of
+    # `gateway`/`dynamic_gateway`: this is its own standalone FastMCP
+    # instance, not a profile of either.
+    hub_status_asgi_app = None
+    if vault_registry is not None:
+        hub_status_deps = HubStatusDeps(
+            vault_registry=vault_registry,
+            indexes=indexes,
+            token_store=token_store,
+            mode=config.mode,
+            start_time=start_time,
+        )
+        hub_status_server = build_hub_status_server(hub_status_deps)
+        hub_status_asgi_app = hub_status_server.http_app(path="/")
+
     # One lifespan runs BOTH concerns: the events background tasks (SPEC-109)
     # and, when a gateway is mounted, its session-manager lifespan (SPEC-105 —
     # skipping it hangs the mounted profiles on their first request). The
@@ -263,6 +282,8 @@ def create_app(
                     await stack.enter_async_context(gateway.lifespan(app_))
                 if stash_gateway is not None:
                     await stack.enter_async_context(stash_gateway.lifespan(app_))
+                if hub_status_asgi_app is not None:
+                    await stack.enter_async_context(hub_status_asgi_app.lifespan(app_))
                 yield
         finally:
             await stop_background_tasks(tasks)
@@ -290,11 +311,14 @@ def create_app(
     if gateway is not None:
         for path, mounted_app in gateway.mounts.items():
             app.mount(path, mounted_app)
-    # The stash mount is registered before the DynamicGateway's "/mcp"
-    # catch-all: Starlette matches mounts in registration order, so the more
-    # specific path must come first or the gateway would shadow it.
+    # The stash and hub_status mounts are registered before the
+    # DynamicGateway's "/mcp" catch-all: Starlette matches mounts in
+    # registration order, so the more specific paths must come first or the
+    # gateway would shadow them.
     if stash_gateway is not None:
         app.mount("/mcp/stash", stash_gateway.app)
+    if hub_status_asgi_app is not None:
+        app.mount("/mcp/hub", hub_status_asgi_app)
     if dynamic_gateway is not None:
         # One mount, forever: DynamicGateway owns everything below "/mcp"
         # and rebuilds its own internal routing as profiles come and go

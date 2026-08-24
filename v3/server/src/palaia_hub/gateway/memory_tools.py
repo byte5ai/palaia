@@ -40,9 +40,10 @@ MCP convention (isError, not a transport-level failure).
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastmcp import FastMCP
+from fastmcp.apps import AppConfig
 from fastmcp.tools.base import ToolResult
 from mcp.types import ToolAnnotations
 from pydantic import AliasChoices, BaseModel, Field
@@ -52,13 +53,18 @@ from ..recall import budget as recall_budget
 from ..recall.models import ContextResult, RecallResult
 from ..recall.service import DEFAULT_RECALL_LIMIT, recall_text, render_context
 from ..recall.traversal import DEFAULT_DEPTH, MAX_DEPTH
+from .apps.recall_app import RESOURCE_URI as RECALL_EXPLORER_URI
+from .apps.review_app import RESOURCE_URI as REVIEW_QUEUE_URI
 from .config import VaultMountConfig
 from .inbox import missing_capture_fields, missing_fields_message
+from .naming import compose_tool_name
 from .vault_protocol import (
     CaptureResult,
     InboxStatusResult,
     NoteRecord,
     NoteSummary,
+    ReviewDecideResult,
+    ReviewQueueResult,
     SearchHit,
     VaultService,
     VaultServiceError,
@@ -128,6 +134,19 @@ ModelParam = Annotated[
 class SearchResult(BaseModel):
     query: str
     hits: list[SearchHit]
+    pick_tool: str = ""
+    """SPEC-208: this vault's mounted ``recall_pick`` tool name — see
+    ``vault_protocol.ReviewQueueResult``'s docstring for why the
+    recall-explorer app's "add to context" action learns its callback name
+    from here rather than the mount namespace directly."""
+
+
+class RecallPickResult(BaseModel):
+    """What one ``recall_pick`` call answers: the full content of exactly
+    the refs the caller (the recall-explorer app, on the user's behalf)
+    asked for — SPEC-208's selective-context mechanism."""
+
+    notes: list[NoteRecord]
 
 
 class ListResult(BaseModel):
@@ -206,12 +225,23 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         message = missing_scope_error(vault.key, action)
         return ToolResult(content=message, is_error=True) if message else None
 
+    # SPEC-208: this vault's own mounted names for the two MCP-Apps backend
+    # actions, computed once here (not per-call) since `vault.namespace` is
+    # fixed at construction time. Neither `recall_pick` nor `review_decide`
+    # is in MEMORY_TOOL_ACTIONS, so neither is renameable via
+    # `tool_renames` (same as `recall`/`build_context`/`capture`/
+    # `inbox_status` before them) — the mounted name is always exactly the
+    # namespace-composed one.
+    recall_pick_tool_name = compose_tool_name(vault.namespace, "recall_pick")
+    review_decide_tool_name = compose_tool_name(vault.namespace, "review_decide")
+
     @server.tool(
         name="search",
         description=desc("Search this vault's notes. Returns best matches first."),
         annotations=ToolAnnotations(
             readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False
         ),
+        app=AppConfig(resource_uri=RECALL_EXPLORER_URI),
     )
     async def search(query: QueryParam, limit: int = 10) -> ToolResult:
         if (err := scope_error("search")) is not None:
@@ -223,7 +253,8 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
             if hits
             else f"no matches for {query!r}"
         )
-        return ToolResult(content=text, structured_content=SearchResult(query=query, hits=hits))
+        result = SearchResult(query=query, hits=hits, pick_tool=recall_pick_tool_name)
+        return ToolResult(content=text, structured_content=result)
 
     @server.tool(
         name="read",
@@ -357,6 +388,7 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         annotations=ToolAnnotations(
             readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False
         ),
+        app=AppConfig(resource_uri=RECALL_EXPLORER_URI),
     )
     async def recall(
         query: OptionalQueryParam = "",
@@ -372,6 +404,7 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
             result = await service.recall(query=query, ref=ref, limit=limit, model=model)
         except VaultServiceError as exc:
             return _error_result(exc)
+        result = result.model_copy(update={"pick_tool": recall_pick_tool_name})
         return ToolResult(content=recall_text(result), structured_content=result)
 
     @server.tool(
@@ -496,6 +529,77 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
             text += f", last capture {status.last_capture_id!r}"
         return ToolResult(content=text, structured_content=status)
 
+    @server.tool(
+        name="review_queue",
+        description=desc(
+            "List every curator maintenance proposal awaiting review "
+            "(format spec §8) — the review-queue app's data source. Each "
+            "proposal is a card: title, status, and its full body (a "
+            "human-readable explanation, sometimes with a diff/plan)."
+        ),
+        annotations=ToolAnnotations(
+            readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False
+        ),
+        app=AppConfig(resource_uri=REVIEW_QUEUE_URI),
+    )
+    async def review_queue() -> ToolResult:
+        if (err := scope_error("review_queue")) is not None:
+            return err
+        result = await service.review_queue()
+        result = result.model_copy(update={"decide_tool": review_decide_tool_name})
+        text = f"{len(result.proposals)} proposal(s) awaiting review"
+        return ToolResult(content=text, structured_content=result)
+
+    @server.tool(
+        name="review_decide",
+        description=desc(
+            "App-only action for the review-queue UI: approve or reject one "
+            "curator proposal, flipping its frontmatter `status` (format "
+            "spec §8) — the exact same effect as doing so in the dashboard "
+            "or by editing the note directly. Only valid on a proposal "
+            "whose status is currently 'proposed'."
+        ),
+        annotations=ToolAnnotations(
+            readOnlyHint=False, destructiveHint=True, idempotentHint=False
+        ),
+    )
+    async def review_decide(
+        permalink: str,
+        decision: Literal["approved", "rejected"],
+    ) -> ToolResult:
+        if (err := scope_error("review_decide")) is not None:
+            return err
+        try:
+            result = await service.review_decide(permalink, decision)
+        except VaultServiceError as exc:
+            return _error_result(exc)
+        return ToolResult(content=f"{permalink!r} marked {decision}", structured_content=result)
+
+    @server.tool(
+        name="recall_pick",
+        description=desc(
+            "App-only helper for the recall-explorer UI: fetch the full "
+            "content of one or more search/recall results the user "
+            "selected, so only those enter the model's context — "
+            "SPEC-208's selective-context mechanism, not a general-purpose "
+            "batch-read tool."
+        ),
+        annotations=ToolAnnotations(
+            readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False
+        ),
+    )
+    async def recall_pick(refs: list[str]) -> ToolResult:
+        if (err := scope_error("recall_pick")) is not None:
+            return err
+        notes: list[NoteRecord] = []
+        for ref in refs:
+            try:
+                notes.append(await service.read(ref))
+            except VaultServiceError as exc:
+                return _error_result(exc)
+        text = f"picked {len(notes)} note(s) for context"
+        return ToolResult(content=text, structured_content=RecallPickResult(notes=notes))
+
     @server.resource(
         f"guide://{vault.key}/ai_assistant_guide",
         name="ai_assistant_guide",
@@ -523,7 +627,11 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
             "6. **capture** when you don't have time to place something "
             "properly — drop it into inbox/ with what it concerns and why "
             "it's worth keeping; a curator files it later. **inbox_status** "
-            "shows how much is waiting.\n\n"
+            "shows how much is waiting.\n"
+            "7. **review_queue** lists curator proposals awaiting a human "
+            "decision (format spec §8); **review_decide** and **recall_pick** "
+            "are app-only helpers for the review-queue and recall-explorer "
+            "MCP Apps, not something you would normally call directly.\n\n"
             "## Parameter notes\n"
             "`search`'s query, every `folder` parameter, and recall's `ref` / "
             "`model` accept a few common misnamings (e.g. `q`, `dir`, `path`, "
@@ -552,4 +660,7 @@ _RESULT_MODELS: dict[str, type[Any]] = {
     "inbox_status": InboxStatusResult,
     "recall": RecallResult,
     "build_context": ContextResult,
+    "review_queue": ReviewQueueResult,
+    "review_decide": ReviewDecideResult,
+    "recall_pick": RecallPickResult,
 }
