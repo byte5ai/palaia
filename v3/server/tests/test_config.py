@@ -4,6 +4,7 @@ import pytest
 
 from palaia_hub.config import (
     ConfigError,
+    HubConfig,
     RecallSettings,
     config_file_path,
     load_config,

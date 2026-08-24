@@ -159,7 +159,14 @@ def test_comments_in_config_yaml_survive_a_mode_change(tmp_path: Path) -> None:
 
 
 def test_get_exposure_includes_status_detection_and_checklist(tmp_path: Path) -> None:
-    client = _client(HubConfig(mode="open", auth_enabled=True), tmp_path)
+    # Built directly (not via the persisted-config _client): `open` mode is
+    # refused at load_config until the dashboard sign-in exists (issue
+    # #242), but the exposure semantics stay implemented for the SPEC that
+    # lifts that.
+    from palaia_hub.app import create_app
+
+    app = create_app(HubConfig(mode="open", auth_enabled=True), home=tmp_path)
+    client = TestClient(app)
 
     response = client.get("/api/exposure")
 
@@ -175,7 +182,10 @@ def test_get_exposure_includes_status_detection_and_checklist(tmp_path: Path) ->
 def test_exposure_checklist_reflects_rate_limiting_being_active_in_open_mode(
     tmp_path: Path,
 ) -> None:
-    client = _client(HubConfig(mode="open", auth_enabled=True), tmp_path)
+    # Direct construction — see the previous test's comment (issue #242).
+    from palaia_hub.app import create_app
+
+    client = TestClient(create_app(HubConfig(mode="open", auth_enabled=True), home=tmp_path))
 
     body = client.get("/api/exposure").json()
 
