@@ -47,6 +47,7 @@ from .apps.review_app import render_review_queue_html
 from .config import CURATOR_PROFILE_PATH, GatewayConfig, ProfileConfig
 from .memory_tools import build_vault_server, vault_identity_block
 from .naming import resolve_tool_names
+from .semantic_routing import build_semantic_routing_server
 from .stash_tools import build_stash_server
 from .vault_protocol import VaultService
 
@@ -215,7 +216,27 @@ def _build_profile_server(
             namespace=mount.config.mount_namespace,
             tool_names=renames or None,
         )
+
+    # `profile.hidden_tools` (SPEC-305 deliverable #3): a global (not
+    # session-scoped) `Provider.disable()` transform on *this profile's own*
+    # `FastMCP` instance — every profile already gets its own instance (the
+    # SPEC-002 finding this module's docstring opens with), so this hides a
+    # tool from exactly this profile's `tools/list` and refuses it on call,
+    # without touching the shared vault tool server another profile might
+    # also mount. `disable()` only ever marks a `model_copy` of the
+    # component (see fastmcp.server.transforms.visibility) — the mounted
+    # vault/stash servers' own tool objects are never mutated. Applied
+    # after every mount (vaults, stash, upstreams), since the names it
+    # hides are final post-namespace names.
+    if profile.hidden_tools:
+        server.disable(names=set(profile.hidden_tools))
     _attach_app_resources(server)
+    # `profile.semantic_routing` (SPEC-305 deliverable #4): swap the profile
+    # actually served for a slim `find_tool`/`invoke_tool` router backed by
+    # this full server. Built last, so the router always reflects every
+    # vault/stash/hidden-tool decision already applied above.
+    if profile.semantic_routing:
+        return build_semantic_routing_server(profile, server)
     return server
 
 

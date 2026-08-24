@@ -9,7 +9,7 @@ import { Button } from "../components/Button";
 import { ConnectPanel, formatAge } from "../components/ConnectPanel";
 import { SkillPanel } from "../components/SkillPanel";
 import { useToast } from "../components/Toast";
-import type { TokenInfo } from "../lib/api/client";
+import type { GatewayProfile, TokenInfo } from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
 import { CLIENTS, type DownloadClient, type HubMode, type NotYetClient } from "../lib/clients";
 import { CopyIcon, InfoIcon, WarningIcon } from "../shell/icons";
@@ -17,10 +17,18 @@ import { CopyIcon, InfoIcon, WarningIcon } from "../shell/icons";
 /** SPEC-205 deliverable #3: sign-in is turned on and configured — the
  * client's own connector unlocks with the real address filled in, instead
  * of the "not yet" reason. */
-function OAuthReadyCard({ client, issuer }: { client: NotYetClient; issuer: string }) {
+function OAuthReadyCard({
+  client,
+  issuer,
+  profile,
+}: {
+  client: NotYetClient;
+  issuer: string;
+  profile: string;
+}) {
   const toast = useToast();
   const Icon = client.icon;
-  const connect = client.oauthConnect?.(issuer, "default");
+  const connect = client.oauthConnect?.(issuer, profile);
   if (!connect) return null;
   return (
     <div className="card">
@@ -169,6 +177,11 @@ export function Clients() {
   const [tokens, setTokens] = useState<TokenInfo[]>([]);
   const [tokenStoreAvailable, setTokenStoreAvailable] = useState(true);
   const [selectedId, setSelectedId] = useState(CLIENTS[0]!.id);
+  // SPEC-305 deliverable #2: the profile picker every snippet/one-liner/
+  // bundle below renders with. Defaults to "default" and stays there for a
+  // hub with no gateway attached (the 404 case) or exactly one profile.
+  const [profiles, setProfiles] = useState<GatewayProfile[]>([]);
+  const [selectedProfile, setSelectedProfile] = useState("default");
 
   useEffect(() => {
     let cancelled = false;
@@ -199,6 +212,21 @@ export function Clients() {
         if (!cancelled && err instanceof ApiError && err.status === 404) {
           setTokenStoreAvailable(false);
         }
+      });
+    api
+      .listGatewayProfiles()
+      .then((list) => {
+        if (cancelled) return;
+        setProfiles(list);
+        // Keep whatever is already selected if it still exists; otherwise
+        // fall back to "default" (or the only profile there is).
+        setSelectedProfile((current) =>
+          list.some((p) => p.path === current) ? current : list[0]?.path ?? "default",
+        );
+      })
+      .catch(() => {
+        // No gateway attached, or the route 404s — every card below just
+        // keeps using "default", same as before this picker existed.
       });
     return () => {
       cancelled = true;
@@ -270,6 +298,26 @@ export function Clients() {
         </div>
       </div>
       <div className="stack">
+        {profiles.length > 1 ? (
+          <div className="row row--wrap" style={{ gap: 8, alignItems: "baseline" }}>
+            <label className="t-xs t-muted" htmlFor="connect-profile-picker">
+              Tool profile for {selected.name}
+            </label>
+            <select
+              id="connect-profile-picker"
+              className="input"
+              style={{ maxWidth: 220 }}
+              value={selectedProfile}
+              onChange={(event) => setSelectedProfile(event.target.value)}
+            >
+              {profiles.map((p) => (
+                <option key={p.path} value={p.path}>
+                  {p.label ?? p.path} ({p.tool_count} tools)
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         {!tokenStoreAvailable ? (
           <div className="card">
             <div className="card__body">
@@ -286,14 +334,15 @@ export function Clients() {
           <ConnectPanel
             key={selected.id}
             client={selected}
+            defaultProfile={selectedProfile}
             onTokenIssued={(info) =>
               setTokens((prev) => [...prev.filter((t) => t.id !== info.id), info])
             }
           />
         ) : selected.kind === "download" ? (
-          <DownloadCard key={selected.id} client={selected} profile="default" />
+          <DownloadCard key={selected.id} client={selected} profile={selectedProfile} />
         ) : oauthIssuer && selected.oauthConnect ? (
-          <OAuthReadyCard client={selected} issuer={oauthIssuer} />
+          <OAuthReadyCard client={selected} issuer={oauthIssuer} profile={selectedProfile} />
         ) : (
           <NotYetCard client={selected} mode={mode} />
         )}

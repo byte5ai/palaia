@@ -135,6 +135,24 @@ class ProfileConfig(BaseModel):
     #: either way — this only decides whether *this* profile's own MCP
     #: connection also carries those five tools.
     stash: bool = False
+    #: Final (post-namespace) tool names to hide from this profile's own
+    #: surface, e.g. ``"work_memory_delete"`` (SPEC-305 deliverable #3): a
+    #: profile can mount a whole vault family yet not expose one of its
+    #: tools. Applied with FastMCP's own global ``Provider.disable()``
+    #: transform on *this profile's* ``FastMCP`` instance (see
+    #: ``gateway/build.py``) — not by mutating the shared vault tool
+    #: server, which every other profile mounting that vault would also
+    #: see. A hidden tool is absent from ``tools/list`` and refused (as
+    #: "unknown tool") on call — never merely unlisted.
+    hidden_tools: list[str] = Field(default_factory=list)
+    #: Expose ``find_tool``/``invoke_tool`` instead of this profile's full
+    #: tool surface (SPEC-305 deliverable #4, MASTERPLAN §5.2): a semantic
+    #: router backed by the profile's own real tool list, for a tool
+    #: collection too large for a client's picker. Off by default and
+    #: marked experimental wherever the dashboard shows it — this changes
+    #: what a connecting client sees, so it is opt-in per profile, not a
+    #: hub-wide setting.
+    semantic_routing: bool = False
     #: External MCP servers (SPEC-302) mounted into this profile, by their
     #: :attr:`palaia_hub.upstream.models.UpstreamConfig.key`. An upstream
     #: that is disabled or currently unreachable contributes no tools and

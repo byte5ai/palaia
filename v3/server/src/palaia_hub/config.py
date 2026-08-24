@@ -593,6 +593,12 @@ class GatewayProfileSettings(BaseModel):
     vaults: list[str] = Field(default_factory=list)
     #: Mount the stash tool family inside this profile too (SPEC-202/301).
     stash: bool = False
+    #: Final (post-namespace) tool names hidden from this profile (SPEC-305
+    #: deliverable #3). See ``palaia_hub.gateway.config.ProfileConfig``.
+    hidden_tools: list[str] = Field(default_factory=list)
+    #: Expose ``find_tool``/``invoke_tool`` instead of the full surface
+    #: (SPEC-305 deliverable #4). See ``ProfileConfig``.
+    semantic_routing: bool = False
     #: External MCP servers (SPEC-302) mounted into this profile, by key —
     #: each has to appear in ``gateway.upstreams`` below. Listing a server
     #: there connects it; listing it *here* is what exposes its tools to the

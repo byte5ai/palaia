@@ -279,3 +279,75 @@ async def test_profile_with_stash_false_has_no_stash_tools() -> None:
     assert "stash_set" not in names
 
     await gateway.aclose()
+
+
+async def test_upsert_profile_with_hidden_tools_hides_them_live() -> None:
+    config = GatewayConfig(
+        vaults=[VaultMountConfig(key="work", name="work")],
+        profiles=[ProfileConfig(path="default", vaults=["work"])],
+    )
+    gateway = DynamicGateway(config, {"work": FakeVaultService()})
+    await gateway.start()
+
+    await gateway.upsert_profile(
+        "default", ["work"], hidden_tools=["work_memory_delete"]
+    )
+
+    async with Client(gateway.profile_servers["default"]) as client:
+        names = {t.name for t in await client.list_tools()}
+    assert "work_memory_delete" not in names
+    assert "work_memory_search" in names
+
+    await gateway.aclose()
+
+
+async def test_upsert_profile_with_semantic_routing_swaps_the_served_surface() -> None:
+    gateway = DynamicGateway(GatewayConfig(), {})
+    await gateway.start()
+
+    await gateway.add_vault(
+        VaultMountConfig(key="work", name="work"),
+        FakeVaultService(),
+        profile_paths=["default"],
+    )
+    await gateway.upsert_profile("default", ["work"], semantic_routing=True)
+
+    async with Client(gateway.profile_servers["default"]) as client:
+        names = {t.name for t in await client.list_tools()}
+    assert names == {"find_tool", "invoke_tool"}
+
+    await gateway.aclose()
+
+
+async def test_update_vault_identity_renames_tools_live_across_every_profile() -> None:
+    config = GatewayConfig(
+        vaults=[VaultMountConfig(key="work", name="work")],
+        profiles=[
+            ProfileConfig(path="default", vaults=["work"]),
+            ProfileConfig(path="other", vaults=["work"]),
+        ],
+    )
+    gateway = DynamicGateway(config, {"work": FakeVaultService()})
+    await gateway.start()
+
+    await gateway.update_vault_identity(
+        VaultMountConfig(key="work", name="work", tool_renames={"search": "find"})
+    )
+
+    for path in ("default", "other"):
+        async with Client(gateway.profile_servers[path]) as client:
+            names = {t.name for t in await client.list_tools()}
+        assert "work_memory_find" in names
+        assert "work_memory_search" not in names
+
+    await gateway.aclose()
+
+
+async def test_update_vault_identity_unknown_key_raises() -> None:
+    gateway = DynamicGateway(GatewayConfig(), {})
+    await gateway.start()
+
+    with pytest.raises(GatewayConfigError):
+        await gateway.update_vault_identity(VaultMountConfig(key="ghost", name="ghost"))
+
+    await gateway.aclose()

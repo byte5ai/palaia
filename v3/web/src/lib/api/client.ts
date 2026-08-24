@@ -153,6 +153,45 @@ export interface CreatedToken {
   token: string;
 }
 
+/** SPEC-305's profile editor — opt-in on the hub (present only when a
+ * `DynamicGateway` is attached to `create_app`, same reasoning as the
+ * types above for why this is hand-written rather than generated). Mirrors
+ * `palaia_hub.gateway.api.GatewayProfileOut`. */
+export interface GatewayProfile {
+  path: string;
+  label: string | null;
+  vaults: string[];
+  stash: boolean;
+  hidden_tools: string[];
+  semantic_routing: boolean;
+  tool_count: number;
+  managed: boolean;
+}
+
+/** `palaia_hub.gateway.api.GatewayToolOut`. */
+export interface GatewayTool {
+  name: string;
+  description: string | null;
+  hidden: boolean;
+}
+
+/** `palaia_hub.gateway.api.RenameSanitizationOut`. */
+export interface RenameSanitization {
+  action: string;
+  requested: string;
+  applied: string;
+}
+
+/** `palaia_hub.gateway.api.GatewayVaultOut`. */
+export interface GatewayVaultIdentity {
+  key: string;
+  name: string;
+  purpose: string;
+  tool_renames: Record<string, string>;
+  namespace: string;
+  sanitized: RenameSanitization[];
+}
+
 /** SPEC-201's webhook management surface — opt-in on the hub (present only
  * when a `hook_store` is given to `create_app`), same reasoning as the
  * token types above for why this is hand-written rather than generated. */
@@ -391,6 +430,41 @@ export const api = {
     getJson<InboxStatus>(`/api/vaults/${vaultKey}/inbox_status`),
   indexStatus: (vaultKey: string) =>
     getJson<IndexStatus>(`/api/vaults/${vaultKey}/index_status`),
+
+  // ---- SPEC-305: the tool-profile editor ----
+  listGatewayProfiles: () => getJson<GatewayProfile[]>("/api/gateway/profiles"),
+  listGatewayProfileTools: (profilePath: string) =>
+    getJson<GatewayTool[]>(`/api/gateway/profiles/${profilePath}/tools`),
+  createGatewayProfile: (body: {
+    path: string;
+    label?: string | null;
+    vaults?: string[];
+    stash?: boolean;
+    hidden_tools?: string[];
+    semantic_routing?: boolean;
+  }) => postJson<GatewayProfile>("/api/gateway/profiles", body),
+  updateGatewayProfile: (
+    profilePath: string,
+    body: {
+      label?: string | null;
+      vaults?: string[];
+      stash?: boolean;
+      hidden_tools?: string[];
+      semantic_routing?: boolean;
+    },
+  ) => patchJson<GatewayProfile>(`/api/gateway/profiles/${profilePath}`, body),
+  deleteGatewayProfile: (profilePath: string) =>
+    fetch(`${API_BASE}/api/gateway/profiles/${profilePath}`, {
+      method: "DELETE",
+    }).then((response) => {
+      if (!response.ok)
+        throw new ApiError("/api/gateway/profiles", response.status, undefined);
+    }),
+  listGatewayVaults: () => getJson<GatewayVaultIdentity[]>("/api/gateway/vaults"),
+  updateGatewayVault: (
+    vaultKey: string,
+    body: { name?: string; purpose?: string; tool_renames?: Record<string, string> },
+  ) => patchJson<GatewayVaultIdentity>(`/api/gateway/vaults/${vaultKey}`, body),
 
   // ---- SPEC-108's token surface, consumed here for "connected clients" ----
   listTokens: () => getJson<TokenInfo[]>("/api/auth/tokens"),

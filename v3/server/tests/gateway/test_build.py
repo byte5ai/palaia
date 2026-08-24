@@ -135,3 +135,114 @@ def test_zero_profiles_builds_an_empty_but_valid_gateway() -> None:
     config = GatewayConfig(vaults=[VaultMountConfig(key="work", name="work")], profiles=[])
     gateway = build_gateway(config, {"work": FakeVaultService()})
     assert gateway.mounts == {}
+
+
+# --- SPEC-305 deliverable #3: per-tool visibility within a mounted family --
+
+
+@pytest.mark.anyio
+async def test_hidden_tool_is_absent_from_tools_list() -> None:
+    config = GatewayConfig(
+        vaults=[VaultMountConfig(key="work", name="work")],
+        profiles=[
+            ProfileConfig(path="default", vaults=["work"], hidden_tools=["work_memory_delete"])
+        ],
+    )
+    gateway = build_gateway(config, {"work": FakeVaultService()})
+
+    names = await _tool_names(gateway.profile_servers["default"])
+
+    assert "work_memory_delete" not in names
+    assert "work_memory_search" in names  # every other tool is unaffected
+
+
+@pytest.mark.anyio
+async def test_hidden_tool_is_refused_on_call_not_merely_unlisted() -> None:
+    config = GatewayConfig(
+        vaults=[VaultMountConfig(key="work", name="work")],
+        profiles=[
+            ProfileConfig(path="default", vaults=["work"], hidden_tools=["work_memory_delete"])
+        ],
+    )
+    gateway = build_gateway(config, {"work": FakeVaultService()})
+
+    async with Client(gateway.profile_servers["default"]) as client:
+        with pytest.raises(Exception, match="[Uu]nknown tool"):
+            await client.call_tool("work_memory_delete", {"ref": "anything"})
+
+
+@pytest.mark.anyio
+async def test_hidden_tools_do_not_affect_a_sibling_profile_sharing_the_vault() -> None:
+    """Hiding is per-profile (a global transform on *that profile's own*
+    FastMCP instance), never a mutation of the shared vault tool server —
+    see ``gateway/build.py``'s comment. A second profile mounting the same
+    vault, with no ``hidden_tools`` of its own, still sees everything."""
+    config = GatewayConfig(
+        vaults=[VaultMountConfig(key="work", name="work")],
+        profiles=[
+            ProfileConfig(path="locked", vaults=["work"], hidden_tools=["work_memory_delete"]),
+            ProfileConfig(path="open", vaults=["work"]),
+        ],
+    )
+    gateway = build_gateway(config, {"work": FakeVaultService()})
+
+    open_names = await _tool_names(gateway.profile_servers["open"])
+    assert "work_memory_delete" in open_names
+
+
+# --- SPEC-305 deliverable #4: semantic tool routing -------------------------
+
+
+@pytest.mark.anyio
+async def test_semantic_routing_profile_exposes_only_find_and_invoke_tool() -> None:
+    config = GatewayConfig(
+        vaults=[VaultMountConfig(key="work", name="work")],
+        profiles=[ProfileConfig(path="default", vaults=["work"], semantic_routing=True)],
+    )
+    gateway = build_gateway(config, {"work": FakeVaultService()})
+
+    names = await _tool_names(gateway.profile_servers["default"])
+
+    assert names == {"find_tool", "invoke_tool"}
+
+
+@pytest.mark.anyio
+async def test_semantic_routing_find_tool_finds_and_invoke_tool_invokes() -> None:
+    config = GatewayConfig(
+        vaults=[VaultMountConfig(key="work", name="work", purpose="Work knowledge.")],
+        profiles=[ProfileConfig(path="default", vaults=["work"], semantic_routing=True)],
+    )
+    services = {"work": FakeVaultService()}
+    gateway = build_gateway(config, services)
+
+    async with Client(gateway.profile_servers["default"]) as client:
+        found = await client.call_tool("find_tool", {"query": "work_memory_search"})
+        matches = found.structured_content["matches"]
+        assert any(m["name"] == "work_memory_search" for m in matches)
+
+        result = await client.call_tool(
+            "invoke_tool",
+            {"name": "work_memory_write", "arguments": {"title": "Note", "body": "hello"}},
+        )
+        assert result.is_error is not True
+
+
+@pytest.mark.anyio
+async def test_semantic_routing_hidden_tools_still_apply_before_routing() -> None:
+    config = GatewayConfig(
+        vaults=[VaultMountConfig(key="work", name="work")],
+        profiles=[
+            ProfileConfig(
+                path="default",
+                vaults=["work"],
+                hidden_tools=["work_memory_delete"],
+                semantic_routing=True,
+            )
+        ],
+    )
+    gateway = build_gateway(config, {"work": FakeVaultService()})
+
+    async with Client(gateway.profile_servers["default"]) as client:
+        found = await client.call_tool("find_tool", {"query": "delete"})
+        matches = found.structured_content["matches"]
+        assert not any(m["name"] == "work_memory_delete" for m in matches)

@@ -126,6 +126,8 @@ def resolve_profiles(
                 label=profile.label,
                 vaults=list(profile.vaults),
                 stash=profile.stash,
+                hidden_tools=list(profile.hidden_tools),
+                semantic_routing=profile.semantic_routing,
                 upstreams=list(profile.upstreams),
             )
         )
