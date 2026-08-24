@@ -264,3 +264,75 @@ def test_an_unknown_recall_key_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(ConfigError):
         load_config(home=tmp_path)
+
+
+# --------------------------------------------------------------- SPEC-301
+
+
+def test_no_gateway_section_means_none(tmp_path: Path) -> None:
+    config = load_config(home=tmp_path)
+    assert config.gateway is None
+
+
+def test_gateway_section_parses_vaults_and_profiles(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text(
+        "gateway:\n"
+        "  vaults:\n"
+        "    - key: work\n"
+        "      name: Work\n"
+        "      purpose: Work notes.\n"
+        "      tool_renames:\n"
+        "        search: find\n"
+        "  profiles:\n"
+        "    - path: default\n"
+        "      label: Default\n"
+        "      vaults: [work]\n"
+        "      stash: true\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(home=tmp_path)
+
+    assert config.gateway is not None
+    assert config.gateway.vaults[0].key == "work"
+    assert config.gateway.vaults[0].tool_renames == {"search": "find"}
+    assert config.gateway.profiles[0].path == "default"
+    assert config.gateway.profiles[0].label == "Default"
+    assert config.gateway.profiles[0].vaults == ["work"]
+    assert config.gateway.profiles[0].stash is True
+
+
+def test_gateway_section_rejects_unknown_keys(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text(
+        "gateway:\n  profiles:\n    - path: default\n      renmae: oops\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError):
+        load_config(home=tmp_path)
+
+
+def test_oauth_profiles_is_deprecated_but_still_parses(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text(
+        "oauth:\n  enabled: true\n  issuer: https://hub.test\n  profiles: [alpha]\n",
+        encoding="utf-8",
+    )
+
+    with pytest.warns(DeprecationWarning, match="oauth.profiles"):
+        config = load_config(home=tmp_path)
+
+    # Honored (parses, does not error) — just no longer read by anything.
+    assert config.oauth.profiles == ["alpha"]
+
+
+def test_oauth_without_profiles_set_warns_nothing(tmp_path: Path) -> None:
+    import warnings
+
+    (tmp_path / "config.yaml").write_text(
+        "oauth:\n  enabled: true\n  issuer: https://hub.test\n", encoding="utf-8"
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        load_config(home=tmp_path)
+    assert not any(issubclass(w.category, DeprecationWarning) for w in caught)

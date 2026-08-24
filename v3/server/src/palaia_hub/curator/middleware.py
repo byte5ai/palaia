@@ -66,6 +66,21 @@ class CuratorScopeMiddleware(Middleware):
     def active_captures(self) -> ActiveCaptures:
         return self._active_captures
 
+    def add_tool_actions(self, tool_actions: Mapping[str, str]) -> None:
+        """Merge more ``{tool name: base action}`` entries in, live.
+
+        SPEC-301 deliverable #4: a vault created at runtime joins the
+        curator profile without a restart, and this profile is rebuilt
+        (a new :class:`~fastmcp.FastMCP` server) each time — but this
+        *middleware instance* is the same object every rebuild reuses (see
+        :mod:`palaia_hub.curator.profile`'s docstring), so mutating its map
+        here is what makes the new vault's tools recognized without also
+        having to re-attach a fresh middleware instance anywhere. Never
+        removes an entry — closing a vault's tools back off this profile
+        is not a case this SPEC needs (vaults are not deleted at runtime).
+        """
+        self._tool_actions.update(tool_actions)
+
     def action_for(self, tool_name: str) -> str | None:
         """The base action ``tool_name`` maps to, or ``None`` if unknown here."""
         return self._tool_actions.get(tool_name)
