@@ -171,3 +171,18 @@ remembers what desktop Codex learned* — a real remote client through OAuth).
   providers share one memory; install without shell beyond one docker command),
   e2e harness green, importers round-trip golden vaults, owner UX pass on the
   dashboard. Reviewer: **Fable 5** (writes the Phase-2 SPECs at this gate).
+- **Gate P2→P3 (held 2026-08-24):** every Phase-2 ship merged and integrated
+  (SPECs 201–210: events+hooks, stash, OAuth 2.1 server, IdP sign-in,
+  modes+exposure wizard, curator, skills, MCP Apps, client matrix, dynamic
+  mounting), full suite green at 1436 tests. Exit criterion *"phone Claude
+  remembers what desktop Codex learned"* demonstrated up to the vendor-cloud
+  boundary: shared memory across providers (Phase-1 S1, still green), plus a
+  **real, completed OAuth login and tool round-trip by an actual native
+  client on the default zero-flag path** against a Cloud-mode hub
+  (SPEC-209 e2e; unblocked by the RFC 8252 §7.3 fix, issue #233). The
+  literal phone half needs a real claude.ai account against a publicly
+  reachable hub — a documented ~5-minute owner action
+  (`docs/client-matrix-results.md` says exactly what to run), not something
+  this environment can fake honestly. Reviewer: **Fable 5** (writes the
+  Phase-3 SPECs at this gate) + owner (phone test + UX pass on the new
+  exposure/settings/review screens).
