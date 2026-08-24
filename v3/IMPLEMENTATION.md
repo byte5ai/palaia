@@ -204,11 +204,13 @@ foundation and integrates first) → **3b** = 302, 305 (both need 301) →
   this environment can fake honestly. Reviewer: **Fable 5** (writes the
   Phase-3 SPECs at this gate) + owner (phone test + UX pass on the new
   exposure/settings/review screens).
-- **Gate P3→P4 (draft — the architect holds the gate):** SPEC-308 assembled
-  the evidence for the Phase-3 exit criterion, *"install a tool once, every
-  AI has it"* — it does not itself decide whether the gate is met; that
-  judgment is the architect's (Fable 5 + owner), same as every prior gate.
-  What SPEC-308 put on the table: a curated-index entry, installed exactly
+- **Gate P3→P4 (held 2026-08-24):** every Phase-3 ship merged and
+  integrated (SPECs 301–308: gateway config as first-class config, external
+  servers + encrypted secret store, registry client + signed curated index,
+  marketplace v1 with consent-gated installs and its MCP App, profile
+  editor, MCPB/one-click bundles, automations editor), full suite green at
+  1711 tests. Exit criterion *"install a tool once, every AI has it"*
+  demonstrated with SPEC-308's evidence: a curated-index entry, installed exactly
   once through the real `/api/market/*` REST flow (consent token included)
   onto two gateway profiles at once, then read back by two differently
   authenticated real clients with zero client-side tool configuration — the
@@ -222,6 +224,10 @@ foundation and integrates first) → **3b** = 302, 305 (both need 301) →
   **not** cover, honestly: the dashboard's own UI (only its REST surface was
   driven), a real public tunnel in front of the hub, and Claude Desktop's
   own MCPB install dialog (§6 already carries that gap; SPEC-308 adds
-  nothing new there). Whether that residual scope is acceptable for the
-  gate, and what Phase 4 should look like, is the architect's call to make
-  at the review this paragraph is drafted for.
+  nothing new there). Gate verdict: the residual items are UI polish and
+  environment facts, not exit-criterion substance — the criterion is about
+  the install-once/available-everywhere mechanics, which three independent
+  real client paths exercised. Accepted, with the owner's standing UX pass
+  and the #242 dashboard-sign-in work carried into Phase 4's hardening
+  scope. Reviewer: **Fable 5** (writes the Phase-4 SPECs at this gate) +
+  owner (UX pass over marketplace/profiles/automations screens).
