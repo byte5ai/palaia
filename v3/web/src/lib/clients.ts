@@ -94,7 +94,7 @@ export const CLIENTS: ClientEntry[] = [
     name: "Codex",
     icon: ToolsIcon,
     estimate: "one command · 1 min",
-    command: (origin, profile) => `codex mcp add palaia --transport http ${origin}/mcp/${profile}`,
+    command: (origin, profile) => `codex mcp add palaia --url ${origin}/mcp/${profile}`,
     prompt: (origin, profile) =>
       `Please connect yourself to my palaia hub as an MCP server:\n${origin}/mcp/${profile}\n` +
       `Then run a test recall and tell me what you found.`,
@@ -163,7 +163,9 @@ export const CLIENTS: ClientEntry[] = [
     name: "LM Studio",
     icon: ToolsIcon,
     estimate: "one command · 1 min",
-    command: (origin, profile) => `# LM Studio → Program → mcp.json\n{"palaia": {"url": "${origin}/mcp/${profile}"}}`,
+    command: (origin, profile) =>
+      `# LM Studio → Program → mcp.json\n` +
+      `{"mcpServers": {"palaia": {"type": "streamable-http", "url": "${origin}/mcp/${profile}"}}}`,
     prompt: (origin, profile) =>
       `Please connect yourself to my palaia hub as an MCP server:\n${origin}/mcp/${profile}\n` +
       `Then run a test recall and tell me what you found.`,
