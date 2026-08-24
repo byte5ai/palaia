@@ -71,6 +71,10 @@ EventName = Literal[
     "gateway.profile.created",
     "gateway.profile.updated",
     "gateway.profile.deleted",
+    # SPEC-303: the curated marketplace index was (re)fetched — fresh or a
+    # refused/offline fallback, named honestly in the event's own data.
+    # Additive to the v1 vocabulary, same rule as the curator events above.
+    "market.index.updated",
     "health",
 ]
 

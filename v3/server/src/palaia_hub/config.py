@@ -249,6 +249,13 @@ curator:
   # token:
   # Where a session reaches this hub. Defaults to http://<host>:<port>.
   # endpoint:
+
+# The marketplace's curated add-on index (MASTERPLAN §5.3): where to fetch
+# palaia's signed, curated list of add-ons from. The signature's public key
+# is pinned in code, never here — changing this URL alone cannot make the
+# hub trust a different signer. null uses the built-in default URL.
+market:
+  index_url: null
 """
 
 
@@ -623,6 +630,26 @@ class CuratorSettings(BaseModel):
     endpoint: str | None = None
 
 
+class MarketSettings(BaseModel):
+    """The marketplace's curated-index source (SPEC-303 deliverable #2).
+
+    Only the index *URL* is configurable — the Ed25519 public key it must
+    verify against is pinned in code
+    (``palaia_hub.market.curated.DEFAULT_PUBLIC_KEY_B64``), never here.
+    A configurable trust anchor would let a config-file edit alone make
+    the hub trust an attacker's index; the URL merely says where to look
+    for a document that still has to carry a valid signature from the
+    one key this hub ships pinned to.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: ``None`` means "use palaia_hub.market.curated.DEFAULT_INDEX_URL".
+    #: Kept optional (rather than defaulting here) so the default lives in
+    #: exactly one place.
+    index_url: str | None = None
+
+
 class HubConfig(BaseModel):
     """Validated hub configuration, merged from defaults/file/env."""
 
@@ -639,6 +666,7 @@ class HubConfig(BaseModel):
     oauth: OAuthSettings = Field(default_factory=OAuthSettings)
     curator: CuratorSettings = Field(default_factory=CuratorSettings)
     exposure: ExposureSettings = Field(default_factory=ExposureSettings)
+    market: MarketSettings = Field(default_factory=MarketSettings)
     #: The gateway's profiles/vault-identity shape (SPEC-301). ``None`` (the
     #: default, and what an old config.yaml with no ``gateway:`` section
     #: parses to) means "today's zero-config behavior": every vault on one

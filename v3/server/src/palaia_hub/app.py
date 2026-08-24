@@ -41,6 +41,7 @@ from .gateway.wiring import EngineVaultService
 from .hooks import OUTBOX_RELATIVE_PATH, HookDispatcher, HookOutbox, HookStore, build_hooks_router
 from .index import VaultIndex
 from .logging import setup_logging
+from .market import MarketService, build_market_router
 from .modes import AuthRateLimitMiddleware, ModeAuditLog, build_modes_router
 from .oauth import AuthorizationServer, build_oauth_router
 from .stash.service import StashService
@@ -68,6 +69,7 @@ def create_app(
     event_bus: EventBus | None = None,
     oauth_server: AuthorizationServer | None = None,
     stash_service: StashService | None = None,
+    market_service: MarketService | None = None,
     hook_store: HookStore | None = None,
     hook_outbox: HookOutbox | None = None,
     curator: CuratorScheduler | None = None,
@@ -159,6 +161,12 @@ def create_app(
             mirror, and wires its ``stash.*`` events onto ``event_bus``.
             Omitted (the default), the hub runs with no stash surface at
             all, same as before this parameter existed.
+        market_service: the marketplace read model (SPEC-303 — official
+            registry + curated index + manual entries, merged). Given,
+            mounts ``/api/market/*`` and wires its
+            ``market.index.updated`` event onto ``event_bus``. Omitted
+            (the default), the hub runs with no marketplace surface at
+            all, same as before this parameter existed.
         hook_store: outbound-webhook configuration (SPEC-201). Given, mounts
             the ``/api/hooks`` REST surface and starts the delivery worker
             that turns every published event into a signed webhook POST for
@@ -203,6 +211,12 @@ def create_app(
 
         stash_service.publish = _publish_stash
         stash_gateway = build_stash_gateway(stash_service)
+
+    if market_service is not None:
+        def _publish_market(action: str, data: dict[str, Any]) -> None:
+            publish_event(event_bus, action, origin="market", data=data)
+
+        market_service.publish = _publish_market
 
     # SPEC-208 deliverable #2: the hub_status MCP App, mounted at
     # `/mcp/hub` — hub-level (not per-vault, unlike the memory tool
@@ -442,6 +456,8 @@ def create_app(
 
     if stash_service is not None:
         app.include_router(build_stash_router(stash_service))
+    if market_service is not None:
+        app.include_router(build_market_router(market_service))
     if hook_store is not None:
         assert outbox is not None  # built above, together with hook_store's dispatcher
         app.include_router(build_hooks_router(hook_store, outbox))
