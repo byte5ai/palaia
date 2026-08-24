@@ -25,6 +25,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from starlette.exceptions import HTTPException
 from starlette.responses import FileResponse, Response
+from starlette.routing import Mount
 from starlette.staticfiles import StaticFiles
 from starlette.types import Scope
 
@@ -74,6 +75,12 @@ class SPAStaticFiles(StaticFiles):
     #: back with a 200, silently hiding that the route does not exist.
     _BACKEND_PREFIXES = ("api", "mcp", "oauth")
 
+    #: Exact paths of backend ASGI mounts registered on the app this
+    #: instance serves under (e.g. "/mcp", "/mcp/hub", "/mcp/stash") —
+    #: filled in by :func:`mount_dashboard`. A no-trailing-slash request for
+    #: one of these redirects to its slashed root instead of 404ing.
+    _mount_roots: frozenset[str] = frozenset()
+
     async def get_response(self, path: str, scope: Scope) -> Response:
         # SPEC-110 fix: reaching this mount at all with a backend-prefixed
         # path means no route matched it — an opt-in REST endpoint whose
@@ -87,6 +94,23 @@ class SPAStaticFiles(StaticFiles):
         # or absent feature into what looks like a successful response.
         first_segment = path.split("/", 1)[0]
         if first_segment in self._BACKEND_PREFIXES:
+            # Restore the slash redirect this catch-all mount otherwise
+            # defeats for a *registered* backend mount root: Starlette's own
+            # redirect_slashes only fires when NO route matches, and this
+            # mount matches everything — so with a dashboard build present,
+            # "/mcp/hub" (no slash) would 404 here even though the
+            # "/mcp/hub/" mount exists and serves a real MCP endpoint. A 307
+            # keeps the method (MCP clients POST). Only exact mount roots
+            # (collected by mount_dashboard from the app's own route table)
+            # redirect; every other unmatched backend path stays a plain 404
+            # — the one-door rule and the disabled-feature contract depend
+            # on that.
+            if scope["path"] in self._mount_roots:
+                target = scope["path"] + "/"
+                query = scope.get("query_string", b"")
+                if query:
+                    target = f"{target}?{query.decode('latin-1')}"
+                return Response(status_code=307, headers={"Location": target})
             return Response(status_code=404)
         try:
             response = await super().get_response(path, scope)
@@ -112,7 +136,17 @@ def mount_dashboard(app: FastAPI, dist_dir: Path | None = None) -> bool:
     resolved = dist_dir if dist_dir is not None else resolve_dist_dir()
     if resolved is None:
         return False
-    app.mount("/", SPAStaticFiles(directory=resolved, html=True), name="dashboard")
+    static = SPAStaticFiles(directory=resolved, html=True)
+    # Backend mounts registered before this call (the caller mounts the
+    # dashboard last) whose no-slash roots should redirect rather than 404 —
+    # see SPAStaticFiles._mount_roots.
+    static._mount_roots = frozenset(
+        route.path
+        for route in app.routes
+        if isinstance(route, Mount)
+        and route.path.lstrip("/").split("/", 1)[0] in SPAStaticFiles._BACKEND_PREFIXES
+    )
+    app.mount("/", static, name="dashboard")
     return True
 
 
