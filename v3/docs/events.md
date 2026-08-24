@@ -100,6 +100,12 @@ of them ignores them.
 | `curator.proposal.apply_failed` | same shape | An operation failed mid-plan; the proposal is stamped `apply-failed` and a `doctor.finding` is raised. |
 | `curator.proposal.manual` | same shape | The proposal carries no executable plan (or an unparseable one) — a human has to apply it. |
 
+### 3.2 Marketplace event (SPEC-303, additive)
+
+| Event | Origin | `data` fields | Fires when |
+|---|---|---|---|
+| `market.index.updated` | `market` | `generated_at`, `entry_count`, `stale`, `warning` | The curated add-on index (`palaia_hub.market.curated.CuratedIndexClient`) is (re)fetched — on a fresh, verified document `stale` is `false` and `warning` empty; on a refused/tampered document or an offline network, `stale` is `true` and `warning` names the exact reason (the same reason logged as a WARNING), and `generated_at`/`entry_count` describe whichever copy (last-verified, or none) was served instead. |
+
 `health` also travels the same bus and wire format (SSE only; it is not a
 webhook-filterable v1 name — see §6) — it is the dashboard's periodic
 liveness snapshot, carried over unchanged from before this SPEC.

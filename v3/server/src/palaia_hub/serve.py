@@ -44,7 +44,9 @@ from .gateway.config import GatewayConfig, ProfileConfig, VaultMountConfig
 from .gateway.wiring import EngineVaultService
 from .hooks import HookStore
 from .index import VaultIndex
+from .market import CuratedIndexClient, ManualEntryStore, MarketService
 from .oauth import AuthorizationServer
+from .registry import RegistryClient
 from .vault import EventBus as VaultEventBus
 from .vault import VaultEngine, VaultRegistry
 
@@ -117,6 +119,21 @@ async def build_production_app(
     token_store = TokenStore(home)
     hook_store = HookStore(home)
     event_bus = EventBus()
+
+    # SPEC-303: the marketplace — official registry + curated index +
+    # manual entries. Always assembled (like `hook_store` above); it costs
+    # nothing until a client actually calls `/api/market/*`, unlike the
+    # curator, which runs a model.
+    market_kwargs: dict[str, Any] = {}
+    if config.market.index_url:
+        market_kwargs["index_url"] = config.market.index_url
+    market_service = MarketService(
+        registry_client=RegistryClient(cache_dir=home / "registry_cache" if home else None),
+        curated_client=CuratedIndexClient(
+            last_good_path=home / "market_curated_index.json" if home else None, **market_kwargs
+        ),
+        manual_store=ManualEntryStore(home / "market_manual.sqlite3" if home else None),
+    )
     indexes: dict[str, VaultIndex] = {}
     vault_services: dict[str, VaultService] = {}
     mounts: list[VaultMountConfig] = []
@@ -188,6 +205,7 @@ async def build_production_app(
         event_bus=event_bus,
         oauth_server=oauth_server,
         hook_store=hook_store,
+        market_service=market_service,
         curator=curator.scheduler if curator else None,
         home=home,
     )
