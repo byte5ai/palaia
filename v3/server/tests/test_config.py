@@ -36,12 +36,12 @@ def test_file_overrides_defaults(tmp_path: Path) -> None:
 def test_env_overrides_file_which_overrides_defaults(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    (tmp_path / "config.yaml").write_text("mode: cloud\nport: 9000\n", encoding="utf-8")
-    monkeypatch.setenv("PALAIA_MODE", "open")
+    (tmp_path / "config.yaml").write_text("mode: locked\nport: 9000\n", encoding="utf-8")
+    monkeypatch.setenv("PALAIA_MODE", "cloud")
 
     config = load_config(home=tmp_path)
 
-    assert config.mode == "open"  # env wins over file
+    assert config.mode == "cloud"  # env wins over file
     assert config.port == 9000  # file still wins over default (no env override)
 
 
@@ -199,9 +199,10 @@ def test_cloud_mode_with_tailscale_range_host_is_allowed(tmp_path: Path) -> None
 
 
 def test_open_mode_with_wildcard_bind_host_is_allowed(tmp_path: Path) -> None:
-    (tmp_path / "config.yaml").write_text("mode: open\nhost: 0.0.0.0\n", encoding="utf-8")
-
-    config = load_config(home=tmp_path)
+    # HubConfig itself still models the mode's semantics (no bind
+    # restriction); load_config refuses it until the dashboard sign-in
+    # exists (issue #242) — see test_open_mode_refused.py.
+    config = HubConfig(mode="open", host="0.0.0.0", auth_enabled=True)
 
     assert config.mode == "open"
     assert config.host == "0.0.0.0"

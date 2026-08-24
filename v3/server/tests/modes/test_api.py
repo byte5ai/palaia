@@ -212,13 +212,16 @@ def test_tunnel_guidance_scopes_to_mcp_and_oauth_paths_in_cloud_mode(tmp_path: P
     assert "only the MCP endpoint" in body["note"]
 
 
-def test_tunnel_guidance_forwards_everything_in_open_mode(tmp_path: Path) -> None:
-    client = _client(HubConfig(mode="open", auth_enabled=True), tmp_path)
+def test_tunnel_guidance_forwards_everything_in_open_mode() -> None:
+    # Unit-level rather than through a persisted hub: `open` mode is refused
+    # at the operator entry points until the dashboard sign-in exists
+    # (issue #242, test_open_mode_refused.py), but the guidance semantics
+    # stay implemented for the SPEC that lifts that.
+    from palaia_hub.modes.tunnel import tailscale_guidance
 
-    response = client.post("/api/exposure/tunnel", json={"kind": "tailscale"})
+    guidance = tailscale_guidance(mode="open", local_port=8420)
 
-    assert response.status_code == 200
-    assert "including the dashboard" in response.json()["note"]
+    assert "including the dashboard" in guidance.note
 
 
 # ------------------------------------------------------- POST /api/exposure/selftest
