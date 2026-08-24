@@ -52,11 +52,21 @@ from __future__ import annotations
 from .cimd import CimdFetcher, StaticCimdFetcher
 from .clients import provision_machine_client, register_dcr_client
 from .errors import OAuthError
+from .idp import (
+    GitHubIdpProvider,
+    HttpxIdpHttp,
+    IdpHttp,
+    IdpProvider,
+    OidcIdpProvider,
+    StaticIdpHttp,
+    build_idp_provider,
+)
 from .keys import ALGORITHM, SigningKey, now_seconds
 from .login import LoginThrottle, set_owner_password
 from .models import (
     ClientInfo,
     ClientRow,
+    IdpStateRow,
     IssuedTokens,
     ProvisionedMachineClient,
     PruneReport,
@@ -64,7 +74,13 @@ from .models import (
 )
 from .resources import ResourceRegistry, normalize_issuer
 from .routes import build_oauth_router
-from .service import AuthorizationServer, AuthorizeRedirect, LoginRequired
+from .service import (
+    IDP_CALLBACK_PATH,
+    IDP_START_PATH,
+    AuthorizationServer,
+    AuthorizeRedirect,
+    LoginRequired,
+)
 from .store import OAuthStore
 from .verifier import (
     build_jwt_verifier,
@@ -75,22 +91,32 @@ from .verifier import (
 
 __all__ = [
     "ALGORITHM",
+    "IDP_CALLBACK_PATH",
+    "IDP_START_PATH",
     "AuthorizationServer",
     "AuthorizeRedirect",
     "CimdFetcher",
     "ClientInfo",
     "ClientRow",
+    "GitHubIdpProvider",
+    "HttpxIdpHttp",
+    "IdpHttp",
+    "IdpProvider",
+    "IdpStateRow",
     "IssuedTokens",
     "LoginRequired",
     "LoginThrottle",
     "OAuthError",
     "OAuthStore",
+    "OidcIdpProvider",
     "ProvisionedMachineClient",
     "PruneReport",
     "ResourceRegistry",
     "RotationOutcome",
     "SigningKey",
     "StaticCimdFetcher",
+    "StaticIdpHttp",
+    "build_idp_provider",
     "build_jwt_verifier",
     "build_oauth_router",
     "build_profile_auth",
