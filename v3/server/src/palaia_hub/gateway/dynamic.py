@@ -264,6 +264,8 @@ class DynamicGateway:
         *,
         label: str | None = None,
         stash: bool = False,
+        hidden_tools: Sequence[str] = (),
+        semantic_routing: bool = False,
         auth: TokenVerifier | None = None,
     ) -> None:
         """Create a new profile, or fully replace an existing one's shape.
@@ -283,6 +285,13 @@ class DynamicGateway:
             label: the display name; ``None`` clears it back to "use the
                 path".
             stash: whether this profile also carries the stash tool family.
+            hidden_tools: final (post-namespace) tool names this profile
+                should hide (SPEC-305 deliverable #3) — replaces whatever
+                it hid before, same "whole list, not a delta" contract as
+                ``vault_keys``.
+            semantic_routing: whether this profile should expose
+                ``find_tool``/``invoke_tool`` instead of its full surface
+                (SPEC-305 deliverable #4).
             auth: the verifier this path should use for every future
                 rebuild, recorded into ``self._token_verifiers``. Pass this
                 for a genuinely new path if the hub's mode requires auth
@@ -308,7 +317,12 @@ class DynamicGateway:
             if auth is not None:
                 self._token_verifiers[path] = auth
             new_profile = ProfileConfig(
-                path=path, label=label, vaults=list(vault_keys), stash=stash
+                path=path,
+                label=label,
+                vaults=list(vault_keys),
+                stash=stash,
+                hidden_tools=list(hidden_tools),
+                semantic_routing=semantic_routing,
             )
             profiles_by_path = {p.path: p for p in self._config.profiles}
             profiles_by_path[path] = new_profile
@@ -316,6 +330,41 @@ class DynamicGateway:
                 update={"profiles": list(profiles_by_path.values())}
             )
             await self._request_mount(new_profile)
+        check_gateway_auth_policy(self._mode, self._profile_servers)
+
+    async def update_vault_identity(self, vault: VaultMountConfig) -> None:
+        """Replace one already-mounted vault's identity (SPEC-305
+        deliverable #1's inline rename): its display ``name``, ``purpose``,
+        and/or ``tool_renames``, rebuilding that vault's own tool server
+        plus every profile that mounts it — live, no restart.
+
+        ``vault.key`` must already be mounted at this gateway (created via
+        :meth:`add_vault` — this method only ever changes an existing
+        vault's *identity*, never its key or backing service).
+
+        Raises:
+            GatewayConfigError: ``vault.key`` is not mounted at this gateway.
+        """
+        async with self._lock:
+            if vault.key not in self._vault_services:
+                raise GatewayConfigError(
+                    f"cannot update vault identity: {vault.key!r} is not mounted "
+                    "at this gateway."
+                )
+            self._config = self._config.model_copy(
+                update={
+                    "vaults": [
+                        vault if v.key == vault.key else v for v in self._config.vaults
+                    ]
+                }
+            )
+            self._vault_servers[vault.key] = _build_vault_servers(
+                GatewayConfig(vaults=[vault]), {vault.key: self._vault_services[vault.key]}
+            )[vault.key]
+
+            affected = [p for p in self._config.profiles if vault.key in p.vaults]
+            for profile in affected:
+                await self._request_mount(profile)
         check_gateway_auth_policy(self._mode, self._profile_servers)
 
     async def remove_profile(self, path: str) -> None:

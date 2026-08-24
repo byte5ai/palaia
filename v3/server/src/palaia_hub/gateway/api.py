@@ -24,18 +24,28 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
+from fastmcp import FastMCP
 from fastmcp.server.auth import AuthProvider
+from fastmcp.server.providers.base import Provider
+from fastmcp.server.transforms.visibility import is_enabled
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ..auth.policy import AuthPolicyError
 from ..auth.store import TokenStore
-from ..config import GatewayProfileSettings, GatewaySettings, HubConfig, config_file_path
+from ..config import (
+    GatewayProfileSettings,
+    GatewaySettings,
+    GatewayVaultSettings,
+    HubConfig,
+    config_file_path,
+)
 from ..events import EventBus, publish_event
 from ..oauth import AuthorizationServer
 from ..oauth.verifier import build_profile_auth
 from .build import GatewayConfigError
-from .config import ProfileConfig
+from .config import ProfileConfig, VaultMountConfig
 from .dynamic import DynamicGateway
+from .naming import sanitize_tool_name
 from .settings_bridge import persist_gateway_settings
 
 # Kept as a plain string (not imported from `palaia_hub.curator.profile`):
@@ -54,10 +64,34 @@ class GatewayProfileOut(BaseModel):
     label: str | None
     vaults: list[str]
     stash: bool
+    #: Final (post-namespace) tool names hidden from this profile's own
+    #: surface (SPEC-305 deliverable #3).
+    hidden_tools: list[str]
+    #: ``find_tool``/``invoke_tool`` instead of the full surface (SPEC-305
+    #: deliverable #4). Experimental — off by default.
+    semantic_routing: bool
+    #: How many tools this profile's live ``FastMCP`` instance actually
+    #: answers ``tools/list`` with right now (SPEC-305 deliverable #1's
+    #: "live tool count") — 0 for a profile with no vaults/stash, and
+    #: exactly 2 (``find_tool``/``invoke_tool``) once ``semantic_routing``
+    #: is on, whatever the hidden full surface behind it contains.
+    tool_count: int
     #: The curator's own profile is listed (so the editor can show it) but
     #: every write route below refuses to touch it — see the module
     #: docstring.
     managed: bool
+
+
+class GatewayToolOut(BaseModel):
+    """One tool a profile's mounted surface would offer, for the editor's
+    per-tool visibility checkboxes (SPEC-305 deliverable #3) — ``hidden``
+    ones included, unlike ``tools/list`` itself, which never shows them."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    description: str | None
+    hidden: bool
 
 
 class CreateGatewayProfileRequest(BaseModel):
@@ -71,26 +105,125 @@ class CreateGatewayProfileRequest(BaseModel):
     label: str | None = None
     vaults: list[str] = []
     stash: bool = False
+    hidden_tools: list[str] = []
+    semantic_routing: bool = False
 
 
 class UpdateGatewayProfileRequest(BaseModel):
     """``PATCH /api/gateway/profiles/{path}`` — every field optional; an
-    omitted one keeps its current value. ``vaults``, when given, *replaces*
-    the whole mounted-vault list (there is no separate add/remove verb)."""
+    omitted one keeps its current value. ``vaults``/``hidden_tools``, when
+    given, *replace* the whole list (there is no separate add/remove verb)."""
 
     model_config = ConfigDict(extra="forbid")
 
     label: str | None = None
     vaults: list[str] | None = None
     stash: bool | None = None
+    hidden_tools: list[str] | None = None
+    semantic_routing: bool | None = None
 
 
-def _out(profile: ProfileConfig) -> GatewayProfileOut:
+class RenameSanitizationOut(BaseModel):
+    """One ``tool_renames`` entry whose requested value fell outside the
+    MCP tool-name charset and was sanitized (SPEC-305 acceptance criterion:
+    "invalid names are sanitized with the warning shown")."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    action: str
+    requested: str
+    applied: str
+
+
+class GatewayVaultOut(BaseModel):
+    """One vault's gateway identity, as the editor sees it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    name: str
+    purpose: str
+    #: Base action name -> desired pre-namespace tool name, exactly as
+    #: stored (not yet sanitized — see ``sanitized``).
+    tool_renames: dict[str, str]
+    #: This vault's mount namespace (``"<name>_memory"``), so the editor
+    #: can show the composed tool name (``f"{namespace}_{action}"``)
+    #: without re-deriving the composition rule itself.
+    namespace: str
+    #: Which ``tool_renames`` entries, if any, will be sanitized once the
+    #: gateway actually builds this vault's tools — computed fresh on
+    #: every read, so it is never stale relative to ``tool_renames``.
+    sanitized: list[RenameSanitizationOut]
+
+
+class UpdateGatewayVaultRequest(BaseModel):
+    """``PATCH /api/gateway/vaults/{vault_key}`` — every field optional; an
+    omitted one keeps its current value. ``tool_renames``, when given,
+    *replaces* the whole mapping."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
+    purpose: str | None = None
+    tool_renames: dict[str, str] | None = None
+
+
+async def _introspect_tools(server: FastMCP) -> list[GatewayToolOut]:
+    """Every tool ``server`` would mount, hidden ones included, with their
+    live enabled state.
+
+    Deliberately calls the base :meth:`~fastmcp.server.providers.base.
+    Provider.list_tools` rather than ``server.list_tools()`` (this
+    server's own override): the override already filters out anything a
+    ``Visibility`` transform marked disabled — see
+    ``fastmcp.server.transforms.visibility`` — which is exactly the
+    information a per-tool visibility checkbox needs to *show*, not hide.
+    The base method still applies the same provider-level transforms
+    (namespacing, a profile's ``hidden_tools`` marks); it just skips the
+    final "drop anything disabled" step.
+    """
+    tools = await Provider.list_tools(server)
+    return [
+        GatewayToolOut(name=t.name, description=t.description, hidden=not is_enabled(t))
+        for t in tools
+    ]
+
+
+def _sanitize_renames(tool_renames: dict[str, str]) -> list[RenameSanitizationOut]:
+    warnings: list[RenameSanitizationOut] = []
+    for action, desired in tool_renames.items():
+        result = sanitize_tool_name(desired)
+        if result.changed:
+            warnings.append(
+                RenameSanitizationOut(action=action, requested=desired, applied=result.value)
+            )
+    return warnings
+
+
+def _vault_out(vault: VaultMountConfig) -> GatewayVaultOut:
+    return GatewayVaultOut(
+        key=vault.key,
+        name=vault.name,
+        purpose=vault.purpose,
+        tool_renames=dict(vault.tool_renames),
+        namespace=vault.namespace,
+        sanitized=_sanitize_renames(vault.tool_renames),
+    )
+
+
+async def _out(profile: ProfileConfig, dynamic_gateway: DynamicGateway) -> GatewayProfileOut:
+    server = dynamic_gateway.profile_servers.get(profile.path)
+    tool_count = 0
+    if server is not None:
+        tool_count = sum(1 for t in await _introspect_tools(server) if not t.hidden)
     return GatewayProfileOut(
         path=profile.path,
         label=profile.label,
         vaults=list(profile.vaults),
         stash=profile.stash,
+        hidden_tools=list(profile.hidden_tools),
+        semantic_routing=profile.semantic_routing,
+        tool_count=tool_count,
         managed=profile.path == _CURATOR_PROFILE_PATH,
     )
 
@@ -141,15 +274,31 @@ def build_gateway_profiles_router(
         return providers.get(profile_path)
 
     def _persist() -> None:
-        existing_vaults = config.gateway.vaults if config.gateway is not None else []
+        # Reads the *live* gateway shape (`dynamic_gateway.config`), not the
+        # `config.gateway` snapshot captured when this router was built —
+        # that snapshot never changes, but `dynamic_gateway.config.vaults`
+        # does, via `update_vault_identity` (SPEC-305 deliverable #1's vault
+        # rename route below). Persisting from the live shape is what keeps
+        # a vault-identity edit and a profile edit on one write path,
+        # instead of one clobbering the other's config.yaml section.
         profiles = [
             p for p in dynamic_gateway.config.profiles if p.path != _CURATOR_PROFILE_PATH
         ]
         settings = GatewaySettings(
-            vaults=existing_vaults,
+            vaults=[
+                GatewayVaultSettings(
+                    key=v.key, name=v.name, purpose=v.purpose, tool_renames=dict(v.tool_renames)
+                )
+                for v in dynamic_gateway.config.vaults
+            ],
             profiles=[
                 GatewayProfileSettings(
-                    path=p.path, label=p.label, vaults=list(p.vaults), stash=p.stash
+                    path=p.path,
+                    label=p.label,
+                    vaults=list(p.vaults),
+                    stash=p.stash,
+                    hidden_tools=list(p.hidden_tools),
+                    semantic_routing=p.semantic_routing,
                 )
                 for p in profiles
             ],
@@ -174,7 +323,20 @@ def build_gateway_profiles_router(
 
     @router.get("/api/gateway/profiles", response_model=list[GatewayProfileOut])
     async def list_profiles() -> list[GatewayProfileOut]:
-        return [_out(p) for p in dynamic_gateway.config.profiles]
+        return [await _out(p, dynamic_gateway) for p in dynamic_gateway.config.profiles]
+
+    @router.get(
+        "/api/gateway/profiles/{profile_path}/tools", response_model=list[GatewayToolOut]
+    )
+    async def list_profile_tools(profile_path: str) -> list[GatewayToolOut]:
+        """Every tool this profile's live surface would mount, hidden ones
+        included — the editor's per-tool visibility checkboxes (SPEC-305
+        deliverable #3). A ``semantic_routing`` profile answers with
+        exactly its two router tools: that *is* its live surface."""
+        server = dynamic_gateway.profile_servers.get(profile_path)
+        if server is None:
+            raise HTTPException(status_code=404, detail=f"no profile at path {profile_path!r}")
+        return await _introspect_tools(server)
 
     @router.post("/api/gateway/profiles", response_model=GatewayProfileOut)
     async def create_profile(body: CreateGatewayProfileRequest) -> GatewayProfileOut:
@@ -187,7 +349,14 @@ def build_gateway_profiles_router(
                 "PATCH it instead, or choose a different path.",
             )
         try:
-            ProfileConfig(path=body.path, label=body.label, vaults=body.vaults, stash=body.stash)
+            ProfileConfig(
+                path=body.path,
+                label=body.label,
+                vaults=body.vaults,
+                stash=body.stash,
+                hidden_tools=body.hidden_tools,
+                semantic_routing=body.semantic_routing,
+            )
         except ValidationError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -197,6 +366,8 @@ def build_gateway_profiles_router(
                 body.vaults,
                 label=body.label,
                 stash=body.stash,
+                hidden_tools=body.hidden_tools,
+                semantic_routing=body.semantic_routing,
                 auth=_new_profile_auth(body.path),  # type: ignore[arg-type]
             )
         except GatewayConfigError as exc:
@@ -210,7 +381,7 @@ def build_gateway_profiles_router(
             "gateway.profile.created",
             {"path": result.path, "vaults": list(result.vaults), "stash": result.stash},
         )
-        return _out(result)
+        return await _out(result, dynamic_gateway)
 
     @router.patch("/api/gateway/profiles/{profile_path}", response_model=GatewayProfileOut)
     async def update_profile(
@@ -227,8 +398,23 @@ def build_gateway_profiles_router(
         label = body.label if body.label is not None else current.label
         vaults = body.vaults if body.vaults is not None else list(current.vaults)
         stash = body.stash if body.stash is not None else current.stash
+        hidden_tools = (
+            body.hidden_tools if body.hidden_tools is not None else list(current.hidden_tools)
+        )
+        semantic_routing = (
+            body.semantic_routing
+            if body.semantic_routing is not None
+            else current.semantic_routing
+        )
         try:
-            ProfileConfig(path=profile_path, label=label, vaults=vaults, stash=stash)
+            ProfileConfig(
+                path=profile_path,
+                label=label,
+                vaults=vaults,
+                stash=stash,
+                hidden_tools=hidden_tools,
+                semantic_routing=semantic_routing,
+            )
         except ValidationError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -236,7 +422,13 @@ def build_gateway_profiles_router(
             # `auth=None`: this path already has a verifier from creation
             # (or none, in locked mode) — an edit never changes that.
             await dynamic_gateway.upsert_profile(
-                profile_path, vaults, label=label, stash=stash, auth=None
+                profile_path,
+                vaults,
+                label=label,
+                stash=stash,
+                hidden_tools=hidden_tools,
+                semantic_routing=semantic_routing,
+                auth=None,
             )
         except GatewayConfigError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -249,7 +441,7 @@ def build_gateway_profiles_router(
             "gateway.profile.updated",
             {"path": result.path, "vaults": list(result.vaults), "stash": result.stash},
         )
-        return _out(result)
+        return await _out(result, dynamic_gateway)
 
     @router.delete("/api/gateway/profiles/{profile_path}", status_code=204)
     async def delete_profile(profile_path: str) -> None:
@@ -261,12 +453,61 @@ def build_gateway_profiles_router(
         _persist()
         _publish("gateway.profile.deleted", {"path": profile_path})
 
+    @router.get("/api/gateway/vaults", response_model=list[GatewayVaultOut])
+    async def list_vault_identities() -> list[GatewayVaultOut]:
+        """Every vault's gateway identity (name/purpose/tool_renames), for
+        the profile editor's inline-rename UI (SPEC-305 deliverable #1)."""
+        return [_vault_out(v) for v in dynamic_gateway.config.vaults]
+
+    @router.patch("/api/gateway/vaults/{vault_key}", response_model=GatewayVaultOut)
+    async def update_vault_identity(
+        vault_key: str, body: UpdateGatewayVaultRequest
+    ) -> GatewayVaultOut:
+        """Rename a vault's tools / change its display name or purpose,
+        live and round-tripped to ``config.yaml`` (SPEC-305 deliverable #1,
+        acceptance criterion "rename via UI round-trips to config.yaml and
+        the live gateway"). Every profile that mounts this vault is
+        rebuilt so the new names are reachable with no restart."""
+        try:
+            current = dynamic_gateway.config.vault(vault_key)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        name = body.name if body.name is not None else current.name
+        purpose = body.purpose if body.purpose is not None else current.purpose
+        tool_renames = (
+            body.tool_renames if body.tool_renames is not None else dict(current.tool_renames)
+        )
+        try:
+            new_vault = VaultMountConfig(
+                key=vault_key, name=name, purpose=purpose, tool_renames=tool_renames
+            )
+        except ValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        try:
+            await dynamic_gateway.update_vault_identity(new_vault)
+        except GatewayConfigError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        _persist()
+        result = dynamic_gateway.config.vault(vault_key)
+        _publish(
+            "gateway.vault.updated",
+            {"key": result.key, "name": result.name, "tool_renames": dict(result.tool_renames)},
+        )
+        return _vault_out(result)
+
     return router
 
 
 __all__ = [
     "CreateGatewayProfileRequest",
     "GatewayProfileOut",
+    "GatewayToolOut",
+    "GatewayVaultOut",
+    "RenameSanitizationOut",
     "UpdateGatewayProfileRequest",
+    "UpdateGatewayVaultRequest",
     "build_gateway_profiles_router",
 ]

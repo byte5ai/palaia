@@ -554,6 +554,12 @@ class GatewayProfileSettings(BaseModel):
     vaults: list[str] = Field(default_factory=list)
     #: Mount the stash tool family inside this profile too (SPEC-202/301).
     stash: bool = False
+    #: Final (post-namespace) tool names hidden from this profile (SPEC-305
+    #: deliverable #3). See ``palaia_hub.gateway.config.ProfileConfig``.
+    hidden_tools: list[str] = Field(default_factory=list)
+    #: Expose ``find_tool``/``invoke_tool`` instead of the full surface
+    #: (SPEC-305 deliverable #4). See ``ProfileConfig``.
+    semantic_routing: bool = False
 
 
 class GatewaySettings(BaseModel):

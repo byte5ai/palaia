@@ -35,7 +35,16 @@ def test_list_profiles_reports_the_live_shape(tmp_path: Path) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body == [
-        {"path": "default", "label": None, "vaults": ["work"], "stash": False, "managed": False}
+        {
+            "path": "default",
+            "label": None,
+            "vaults": ["work"],
+            "stash": False,
+            "hidden_tools": [],
+            "semantic_routing": False,
+            "tool_count": 15,
+            "managed": False,
+        }
     ]
 
 
@@ -122,4 +131,118 @@ def test_delete_profile_unmounts_it_and_persists(tmp_path: Path) -> None:
 def test_delete_unknown_profile_is_404(tmp_path: Path) -> None:
     with _client(tmp_path, gateway=_gateway()) as client:
         response = client.delete("/api/gateway/profiles/nope")
+    assert response.status_code == 404
+
+
+def test_create_profile_with_hidden_tools_hides_them_live_and_persists(
+    tmp_path: Path,
+) -> None:
+    with _client(tmp_path, gateway=_gateway()) as client:
+        response = client.post(
+            "/api/gateway/profiles",
+            json={
+                "path": "restricted",
+                "vaults": ["work"],
+                "hidden_tools": ["work_memory_delete"],
+            },
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["hidden_tools"] == ["work_memory_delete"]
+        assert body["tool_count"] == 14  # 15 memory-family tools, one hidden
+
+        tools = client.get("/api/gateway/profiles/restricted/tools").json()
+        hidden = {t["name"] for t in tools if t["hidden"]}
+        assert hidden == {"work_memory_delete"}
+
+    on_disk = yaml.safe_load((config_file_path(tmp_path)).read_text(encoding="utf-8"))
+    restricted = next(
+        p for p in on_disk["gateway"]["profiles"] if p["path"] == "restricted"
+    )
+    assert restricted["hidden_tools"] == ["work_memory_delete"]
+
+
+def test_semantic_routing_profile_reports_two_live_tools(tmp_path: Path) -> None:
+    with _client(tmp_path, gateway=_gateway()) as client:
+        response = client.post(
+            "/api/gateway/profiles",
+            json={"path": "routed", "vaults": ["work"], "semantic_routing": True},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["semantic_routing"] is True
+        assert body["tool_count"] == 2
+
+        tools = {t["name"] for t in client.get("/api/gateway/profiles/routed/tools").json()}
+        assert tools == {"find_tool", "invoke_tool"}
+
+
+def test_list_profile_tools_for_unknown_profile_is_404(tmp_path: Path) -> None:
+    with _client(tmp_path, gateway=_gateway()) as client:
+        response = client.get("/api/gateway/profiles/nope/tools")
+    assert response.status_code == 404
+
+
+def test_list_and_update_vault_identity_round_trips_and_applies_live(
+    tmp_path: Path,
+) -> None:
+    with _client(tmp_path, gateway=_gateway()) as client:
+        listing = client.get("/api/gateway/vaults").json()
+        assert listing == [
+            {
+                "key": "work",
+                "name": "work",
+                "purpose": "Work vault.",
+                "tool_renames": {},
+                "namespace": "work_memory",
+                "sanitized": [],
+            }
+        ]
+
+        response = client.patch(
+            "/api/gateway/vaults/work",
+            json={"name": "Work Notes", "tool_renames": {"search": "find"}},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["name"] == "Work Notes"
+        assert body["tool_renames"] == {"search": "find"}
+        assert body["sanitized"] == []
+
+        mcp_tools = client.get("/api/gateway/profiles/default/tools").json()
+        names = {t["name"] for t in mcp_tools}
+        assert "Work_Notes_memory_find" in names
+        assert "Work_Notes_memory_search" not in names
+
+    on_disk = yaml.safe_load((config_file_path(tmp_path)).read_text(encoding="utf-8"))
+    on_disk_vault = on_disk["gateway"]["vaults"][0]
+    assert on_disk_vault["key"] == "work"
+    assert on_disk_vault["name"] == "Work Notes"
+    assert on_disk_vault["tool_renames"] == {"search": "find"}
+
+
+def test_update_vault_identity_sanitizes_invalid_rename_and_reports_it(
+    tmp_path: Path,
+) -> None:
+    with _client(tmp_path, gateway=_gateway()) as client:
+        response = client.patch(
+            "/api/gateway/vaults/work",
+            json={"tool_renames": {"search": "find notes!"}},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        # The raw value round-trips as typed...
+        assert body["tool_renames"] == {"search": "find notes!"}
+        # ...but the response says exactly what will be sanitized to what.
+        assert body["sanitized"] == [
+            {"action": "search", "requested": "find notes!", "applied": "find_notes"}
+        ]
+
+        mcp_tools = {t["name"] for t in client.get("/api/gateway/profiles/default/tools").json()}
+        assert "work_memory_find_notes" in mcp_tools
+
+
+def test_update_vault_identity_unknown_key_is_404(tmp_path: Path) -> None:
+    with _client(tmp_path, gateway=_gateway()) as client:
+        response = client.patch("/api/gateway/vaults/ghost", json={"name": "x"})
     assert response.status_code == 404
