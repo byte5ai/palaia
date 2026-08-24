@@ -84,13 +84,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 
 from fastmcp import FastMCP
 from fastmcp.server.auth import TokenVerifier
 from fastmcp.server.http import StarletteWithLifespan
+from fastmcp.server.middleware import Middleware
 from starlette.routing import Mount, Router
 from starlette.types import ASGIApp
 
@@ -130,6 +131,10 @@ class DynamicGateway:
             ``config.yaml`` at startup does.
         token_verifiers: optional per-profile-path verifier, same contract
             as :func:`~.build.build_gateway`.
+        profile_middleware: optional per-profile-path fastmcp middleware,
+            same contract as :func:`~.build.build_gateway` — re-applied on
+            every rebuild of that profile (SPEC-206: the curator profile's
+            policy must survive a vault being added at runtime).
     """
 
     def __init__(
@@ -139,12 +144,16 @@ class DynamicGateway:
         *,
         mode: str = "locked",
         token_verifiers: Mapping[str, TokenVerifier] | None = None,
+        profile_middleware: Mapping[str, Sequence[Middleware]] | None = None,
     ) -> None:
         self._config = config
         self._vault_services: dict[str, VaultService] = dict(vault_services)
         self._vault_servers: dict[str, FastMCP] = _build_vault_servers(config, self._vault_services)
         self._mode = mode
         self._token_verifiers: dict[str, TokenVerifier] = dict(token_verifiers or {})
+        self._profile_middleware: dict[str, Sequence[Middleware]] = dict(
+            profile_middleware or {}
+        )
         self.router = Router(routes=[])
         self._profile_servers: dict[str, FastMCP] = {}
         self._lock = asyncio.Lock()
@@ -224,7 +233,10 @@ class DynamicGateway:
         caller's own task) and hand it to the lifecycle task to actually
         mount. Caller holds ``self._lock``."""
         auth = self._token_verifiers.get(profile.path)
-        server = _build_profile_server(profile, self._config, self._vault_servers, auth)
+        middleware = self._profile_middleware.get(profile.path, ())
+        server = _build_profile_server(
+            profile, self._config, self._vault_servers, auth, middleware
+        )
         asgi_app = server.http_app(path="/")
         done: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         await self._queue.put(_MountCommand(profile.path, server, asgi_app, done))

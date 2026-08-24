@@ -22,6 +22,7 @@ from fastapi import FastAPI, HTTPException
 from . import __version__
 from .auth import TokenRecord, TokenStore, build_auth_router, check_gateway_auth_policy
 from .config import HubConfig, load_config, palaia_home
+from .curator import CuratorScheduler
 from .dashboard_api import build_dashboard_router
 from .events import (
     EventBus,
@@ -66,6 +67,7 @@ def create_app(
     stash_service: StashService | None = None,
     hook_store: HookStore | None = None,
     hook_outbox: HookOutbox | None = None,
+    curator: CuratorScheduler | None = None,
     home: Path | None = None,
 ) -> FastAPI:
     """Build the hub's ASGI app.
@@ -159,6 +161,11 @@ def create_app(
             every matching, enabled hook. Omitted (the default), the hub
             publishes events on its bus same as always, just with no
             webhook consumer attached.
+        curator: the SPEC-206 curator scheduler. Given, it is started with
+            this app and stopped with it — the curator is a hook-driven
+            automation living inside the hub, not a second daemon (MASTERPLAN
+            §5.1). Omitted (the default), no curation ever runs from this
+            process; ``palaia-hub curator run`` still works on demand.
         hook_outbox: the durable delivery queue backing ``hook_store``.
             Defaults to :class:`~palaia_hub.hooks.HookOutbox` at its
             standard path under the hub's data directory when ``hook_store``
@@ -242,6 +249,8 @@ def create_app(
             await dynamic_gateway.start()
         if dispatcher is not None:
             tasks.append(asyncio.create_task(dispatcher.run_forever()))
+        if curator is not None:
+            await curator.start()
         publish_event(
             event_bus,
             "hub.started",
@@ -257,6 +266,8 @@ def create_app(
                 yield
         finally:
             await stop_background_tasks(tasks)
+            if curator is not None:
+                await curator.aclose()
             if dynamic_gateway is not None:
                 await dynamic_gateway.aclose()
             if indexes is not None:

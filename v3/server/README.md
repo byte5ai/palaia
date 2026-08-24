@@ -257,6 +257,58 @@ fastmcp 3.4.7's `JWTVerifier` — which deliverable #4 requires the resource
 side to use — accepts no `EdDSA`, and reimplementing JWT validation here is
 exactly what that deliverable forbids. See `oauth/keys.py`'s module docstring.
 
+## The curator (SPEC-206)
+
+`palaia_hub.curator` is the background job that turns `inbox/` captures into
+well-placed vault knowledge. Two tiers, and the split is enforced in code, not
+in prompt text:
+
+- **INGEST is autonomous** — a new note in the right place, or additive
+  observations on an existing one.
+- **MAINTENANCE never is** — rewriting, merging, renaming or retiring an
+  existing note becomes a `review/` proposal, and a human approves it by
+  flipping its `status` to `approved`. Applying an approved proposal is plain
+  code executing the proposal's typed plan: **no model in the apply path**.
+
+The enforcement lives at the gateway. The curator connects to its own profile
+(`/mcp/curator`) with its own token, and that profile exposes only `search`,
+`read`, `list`, `recent_activity`, `build_context`, `write` and `edit`. On top
+of that, `CuratorScopeMiddleware` refuses: any `edit` that replaces a body, any
+`write` with overwrite semantics, any write into `inbox/`, any edit of an
+existing `review/` note, and any write missing the capture's provenance line
+`- [source] inbox capture <capture_id>`.
+
+Outcomes are **verified, not trusted**: after each session the runner searches
+the vault for that provenance line and classifies `ingested` /`needs_review` /
+`unverified`. Only a verified outcome deletes the inbox entry; an unverified
+one appends `- [curation-failed] <ts>: <reason>` to the capture and retires it
+after three attempts. Every outcome lands in the stash (`ops:curator.*`) and
+on the event bus (`curator.*`), and anything that did not land also raises a
+`doctor.finding`.
+
+```yaml
+# config.yaml — off by default: the curator runs a model
+curator:
+  enabled: true
+  runner_command: [claude, -p, --mcp-config, '{mcp_config}', --strict-mcp-config,
+                   --allowed-tools, '{allowed_tools}', --output-format, text]
+  debounce_seconds: 30      # a burst of captures is one pass
+  interval_seconds: 900     # fallback for captures written into inbox/ by hand
+  max_attempts: 3
+```
+
+```bash
+uv run palaia-hub curator token          # mint the curator's own token
+export PALAIA_CURATOR_TOKEN=plt_…
+uv run palaia-hub curator run            # curate everything pending, now
+uv run palaia-hub curator apply          # apply approved proposals, now
+```
+
+The runner command is provider-neutral config, not code: the prompt arrives on
+the command's stdin and `{mcp_config}`, `{allowed_tools}`, `{endpoint}`,
+`{vault}` and `{capture_id}` are substituted per session, so any CLI that
+reads a prompt from stdin works.
+
 ## Running it
 
 ```bash

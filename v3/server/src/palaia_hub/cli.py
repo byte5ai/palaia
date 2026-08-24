@@ -19,7 +19,11 @@ from pathlib import Path
 import uvicorn
 
 from .auth import TokenError, TokenStore
+from .auth.scopes import vault_scope
 from .config import ConfigError, HubConfig, load_config, palaia_home
+from .curator import CURATOR_PROFILE_PATH, ApplyReport, CuratorRunReport, ProposalApplier
+from .curator.wiring import TOKEN_ENV, CuratorWiring, build_curator
+from .gateway.config import VaultMountConfig
 from .importers import ImportReport, ImportRunner, v2_source
 from .importers import basic_memory_source as bm_source
 from .index import VaultIndex, embed_progress
@@ -65,6 +69,7 @@ def _build_parser() -> argparse.ArgumentParser:
     revoke_parser.add_argument("token_id", help="Token id, from 'token list'")
 
     _add_oauth_parser(subparsers)
+    _add_curator_parser(subparsers)
 
     import_parser = subparsers.add_parser("import", help="Import notes from another store")
     import_subparsers = import_parser.add_subparsers(dest="import_source", required=True)
@@ -114,6 +119,46 @@ def _add_oauth_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPa
 
     oauth_subparsers.add_parser("clients", help="List registered clients (no secrets shown)")
     oauth_subparsers.add_parser("gc", help="Prune orphaned registered clients now")
+
+
+def _add_curator_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """The ``palaia-hub curator ...`` surface (SPEC-206).
+
+    ``run`` and ``apply`` are the same two passes the hub runs on a schedule
+    when ``curator.enabled`` is on — exposed as commands so an operator can
+    curate on demand, and so the curator is usable at all on a hub that
+    would rather not run a background job.
+    """
+    curator_parser = subparsers.add_parser("curator", help="Curate the inbox into the vault")
+    curator_subparsers = curator_parser.add_subparsers(dest="curator_command", required=True)
+
+    run_parser = curator_subparsers.add_parser(
+        "run", help="Curate every pending inbox capture once"
+    )
+    _add_curator_common_args(run_parser)
+
+    apply_parser = curator_subparsers.add_parser(
+        "apply", help="Apply approved review/ proposals (no model involved)"
+    )
+    _add_curator_common_args(apply_parser)
+
+    token_parser = curator_subparsers.add_parser(
+        "token", help="Mint the curator's own token, bound to the curator profile"
+    )
+    token_parser.add_argument(
+        "--name", default="curator", help="Human-readable name for the token"
+    )
+
+
+def _add_curator_common_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--vault",
+        dest="vaults",
+        action="append",
+        default=[],
+        help="Vault to work on; repeatable. Default: every registered vault.",
+    )
+    parser.add_argument("--json", action="store_true", help="Print the report as JSON")
 
 
 def _add_import_args(parser: argparse.ArgumentParser) -> None:
@@ -327,6 +372,94 @@ def _token_revoke(token_id: str) -> None:
     print(f"Revoked token {info.id!r} ({info.name!r}).")
 
 
+async def _curator_context(
+    vault_keys: Sequence[str],
+) -> tuple[CuratorWiring, dict[str, VaultEngine]]:
+    """Open the requested vaults (all of them by default) and wire the curator."""
+    config = load_config()
+    registry = VaultRegistry()
+    names = list(vault_keys) or sorted(registry.names())
+    engines: dict[str, VaultEngine] = {}
+    mounts: list[VaultMountConfig] = []
+    for name in names:
+        engine = await registry.get(name)
+        engines[name] = engine
+        mounts.append(
+            VaultMountConfig(
+                key=name,
+                name=name,
+                purpose=engine.info().purpose or "A palaia memory vault.",
+            )
+        )
+    return build_curator(config, engines, mounts, home=palaia_home()), engines
+
+
+async def _run_curator(vault_keys: Sequence[str]) -> list[CuratorRunReport]:
+    wiring, _engines = await _curator_context(vault_keys)
+    try:
+        return [await runner.run_once() for runner in wiring.runners.values()]
+    finally:
+        await wiring.aclose()
+
+
+async def _run_curator_apply(vault_keys: Sequence[str]) -> list[ApplyReport]:
+    wiring, engines = await _curator_context(vault_keys)
+    try:
+        # `curator.auto_apply: false` means "do not apply on the schedule",
+        # never "do not apply when asked" — an explicit `curator apply` is
+        # exactly the asking.
+        appliers = wiring.appliers or {
+            key: ProposalApplier(engine) for key, engine in engines.items()
+        }
+        return [await applier.run_once() for applier in appliers.values()]
+    finally:
+        await wiring.aclose()
+
+
+def _curator_run(args: argparse.Namespace) -> None:
+    reports = asyncio.run(_run_curator(args.vaults))
+    if args.json:
+        print(json.dumps([report.model_dump() for report in reports], indent=2))
+        return
+    if not reports:
+        print("No vaults to curate. Create one first (`palaia-hub serve`, then the wizard).")
+        return
+    for report in reports:
+        print(report.summary())
+
+
+def _curator_apply(args: argparse.Namespace) -> None:
+    reports = asyncio.run(_run_curator_apply(args.vaults))
+    if args.json:
+        print(json.dumps([report.model_dump() for report in reports], indent=2))
+        return
+    for report in reports:
+        print(report.summary())
+
+
+def _curator_token(name: str) -> None:
+    """Mint a token bound to the curator profile, with every vault's scopes.
+
+    The curator needs read *and* write on every vault it curates — the
+    narrowing that makes it safe is its profile's tool surface (SPEC-206 rule
+    2), not a thinner scope set.
+    """
+    store = TokenStore()
+    scopes = [
+        scope
+        for key in sorted(VaultRegistry().names())
+        for scope in (vault_scope(key, "read"), vault_scope(key, "write"))
+    ]
+    try:
+        created = store.create(name, CURATOR_PROFILE_PATH, scopes)
+    except TokenError as exc:
+        print(f"palaia-hub: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+    print(f"Created curator token {created.info.id!r} (profile={CURATOR_PROFILE_PATH!r}).")
+    print("Copy it now — it will not be shown again, and put it in the environment:")
+    print(f"  export {TOKEN_ENV}={created.token}")
+
+
 async def _open_engine_and_index(
     vault_root: str, vault_name: str, *, dry_run: bool
 ) -> tuple[VaultEngine, VaultIndex | None]:
@@ -431,6 +564,13 @@ def main(argv: Sequence[str] | None = None) -> None:
             _oauth_clients()
         elif args.oauth_command == "gc":
             _oauth_gc()
+    elif args.command == "curator":
+        if args.curator_command == "run":
+            _curator_run(args)
+        elif args.curator_command == "apply":
+            _curator_apply(args)
+        elif args.curator_command == "token":
+            _curator_token(args.name)
     elif args.command == "import":
         if args.import_source == "v2":
             _import_v2(args)
