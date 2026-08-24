@@ -47,6 +47,8 @@ async def _run(*, host: str, port: int, home: Path) -> None:
     finally:
         for index in production.indexes.values():
             await index.close()
+        if production.stash_store is not None:
+            production.stash_store.close()
         await production.registry.aclose()
 
 

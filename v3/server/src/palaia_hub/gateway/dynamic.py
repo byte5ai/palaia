@@ -96,6 +96,7 @@ from starlette.routing import Mount, Router
 from starlette.types import ASGIApp
 
 from ..auth.policy import check_gateway_auth_policy
+from ..stash.service import StashService
 from .build import GatewayConfigError, _build_profile_server, _build_vault_servers
 from .config import GatewayConfig, ProfileConfig, VaultMountConfig
 from .vault_protocol import VaultService
@@ -111,6 +112,23 @@ class _MountCommand:
     profile_path: str
     server: FastMCP
     asgi_app: StarletteWithLifespan
+    done: asyncio.Future[None]
+
+
+@dataclass
+class _UnmountCommand:
+    """One "drop this profile from the router" request to the background
+    task (SPEC-301's ``DELETE /api/gateway/profiles/{path}``).
+
+    Unlike :class:`_MountCommand`, there is no ASGI app to enter a lifespan
+    for — only a route to remove. The profile's already-entered lifespan
+    stays in the background task's exit stack regardless (the same
+    deliberate-leak rule the class docstring's "old FastMCP app" bullet
+    describes for a rebuild: an in-flight request or open session against
+    it keeps running until :meth:`DynamicGateway.aclose`).
+    """
+
+    profile_path: str
     done: asyncio.Future[None]
 
 
@@ -135,6 +153,9 @@ class DynamicGateway:
             same contract as :func:`~.build.build_gateway` — re-applied on
             every rebuild of that profile (SPEC-206: the curator profile's
             policy must survive a vault being added at runtime).
+        stash_service: the hub-wide stash (SPEC-202), mounted into any
+            profile whose ``stash`` flag is set (SPEC-301) — same contract
+            as :func:`~.build.build_gateway`.
     """
 
     def __init__(
@@ -145,6 +166,7 @@ class DynamicGateway:
         mode: str = "locked",
         token_verifiers: Mapping[str, TokenVerifier] | None = None,
         profile_middleware: Mapping[str, Sequence[Middleware]] | None = None,
+        stash_service: StashService | None = None,
     ) -> None:
         self._config = config
         self._vault_services: dict[str, VaultService] = dict(vault_services)
@@ -154,13 +176,14 @@ class DynamicGateway:
         self._profile_middleware: dict[str, Sequence[Middleware]] = dict(
             profile_middleware or {}
         )
+        self._stash_service = stash_service
         self.router = Router(routes=[])
         self._profile_servers: dict[str, FastMCP] = {}
         self._lock = asyncio.Lock()
         # See the class docstring's "cancel-scope finding": every lifespan
         # enter/exit happens inside `_lifecycle_task`, via `_queue`, never
         # directly in the caller's own task.
-        self._queue: asyncio.Queue[_MountCommand | object] = asyncio.Queue()
+        self._queue: asyncio.Queue[_MountCommand | _UnmountCommand | object] = asyncio.Queue()
         self._lifecycle_task: asyncio.Task[None] | None = None
         self._stopped = asyncio.Event()
 
@@ -173,6 +196,12 @@ class DynamicGateway:
     def profile_servers(self) -> Mapping[str, FastMCP]:
         """Snapshot of every currently-mounted profile's :class:`FastMCP` server."""
         return dict(self._profile_servers)
+
+    @property
+    def config(self) -> GatewayConfig:
+        """The gateway's current shape — a snapshot, safe to read from
+        anywhere (SPEC-301's ``GET /api/gateway/profiles`` reads this)."""
+        return self._config
 
     async def start(self) -> None:
         """Start the background lifecycle task and mount every configured profile."""
@@ -228,6 +257,81 @@ class DynamicGateway:
 
         check_gateway_auth_policy(self._mode, self._profile_servers)
 
+    async def upsert_profile(
+        self,
+        path: str,
+        vault_keys: Sequence[str],
+        *,
+        label: str | None = None,
+        stash: bool = False,
+        auth: TokenVerifier | None = None,
+    ) -> None:
+        """Create a new profile, or fully replace an existing one's shape.
+
+        The runtime profile-editor's create/edit operations (SPEC-301
+        deliverable #2) — unlike :meth:`add_vault` (adds one vault to
+        already-relevant profiles), this replaces the *whole* vault set,
+        label and stash flag for one profile path. ``path`` itself is never
+        edited this way (see :class:`~.config.ProfileConfig`'s docstring
+        for why) — a caller wanting a new URL creates a new profile.
+
+        Args:
+            path: the profile to create, or the existing one to rebuild.
+            vault_keys: every vault this profile should mount, replacing
+                whatever it mounted before (an edit that only adds one
+                vault to an existing list must pass the whole new list).
+            label: the display name; ``None`` clears it back to "use the
+                path".
+            stash: whether this profile also carries the stash tool family.
+            auth: the verifier this path should use for every future
+                rebuild, recorded into ``self._token_verifiers``. Pass this
+                for a genuinely new path if the hub's mode requires auth
+                (:func:`~palaia_hub.auth.policy.check_gateway_auth_policy`
+                refuses an unauthenticated profile in cloud/open, same as
+                at startup). ``None`` leaves an existing path's verifier
+                untouched — the normal case for editing only the vault
+                list of an already-authenticated profile.
+
+        Raises:
+            GatewayConfigError: a vault key in ``vault_keys`` is not
+                mounted at this gateway at all (create the vault first).
+            palaia_hub.auth.policy.AuthPolicyError: the resulting profile
+                would be unauthenticated in cloud/open mode.
+        """
+        async with self._lock:
+            missing = [k for k in vault_keys if k not in self._vault_services]
+            if missing:
+                raise GatewayConfigError(
+                    f"cannot mount profile {path!r}: vault key(s) {missing} are not "
+                    "mounted at this gateway. Fix: create the vault first."
+                )
+            if auth is not None:
+                self._token_verifiers[path] = auth
+            new_profile = ProfileConfig(
+                path=path, label=label, vaults=list(vault_keys), stash=stash
+            )
+            profiles_by_path = {p.path: p for p in self._config.profiles}
+            profiles_by_path[path] = new_profile
+            self._config = self._config.model_copy(
+                update={"profiles": list(profiles_by_path.values())}
+            )
+            await self._request_mount(new_profile)
+        check_gateway_auth_policy(self._mode, self._profile_servers)
+
+    async def remove_profile(self, path: str) -> None:
+        """Unmount ``path`` (SPEC-301's ``DELETE /api/gateway/profiles/{path}``).
+
+        Raises:
+            KeyError: no profile named ``path`` is currently mounted.
+        """
+        async with self._lock:
+            if path not in {p.path for p in self._config.profiles}:
+                raise KeyError(f"no profile {path!r} mounted at this gateway")
+            self._config = self._config.model_copy(
+                update={"profiles": [p for p in self._config.profiles if p.path != path]}
+            )
+            await self._request_unmount(path)
+
     async def _request_mount(self, profile: ProfileConfig) -> None:
         """Build one profile's FastMCP app (plain construction — safe in the
         caller's own task) and hand it to the lifecycle task to actually
@@ -235,13 +339,21 @@ class DynamicGateway:
         auth = self._token_verifiers.get(profile.path)
         middleware = self._profile_middleware.get(profile.path, ())
         server = _build_profile_server(
-            profile, self._config, self._vault_servers, auth, middleware
+            profile, self._config, self._vault_servers, auth, middleware, self._stash_service
         )
         asgi_app = server.http_app(path="/")
         done: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         await self._queue.put(_MountCommand(profile.path, server, asgi_app, done))
         await done
         self._profile_servers[profile.path] = server
+
+    async def _request_unmount(self, path: str) -> None:
+        """Ask the lifecycle task to drop ``path`` from the router. Caller
+        holds ``self._lock``."""
+        done: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+        await self._queue.put(_UnmountCommand(path, done))
+        await done
+        self._profile_servers.pop(path, None)
 
     async def _lifecycle(self) -> None:
         """The one task that ever enters or exits a profile's ASGI lifespan.
@@ -258,6 +370,21 @@ class DynamicGateway:
                 item = await self._queue.get()
                 if item is _STOP:
                     break
+                if isinstance(item, _UnmountCommand):
+                    # No lifespan to enter or exit here — its already-
+                    # entered generation (if any) stays in `stack`,
+                    # unwound only at `aclose`, same deliberate-leak rule
+                    # a rebuild's retired generation follows (class
+                    # docstring). Only the route disappears, atomically.
+                    target = f"/{item.profile_path}"
+                    self.router.routes = [
+                        route
+                        for route in self.router.routes
+                        if getattr(route, "path", None) != target
+                    ]
+                    if not item.done.done():
+                        item.done.set_result(None)
+                    continue
                 command = item
                 assert isinstance(command, _MountCommand)
                 try:

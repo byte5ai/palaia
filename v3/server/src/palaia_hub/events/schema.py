@@ -65,6 +65,12 @@ EventName = Literal[
     "stash.get",
     "stash.del",
     "stash.evicted",
+    # SPEC-301 (gateway config): one per runtime profile-editor mutation
+    # (create/edit/delete) through `POST/PATCH/DELETE /api/gateway/profiles`.
+    # Additive to the v1 vocabulary.
+    "gateway.profile.created",
+    "gateway.profile.updated",
+    "gateway.profile.deleted",
     "health",
 ]
 

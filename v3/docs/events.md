@@ -56,7 +56,7 @@ write.
 | `ts` | number | Unix timestamp (seconds, float) when the envelope was built. |
 | `vault` | string \| null | The vault this event concerns, when there is one. |
 | `permalink` | string \| null | The entry this event concerns, when there is one. |
-| `origin` | string | Which subsystem published it: `vault`, `hub`, `auth`, `inbox`, `index`, `doctor`. |
+| `origin` | string | Which subsystem published it: `vault`, `hub`, `auth`, `inbox`, `index`, `doctor`, `gateway`. |
 | `data` | object | Event-specific payload (§3). May also repeat `vault`/`permalink` for a consumer reading only `data`. |
 | `id` | string | Stable idempotency key for this occurrence — unchanged across webhook retries of the same delivery. |
 | `schema_version` | integer | Currently `1`. See §5. |
@@ -99,6 +99,14 @@ of them ignores them.
 | `curator.proposal.applied` | `permalink`, `status`, `operations`, `applied`, `reason` | An approved proposal's plan ran to completion. |
 | `curator.proposal.apply_failed` | same shape | An operation failed mid-plan; the proposal is stamped `apply-failed` and a `doctor.finding` is raised. |
 | `curator.proposal.manual` | same shape | The proposal carries no executable plan (or an unparseable one) — a human has to apply it. |
+
+### 3.2 Gateway profile events (SPEC-301, additive)
+
+| Event | Origin | `data` fields | Fires when |
+|---|---|---|---|
+| `gateway.profile.created` | `gateway` | `path`, `vaults`, `stash` | `POST /api/gateway/profiles` creates a new MCP profile. |
+| `gateway.profile.updated` | `gateway` | `path`, `vaults`, `stash` | `PATCH /api/gateway/profiles/{path}` changes an existing profile's label, mounted vaults, or stash flag. |
+| `gateway.profile.deleted` | `gateway` | `path` | `DELETE /api/gateway/profiles/{path}` removes a profile. |
 
 `health` also travels the same bus and wire format (SSE only; it is not a
 webhook-filterable v1 name — see §6) — it is the dashboard's periodic
