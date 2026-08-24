@@ -134,6 +134,22 @@ class IssuedTokens:
 
 
 @dataclass(frozen=True, slots=True)
+class IdpStateRow:
+    """One pending IdP sign-in ticket (SPEC-204).
+
+    Everything the callback needs to resume the *outer* ``/oauth/authorize``
+    continuation lives here, server-side, keyed by the opaque ``state`` the
+    browser carries to and from the provider — the continuation itself never
+    appears in a URL. Consuming it (see
+    :meth:`palaia_hub.oauth.store.OAuthStore.consume_idp_state`) deletes the
+    row, which is what makes the ticket single-use.
+    """
+
+    provider: str
+    next_url: str
+
+
+@dataclass(frozen=True, slots=True)
 class ProvisionedMachineClient:
     """An admin-provisioned machine client, plus its secret — shown once."""
 

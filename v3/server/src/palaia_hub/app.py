@@ -298,11 +298,25 @@ def create_app(
 
     @app.get("/api/info")
     async def info() -> dict[str, Any]:
-        """Version, operating mode, uptime."""
+        """Version, operating mode, uptime, and how the owner signs in.
+
+        ``sign_in`` is non-secret (no client id, no allow-list) and is what
+        the dashboard's settings section (SPEC-204 deliverable #4) reads to
+        show "Sign in with GitHub" / a configured provider's name / the
+        local password, in plain language.
+        """
+        sign_in: dict[str, str | None]
+        if oauth_server is not None and oauth_server.idp_configured:
+            sign_in = {"method": "idp", "provider_name": oauth_server.idp_display_name}
+        elif oauth_server is not None:
+            sign_in = {"method": "password", "provider_name": None}
+        else:
+            sign_in = {"method": "none", "provider_name": None}
         return {
             "version": __version__,
             "mode": config.mode,
             "uptime_seconds": round(time.monotonic() - start_time, 3),
+            "sign_in": sign_in,
         }
 
     # SPEC-107: inbox visibility outside the MCP surface (deliverable #3).

@@ -34,6 +34,17 @@ export type SelfTestResult =
   paths["/api/exposure/selftest"]["post"]["responses"][200]["content"]["application/json"];
 
 /**
+ * `/api/info`'s `sign_in` field (SPEC-204 deliverable #4). Hand-written for
+ * the same reason as the block below: `create_app(HubConfig())` — what the
+ * generator runs — never has an OAuth server attached, so the committed
+ * schema types this field as `unknown` rather than this shape.
+ */
+export interface SignInInfo {
+  method: "password" | "idp" | "none";
+  provider_name: string | null;
+}
+
+/**
  * SPEC-110's dashboard endpoints (wizard vault creation, memory explorer,
  * token last-seen) are opt-in on the hub (see `palaia_hub.dashboard_api` /
  * `palaia_hub.auth.routes`) and so are absent from the committed

@@ -33,7 +33,12 @@ export interface paths {
         };
         /**
          * Info
-         * @description Version, operating mode, uptime.
+         * @description Version, operating mode, uptime, and how the owner signs in.
+         *
+         *     ``sign_in`` is non-secret (no client id, no allow-list) and is what
+         *     the dashboard's settings section (SPEC-204 deliverable #4) reads to
+         *     show "Sign in with GitHub" / a configured provider's name / the
+         *     local password, in plain language.
          */
         get: operations["info_api_info_get"];
         put?: never;

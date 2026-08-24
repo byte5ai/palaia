@@ -9,11 +9,12 @@ import { Explorer } from "./Explorer";
 import { Exposure } from "./Exposure";
 import { Home } from "./Home";
 import { Onboarding } from "./onboarding/Onboarding";
+import { Settings } from "./Settings";
 
-// Paths SPEC-110/SPEC-201/SPEC-205 build a real screen for — everything
-// else in NAV_GROUPS still falls through to ComingSoon below, so no nav
-// destination is ever a dead link (SPEC-109's rule, carried forward).
-const BUILT_PATHS = new Set(["/", "/explorer", "/clients", "/automations", "/exposure"]);
+// Paths SPEC-110/SPEC-201/SPEC-204/SPEC-205 build a real screen for —
+// everything else in NAV_GROUPS still falls through to ComingSoon below, so
+// no nav destination is ever a dead link (SPEC-109's rule, carried forward).
+const BUILT_PATHS = new Set(["/", "/explorer", "/clients", "/automations", "/exposure", "/settings"]);
 
 const placeholderRoutes = NAV_GROUPS.flatMap((group) => group.items)
   .filter((item) => !BUILT_PATHS.has(item.path))
@@ -36,6 +37,7 @@ export const router = createBrowserRouter([
       { path: "clients", element: <Clients /> },
       { path: "automations", element: <Automations /> },
       { path: "exposure", element: <Exposure /> },
+      { path: "settings", element: <Settings /> },
       ...placeholderRoutes,
     ],
   },

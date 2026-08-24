@@ -65,8 +65,14 @@ class SPAStaticFiles(StaticFiles):
     #: unmatched — backend surfaces, not client-side routes. "api" is the
     #: REST surface (some of it opt-in per create_app()'s parameters);
     #: "mcp" is the gateway's mount namespace (palaia_hub.gateway.build,
-    #: "/mcp/<profile>"), absent entirely with no gateway given.
-    _BACKEND_PREFIXES = ("api", "mcp")
+    #: "/mcp/<profile>"), absent entirely with no gateway given. "oauth" is
+    #: the SPEC-203/204 authorization server's surface: SPEC-204's one-door
+    #: rule depends on an IdP-configured hub's password route (registered
+    #: conditionally, see :mod:`palaia_hub.oauth.routes`) 404ing when
+    #: absent — without this prefix here, an unregistered `/oauth/login`
+    #: would instead fall through to this mount and get the dashboard shell
+    #: back with a 200, silently hiding that the route does not exist.
+    _BACKEND_PREFIXES = ("api", "mcp", "oauth")
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         # SPEC-110 fix: reaching this mount at all with a backend-prefixed
