@@ -26,8 +26,7 @@ export type ModeChangeRequest =
   paths["/api/mode"]["post"]["requestBody"]["content"]["application/json"];
 export type ExposureStatus =
   paths["/api/exposure"]["get"]["responses"][200]["content"]["application/json"];
-export type ChecklistItem =
-  components["schemas"]["ChecklistItemOut"];
+export type ChecklistItem = components["schemas"]["ChecklistItemOut"];
 export type TunnelGuidance =
   paths["/api/exposure/tunnel"]["post"]["responses"][200]["content"]["application/json"];
 export type SelfTestResult =
@@ -181,6 +180,82 @@ export interface DeadLetter {
   created_at: string;
 }
 
+/** SPEC-307's automations editor — opt-in on the hub (present only when an
+ * `automation_store` is given to `create_app`), hand-written for the same
+ * reason the hooks/token types above are. */
+export type ConditionOp = "equals" | "contains" | "prefix";
+
+export interface ConditionClause {
+  field: string;
+  op: ConditionOp;
+  value: string;
+}
+
+export interface MemoryWriteAction {
+  kind: "memory_write";
+  vault: string;
+  what_it_concerns_template: string;
+  why_keep_template: string;
+  content_template: string;
+  source_template?: string | null;
+}
+
+export interface StashSetAction {
+  kind: "stash_set";
+  namespace: string;
+  key_template: string;
+  value_template: string;
+}
+
+export interface NotificationAction {
+  kind: "notification";
+  title_template: string;
+  body_template?: string;
+}
+
+export type AutomationAction =
+  | MemoryWriteAction
+  | StashSetAction
+  | NotificationAction;
+
+export interface AutomationInfo {
+  id: string;
+  name: string;
+  trigger_event: string;
+  condition: ConditionClause[];
+  action: AutomationAction;
+  enabled: boolean;
+  created_at: string;
+}
+
+export type DeliveryStatus =
+  | "pending"
+  | "delivered"
+  | "dead"
+  | "condition_not_matched";
+
+export interface DeliveryLogEntry {
+  id: number;
+  automation_id: string;
+  event_id: string;
+  event_name: string;
+  status: DeliveryStatus;
+  attempts: number;
+  last_error: string;
+  created_at: string;
+  test: boolean;
+}
+
+/** SPEC-307's notification center — opt-in on the hub. */
+export interface NotificationRecord {
+  id: number;
+  title: string;
+  body: string;
+  source: string;
+  created_at: string;
+  read: boolean;
+}
+
 /** Base URL for API calls. Empty string = same-origin (the hub serves the
  * dashboard build itself, per this SPEC's static-serving deliverable), so
  * this only needs a value in local dev against a hub on another port. */
@@ -252,10 +327,34 @@ async function patchJson<T>(path: string, body: unknown): Promise<T> {
   return (await response.json()) as T;
 }
 
-function queryString(params: Record<string, string | number | undefined>): string {
-  const entries = Object.entries(params).filter(([, value]) => value !== undefined && value !== "");
+async function putJson<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "PUT",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    let responseBody: unknown;
+    try {
+      responseBody = await response.json();
+    } catch {
+      responseBody = await response.text();
+    }
+    throw new ApiError(path, response.status, responseBody);
+  }
+  return (await response.json()) as T;
+}
+
+function queryString(
+  params: Record<string, string | number | undefined>,
+): string {
+  const entries = Object.entries(params).filter(
+    ([, value]) => value !== undefined && value !== "",
+  );
   if (entries.length === 0) return "";
-  const search = new URLSearchParams(entries.map(([key, value]) => [key, String(value)]));
+  const search = new URLSearchParams(
+    entries.map(([key, value]) => [key, String(value)]),
+  );
   return `?${search.toString()}`;
 }
 
@@ -268,14 +367,22 @@ export const api = {
 
   // ---- SPEC-110: wizard + memory explorer ----
   listVaults: () => getJson<VaultSummary[]>("/api/vaults"),
-  createVault: (body: { key: string; purpose?: string; path?: string; template?: boolean }) =>
-    postJson<VaultSummary>("/api/vaults", body),
+  createVault: (body: {
+    key: string;
+    purpose?: string;
+    path?: string;
+    template?: boolean;
+  }) => postJson<VaultSummary>("/api/vaults", body),
   listNotes: (vaultKey: string, folder = "") =>
-    getJson<NoteSummary[]>(`/api/vaults/${vaultKey}/notes${queryString({ folder })}`),
+    getJson<NoteSummary[]>(
+      `/api/vaults/${vaultKey}/notes${queryString({ folder })}`,
+    ),
   readNote: (vaultKey: string, permalink: string) =>
     getJson<NoteRecord>(`/api/vaults/${vaultKey}/notes/${permalink}`),
   noteHistory: (vaultKey: string, permalink: string) =>
-    getJson<CommitSummary[]>(`/api/vaults/${vaultKey}/notes/${permalink}/history`),
+    getJson<CommitSummary[]>(
+      `/api/vaults/${vaultKey}/notes/${permalink}/history`,
+    ),
   noteGraph: (vaultKey: string, permalink: string) =>
     getJson<LocalGraph>(`/api/vaults/${vaultKey}/notes/${permalink}/graph`),
   search: (vaultKey: string, q: string) =>
@@ -290,9 +397,12 @@ export const api = {
   createToken: (body: { name: string; profile: string; scopes?: string[] }) =>
     postJson<CreatedToken>("/api/auth/tokens", { scopes: [], ...body }),
   revokeToken: (tokenId: string) =>
-    fetch(`${API_BASE}/api/auth/tokens/${tokenId}`, { method: "DELETE" }).then((response) => {
-      if (!response.ok) throw new ApiError("/api/auth/tokens", response.status, undefined);
-    }),
+    fetch(`${API_BASE}/api/auth/tokens/${tokenId}`, { method: "DELETE" }).then(
+      (response) => {
+        if (!response.ok)
+          throw new ApiError("/api/auth/tokens", response.status, undefined);
+      },
+    ),
 
   // ---- SPEC-201's webhook surface ----
   listHooks: () => getJson<HookInfo[]>("/api/hooks"),
@@ -301,18 +411,79 @@ export const api = {
   setHookEnabled: (hookId: string, enabled: boolean) =>
     patchJson<HookInfo>(`/api/hooks/${hookId}`, { enabled }),
   deleteHook: (hookId: string) =>
-    fetch(`${API_BASE}/api/hooks/${hookId}`, { method: "DELETE" }).then((response) => {
-      if (!response.ok) throw new ApiError("/api/hooks", response.status, undefined);
-    }),
+    fetch(`${API_BASE}/api/hooks/${hookId}`, { method: "DELETE" }).then(
+      (response) => {
+        if (!response.ok)
+          throw new ApiError("/api/hooks", response.status, undefined);
+      },
+    ),
   hookDeadLetters: (hookId: string) =>
     getJson<DeadLetter[]>(`/api/hooks/${hookId}/dead_letters`),
 
+  // ---- SPEC-307's automations editor ----
+  listAutomations: () => getJson<AutomationInfo[]>("/api/automations"),
+  createAutomation: (body: {
+    name: string;
+    trigger_event: string;
+    action: AutomationAction;
+    condition?: ConditionClause[];
+  }) =>
+    postJson<AutomationInfo>("/api/automations", { condition: [], ...body }),
+  updateAutomation: (
+    automationId: string,
+    body: {
+      name?: string;
+      trigger_event?: string;
+      action?: AutomationAction;
+      condition?: ConditionClause[];
+    },
+  ) => putJson<AutomationInfo>(`/api/automations/${automationId}`, body),
+  setAutomationEnabled: (automationId: string, enabled: boolean) =>
+    patchJson<AutomationInfo>(`/api/automations/${automationId}`, { enabled }),
+  deleteAutomation: (automationId: string) =>
+    fetch(`${API_BASE}/api/automations/${automationId}`, {
+      method: "DELETE",
+    }).then((response) => {
+      if (!response.ok)
+        throw new ApiError("/api/automations", response.status, undefined);
+    }),
+  automationDeliveries: (automationId: string) =>
+    getJson<DeliveryLogEntry[]>(`/api/automations/${automationId}/deliveries`),
+  testFireAutomation: (
+    automationId: string,
+    data: Record<string, unknown> = {},
+  ) =>
+    postJson<DeliveryLogEntry>(`/api/automations/${automationId}/test_fire`, {
+      data,
+    }),
+
+  // ---- SPEC-307's notification center ----
+  listNotifications: (unreadOnly = false) =>
+    getJson<NotificationRecord[]>(
+      `/api/notifications${queryString({ unread_only: unreadOnly ? "true" : undefined })}`,
+    ),
+  unreadNotificationCount: () =>
+    getJson<{ count: number }>("/api/notifications/unread_count"),
+  markNotificationRead: (notificationId: number) =>
+    postJson<NotificationRecord>(
+      `/api/notifications/${notificationId}/read`,
+      {},
+    ),
+  markAllNotificationsRead: () =>
+    postJson<{ status: string }>("/api/notifications/read_all", {}),
+
   // ---- SPEC-205: the exposure wizard ----
   mode: () => getJson<ModeStatus>("/api/mode"),
-  changeMode: (body: ModeChangeRequest) => postJson<ModeStatus>("/api/mode", body),
+  changeMode: (body: ModeChangeRequest) =>
+    postJson<ModeStatus>("/api/mode", body),
   exposure: () => getJson<ExposureStatus>("/api/exposure"),
-  tunnelGuidance: (body: { kind: "tailscale" | "cloudflared"; local_port?: number; hostname?: string }) =>
-    postJson<TunnelGuidance>("/api/exposure/tunnel", body),
+  tunnelGuidance: (body: {
+    kind: "tailscale" | "cloudflared";
+    local_port?: number;
+    hostname?: string;
+  }) => postJson<TunnelGuidance>("/api/exposure/tunnel", body),
   selfTest: (publicUrl: string) =>
-    postJson<SelfTestResult>("/api/exposure/selftest", { public_url: publicUrl }),
+    postJson<SelfTestResult>("/api/exposure/selftest", {
+      public_url: publicUrl,
+    }),
 };

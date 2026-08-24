@@ -146,9 +146,9 @@ hook's filter is delivered:
 
 Management: `POST/GET/PATCH/DELETE /api/hooks`, opt-in on the running hub
 (mounted when a `HookStore` is given to `create_app`), plus a minimal
-dashboard list (create / enable / disable / delete) — the trigger →
-condition → action automation *editor* is Phase 3 (MASTERPLAN §5.6), out of
-this SPEC's scope.
+dashboard list (create / enable / disable / delete). The trigger →
+condition → action automation *editor* — everything beyond a webhook — is
+§7 below (SPEC-307).
 
 ## 5. Evolution rule
 
@@ -173,6 +173,90 @@ alongside it.
   webhook can filter on (a webhook that requests `"*"` still receives it,
   since it travels the same bus — a filter naming it explicitly also
   works, it is simply not documented as a *meaningful* automation trigger).
-- Inbound webhooks, a full automation editor, and messenger-sourced events
-  (`message.received`, `session.*`) are explicitly out of scope for this
-  SPEC (see its Non-goals) — planned for later phases per MASTERPLAN §5.6.
+- Inbound webhooks and messenger-sourced events (`message.received`,
+  `session.*`) are explicitly out of scope for SPEC-201/307 (see their
+  Non-goals) — planned for later phases per MASTERPLAN §5.6.
+
+## 7. Automations (SPEC-307)
+
+The trigger → condition → action editor `docs/events.md §4` pointed at as
+future work: pick one event name (or `"*"`), an optional AND-combined
+condition, and one action. Implemented as `palaia_hub.automations` — its
+own store/outbox/dispatcher, deliberately separate from the hooks package
+above (see that package's docstring for why a webhook's secret makes a
+shared model the wrong shape).
+
+### 7.1 Trigger
+
+Any v1 event name (§3), including the curator's and stash's, or `"*"` for
+every event. **Never** an `automation.*` event (§7.4) — refused at create
+time with a plain-language error.
+
+### 7.2 Condition grammar
+
+A **fixed, closed vocabulary — not a general expression language.** A
+condition is a list of clauses, **AND-combined**; an empty list always
+matches. Each clause is `{field, op, value}`:
+
+- `field`: `event`, `origin`, `vault`, or `data.<key>` — a path into the
+  envelope's `data` object. A `data.<key>` clause never matches when the
+  key is absent (never raises).
+- `op`: `equals`, `contains`, or `prefix` — plain substring/prefix string
+  comparison. No regex, no numeric/boolean coercion beyond stringifying
+  the envelope's value, no nesting, and nothing here ever calls `eval`.
+- `value`: a plain string.
+
+A condition naming an unrecognized field, or an operator outside the three
+above, is rejected at create/update time with an error naming exactly what
+is wrong — never a bare stack trace.
+
+### 7.3 Templating
+
+`{{event}}`, `{{origin}}`, `{{vault}}`, `{{permalink}}`, `{{data.<key>}}` —
+substituted into an action's template fields at match time (the *rendered*
+result, not the template, is what the durable outbox persists — a retry
+replays the original render, it does not re-read the envelope). A
+placeholder naming a missing key renders empty and logs once per render
+call; a bad template **never fails delivery**.
+
+### 7.4 Action kinds
+
+| Kind | Config | Effect |
+|---|---|---|
+| `webhook` | see §4 above | unchanged — configured through the hooks surface, not this one |
+| `memory_write` | `vault`, plus templates for `what_it_concerns`/`why_keep`/`content`/(optional) `source` | Lands a format-spec §7 capture in the named vault's inbox — the same shape a real `capture` tool call produces. |
+| `stash_set` | `namespace`, plus templates for `key`/`value` | Sets one stash entry (`palaia_hub.stash`). |
+| `notification` | templates for `title`/(optional) `body` | Posts one entry to the dashboard notification center (`GET/POST /api/notifications/*`) — no email/push in v1. |
+
+Delivery is durable and retried with the exact backoff/dead-letter policy
+§4 describes for webhooks (`palaia_hub.automations.outbox`, a separate
+hub-level SQLite database from the hooks one) — an event match commits a
+row before the action ever runs, so a crash between "matched" and
+"executed" loses nothing. A delivery whose action kind has no backing
+service configured on this hub (no vault registry for `memory_write`, no
+stash for `stash_set`) fails with a plain-language error rather than
+crashing the worker.
+
+### 7.5 Automation events, and the loop guard
+
+Every delivery outcome fires `automation.fired` (delivered) or
+`automation.failed` (dead-lettered), `origin: "automations"` — additive to
+the v1 vocabulary, same as the curator's own events.
+
+**Fixed rule, enforced twice:** an automation never triggers on its own
+kind of event. A create/update call is refused outright if the trigger
+event starts with `automation.`; independently, the dispatcher's runtime
+match never fires on an `automation.*` event even for a `"*"` trigger.
+Both are tested.
+
+### 7.6 Test-fire
+
+`POST /api/automations/{id}/test_fire` builds one synthetic envelope from
+caller-supplied sample data and runs it through the *same* match →
+condition → render → execute code every real event goes through — real
+vault write, real stash set, real notification — scoped to the one
+automation being tested (it does not also fire every other automation
+subscribed to the same trigger) and resolved synchronously. Its delivery
+log entry carries `test: true`, same shape as every other row, distinct in
+the per-automation log (`GET /api/automations/{id}/deliveries`) from real
+traffic.

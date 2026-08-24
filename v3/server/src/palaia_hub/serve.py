@@ -35,6 +35,8 @@ from fastapi import FastAPI
 
 from .app import create_app
 from .auth import TokenStore
+from .automations import AutomationOutbox, AutomationStore
+from .automations.outbox import OUTBOX_RELATIVE_PATH as AUTOMATIONS_OUTBOX_RELATIVE_PATH
 from .config import HubConfig, palaia_home
 from .curator.wiring import STASH_FILENAME, CuratorWiring, build_curator
 from .events import EventBus, publish_from_hook
@@ -46,6 +48,8 @@ from .gateway.wiring import EngineVaultService
 from .hooks import HookStore
 from .index import VaultIndex
 from .market import CuratedIndexClient, ManualEntryStore, MarketService
+from .notifications import NotificationStore
+from .notifications.store import NOTIFICATIONS_RELATIVE_PATH
 from .oauth import AuthorizationServer
 from .oauth.verifier import build_profile_auth
 from .registry import RegistryClient
@@ -126,6 +130,18 @@ async def build_production_app(
     registry = VaultRegistry(home, bus=VaultEventBus())
     token_store = TokenStore(home)
     hook_store = HookStore(home)
+    # SPEC-307: automations + the notification center it can write to.
+    # Wired unconditionally, same posture as hook_store above — a hub
+    # always has an (initially empty) automations surface once this SPEC
+    # lands, no config.yaml flag gates it. Note: this hub does not wire a
+    # StashService (that gap predates this SPEC — see the module docstring
+    # of palaia_hub.stash.service, which stash_api/tools already fill in
+    # for tests but which this production assembly has never built), so a
+    # ``stash_set`` automation action fails with a plain-language error
+    # rather than crashing until that gap is closed.
+    automation_store = AutomationStore(home)
+    automation_outbox = AutomationOutbox((home or palaia_home()) / AUTOMATIONS_OUTBOX_RELATIVE_PATH)
+    notification_store = NotificationStore((home or palaia_home()) / NOTIFICATIONS_RELATIVE_PATH)
     event_bus = EventBus()
 
     # SPEC-303: the marketplace — official registry + curated index +
@@ -242,6 +258,9 @@ async def build_production_app(
         hook_store=hook_store,
         market_service=market_service,
         curator=curator.scheduler if curator else None,
+        automation_store=automation_store,
+        automation_outbox=automation_outbox,
+        notification_store=notification_store,
         curator_wiring=curator,
         home=home,
     )

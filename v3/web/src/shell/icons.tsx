@@ -94,6 +94,16 @@ export function AutomationsIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** SPEC-307's notification bell (topbar). */
+export function BellIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M6.5 15.5V11a5.5 5.5 0 0 1 11 0v4.5l1.5 2H5z" />
+      <path d="M10 19.5a2 2 0 0 0 4 0" />
+    </Icon>
+  );
+}
+
 export function HealthIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Icon {...props}>
