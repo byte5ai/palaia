@@ -53,7 +53,7 @@
       "readOnlyHint": false,
       "title": null
     },
-    "description": "A palaia memory vault.\n\nZero-friction drop target: capture something mid-work without deciding placement, dedup or structure \u2014 the curator files it later. Writes an inbox/ note (format spec \u00a77).",
+    "description": "A palaia memory vault.\n\nTHE way to save something you (the assistant) learned this session: a decision, a preference, a correction, a fact worth keeping. Call it the moment the knowledge appears \u2014 before answering, without searching first, without deciding placement, dedup or structure; the curator files it into the vault. Writes an inbox/ note (format spec \u00a77). Reserve write/edit for notes the user explicitly asked for.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
