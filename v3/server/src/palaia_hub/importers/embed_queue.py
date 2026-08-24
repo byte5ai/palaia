@@ -1,22 +1,34 @@
 """The cold-embed-as-background-job seam (SPEC-111 deliverable #3).
 
-**Honest scope note:** SPEC-104 (index + search, incl. vector embedding) is
-being built in parallel on its own branch and is not merged. This module
-does *not* compute any embeddings — there is no embedding model wired into
-this codebase yet. What it does is the part SPEC-111 owns regardless of
-that: make sure an import never blocks on embedding work, and leave a
-durable, inspectable queue that a future embedding worker (SPEC-104, or a
-later wiring SPEC) can drain, plus a progress-visible status read in the
-same shape as SPEC-107's ``inbox_status`` so the dashboard/API story is
-already consistent.
+**Superseded, honestly.** This module was written before SPEC-104 (index +
+search, incl. vector embedding) merged, as a placeholder: no embedding
+worker existed anywhere in the codebase yet, so it kept its own JSON-lines
+record of "what an import wrote that still needs embedding" for a future
+worker to drain.
+
+SPEC-104 has since merged, and SPEC-210 wired the real path: every note
+:class:`~palaia_hub.importers.runner.ImportRunner` writes goes through
+:meth:`~palaia_hub.vault.engine.VaultEngine.write_note`, which publishes a
+``NoteCreated`` event on the engine's bus; a
+:class:`~palaia_hub.index.VaultIndex` subscribed to that same bus (opened
+by ``palaia_hub.serve.build_production_app`` for every vault the running
+hub serves, and by the ``import`` CLI subcommand for a bare import) inserts
+the note's chunks as ``pending`` and drains them through its own
+background worker — no JSONL bookkeeping needed at all;
+:meth:`~palaia_hub.index.VaultIndex.embed_status` /
+:func:`~palaia_hub.index.embed_progress` are the real, live progress read.
+
+:func:`enqueue_for_embedding` is still called by :class:`ImportRunner` for
+backward compatibility with this module's own existing test coverage, but
+nothing reads its output for anything real any more — the queue file it
+writes is inert bookkeeping, not a functioning pipeline. A future cleanup
+SPEC may remove it once nothing still exercises it.
 
 The queue is one JSON-lines file per vault, under the engine-private
 directory (``.palaia/import-embed-queue.jsonl``, format spec §1: engine
 storage, not vault content, already gitignored by the engine's own
 ``.gitignore`` block). Each import run appends one line per note it wrote;
-nothing here ever removes a line — that is the future worker's job, via
-:func:`mark_embedded`, once it exists. Until then the queue simply grows,
-which is the correct visible symptom of "no embedding worker has run yet".
+nothing here ever removes a line.
 """
 
 from __future__ import annotations

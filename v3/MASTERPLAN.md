@@ -236,6 +236,14 @@ flowchart LR
   of an observation (e.g. a rule phrased differently for different model families);
   recall resolves the most specific applicable variant for the calling agent and
   drops the rest — deterministic and token-frugal (an mcp-hub invention).
+  **Known limitation (SPEC-104/SPEC-210):** metadata filters (scope/type/tag/date)
+  on a vector or hybrid query are applied *after* the KNN step, not pushed into it —
+  sqlite-vec has no join-aware pre-filter — so a heavily filtered query over-fetches
+  a generous top-k before filtering rather than searching only the filtered subset.
+  Correct, not incomplete: recall never returns an unfiltered hit, but a filter
+  narrow enough to exclude most of a large vault's top-k could in principle miss a
+  true match outside the over-fetched window. Not yet observed in practice at this
+  project's vault sizes; revisit if a future vault's scale makes it real.
 - **One vault or many — the user's choice:** everything can live in a single vault
   with scopes, or in multiple fully isolated vaults (e.g. work / personal /
   project X), each with its own name, purpose statement, storage and git history.

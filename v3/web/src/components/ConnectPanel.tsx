@@ -13,13 +13,15 @@
  * prop that might resolve later than this panel's own mount — see the
  * `useEffect` below.
  *
- * Honest about what this does and does not wire up yet: issuing a token
- * here does not, by itself, mount an MCP gateway profile at the URL the
- * copy-command names — that still needs a `GatewayConfig` naming this
- * profile path (`palaia-hub`'s own config surface, SPEC-105/107/108's, not
- * this SPEC's REST additions). Until that profile exists, the command is
- * correct in *shape* but the endpoint 404s. Step 3 tells the truth about
- * this by polling for a real first call rather than faking one.
+ * As of SPEC-210, the `default` profile this panel suggests really is
+ * mounted live once any vault exists (see
+ * `palaia_hub.gateway.dynamic.DynamicGateway` / `palaia_hub.serve` on the
+ * server side, and `Onboarding.tsx`'s step 3, which creates that vault) —
+ * issuing a token here and reaching the endpoint it names both work with
+ * no hub restart in between. A caller can still name a different,
+ * unmounted profile path by hand; step 3 below tells the truth about
+ * whichever path is actually in play by polling for a real first call
+ * rather than faking one.
  */
 import { useEffect, useState } from "react";
 

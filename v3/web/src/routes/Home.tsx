@@ -12,6 +12,19 @@ interface InboxAggregate {
   oldestAgeSeconds: number | null;
 }
 
+/** Aggregated across every vault (SPEC-210 deliverable #3): the dashboard
+ * shows one number for "how caught up is semantic search", not one tile
+ * per vault — a per-vault breakdown lives on the Explorer page instead. */
+interface IndexAggregate {
+  totalReady: number;
+  totalPending: number;
+  totalFailed: number;
+  /** True once every vault that reports embeddings as enabled has fully
+   * drained its backlog (vaults with embeddings disabled don't count
+   * against this — see `embed_summary` for why). */
+  allCaughtUp: boolean;
+}
+
 function formatDuration(seconds: number): string {
   if (seconds < 3600) return `${Math.round(seconds / 60)} min`;
   if (seconds < 86400) return `${Math.round(seconds / 3600)} h`;
@@ -78,6 +91,7 @@ export function Home() {
   const [vaults, setVaults] = useState<VaultSummary[] | null>(null);
   const [inbox, setInbox] = useState<InboxAggregate | null>(null);
   const [tokens, setTokens] = useState<TokenInfo[] | null>(null);
+  const [indexAggregate, setIndexAggregate] = useState<IndexAggregate | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,6 +122,23 @@ export function Home() {
           }
         }
         setInbox({ count, oldestAgeSeconds: oldest });
+
+        const indexStatuses = await Promise.all(
+          list.map((vault) => api.indexStatus(vault.key).catch(() => null)),
+        );
+        if (cancelled) return;
+        let totalReady = 0;
+        let totalPending = 0;
+        let totalFailed = 0;
+        let allCaughtUp = true;
+        for (const status of indexStatuses) {
+          if (!status) continue;
+          totalReady += status.embeds.ready;
+          totalPending += status.embeds.pending;
+          totalFailed += status.embeds.failed;
+          if (status.embeds.enabled && status.embeds.pending > 0) allCaughtUp = false;
+        }
+        setIndexAggregate({ totalReady, totalPending, totalFailed, allCaughtUp });
       })
       .catch(() => {
         if (!cancelled) setVaults([]);
@@ -186,7 +217,27 @@ export function Home() {
           label="Vaults"
           metric={vaults?.length ?? "…"}
           unit={vaults?.length === 1 ? "vault" : "vaults"}
-          sub={`${totalNotes} note${totalNotes === 1 ? "" : "s"} · index current`}
+          sub={`${totalNotes} note${totalNotes === 1 ? "" : "s"}`}
+        />
+        <Tile
+          label="Semantic search"
+          metric={
+            indexAggregate === null
+              ? "…"
+              : indexAggregate.allCaughtUp
+                ? "caught up"
+                : `${indexAggregate.totalPending}`
+          }
+          unit={indexAggregate && !indexAggregate.allCaughtUp ? "embedding" : undefined}
+          sub={
+            indexAggregate === null
+              ? "loading…"
+              : indexAggregate.allCaughtUp
+                ? "searchable now — fully caught up"
+                : `searchable now — catching up (${indexAggregate.totalReady} of ` +
+                  `${indexAggregate.totalReady + indexAggregate.totalPending} embedded)`
+          }
+          attention={Boolean(indexAggregate && indexAggregate.totalFailed > 0)}
         />
         <Tile
           label="Inbox"

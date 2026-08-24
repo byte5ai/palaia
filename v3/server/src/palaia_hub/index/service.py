@@ -87,10 +87,20 @@ class VaultIndex:
         path: Path | None = None,
         embedding: EmbeddingConfig | None = None,
         embedder: Embedder | None = None,
+        on_backlog_drained: Callable[[IndexStatus], None] | None = None,
         on_event: HubEventHook | None = None,
     ) -> None:
         self._engine = engine
         self._embedding = embedding or EmbeddingConfig()
+        # SPEC-210 deliverable #2: called at most once per worker wake, the
+        # moment the embed backlog transitions from "something pending" to
+        # "fully drained" — the "done-event on the bus" acceptance
+        # criterion. Deliberately generic (a status callback, not a bus
+        # dependency): this module stays independent of any particular
+        # event bus; the hub-level wiring that has one (see
+        # ``palaia_hub.app.create_app``'s ``event_bus`` parameter) supplies
+        # a closure that publishes onto it.
+        self._on_backlog_drained = on_backlog_drained
         self.db = IndexDatabase(path or engine.root / INDEX_RELATIVE_PATH, engine.name)
         self.writer = IndexWriter(self.db, self._embedding)
         self.searcher = IndexSearch(self.db)
@@ -299,6 +309,10 @@ class VaultIndex:
             try:
                 while batch := await self.embed_next_batch():
                     embedded_this_wake += batch
+                if embedded_this_wake and self._on_backlog_drained is not None:
+                    status = self.status()
+                    if status.embeds.pending == 0:
+                        self._on_backlog_drained(status)
             except asyncio.CancelledError:  # pragma: no cover - shutdown
                 raise
             except Exception:  # noqa: BLE001 - the worker must survive anything

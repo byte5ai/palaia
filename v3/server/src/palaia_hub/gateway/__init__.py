@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from .build import GatewayASGI, GatewayConfigError, build_gateway
 from .config import GatewayConfig, ProfileConfig, VaultMountConfig
+from .dynamic import DynamicGateway
 from .fake_vault import FakeVaultService
 from .stash_tools import (
     STASH_TOOL_ACTIONS,
@@ -48,6 +49,7 @@ __all__ = [
     "MEMORY_TOOL_ACTIONS",
     "STASH_TOOL_ACTIONS",
     "CaptureResult",
+    "DynamicGateway",
     "EngineVaultService",
     "FakeVaultService",
     "GatewayASGI",

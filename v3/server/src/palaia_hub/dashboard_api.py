@@ -31,13 +31,17 @@ an error — it is not a graph edge until the target note exists.
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 
+from .gateway.config import VaultMountConfig
+from .gateway.dynamic import DynamicGateway
 from .gateway.vault_protocol import NoteRecord, NoteSummary, SearchHit, VaultServiceError
 from .gateway.wiring import EngineVaultService
+from .index import IndexStatus, VaultIndex, embed_progress
 from .vault import (
     AmbiguousReferenceError,
     CommitInfo,
@@ -51,6 +55,13 @@ from .vault import (
 )
 from .vault import permalink as pl
 from .vault.links import iter_links
+
+#: The gateway profile a vault created through the wizard/API is mounted
+#: under when a :class:`~.gateway.dynamic.DynamicGateway` is wired in
+#: (SPEC-210 deliverable #1). Matches the single-profile convention every
+#: other production/e2e assembly in this codebase already uses (see
+#: ``tests/e2e/support/hub_server.py``'s ``--profile`` default).
+DEFAULT_GATEWAY_PROFILE = "default"
 
 # Two starter notes offered by the wizard's "start from a template" switch
 # (deliverable #1). Deliberately small and deletable — a template is a
@@ -142,6 +153,60 @@ class LocalGraphOut(BaseModel):
     inbound: list[GraphNodeOut]
 
 
+class EmbedStatusOut(BaseModel):
+    """Embedding backlog — SPEC-210 deliverable #3's status surface."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+    available: bool
+    model: str
+    dim: int
+    total: int
+    ready: int
+    pending: int
+    failed: int
+    reason: str
+
+
+class IndexStatusOut(BaseModel):
+    """One vault's index status: the dashboard's "index status" tile.
+
+    ``embed_progress_percent`` and ``embed_summary`` are pre-computed here
+    rather than left for the dashboard to derive, so the wording (SPEC-210's
+    "searchable now, semantic search catching up — N%") comes from one
+    place instead of being re-implemented in TypeScript.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    vault: str
+    schema_version: int
+    notes: int
+    observations: int
+    relations: int
+    unresolved_relations: int
+    embeds: EmbedStatusOut
+    embed_progress_percent: int
+    embed_summary: str
+
+    @classmethod
+    def from_status(cls, status: IndexStatus) -> IndexStatusOut:
+        embeds = status.embeds
+        percent, summary = embed_progress(embeds)
+        return cls(
+            vault=status.vault,
+            schema_version=status.schema_version,
+            notes=status.notes,
+            observations=status.observations,
+            relations=status.relations,
+            unresolved_relations=status.unresolved_relations,
+            embeds=EmbedStatusOut(**dataclasses.asdict(embeds)),
+            embed_progress_percent=percent,
+            embed_summary=summary,
+        )
+
+
 def _vault_out(key: str, info: VaultInfo) -> VaultOut:
     return VaultOut(
         key=key,
@@ -159,8 +224,33 @@ async def _get_engine(registry: VaultRegistry, vault_key: str) -> VaultEngine:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-def build_dashboard_router(registry: VaultRegistry) -> APIRouter:
-    """Build the wizard + explorer router, bound to ``registry``."""
+def build_dashboard_router(
+    registry: VaultRegistry,
+    *,
+    indexes: dict[str, VaultIndex] | None = None,
+    dynamic_gateway: DynamicGateway | None = None,
+) -> APIRouter:
+    """Build the wizard + explorer router, bound to ``registry``.
+
+    Args:
+        registry: as before this SPEC.
+        indexes: the hub's ``{vault_key: VaultIndex}`` mapping (SPEC-210).
+            Given, a vault created here also gets a real
+            :class:`~palaia_hub.index.VaultIndex` opened and added to this
+            same dict (so ``GET .../index_status`` and the hub's own
+            shutdown-time ``index.close()`` loop see it too), and
+            ``search_notes`` below runs through it instead of the linear
+            engine scan. Omitted, vault creation behaves exactly as before
+            this parameter existed — no index, no ``index_status`` route.
+        dynamic_gateway: the SPEC-210
+            :class:`~palaia_hub.gateway.dynamic.DynamicGateway`. Given, a
+            vault created here is also mounted into
+            :data:`DEFAULT_GATEWAY_PROFILE` on the running gateway — no hub
+            restart needed before an MCP client can reach it. Omitted
+            (unchanged default), a wizard-created vault stays
+            dashboard/REST-visible only, exactly as documented in this
+            module's docstring before this parameter existed.
+    """
     router = APIRouter(tags=["dashboard"])
 
     @router.post("/api/vaults", response_model=VaultOut)
@@ -173,6 +263,22 @@ def build_dashboard_router(registry: VaultRegistry) -> APIRouter:
         if body.template:
             for title, note_body in _TEMPLATE_NOTES:
                 await engine.write_note(f"{pl.slugify(title)}.md", body=note_body, title=title)
+
+        index: VaultIndex | None = None
+        if indexes is not None:
+            index = VaultIndex(engine)
+            await index.open()
+            indexes[body.key] = index
+
+        if dynamic_gateway is not None:
+            service = EngineVaultService(engine, index)
+            mount = VaultMountConfig(
+                key=body.key,
+                name=body.key,
+                purpose=body.purpose or "A palaia memory vault.",
+            )
+            await dynamic_gateway.add_vault(mount, service, profile_paths=[DEFAULT_GATEWAY_PROFILE])
+
         return _vault_out(body.key, engine.info())
 
     @router.get("/api/vaults", response_model=list[VaultOut])
@@ -193,7 +299,18 @@ def build_dashboard_router(registry: VaultRegistry) -> APIRouter:
         engine = await _get_engine(registry, vault_key)
         if not q.strip():
             return []
-        return await EngineVaultService(engine).search(q, limit=limit)
+        index = indexes.get(vault_key) if indexes is not None else None
+        return await EngineVaultService(engine, index).search(q, limit=limit)
+
+    @router.get("/api/vaults/{vault_key}/index_status", response_model=IndexStatusOut)
+    async def index_status(vault_key: str) -> IndexStatusOut:
+        index = indexes.get(vault_key) if indexes is not None else None
+        if index is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"no index open for vault {vault_key!r}",
+            )
+        return IndexStatusOut.from_status(index.status())
 
     @router.get(
         "/api/vaults/{vault_key}/notes/{permalink:path}/history",

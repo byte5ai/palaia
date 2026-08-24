@@ -18,12 +18,11 @@ from pathlib import Path
 
 import uvicorn
 
-from .app import create_app
 from .auth import TokenError, TokenStore
 from .config import ConfigError, HubConfig, load_config, palaia_home
-from .hooks import HookStore
 from .importers import ImportReport, ImportRunner, v2_source
 from .importers import basic_memory_source as bm_source
+from .index import VaultIndex, embed_progress
 from .oauth import (
     AuthorizationServer,
     OAuthError,
@@ -33,8 +32,8 @@ from .oauth import (
     provision_machine_client,
     set_owner_password,
 )
-from .vault import EventBus as VaultEventBus
-from .vault import VaultRegistry
+from .serve import build_production_app
+from .vault import EventBus, VaultRegistry
 from .vault.engine import VaultEngine
 
 
@@ -148,33 +147,30 @@ def serve(host: str | None = None, port: int | None = None) -> None:
     if overrides:
         config = config.model_copy(update=overrides)
 
-    # The wizard/explorer REST surface (SPEC-110) needs a registry to create
-    # and read vaults against; no MCP gateway is wired here yet (that still
-    # requires a config-driven GatewayConfig — SPEC-105/107/108's own CLI
-    # surface), so a freshly wizard-created vault is dashboard-visible
-    # immediately but needs a hub restart before an MCP client can reach it.
-    #
-    # SPEC-201: the registry's own vault.events.EventBus is what
-    # create_app() bridges onto the public event bus — every vault this
-    # registry opens shares it, so a write to any vault produces exactly
-    # one public memory.entry.* event, no matter which vault it hit.
-    app = create_app(
-        config,
-        token_store=TokenStore(),
-        vault_registry=VaultRegistry(bus=VaultEventBus()),
-        oauth_server=_maybe_oauth_server(config),
-        hook_store=HookStore(),
-    )
+    asyncio.run(_serve_async(config))
 
+
+async def _serve_async(config: HubConfig) -> None:
+    """Build the production app and serve it under uvicorn's async server.
+
+    A separate ``asyncio.run`` boundary from ``uvicorn.Server.run()`` would
+    mean two event loops (one to await :func:`build_production_app`'s
+    vault/index opens, a second uvicorn starts internally) — using
+    ``server.serve()`` directly inside this coroutine keeps everything on
+    one loop, which is what lets a vault created at runtime (SPEC-210)
+    actually reach the same :class:`~palaia_hub.gateway.dynamic.DynamicGateway`
+    instance this function built.
+    """
+    production = await build_production_app(config, oauth_server=_maybe_oauth_server(config))
     uvicorn_config = uvicorn.Config(
-        app,
+        production.app,
         host=config.host,
         port=config.port,
         log_config=None,
         timeout_graceful_shutdown=int(config.graceful_shutdown_timeout),
     )
     server = uvicorn.Server(uvicorn_config)
-    server.run()
+    await server.serve()
 
 
 def _profile_scopes(profiles: Sequence[str], vault_keys: Sequence[str]) -> dict[str, list[str]]:
@@ -331,49 +327,87 @@ def _token_revoke(token_id: str) -> None:
     print(f"Revoked token {info.id!r} ({info.name!r}).")
 
 
+async def _open_engine_and_index(
+    vault_root: str, vault_name: str, *, dry_run: bool
+) -> tuple[VaultEngine, VaultIndex | None]:
+    """Open the destination engine and, for a real (non-dry-run) import, its
+    index too — so imported notes actually reach the SPEC-104 embed backlog
+    (SPEC-210 deliverable #2) instead of only ever being written to files.
+
+    ``dry_run`` skips the index entirely: nothing is written, so there is
+    nothing to index either, and a dry run must never create a
+    ``.palaia/index.db`` as a side effect.
+    """
+    engine = VaultEngine(Path(vault_root), name=vault_name, bus=EventBus())
+    await engine.open()
+    if dry_run:
+        return engine, None
+    index = VaultIndex(engine)
+    await index.open()
+    return engine, index
+
+
+async def _index_status_line(index: VaultIndex | None) -> str | None:
+    """The embed-progress summary for a just-finished import, or ``None``
+    for a dry run (which never opened an index at all)."""
+    if index is None:
+        return None
+    _, summary = embed_progress(index.status().embeds)
+    await index.close()
+    return (
+        f"{summary} (the hub's own background worker for this vault will "
+        f"finish draining the backlog the next time it opens this index)."
+    )
+
+
 async def _run_v2_import(
     source_path: str, vault_root: str, vault_name: str, *, dry_run: bool
-) -> ImportReport:
-    engine = VaultEngine(Path(vault_root), name=vault_name)
-    await engine.open()
+) -> tuple[ImportReport, str | None]:
+    engine, index = await _open_engine_and_index(vault_root, vault_name, dry_run=dry_run)
     store_root = v2_source.find_store_root(Path(source_path))
     entries = v2_source.iter_source_entries(store_root)
     mapped = (v2_source.map_v2_entry(entry) for entry in entries)
     runner = ImportRunner(engine)
-    return await runner.run("v2", str(store_root), mapped, dry_run=dry_run)
+    report = await runner.run("v2", str(store_root), mapped, dry_run=dry_run)
+    return report, await _index_status_line(index)
 
 
 async def _run_bm_import(
     source_path: str, vault_root: str, vault_name: str, *, dry_run: bool
-) -> ImportReport:
-    engine = VaultEngine(Path(vault_root), name=vault_name)
-    await engine.open()
+) -> tuple[ImportReport, str | None]:
+    engine, index = await _open_engine_and_index(vault_root, vault_name, dry_run=dry_run)
     vault_path = Path(source_path)
     entries = bm_source.iter_source_entries(vault_path)
     mapped = (bm_source.map_bm_entry(entry) for entry in entries)
     runner = ImportRunner(engine)
-    return await runner.run("basic-memory", str(vault_path), mapped, dry_run=dry_run)
+    report = await runner.run("basic-memory", str(vault_path), mapped, dry_run=dry_run)
+    return report, await _index_status_line(index)
 
 
-def _print_report(report: ImportReport, *, as_json: bool) -> None:
+def _print_report(report: ImportReport, index_status_line: str | None, *, as_json: bool) -> None:
     if as_json:
-        print(json.dumps(report.to_json(), indent=2))
+        payload = report.to_json()
+        if index_status_line is not None:
+            payload["index_status"] = index_status_line
+        print(json.dumps(payload, indent=2))
     else:
         print(report.summary())
+        if index_status_line is not None:
+            print(index_status_line)
 
 
 def _import_v2(args: argparse.Namespace) -> None:
-    report = asyncio.run(
+    report, index_status_line = asyncio.run(
         _run_v2_import(args.path, args.vault, args.vault_name, dry_run=args.dry_run)
     )
-    _print_report(report, as_json=args.json)
+    _print_report(report, index_status_line, as_json=args.json)
 
 
 def _import_basic_memory(args: argparse.Namespace) -> None:
-    report = asyncio.run(
+    report, index_status_line = asyncio.run(
         _run_bm_import(args.path, args.vault, args.vault_name, dry_run=args.dry_run)
     )
-    _print_report(report, as_json=args.json)
+    _print_report(report, index_status_line, as_json=args.json)
 
 
 def main(argv: Sequence[str] | None = None) -> None:
