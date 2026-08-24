@@ -1,0 +1,13 @@
+tunnel: <your-tunnel-id>
+credentials-file: /etc/cloudflared/<your-tunnel-id>.json
+ingress:
+  - hostname: hub.example.com
+    path: ^/mcp
+    service: http://127.0.0.1:8420
+  - hostname: hub.example.com
+    path: ^/oauth
+    service: http://127.0.0.1:8420
+  - hostname: hub.example.com
+    path: ^/.well-known
+    service: http://127.0.0.1:8420
+  - service: http_status:404

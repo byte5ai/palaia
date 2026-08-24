@@ -40,6 +40,7 @@ SCHEMA_VERSION = 1
 #: working on the same one bus rather than a second parallel mechanism.
 EventName = Literal[
     "hub.started",
+    "hub.mode_changed",
     "client.connected",
     "memory.entry.created",
     "memory.entry.updated",

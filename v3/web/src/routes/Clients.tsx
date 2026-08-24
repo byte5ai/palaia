@@ -5,12 +5,53 @@
  */
 import { useEffect, useState } from "react";
 
+import { Button } from "../components/Button";
 import { ConnectPanel, formatAge } from "../components/ConnectPanel";
 import { SkillPanel } from "../components/SkillPanel";
+import { useToast } from "../components/Toast";
 import type { TokenInfo } from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
 import { CLIENTS, type HubMode, type NotYetClient } from "../lib/clients";
-import { InfoIcon, WarningIcon } from "../shell/icons";
+import { CopyIcon, InfoIcon, WarningIcon } from "../shell/icons";
+
+/** SPEC-205 deliverable #3: sign-in is turned on and configured — the
+ * client's own connector unlocks with the real address filled in, instead
+ * of the "not yet" reason. */
+function OAuthReadyCard({ client, issuer }: { client: NotYetClient; issuer: string }) {
+  const toast = useToast();
+  const Icon = client.icon;
+  const connect = client.oauthConnect?.(issuer, "default");
+  if (!connect) return null;
+  return (
+    <div className="card">
+      <div className="card__head">
+        <div>
+          <span className="card__subject">{client.name}</span>
+          <p className="t-xs t-muted">{client.subtitle}</p>
+        </div>
+        <span className="badge badge--ok">
+          <Icon className="icon icon--sm" style={{ marginRight: 4 }} />
+          ready to connect
+        </span>
+      </div>
+      <div className="card__body stack">
+        <div className="snippet snippet--wrap">
+          <code>{connect.url}</code>
+          <Button
+            size="sm"
+            onClick={() =>
+              navigator.clipboard.writeText(connect.url).then(() => toast.show("Address copied."))
+            }
+          >
+            <CopyIcon className="icon--sm" />
+            Copy
+          </Button>
+        </div>
+        <p className="t-sm t-muted">{connect.note}</p>
+      </div>
+    </div>
+  );
+}
 
 function NotYetCard({ client, mode }: { client: NotYetClient; mode: HubMode }) {
   const Icon = client.icon;
@@ -44,6 +85,9 @@ function NotYetCard({ client, mode }: { client: NotYetClient; mode: HubMode }) {
 
 export function Clients() {
   const [mode, setMode] = useState<HubMode>("locked");
+  // SPEC-205 deliverable #3: null until known — while null, cloud
+  // connectors show their ordinary `reason()`, same as before this SPEC.
+  const [oauthIssuer, setOauthIssuer] = useState<string | null>(null);
   const [tokens, setTokens] = useState<TokenInfo[]>([]);
   const [tokenStoreAvailable, setTokenStoreAvailable] = useState(true);
   const [selectedId, setSelectedId] = useState(CLIENTS[0]!.id);
@@ -51,13 +95,19 @@ export function Clients() {
   useEffect(() => {
     let cancelled = false;
     api
-      .info()
-      .then((info) => {
-        if (!cancelled) setMode(info.mode as HubMode);
+      .mode()
+      .then((status) => {
+        if (cancelled) return;
+        setMode(status.active_mode);
+        const ready =
+          (status.active_mode === "cloud" || status.active_mode === "open") &&
+          status.oauth_enabled &&
+          status.oauth_issuer;
+        setOauthIssuer(ready ? status.oauth_issuer : null);
       })
       .catch(() => {
-        // health/mode is cosmetic here — the not-yet reasons still render,
-        // just without the mode-specific half of the sentence
+        // mode is cosmetic here — the not-yet reasons still render, just
+        // without the mode-specific half of the sentence
       });
     api
       .listTokens()
@@ -122,7 +172,9 @@ export function Clients() {
                         : "token issued · waiting for first call"
                       : client.kind === "guided"
                         ? "not connected"
-                        : "not yet available"}
+                        : oauthIssuer && client.oauthConnect
+                          ? "ready to connect"
+                          : "not yet available"}
                   </span>
                 </span>
                 {token?.last_used_at ? <span className="dot dot--ok" /> : null}
@@ -158,6 +210,8 @@ export function Clients() {
               setTokens((prev) => [...prev.filter((t) => t.id !== info.id), info])
             }
           />
+        ) : oauthIssuer && selected.oauthConnect ? (
+          <OAuthReadyCard client={selected} issuer={oauthIssuer} />
         ) : (
           <NotYetCard client={selected} mode={mode} />
         )}

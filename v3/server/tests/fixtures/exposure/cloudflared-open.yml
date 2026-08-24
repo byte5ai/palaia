@@ -1,0 +1,6 @@
+tunnel: <your-tunnel-id>
+credentials-file: /etc/cloudflared/<your-tunnel-id>.json
+ingress:
+  - hostname: hub.example.com
+    service: http://127.0.0.1:8420
+  - service: http_status:404

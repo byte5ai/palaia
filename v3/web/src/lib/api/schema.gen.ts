@@ -90,14 +90,199 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Mode */
+        get: operations["get_mode_api_mode_get"];
+        put?: never;
+        /** Post Mode */
+        post: operations["post_mode_api_mode_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/exposure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Exposure */
+        get: operations["get_exposure_api_exposure_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/exposure/tunnel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Tunnel Guidance */
+        post: operations["post_tunnel_guidance_api_exposure_tunnel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/exposure/selftest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Selftest */
+        post: operations["post_selftest_api_exposure_selftest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ChecklistItemOut */
+        ChecklistItemOut: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /** Detail */
+            detail: string;
+            /** Auto */
+            auto: boolean;
+            /** Passed */
+            passed: boolean | null;
+        };
+        /** DetectionOut */
+        DetectionOut: {
+            /** Tailscale */
+            tailscale: boolean;
+            /** Cloudflared */
+            cloudflared: boolean;
+        };
+        /** ExposureOut */
+        ExposureOut: {
+            status: components["schemas"]["ModeStatusOut"];
+            detected: components["schemas"]["DetectionOut"];
+            /** Checklist */
+            checklist: components["schemas"]["ChecklistItemOut"][];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * ModeChangeRequest
+         * @description The wizard's "change mode" step. Every field is optional — send only
+         *     what you are changing; omitted fields keep their current value.
+         */
+        ModeChangeRequest: {
+            /** Mode */
+            mode?: ("locked" | "cloud" | "open") | null;
+            /** Host */
+            host?: string | null;
+            /** Auth Enabled */
+            auth_enabled?: boolean | null;
+            /** Oauth Enabled */
+            oauth_enabled?: boolean | null;
+            /** Oauth Issuer */
+            oauth_issuer?: string | null;
+            /** Public Url */
+            public_url?: string | null;
+            /** Tunnel */
+            tunnel?: ("tailscale" | "cloudflared" | "reverse_proxy") | null;
+        };
+        /** ModeStatusOut */
+        ModeStatusOut: {
+            /**
+             * Active Mode
+             * @enum {string}
+             */
+            active_mode: "locked" | "cloud" | "open";
+            /**
+             * Configured Mode
+             * @enum {string}
+             */
+            configured_mode: "locked" | "cloud" | "open";
+            /** Restart Required */
+            restart_required: boolean;
+            /** Host */
+            host: string;
+            /** Auth Enabled */
+            auth_enabled: boolean;
+            /** Oauth Enabled */
+            oauth_enabled: boolean;
+            /** Oauth Issuer */
+            oauth_issuer: string | null;
+            /** Public Url */
+            public_url: string | null;
+            /** Tunnel */
+            tunnel: string | null;
+        };
+        /** SelfTestOut */
+        SelfTestOut: {
+            /** Checked Url */
+            checked_url: string;
+            /** Reachable */
+            reachable: boolean;
+            /** Status Code */
+            status_code: number | null;
+            /** Latency Ms */
+            latency_ms: number | null;
+            /** Error */
+            error: string;
+        };
+        /** SelfTestRequest */
+        SelfTestRequest: {
+            /** Public Url */
+            public_url: string;
+        };
+        /** TunnelGuidanceOut */
+        TunnelGuidanceOut: {
+            /** Label */
+            label: string;
+            /** Config */
+            config: string;
+            /** Commands */
+            commands: string[];
+            /** Note */
+            note: string;
+        };
+        /** TunnelRequest */
+        TunnelRequest: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "tailscale" | "cloudflared";
+            /** Local Port */
+            local_port?: number | null;
+            /** Hostname */
+            hostname?: string | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -214,6 +399,145 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_mode_api_mode_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModeStatusOut"];
+                };
+            };
+        };
+    };
+    post_mode_api_mode_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModeChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModeStatusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_exposure_api_exposure_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExposureOut"];
+                };
+            };
+        };
+    };
+    post_tunnel_guidance_api_exposure_tunnel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TunnelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TunnelGuidanceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_selftest_api_exposure_selftest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelfTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelfTestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

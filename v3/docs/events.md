@@ -72,6 +72,7 @@ deliveries carry the same JSON as the POST body (§4).
 | Event | Origin | `data` fields | Fired when |
 |---|---|---|---|
 | `hub.started` | `hub` | `version`, `mode` | The hub's ASGI app finishes starting up. |
+| `hub.mode_changed` | `hub` | `from_mode`, `to_mode`, `restart_required`, `changed_keys` | The `POST /api/mode` exposure wizard endpoint (SPEC-205) accepts and persists an operating-mode/exposure change. `restart_required` is `true` whenever the change needs a hub restart to actually take effect (a mode/host/auth change) — a pure `exposure.public_url`/`exposure.tunnel` update needs none. |
 | `client.connected` | `auth` | `token_id`, `client_name`, `profile` | A client token's *first* successful verification this process (mirrors `TokenInfo.last_used_at`'s own "resets on restart" trade — see `palaia_hub.auth.store`). |
 | `memory.entry.created` | `vault` | `path`, `checksum`, `external`, `kind` | A new note lands in a vault (including a rename target, and a `capture` call's underlying write — see also `inbox.captured` below). |
 | `memory.entry.updated` | `vault` | `path`, `checksum`, `previous_checksum`, `external`, `kind` (also carries an `EntityRenamed`'s `previous_permalink`/`title`/`previous_title`/`rewritten_links` when the update was a rename) | A note's content or identity changes in place. |
