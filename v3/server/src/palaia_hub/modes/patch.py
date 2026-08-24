@@ -107,6 +107,41 @@ def _patch_nested_section(text: str, section: str, updates: dict[str, Any]) -> s
     return text[:start] + body + text[end:]
 
 
+def replace_config_section(path: Path, section: str, rendered_body: str) -> None:
+    """Replace a whole top-level section's body, preserving every other
+    line — including every comment outside that section — untouched.
+
+    Unlike :func:`patch_config_values` (one flat scalar key at a time),
+    this is for a section whose *value* is itself structured (SPEC-301's
+    ``gateway:`` list of profile/vault objects): PyYAML has no comment-
+    preserving way to patch inside a list, so the whole section is
+    round-tripped as one block instead. ``rendered_body`` is that block's
+    already-rendered text — every line indented, one trailing newline — the
+    same shape :func:`_patch_nested_section` above builds by hand for a
+    flat mapping; a caller with a structured value (e.g.
+    :func:`palaia_hub.gateway.settings_bridge.render_gateway_section`)
+    renders it via ``yaml.safe_dump`` instead.
+
+    A ``section:`` header with no existing body is added if the section is
+    entirely absent; an existing section's body (everything indented under
+    its header, comments included) is replaced outright — a section this
+    function writes is expected to be edited only through the API that
+    calls it, not by hand, so no attempt is made to preserve comments
+    *inside* it, only around it.
+    """
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    span = _section_span(text, section)
+    if span is None:
+        if text and not text.endswith("\n"):
+            text += "\n"
+        text += f"{section}:\n{rendered_body}"
+    else:
+        start, end = span
+        text = text[:start] + rendered_body + text[end:]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(path, text)
+
+
 def patch_config_values(path: Path, updates: dict[str, Any]) -> None:
     """Rewrite ``path`` with ``updates`` applied, preserving everything else.
 
@@ -134,4 +169,4 @@ def patch_config_values(path: Path, updates: dict[str, Any]) -> None:
     atomic_write_text(path, text)
 
 
-__all__ = ["patch_config_values"]
+__all__ = ["patch_config_values", "replace_config_section"]

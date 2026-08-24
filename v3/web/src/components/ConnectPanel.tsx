@@ -23,7 +23,7 @@
  * whichever path is actually in play by polling for a real first call
  * rather than faking one.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { CreatedToken, TokenInfo } from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
@@ -71,7 +71,7 @@ export function ConnectPanel({
   const [issuing, setIssuing] = useState(false);
   const [plaintext, setPlaintext] = useState<string | null>(null);
   const [token, setToken] = useState<TokenInfo | null>(null);
-  const [tab, setTab] = useState<"command" | "prompt">("command");
+  const [tab, setTab] = useState<"command" | "prompt" | "file">("command");
   const [error, setError] = useState<string | null>(null);
 
   // Look for an already-issued, non-revoked token for this client on
@@ -109,6 +109,24 @@ export function ConnectPanel({
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const profile = token?.profile ?? profileDraft;
   const connected = Boolean(token?.last_used_at);
+
+  // SPEC-306 deliverable #3: a one-click "download config file" tab, for
+  // the clients whose real install path is "put this file there" rather
+  // than "run this command" (their real formats — SPEC-209-corrected).
+  const configFile = client.configFile?.(origin, profile);
+  const configFileHref = useMemo(
+    () =>
+      configFile
+        ? URL.createObjectURL(new Blob([configFile.content], { type: configFile.mimeType }))
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [configFile?.content, configFile?.mimeType],
+  );
+  useEffect(() => {
+    return () => {
+      if (configFileHref) URL.revokeObjectURL(configFileHref);
+    };
+  }, [configFileHref]);
 
   async function issueToken() {
     setIssuing(true);
@@ -236,6 +254,16 @@ export function ConnectPanel({
                     >
                       Or paste a prompt
                     </button>
+                    {configFile ? (
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={tab === "file"}
+                        onClick={() => setTab("file")}
+                      >
+                        Or download the file
+                      </button>
+                    ) : null}
                   </div>
                 </div>
                 <CardBody className="stack stack--3">
@@ -246,6 +274,10 @@ export function ConnectPanel({
                         <CopyIcon className="icon--sm" />
                         Copy
                       </Button>
+                    </div>
+                  ) : tab === "file" && configFile ? (
+                    <div className="snippet snippet--block">
+                      <code>{configFile.content}</code>
                     </div>
                   ) : (
                     <div className="snippet snippet--block">
@@ -259,6 +291,16 @@ export function ConnectPanel({
                         Copy prompt
                       </Button>
                       <span className="t-xs t-muted">The agent configures itself and reports back.</span>
+                    </div>
+                  ) : null}
+                  {tab === "file" && configFile && configFileHref ? (
+                    <div className="row row--wrap">
+                      <a className="btn btn--sm" href={configFileHref} download={configFile.filename}>
+                        Download {configFile.filename}
+                      </a>
+                      <span className="t-xs t-muted">
+                        Save it where {client.name} reads its MCP config from.
+                      </span>
                     </div>
                   ) : null}
                   {plaintext ? (

@@ -11,7 +11,7 @@ import { SkillPanel } from "../components/SkillPanel";
 import { useToast } from "../components/Toast";
 import type { TokenInfo } from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
-import { CLIENTS, type HubMode, type NotYetClient } from "../lib/clients";
+import { CLIENTS, type DownloadClient, type HubMode, type NotYetClient } from "../lib/clients";
 import { CopyIcon, InfoIcon, WarningIcon } from "../shell/icons";
 
 /** SPEC-205 deliverable #3: sign-in is turned on and configured — the
@@ -48,6 +48,84 @@ function OAuthReadyCard({ client, issuer }: { client: NotYetClient; issuer: stri
           </Button>
         </div>
         <p className="t-sm t-muted">{connect.note}</p>
+      </div>
+    </div>
+  );
+}
+
+/** SPEC-306: the Claude Desktop "Download bundle" card. A real network
+ * fetch rather than a plain `<a href>` — so a hub with no auth method
+ * configured yet (the download endpoint's 501) shows a plain-language
+ * error here instead of the browser opening a blank tab, matching this
+ * page's "never a dead end" rule for every other client card. */
+function DownloadCard({ client, profile }: { client: DownloadClient; profile: string }) {
+  const toast = useToast();
+  const [downloading, setDownloading] = useState(false);
+  const Icon = client.icon;
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+
+  async function download() {
+    setDownloading(true);
+    try {
+      const response = await fetch(client.downloadUrl(origin, profile));
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        toast.show(
+          typeof body?.detail === "string"
+            ? body.detail
+            : `The hub answered ${response.status} — could not build the bundle.`,
+        );
+        return;
+      }
+      const blob = await response.blob();
+      const href = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = href;
+      link.download = "palaia.mcpb";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(href);
+    } catch {
+      toast.show("Could not reach the hub to build the bundle.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <div className="card__head">
+        <div>
+          <span className="card__subject">{client.name}</span>
+          <p className="t-xs t-muted">{client.subtitle}</p>
+        </div>
+      </div>
+      <div className="card__body stack">
+        <div className="numstep">
+          <span className="numstep__num numstep__num--on">1</span>
+          <div className="grow stack stack--3">
+            <div>
+              <p className="numstep__title">Download, then double-click the file</p>
+              <p className="t-sm t-muted">
+                Claude Desktop shows a settings form pre-filled with this hub&rsquo;s address and
+                a token made just for it — check it over, then install.
+              </p>
+            </div>
+            <div className="row row--wrap">
+              <Button variant="primary" onClick={download} disabled={downloading}>
+                <Icon className="icon--sm" style={{ marginRight: 4 }} />
+                {downloading ? "Building…" : "Download bundle"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="card__foot">
+        <span className="t-xs t-subtle">
+          A fresh bundle is built for every download — closing and reopening this page never
+          reuses an old one.
+        </span>
       </div>
     </div>
   );
@@ -172,9 +250,11 @@ export function Clients() {
                         : "token issued · waiting for first call"
                       : client.kind === "guided"
                         ? "not connected"
-                        : oauthIssuer && client.oauthConnect
-                          ? "ready to connect"
-                          : "not yet available"}
+                        : client.kind === "download"
+                          ? "one-click bundle"
+                          : oauthIssuer && client.oauthConnect
+                            ? "ready to connect"
+                            : "not yet available"}
                   </span>
                 </span>
                 {token?.last_used_at ? <span className="dot dot--ok" /> : null}
@@ -210,6 +290,8 @@ export function Clients() {
               setTokens((prev) => [...prev.filter((t) => t.id !== info.id), info])
             }
           />
+        ) : selected.kind === "download" ? (
+          <DownloadCard key={selected.id} client={selected} profile="default" />
         ) : oauthIssuer && selected.oauthConnect ? (
           <OAuthReadyCard client={selected} issuer={oauthIssuer} />
         ) : (

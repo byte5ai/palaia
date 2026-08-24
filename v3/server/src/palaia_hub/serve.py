@@ -15,8 +15,10 @@ a parallel stand-in of it.
 
 Every vault the registry already knows about gets a real
 :class:`~palaia_hub.index.VaultIndex` opened (SPEC-104's background embed
-worker included) and is mounted under
-:data:`~palaia_hub.dashboard_api.DEFAULT_GATEWAY_PROFILE` on a
+worker included) and is mounted under whichever profile(s)
+``config.yaml``'s ``gateway:`` section names — or the single
+:data:`~palaia_hub.gateway.config.DEFAULT_GATEWAY_PROFILE` profile over
+every vault, when that section is absent (SPEC-301) — on a
 :class:`~palaia_hub.gateway.dynamic.DynamicGateway`. A vault created later,
 through the wizard, is added to that same running gateway by
 :func:`palaia_hub.dashboard_api.build_dashboard_router`'s ``create_vault``
@@ -32,23 +34,27 @@ from typing import Any
 from fastapi import FastAPI
 
 from .app import create_app
-from .auth import TokenStore, build_profile_verifiers
+from .auth import TokenStore
 from .automations import AutomationOutbox, AutomationStore
 from .automations.outbox import OUTBOX_RELATIVE_PATH as AUTOMATIONS_OUTBOX_RELATIVE_PATH
 from .config import HubConfig, palaia_home
-from .curator import curator_profile
-from .curator.wiring import CuratorWiring, build_curator
-from .dashboard_api import DEFAULT_GATEWAY_PROFILE
+from .curator.wiring import STASH_FILENAME, CuratorWiring, build_curator
 from .events import EventBus, publish_from_hook
 from .events.schema import HubEventHook
 from .gateway import DynamicGateway, VaultService
-from .gateway.config import GatewayConfig, ProfileConfig, VaultMountConfig
+from .gateway.config import DEFAULT_GATEWAY_PROFILE, GatewayConfig, VaultMountConfig
+from .gateway.settings_bridge import apply_vault_overrides, resolve_full_gateway_profiles
 from .gateway.wiring import EngineVaultService
 from .hooks import HookStore
 from .index import VaultIndex
+from .market import CuratedIndexClient, ManualEntryStore, MarketService
 from .notifications import NotificationStore
 from .notifications.store import NOTIFICATIONS_RELATIVE_PATH
 from .oauth import AuthorizationServer
+from .oauth.verifier import build_profile_auth
+from .registry import RegistryClient
+from .stash.service import StashService
+from .stash.store import StashStore
 from .vault import EventBus as VaultEventBus
 from .vault import VaultEngine, VaultRegistry
 
@@ -68,6 +74,10 @@ class ProductionApp:
     #: ``curator.enabled`` is off. Its scheduler is started and stopped by
     #: the app's own lifespan; its stash handle is closed here.
     curator: CuratorWiring | None = None
+    #: The hub's one stash store (SPEC-202/301), backing both the
+    #: ``/mcp/stash`` tool family and, when the curator is on, its audit
+    #: trail. Closed at shutdown, same as ``registry``/``indexes``.
+    stash_store: StashStore | None = None
 
 
 def _index_event_hook(event_bus: EventBus, vault_key: str) -> HubEventHook:
@@ -133,6 +143,21 @@ async def build_production_app(
     automation_outbox = AutomationOutbox((home or palaia_home()) / AUTOMATIONS_OUTBOX_RELATIVE_PATH)
     notification_store = NotificationStore((home or palaia_home()) / NOTIFICATIONS_RELATIVE_PATH)
     event_bus = EventBus()
+
+    # SPEC-303: the marketplace — official registry + curated index +
+    # manual entries. Always assembled (like `hook_store` above); it costs
+    # nothing until a client actually calls `/api/market/*`, unlike the
+    # curator, which runs a model.
+    market_kwargs: dict[str, Any] = {}
+    if config.market.index_url:
+        market_kwargs["index_url"] = config.market.index_url
+    market_service = MarketService(
+        registry_client=RegistryClient(cache_dir=home / "registry_cache" if home else None),
+        curated_client=CuratedIndexClient(
+            last_good_path=home / "market_curated_index.json" if home else None, **market_kwargs
+        ),
+        manual_store=ManualEntryStore(home / "market_manual.sqlite3" if home else None),
+    )
     indexes: dict[str, VaultIndex] = {}
     vault_services: dict[str, VaultService] = {}
     mounts: list[VaultMountConfig] = []
@@ -153,11 +178,31 @@ async def build_production_app(
             )
         )
 
-    profiles = (
-        [ProfileConfig(path=DEFAULT_GATEWAY_PROFILE, vaults=[m.key for m in mounts])]
-        if mounts
-        else []
+    # SPEC-301: `gateway.vaults` identity overrides, then `gateway.profiles`
+    # (or the zero-config default: one `default` profile over every vault)
+    # plus the curator's own profile when it runs — the *same* resolution
+    # `palaia_hub.cli._maybe_oauth_server` uses to decide which resources
+    # the OAuth server issues tokens for, so the two never disagree about
+    # what this hub serves (deliverable #3's "one source of truth").
+    mounts = apply_vault_overrides(mounts, config.gateway)
+    profiles = resolve_full_gateway_profiles(
+        config, [m.key for m in mounts], default_profile=DEFAULT_GATEWAY_PROFILE
     )
+
+    # One stash for the whole hub (SPEC-202/301): backs the hub-wide
+    # `/mcp/stash` mount, any profile with `stash: true`, and — when the
+    # curator is on — its own audit trail, all through the one store so a
+    # client's `stash_list` and the curator's audit entries never race two
+    # SQLite connections on the same file.
+    # `palaia_home()` (not `Path.cwd()`): the same "PALAIA_HOME env, else
+    # the platform data dir" resolution every other store in this function
+    # already gets from its own constructor (`VaultRegistry`, `TokenStore`,
+    # `HookStore`) — `cli.py`'s `serve()` never passes `home` explicitly, so
+    # falling back to the process's current directory here would put
+    # `stash.db` wherever the daemon happened to be launched from.
+    stash_home = Path(home) if home is not None else palaia_home()
+    stash_store = StashStore(stash_home / STASH_FILENAME)
+    stash_service = StashService(stash_store)
 
     # SPEC-206: the curator gets its own profile over the same vaults —
     # narrowed to seven actions and guarded by its own middleware (see
@@ -172,26 +217,32 @@ async def build_production_app(
             mounts,
             home=home,
             publish=_curator_event_hook(event_bus),
+            stash_service=stash_service,
             subscribe=event_bus.on,
         )
-        profiles.append(curator_profile([m.key for m in mounts]))
 
     gateway_config = GatewayConfig(vaults=mounts, profiles=profiles)
     # `auth_enabled` (config.py): mandatory in cloud/open (already enforced
     # at config-load time), on by default in locked mode too — see that
-    # field's docstring. Building verifiers here, unconditionally on the
-    # flag rather than on `mode`, matches that documented behavior exactly.
-    token_verifiers = (
-        build_profile_verifiers([p.path for p in profiles], token_store)
-        if config.auth_enabled
-        else {}
+    # field's docstring. SPEC-301: combine it with the OAuth server's own
+    # JWT verifier (when one is running) via `build_profile_auth` — a
+    # profile accepts OAuth access tokens *and* SPEC-108 `plt_` tokens at
+    # once, instead of only ever the latter (the gap this closes: before
+    # this SPEC, a hub with `oauth.enabled: true` and `auth_enabled: false`
+    # mounted its gateway with no verifier at all).
+    token_verifiers = build_profile_auth(
+        [p.path for p in profiles],
+        key=oauth_server.key if oauth_server is not None else None,
+        resources=oauth_server.resources if oauth_server is not None else None,
+        token_store=token_store if config.auth_enabled else None,
     )
     dynamic_gateway = DynamicGateway(
         gateway_config,
         vault_services,
         mode=config.mode,
-        token_verifiers=token_verifiers,
+        token_verifiers=token_verifiers,  # type: ignore[arg-type]
         profile_middleware=curator.profile_middleware if curator else None,
+        stash_service=stash_service,
     )
 
     app = create_app(
@@ -203,11 +254,14 @@ async def build_production_app(
         indexes=indexes,
         event_bus=event_bus,
         oauth_server=oauth_server,
+        stash_service=stash_service,
         hook_store=hook_store,
+        market_service=market_service,
         curator=curator.scheduler if curator else None,
         automation_store=automation_store,
         automation_outbox=automation_outbox,
         notification_store=notification_store,
+        curator_wiring=curator,
         home=home,
     )
     return ProductionApp(
@@ -218,6 +272,7 @@ async def build_production_app(
         event_bus=event_bus,
         token_store=token_store,
         curator=curator,
+        stash_store=stash_store,
     )
 
 

@@ -1,0 +1,14 @@
+{
+  "name": "palaia-mcpb-build",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Builds and signs the palaia MCPB bundle (SPEC-306). Not published — a build-tooling directory, not a package.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "@anthropic-ai/mcpb": "2.1.2"
+  }
+}

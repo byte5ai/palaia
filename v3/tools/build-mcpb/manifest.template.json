@@ -1,0 +1,73 @@
+{
+  "manifest_version": "0.2",
+  "name": "palaia",
+  "display_name": "palaia memory hub",
+  "version": "0.0.0",
+  "description": "Connects Claude Desktop to your palaia memory hub.",
+  "long_description": "palaia-proxy is a thin bridge: it speaks stdio MCP to Claude Desktop on one side and streamable HTTP to your self-hosted palaia hub on the other, so every tool your hub exposes shows up here exactly as it does in any other client. Nothing runs locally beyond this bridge — your notes stay on your own hub.",
+  "author": {
+    "name": "palaia",
+    "url": "https://github.com/byte5ai/palaia"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/byte5ai/palaia"
+  },
+  "icon": "icon.png",
+  "server": {
+    "type": "node",
+    "entry_point": "proxy/palaia-proxy.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/proxy/palaia-proxy.mjs"],
+      "env": {
+        "PALAIA_HUB_URL": "${user_config.hub_url}",
+        "PALAIA_TOKEN": "${user_config.token}",
+        "PALAIA_OAUTH": "${user_config.oauth}",
+        "PALAIA_ISSUER": "${user_config.issuer}",
+        "PALAIA_PROFILE": "${user_config.profile}"
+      }
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=18"
+    }
+  },
+  "user_config": {
+    "hub_url": {
+      "type": "string",
+      "title": "Hub address",
+      "description": "The web address of your palaia hub's tool profile, e.g. https://hub.example.com/mcp/default/.",
+      "required": true
+    },
+    "token": {
+      "type": "string",
+      "title": "Access token",
+      "description": "Leave this blank if your hub uses sign-in instead of a token.",
+      "required": false,
+      "sensitive": true
+    },
+    "oauth": {
+      "type": "boolean",
+      "title": "Sign in instead of using a token",
+      "description": "Turn this on if your hub asked you to sign in rather than giving you a token.",
+      "required": false,
+      "default": false
+    },
+    "issuer": {
+      "type": "string",
+      "title": "Sign-in address",
+      "description": "Only needed when 'Sign in instead of using a token' is on.",
+      "required": false
+    },
+    "profile": {
+      "type": "string",
+      "title": "Tool profile",
+      "description": "Which set of tools this connection should see. Leave as 'default' unless your hub told you otherwise.",
+      "required": false,
+      "default": "default"
+    }
+  }
+}

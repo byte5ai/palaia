@@ -5,7 +5,7 @@ from pathlib import Path
 import yaml
 
 from palaia_hub.config import load_config
-from palaia_hub.modes.patch import patch_config_values
+from palaia_hub.modes.patch import patch_config_values, replace_config_section
 
 
 def test_top_level_key_is_replaced_in_place(tmp_path: Path) -> None:
@@ -98,3 +98,42 @@ def test_boolean_and_null_scalars_render_as_yaml_literals(tmp_path: Path) -> Non
     parsed = yaml.safe_load(text)
     assert parsed["auth_enabled"] is False
     assert parsed["exposure"]["tunnel"] is None
+
+
+def test_replace_config_section_creates_it_when_absent(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text("mode: locked\n", encoding="utf-8")
+
+    replace_config_section(path, "gateway", "  vaults: []\n  profiles: []\n")
+
+    parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert parsed["gateway"] == {"vaults": [], "profiles": []}
+    assert parsed["mode"] == "locked"
+
+
+def test_replace_config_section_replaces_it_wholesale(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        "mode: locked\n"
+        "gateway:\n"
+        "  vaults: []\n"
+        "  profiles:\n"
+        "    - path: old\n"
+        "      vaults: []\n"
+        "curator:\n"
+        "  enabled: false\n",
+        encoding="utf-8",
+    )
+
+    replace_config_section(
+        path, "gateway", "  vaults: []\n  profiles:\n  - path: new\n    vaults: []\n"
+    )
+    text = path.read_text(encoding="utf-8")
+    parsed = yaml.safe_load(text)
+
+    assert parsed["gateway"]["profiles"][0]["path"] == "new"
+    assert "path: old" not in text
+    # Everything outside the section, including the section after it, is
+    # left byte-for-byte alone.
+    assert "curator:\n  enabled: false\n" in text
+    assert "mode: locked\n" in text

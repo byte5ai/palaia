@@ -65,6 +65,16 @@ EventName = Literal[
     "stash.get",
     "stash.del",
     "stash.evicted",
+    # SPEC-301 (gateway config): one per runtime profile-editor mutation
+    # (create/edit/delete) through `POST/PATCH/DELETE /api/gateway/profiles`.
+    # Additive to the v1 vocabulary.
+    "gateway.profile.created",
+    "gateway.profile.updated",
+    "gateway.profile.deleted",
+    # SPEC-303: the curated marketplace index was (re)fetched — fresh or a
+    # refused/offline fallback, named honestly in the event's own data.
+    # Additive to the v1 vocabulary, same rule as the curator events above.
+    "market.index.updated",
     # SPEC-307 (automations): one event per delivery outcome. Additive to
     # the v1 vocabulary, same as the curator's events above. Guarded against
     # a loop by a fixed rule enforced in two places: an automation is

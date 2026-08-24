@@ -22,7 +22,7 @@ Public surface:
 from __future__ import annotations
 
 from .build import GatewayASGI, GatewayConfigError, build_gateway
-from .config import GatewayConfig, ProfileConfig, VaultMountConfig
+from .config import DEFAULT_GATEWAY_PROFILE, GatewayConfig, ProfileConfig, VaultMountConfig
 from .dynamic import DynamicGateway
 from .fake_vault import FakeVaultService
 from .stash_tools import (
@@ -45,6 +45,7 @@ from .vault_protocol import (
 from .wiring import EngineVaultService
 
 __all__ = [
+    "DEFAULT_GATEWAY_PROFILE",
     "INBOX_TOOL_ACTIONS",
     "MEMORY_TOOL_ACTIONS",
     "STASH_TOOL_ACTIONS",
