@@ -26,19 +26,20 @@ Three things, building on each other:
    palaia's canonical audience shape never satisfies, reporting a scary
    "Failed to connect" on a hub that is otherwise working fine. Also local.
 
-3. :func:`test_claude_code_cli_native_oauth_login_needs_a_preregistered_redirect_uri`
-   documents byte5ai/palaia#233, the actual blocker on the CLI's default,
-   zero-flag login path: Claude Code's real, published Client ID Metadata
-   Document registers a *portless* loopback ``redirect_uri``
-   (``http://localhost/callback``); the CLI's real authorize request always
-   carries an ephemeral port; palaia's redirect_uri matching is byte-exact
-   with no RFC 8252 §7.3 loopback-port exemption, so the match can never
-   succeed. It then proves the fix's absence is the *only* thing missing by
-   completing a real login anyway, using the CLI's own documented escape
-   hatch for authorization servers like this one (``--client-id`` pointing
-   at a DCR client this test pre-registers with a literal, fixed-port
-   redirect_uri, plus ``--callback-port`` naming that same port) — and
-   round-tripping a real tool call on the resulting stored credential.
+3. :func:`test_claude_code_cli_native_oauth_login_completes_on_the_default_path`
+   covers byte5ai/palaia#233 and its fix: Claude Code's real, published
+   Client ID Metadata Document registers a *portless* loopback
+   ``redirect_uri`` (``http://localhost/callback``) while the CLI's real
+   authorize request always carries an ephemeral port — which the
+   RFC 8252 §7.3 loopback-port exemption in
+   :func:`palaia_hub.oauth.cimd.match_redirect_uri` now accepts, so the
+   default, zero-flag ``claude mcp add`` + ``claude mcp login`` path
+   completes for real. The second half exercises the same login through
+   the CLI's ``--client-id``/``--callback-port`` escape hatch (a DCR
+   client this test pre-registers with a literal, fixed-port
+   redirect_uri) — the pre-fix workaround, kept green as the DCR-path
+   regression test — and round-trips a real tool call on the resulting
+   stored credential.
    Needs real outbound HTTPS to ``claude.ai`` (to fetch the real CIMD
    document) and ``FASTMCP_SSRF_TRUST_PROXY=1`` in an egress-proxied
    environment (see the hub fixture); skipped, not failed, when that
@@ -401,11 +402,11 @@ def test_claude_mcp_get_reports_failed_to_connect_before_any_token_exists(
         _run_claude(["mcp", "remove", server_name, "-s", "local"], cwd=work_dir)
 
 
-def test_claude_code_cli_native_oauth_login_needs_a_preregistered_redirect_uri(
+def test_claude_code_cli_native_oauth_login_completes_on_the_default_path(
     oauth_hub: int, tmp_path: Path
 ) -> None:
-    """byte5ai/palaia#233, in full: the default path fails, the documented
-    CLI escape hatch for this class of authorization server completes it.
+    """byte5ai/palaia#233, fixed: the default zero-flag CIMD login completes
+    (part 1), and the fixed-port DCR escape hatch keeps working (part 2).
     """
     if not _claude_ai_cimd_reachable():
         pytest.skip("no outbound network path to claude.ai's real CIMD document")
@@ -416,8 +417,10 @@ def test_claude_code_cli_native_oauth_login_needs_a_preregistered_redirect_uri(
     work_dir.mkdir()
     mcp_url = f"{base_url}/mcp/default/"
 
-    # --- part 1: the plain, zero-flag path Claude Code's default CIMD
-    # client hits the missing loopback-port exemption on every attempt.
+    # --- part 1: the plain, zero-flag path. Claude Code's default CIMD
+    # client registers portless loopback redirect URIs and presents an
+    # ephemeral port at request time — accepted by match_redirect_uri's
+    # RFC 8252 §7.3 loopback-port exemption, so the login completes.
     server_name = "palaia-spec209-cimd"
     add_result = _run_claude(
         ["mcp", "add", "--transport", "http", server_name, mcp_url, "--scope", "local"],
@@ -436,8 +439,14 @@ def test_claude_code_cli_native_oauth_login_needs_a_preregistered_redirect_uri(
         client = httpx.Client(follow_redirects=False, timeout=15.0)
         _csrf_and_sign_in(client, base_url)
         authorize_response = client.get(authorize_url)
-        assert authorize_response.status_code == 400, authorize_response.text
-        assert "invalid_redirect_uri" in authorize_response.text
+        assert authorize_response.status_code == 303, authorize_response.text
+        redirect_url = authorize_response.headers["location"]
+        assert "/callback" in redirect_url and "code=" in redirect_url, redirect_url
+
+        session.write_line(redirect_url)
+        final_output = session.read_until(re.compile(r"Authenticated with|error"), _LOGIN_TIMEOUT)
+        assert "Authenticated with" in final_output, final_output
+        assert session.process.wait(timeout=10) == 0
     finally:
         session.close()
         _run_claude(["mcp", "remove", server_name, "-s", "local"], cwd=work_dir)

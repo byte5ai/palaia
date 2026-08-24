@@ -250,22 +250,58 @@ class StaticCimdFetcher(CimdFetcher):
         return validate_metadata(self.documents[client_id], expected_client_id=client_id)
 
 
+#: Hosts the loopback-port exemption below applies to. The RFC names the
+#: loopback IP literals; ``localhost`` is included because real native
+#: clients (Claude Code's published CIMD document among them) register it,
+#: and :func:`validate_redirect_uri` already accepts it as loopback.
+_LOOPBACK_HOSTS = ("127.0.0.1", "::1", "localhost")
+
+
 def match_redirect_uri(registered: Sequence[str], presented: str) -> str:
-    """Return ``presented`` if it exactly matches a registered redirect URI.
+    """Return ``presented`` if it matches a registered redirect URI.
 
     Exact string comparison, deliberately: prefix or "same origin" matching
     is how open redirectors get built, and OAuth 2.1 §4.1.3 requires exact
     matching for this reason.
+
+    One spec-mandated carve-out (RFC 8252 §7.3, folded into OAuth 2.1
+    §10.3.3, issue #233): a native client redirecting to an ``http``
+    loopback URI picks an **ephemeral port at request time**, so for those
+    URIs — and only those — the port is ignored. Everything else must still
+    agree exactly: scheme (``http``), hostname (the same loopback name, no
+    cross-host equivalence), path, query, and no fragment. Without this,
+    a client whose registered loopback URI carries no port (Claude Code's
+    default CIMD registration) can never complete a login.
 
     Raises:
         OAuthError: ``invalid_redirect_uri`` on any mismatch.
     """
     if presented in registered:
         return presented
+    if _matches_loopback_port_variant(registered, presented):
+        return presented
     raise OAuthError(
         "invalid_redirect_uri",
         "the redirect_uri does not exactly match one this client registered.",
     )
+
+
+def _matches_loopback_port_variant(registered: Sequence[str], presented: str) -> bool:
+    """RFC 8252 §7.3: match an http-loopback URI ignoring only its port."""
+    parts = urlsplit(presented)
+    if parts.scheme != "http" or parts.hostname not in _LOOPBACK_HOSTS or parts.fragment:
+        return False
+    for candidate in registered:
+        known = urlsplit(candidate)
+        if (
+            known.scheme == "http"
+            and known.hostname == parts.hostname
+            and known.path == parts.path
+            and known.query == parts.query
+            and not known.fragment
+        ):
+            return True
+    return False
 
 
 __all__ = [

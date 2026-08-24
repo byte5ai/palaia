@@ -252,6 +252,19 @@ SSRF-hardened fetcher, so reconnects reuse one row instead of creating one.
 DCR remains as a fenced fallback — public clients only, PKCE mandatory, no way
 to request `client_credentials`, hard ceiling, GC'd.
 
+Two deployment notes from real-client validation (issue #233):
+
+- **Behind a mandatory egress proxy** (corporate networks, some container
+  platforms), set `FASTMCP_SSRF_TRUST_PROXY=1` for the hub process: fastmcp's
+  SSRF-safe fetcher resolves DNS and dials the target IP directly by design,
+  bypassing `HTTPS_PROXY` — without the variable, every CIMD-based login
+  (Claude Code, claude.ai, ChatGPT, Codex) fails at the metadata-fetch step.
+- Redirect-URI matching is byte-exact per OAuth 2.1 §4.1.3, with the one
+  carve-out that spec mandates (RFC 8252 §7.3): an `http` loopback redirect
+  URI matches its registered form ignoring only the port, because a native
+  client picks an ephemeral port at request time. Claude Code's default,
+  zero-flag `claude mcp login` depends on this.
+
 Access tokens are signed **ES256** rather than the Ed25519 the SPEC names:
 fastmcp 3.4.7's `JWTVerifier` — which deliverable #4 requires the resource
 side to use — accepts no `EdDSA`, and reimplementing JWT validation here is
