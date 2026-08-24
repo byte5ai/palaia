@@ -82,6 +82,23 @@ deliveries carry the same JSON as the POST body (§4).
 | `index.embed_backlog_drained` | `index` | `embedded` | The embed backlog reaches zero after a batch of work (not fired on every batch — only once the backlog is actually caught up). |
 | `doctor.finding` | `index` | `code`, `severity`, `detail` | One `verify()` finding — fired once per finding, not once per `verify()` call. |
 
+### 3.1 Curator events (SPEC-206, additive)
+
+`origin` is `curator` for all of them. Added after v1 shipped, which is
+exactly what the evolution rule in §5 is for: a consumer that has never heard
+of them ignores them.
+
+| Event | `data` | Fires when |
+|---|---|---|
+| `curator.capture.ingested` | the capture record: `capture_id`, `permalink`, `outcome`, `targets`, `attempts`, `reason`, `self_reported`, `duration_seconds` | A real vault note is verified to carry a capture's provenance line — the capture is filed and its `inbox/` entry removed. |
+| `curator.capture.needs_review` | same shape | Only a `review/` proposal carries it: a human decision is pending, and the capture is done. |
+| `curator.capture.unverified` | same shape | Nothing in the vault carries it. The capture stays, with a `- [curation-failed]` line appended. Also raises a `doctor.finding`. |
+| `curator.capture.retired` | same shape (`retired: true`) | The retry cap is reached; the capture is stamped `status: curation-failed` and will not be retried. |
+| `curator.run.finished` | `vault`, `pending`, `sessions`, `records`, `summary` | One curation pass over one vault ends (including a pass that found an empty inbox). |
+| `curator.proposal.applied` | `permalink`, `status`, `operations`, `applied`, `reason` | An approved proposal's plan ran to completion. |
+| `curator.proposal.apply_failed` | same shape | An operation failed mid-plan; the proposal is stamped `apply-failed` and a `doctor.finding` is raised. |
+| `curator.proposal.manual` | same shape | The proposal carries no executable plan (or an unparseable one) — a human has to apply it. |
+
 `health` also travels the same bus and wire format (SSE only; it is not a
 webhook-filterable v1 name — see §6) — it is the dashboard's periodic
 liveness snapshot, carried over unchanged from before this SPEC.

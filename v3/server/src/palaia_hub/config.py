@@ -19,6 +19,24 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 APP_NAME = "palaia-hub"
 
+# The default curator runner command, duplicated here as a plain tuple rather
+# than imported from palaia_hub.curator.session: this module must stay
+# importable without pulling in the curator package (which imports the
+# gateway, which imports fastmcp) — config load happens first, always.
+# palaia_hub.curator.session.DEFAULT_RUNNER_COMMAND is the same list, and a
+# test asserts the two never drift apart.
+_DEFAULT_CURATOR_COMMAND: tuple[str, ...] = (
+    "claude",
+    "-p",
+    "--mcp-config",
+    "{mcp_config}",
+    "--strict-mcp-config",
+    "--allowed-tools",
+    "{allowed_tools}",
+    "--output-format",
+    "text",
+)
+
 _ENV_PREFIX = "PALAIA_"
 
 # The config keys that may be overridden by PALAIA_<KEY> env vars. Kept as an
@@ -126,6 +144,45 @@ oauth:
   # MCP profile paths this server issues audience-scoped tokens for. Must
   # match the gateway's profile paths.
   profiles: []
+
+# The curator (SPEC-206): the background job that turns inbox captures into
+# well-placed vault notes. Off by default — it runs a model, which costs
+# money. Adding knowledge is autonomous; rewriting, merging or retiring an
+# existing note is never autonomous, it becomes a proposal in review/ that
+# you approve by flipping its `status` to `approved`.
+curator:
+  enabled: false
+  # The command that runs one curation session. The prompt arrives on the
+  # command's stdin; {mcp_config}, {allowed_tools}, {endpoint}, {vault} and
+  # {capture_id} are filled in per session. Any CLI that reads a prompt from
+  # stdin works here — this is not tied to one provider.
+  runner_command:
+    - claude
+    - -p
+    - --mcp-config
+    - '{mcp_config}'
+    - --strict-mcp-config
+    - --allowed-tools
+    - '{allowed_tools}'
+    - --output-format
+    - text
+  # Seconds one session may take before it is killed.
+  session_timeout: 300
+  # Wait this long after a capture arrives, so a burst becomes one pass.
+  debounce_seconds: 30
+  # Fallback pass interval, for captures written into inbox/ by hand.
+  interval_seconds: 900
+  # Attempts before a capture is left alone with `status: curation-failed`.
+  max_attempts: 3
+  # Apply approved proposals in the same pass (no model is ever involved in
+  # applying one). Turn off to apply them yourself with
+  # `palaia-hub curator apply`.
+  auto_apply: true
+  # The curator's own token, from `palaia-hub curator token`. Prefer the
+  # PALAIA_CURATOR_TOKEN environment variable over writing it here.
+  # token:
+  # Where a session reaches this hub. Defaults to http://<host>:<port>.
+  # endpoint:
 """
 
 
@@ -244,6 +301,53 @@ class OAuthSettings(BaseModel):
     profiles: list[str] = Field(default_factory=list)
 
 
+class CuratorSettings(BaseModel):
+    """The curator's settings (SPEC-206).
+
+    ``enabled`` is off by default: the curator spends money. Turning it on
+    mounts the curator MCP profile (``/mcp/curator``, narrowed and guarded —
+    see :mod:`palaia_hub.curator.profile`) and starts the scheduled runner.
+
+    ``runner_command`` is the provider-neutral seam the SPEC requires: the
+    default is a headless ``claude -p`` reading its prompt from stdin, but
+    any CLI that does the same works. Placeholders ``{mcp_config}``,
+    ``{allowed_tools}``, ``{endpoint}``, ``{vault}`` and ``{capture_id}`` are
+    substituted per session (:class:`palaia_hub.curator.session.
+    SubprocessSessionRunner`).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    #: The command that runs one curation session. See the class docstring.
+    runner_command: list[str] = Field(
+        default_factory=lambda: list(_DEFAULT_CURATOR_COMMAND)
+    )
+    #: Seconds a single session may take before it is killed.
+    session_timeout: float = Field(default=300.0, gt=0.0, le=3600.0)
+    #: Seconds to wait after an ``inbox.captured`` event, so a burst of
+    #: captures coalesces into one curation pass.
+    debounce_seconds: float = Field(default=30.0, ge=0.0, le=3600.0)
+    #: Seconds between fallback passes when no event arrives (captures
+    #: written into ``inbox/`` by hand produce no event).
+    interval_seconds: float = Field(default=900.0, ge=60.0)
+    #: Attempts before a capture is retired with ``status: curation-failed``.
+    max_attempts: int = Field(default=3, ge=1, le=10)
+    #: Apply approved proposals automatically in the same pass. The apply
+    #: path has no model in it (SPEC-206 rule 4), so this only decides *when*
+    #: an approved proposal is executed, never *whether* a human approved it.
+    auto_apply: bool = True
+    #: The curator token (profile ``curator``). Prefer the
+    #: ``PALAIA_CURATOR_TOKEN`` environment variable — a token in a config
+    #: file is a secret in a config file. Mint one with
+    #: ``palaia-hub curator token``.
+    token: str | None = None
+    #: The base URL a curation session reaches this hub at. Defaults to
+    #: ``http://<host>:<port>`` from the settings above, which is right for
+    #: the normal case (the session runs on the same machine as the hub).
+    endpoint: str | None = None
+
+
 class HubConfig(BaseModel):
     """Validated hub configuration, merged from defaults/file/env."""
 
@@ -258,6 +362,15 @@ class HubConfig(BaseModel):
     auth_enabled: bool = True
     recall: RecallSettings = Field(default_factory=RecallSettings)
     oauth: OAuthSettings = Field(default_factory=OAuthSettings)
+    curator: CuratorSettings = Field(default_factory=CuratorSettings)
+
+    def curator_endpoint(self) -> str:
+        """The base URL a curation session reaches this hub at (SPEC-206)."""
+        configured = (self.curator.endpoint or "").strip().rstrip("/")
+        if configured:
+            return configured
+        host = "127.0.0.1" if self.host in ("0.0.0.0", "::") else self.host
+        return f"http://{host}:{self.port}"
 
     @model_validator(mode="after")
     def _check_operating_mode_policy(self) -> HubConfig:
