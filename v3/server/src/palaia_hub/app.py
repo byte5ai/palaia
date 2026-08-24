@@ -457,12 +457,12 @@ def create_app(
                 token_store=token_store,
             )
         )
-        # SPEC-306: the Claude Desktop connect-page "Download bundle"
-        # button. Mounted whenever there is a vault registry to compute
-        # scopes from, same gating as the dashboard router above — the
-        # route itself answers 501 if neither auth path (token_store,
-        # oauth_server) is configured, rather than 404ing as if the
-        # feature did not exist.
+    # SPEC-306: the Claude Desktop connect-page "Download bundle" button.
+    # Mounted whenever there is a vault registry to compute scopes from,
+    # same gating as the dashboard router above — the route itself answers
+    # 501 if neither auth path (token_store, oauth_server) is configured,
+    # rather than 404ing as if the feature did not exist.
+    if vault_registry is not None:
         app.include_router(
             build_mcpb_router(
                 vault_registry=vault_registry,
