@@ -8,6 +8,7 @@ import {
   HomeIcon,
   InboxIcon,
   LinkIcon,
+  MarketplaceIcon,
   ReviewIcon,
   SettingsIcon,
   ToolsIcon,
@@ -50,6 +51,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
     items: [
       { path: "/clients", label: "Clients", icon: ClientsIcon },
       { path: "/tools", label: "Tools & skills", icon: ToolsIcon },
+      { path: "/marketplace", label: "Marketplace", icon: MarketplaceIcon },
     ],
   },
   {

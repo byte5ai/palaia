@@ -2,7 +2,13 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ToastProvider } from "../components/Toast";
-import type { GatewayProfile, GatewayTool, GatewayVaultIdentity, VaultSummary } from "../lib/api/client";
+import type {
+  GatewayProfile,
+  GatewayTool,
+  GatewayUpstream,
+  GatewayVaultIdentity,
+  VaultSummary,
+} from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
 import { ToolProfiles } from "./ToolProfiles";
 
@@ -24,6 +30,7 @@ const DEFAULT_PROFILE: GatewayProfile = {
   hidden_tools: [],
   semantic_routing: false,
   tool_count: 15,
+  upstreams: [],
   managed: false,
 };
 
@@ -35,7 +42,24 @@ const CURATOR_PROFILE: GatewayProfile = {
   hidden_tools: [],
   semantic_routing: false,
   tool_count: 15,
+  upstreams: [],
   managed: true,
+};
+
+const FETCH_UPSTREAM: GatewayUpstream = {
+  key: "fetch",
+  kind: "stdio",
+  display_name: "Fetch",
+  namespace: "fetch",
+  enabled: true,
+  target: "docker run --rm -i ghcr.io/palaia/addon-fetch:1.0.0",
+  profiles: [],
+  up: true,
+  status: "Connected — 1 tool.",
+  checked_at: 1_700_000_000,
+  tools: ["fetch"],
+  secret_names: [],
+  tool_renames: {},
 };
 
 const WORK_TOOLS: GatewayTool[] = [
@@ -69,6 +93,7 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     vi.spyOn(api, "listGatewayProfiles").mockRejectedValue(NOT_MOUNTED);
     vi.spyOn(api, "listGatewayVaults").mockResolvedValue([]);
     vi.spyOn(api, "listVaults").mockResolvedValue([]);
+    vi.spyOn(api, "listGatewayUpstreams").mockResolvedValue([]);
 
     mount();
 
@@ -81,6 +106,7 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([DEFAULT_PROFILE]);
     vi.spyOn(api, "listGatewayVaults").mockResolvedValue([WORK_VAULT_IDENTITY]);
     vi.spyOn(api, "listVaults").mockResolvedValue([WORK_VAULT]);
+    vi.spyOn(api, "listGatewayUpstreams").mockResolvedValue([]);
 
     mount();
 
@@ -92,6 +118,7 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([CURATOR_PROFILE]);
     vi.spyOn(api, "listGatewayVaults").mockResolvedValue([WORK_VAULT_IDENTITY]);
     vi.spyOn(api, "listVaults").mockResolvedValue([WORK_VAULT]);
+    vi.spyOn(api, "listGatewayUpstreams").mockResolvedValue([]);
 
     mount();
 
@@ -103,6 +130,7 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     const listSpy = vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([]);
     vi.spyOn(api, "listGatewayVaults").mockResolvedValue([WORK_VAULT_IDENTITY]);
     vi.spyOn(api, "listVaults").mockResolvedValue([WORK_VAULT]);
+    vi.spyOn(api, "listGatewayUpstreams").mockResolvedValue([]);
     const createSpy = vi.spyOn(api, "createGatewayProfile").mockResolvedValue({
       ...DEFAULT_PROFILE,
       path: "codex",
@@ -122,8 +150,35 @@ describe("ToolProfiles screen (SPEC-305)", () => {
 
     await waitFor(() =>
       expect(createSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ path: "codex", vaults: ["work"] }),
+        expect.objectContaining({ path: "codex", vaults: ["work"], upstreams: [] }),
       ),
+    );
+  });
+
+  it("assigns a connected tool to a new profile through its checkbox", async () => {
+    const listSpy = vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([]);
+    vi.spyOn(api, "listGatewayVaults").mockResolvedValue([WORK_VAULT_IDENTITY]);
+    vi.spyOn(api, "listVaults").mockResolvedValue([WORK_VAULT]);
+    vi.spyOn(api, "listGatewayUpstreams").mockResolvedValue([FETCH_UPSTREAM]);
+    const createSpy = vi.spyOn(api, "createGatewayProfile").mockResolvedValue({
+      ...DEFAULT_PROFILE,
+      path: "codex",
+      upstreams: ["fetch"],
+    });
+
+    mount();
+    await screen.findByText(/no tool profiles yet/i);
+
+    fireEvent.click(screen.getByRole("button", { name: /new tool profile/i }));
+    fireEvent.change(screen.getByLabelText(/address segment/i), {
+      target: { value: "codex" },
+    });
+    fireEvent.click(await screen.findByLabelText(/^fetch/i));
+    listSpy.mockResolvedValue([{ ...DEFAULT_PROFILE, path: "codex", upstreams: ["fetch"] }]);
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+
+    await waitFor(() =>
+      expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({ upstreams: ["fetch"] })),
     );
   });
 
@@ -131,6 +186,7 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([DEFAULT_PROFILE]);
     vi.spyOn(api, "listGatewayVaults").mockResolvedValue([WORK_VAULT_IDENTITY]);
     vi.spyOn(api, "listVaults").mockResolvedValue([WORK_VAULT]);
+    vi.spyOn(api, "listGatewayUpstreams").mockResolvedValue([FETCH_UPSTREAM]);
     vi.spyOn(api, "listGatewayProfileTools").mockResolvedValue(WORK_TOOLS);
     const updateSpy = vi.spyOn(api, "updateGatewayProfile").mockResolvedValue({
       ...DEFAULT_PROFILE,
@@ -152,10 +208,35 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     );
   });
 
+  it("assigns an already-connected tool to an existing profile through its checkbox", async () => {
+    vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([DEFAULT_PROFILE]);
+    vi.spyOn(api, "listGatewayVaults").mockResolvedValue([WORK_VAULT_IDENTITY]);
+    vi.spyOn(api, "listVaults").mockResolvedValue([WORK_VAULT]);
+    vi.spyOn(api, "listGatewayUpstreams").mockResolvedValue([FETCH_UPSTREAM]);
+    vi.spyOn(api, "listGatewayProfileTools").mockResolvedValue(WORK_TOOLS);
+    const updateSpy = vi.spyOn(api, "updateGatewayProfile").mockResolvedValue({
+      ...DEFAULT_PROFILE,
+      upstreams: ["fetch"],
+    });
+
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: /^edit$/i }));
+    fireEvent.click(await screen.findByLabelText(/^fetch/i));
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(updateSpy).toHaveBeenCalledWith(
+        "default",
+        expect.objectContaining({ upstreams: ["fetch"] }),
+      ),
+    );
+  });
+
   it("cannot delete the default profile", async () => {
     vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([DEFAULT_PROFILE]);
     vi.spyOn(api, "listGatewayVaults").mockResolvedValue([WORK_VAULT_IDENTITY]);
     vi.spyOn(api, "listVaults").mockResolvedValue([WORK_VAULT]);
+    vi.spyOn(api, "listGatewayUpstreams").mockResolvedValue([]);
 
     mount();
 
@@ -166,6 +247,7 @@ describe("ToolProfiles screen (SPEC-305)", () => {
   it("renames a vault's tool and reports a sanitized value", async () => {
     vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([DEFAULT_PROFILE]);
     vi.spyOn(api, "listVaults").mockResolvedValue([WORK_VAULT]);
+    vi.spyOn(api, "listGatewayUpstreams").mockResolvedValue([]);
     const listVaultsSpy = vi
       .spyOn(api, "listGatewayVaults")
       .mockResolvedValue([WORK_VAULT_IDENTITY]);
@@ -213,6 +295,7 @@ describe("ToolProfiles screen copy — no jargon in the surface (system.md §3 r
     vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([DEFAULT_PROFILE]);
     vi.spyOn(api, "listGatewayVaults").mockResolvedValue([WORK_VAULT_IDENTITY]);
     vi.spyOn(api, "listVaults").mockResolvedValue([WORK_VAULT]);
+    vi.spyOn(api, "listGatewayUpstreams").mockResolvedValue([FETCH_UPSTREAM]);
     vi.spyOn(api, "listGatewayProfileTools").mockResolvedValue(WORK_TOOLS);
 
     mount();

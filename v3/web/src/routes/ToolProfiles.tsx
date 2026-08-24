@@ -22,6 +22,7 @@ import {
 import type {
   GatewayProfile,
   GatewayTool,
+  GatewayUpstream,
   GatewayVaultIdentity,
   VaultSummary,
 } from "../lib/api/client";
@@ -101,20 +102,60 @@ function ToolVisibilityList({
   );
 }
 
+/** SPEC-304 follow-up: the checkbox section next to the vault list — an
+ * installed marketplace add-on (or any server connected under Tools &
+ * skills) becomes usable by a profile here, the same way a vault does.
+ * "Connected tools" rather than "upstream servers": the latter is this
+ * codebase's own internal name for the thing, not a word a person reading
+ * this screen needs. */
+function ConnectedToolsList({
+  upstreams,
+  selected,
+  onToggle,
+}: {
+  upstreams: GatewayUpstream[];
+  selected: Set<string>;
+  onToggle: (key: string, on: boolean) => void;
+}) {
+  if (upstreams.length === 0) {
+    return <span className="t-xs t-muted">No external tools connected yet.</span>;
+  }
+  return (
+    <div className="stack stack--2">
+      {upstreams.map((upstream) => (
+        <label key={upstream.key} className="row" style={{ gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={selected.has(upstream.key)}
+            onChange={(event) => onToggle(upstream.key, event.target.checked)}
+          />
+          <span className="t-sm">{upstream.display_name}</span>
+          <span className="t-xs t-subtle">{upstream.up ? "connected" : "not responding"}</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 function ProfileEditForm({
   profile,
   vaults,
+  upstreams,
   onSaved,
   onCancel,
 }: {
   profile: GatewayProfile;
   vaults: VaultSummary[];
+  upstreams: GatewayUpstream[];
   onSaved: () => void;
   onCancel: () => void;
 }) {
   const toast = useToast();
   const [label, setLabel] = useState(profile.label ?? "");
   const [selectedVaults, setSelectedVaults] = useState<Set<string>>(new Set(profile.vaults));
+  const [selectedUpstreams, setSelectedUpstreams] = useState<Set<string>>(
+    new Set(profile.upstreams),
+  );
   const [stash, setStash] = useState(profile.stash);
   const [semanticRouting, setSemanticRouting] = useState(profile.semantic_routing);
   const [tools, setTools] = useState<GatewayTool[] | null>(null);
@@ -146,6 +187,15 @@ function ProfileEditForm({
     });
   }
 
+  function toggleUpstream(key: string, on: boolean) {
+    setSelectedUpstreams((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }
+
   function toggleTool(name: string, visible: boolean) {
     setHidden((prev) => {
       const next = new Set(prev);
@@ -165,6 +215,7 @@ function ProfileEditForm({
         stash,
         hidden_tools: [...hidden],
         semantic_routing: semanticRouting,
+        upstreams: [...selectedUpstreams],
       });
       toast.show(`${profile.path} saved.`);
       onSaved();
@@ -203,6 +254,15 @@ function ProfileEditForm({
             <span className="t-xs t-muted">No vaults exist yet.</span>
           ) : null}
         </div>
+      </div>
+
+      <div className="stack stack--2">
+        <span className="field__label">Connected tools this profile can use</span>
+        <ConnectedToolsList
+          upstreams={upstreams}
+          selected={selectedUpstreams}
+          onToggle={toggleUpstream}
+        />
       </div>
 
       <SwitchRow
@@ -306,10 +366,12 @@ function DeleteProfileControl({
 function ProfileCard({
   profile,
   vaults,
+  upstreams,
   onChanged,
 }: {
   profile: GatewayProfile;
   vaults: VaultSummary[];
+  upstreams: GatewayUpstream[];
   onChanged: () => void;
 }) {
   const toast = useToast();
@@ -360,6 +422,7 @@ function ProfileCard({
           <ProfileEditForm
             profile={profile}
             vaults={vaults}
+            upstreams={upstreams}
             onSaved={() => {
               setEditing(false);
               onChanged();
@@ -388,10 +451,12 @@ function ProfileCard({
 
 function CreateProfileCard({
   vaults,
+  upstreams,
   existingPaths,
   onCreated,
 }: {
   vaults: VaultSummary[];
+  upstreams: GatewayUpstream[];
   existingPaths: Set<string>;
   onCreated: () => void;
 }) {
@@ -400,6 +465,7 @@ function CreateProfileCard({
   const [path, setPath] = useState("");
   const [label, setLabel] = useState("");
   const [selectedVaults, setSelectedVaults] = useState<Set<string>>(new Set());
+  const [selectedUpstreams, setSelectedUpstreams] = useState<Set<string>>(new Set());
   const [stash, setStash] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -424,6 +490,15 @@ function CreateProfileCard({
     });
   }
 
+  function toggleUpstream(key: string, on: boolean) {
+    setSelectedUpstreams((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }
+
   async function create() {
     if (!cleanPath || pathTaken) return;
     setCreating(true);
@@ -434,12 +509,14 @@ function CreateProfileCard({
         label: label.trim() || null,
         vaults: [...selectedVaults],
         stash,
+        upstreams: [...selectedUpstreams],
       });
       toast.show(`${cleanPath} created.`);
       setOpen(false);
       setPath("");
       setLabel("");
       setSelectedVaults(new Set());
+      setSelectedUpstreams(new Set());
       setStash(false);
       onCreated();
     } catch (err) {
@@ -479,6 +556,14 @@ function CreateProfileCard({
               <span className="t-sm">{vault.key}</span>
             </label>
           ))}
+        </div>
+        <div className="stack stack--2">
+          <span className="field__label">Connected tools</span>
+          <ConnectedToolsList
+            upstreams={upstreams}
+            selected={selectedUpstreams}
+            onToggle={toggleUpstream}
+          />
         </div>
         <SwitchRow
           label="Also carry the built-in stash tools"
@@ -596,6 +681,7 @@ export function ToolProfiles() {
   const [profiles, setProfiles] = useState<GatewayProfile[] | null>(null);
   const [vaultIdentities, setVaultIdentities] = useState<GatewayVaultIdentity[]>([]);
   const [vaultSummaries, setVaultSummaries] = useState<VaultSummary[]>([]);
+  const [upstreams, setUpstreams] = useState<GatewayUpstream[]>([]);
   const [available, setAvailable] = useState(true);
 
   function refresh() {
@@ -610,6 +696,7 @@ export function ToolProfiles() {
       });
     api.listGatewayVaults().then(setVaultIdentities).catch(() => setVaultIdentities([]));
     api.listVaults().then(setVaultSummaries).catch(() => setVaultSummaries([]));
+    api.listGatewayUpstreams().then(setUpstreams).catch(() => setUpstreams([]));
   }
 
   useEffect(refresh, []);
@@ -638,6 +725,7 @@ export function ToolProfiles() {
         </p>
         <CreateProfileCard
           vaults={vaultSummaries}
+          upstreams={upstreams}
           existingPaths={new Set((profiles ?? []).map((p) => p.path))}
           onCreated={refresh}
         />
@@ -655,6 +743,7 @@ export function ToolProfiles() {
               key={profile.path}
               profile={profile}
               vaults={vaultSummaries}
+              upstreams={upstreams}
               onChanged={refresh}
             />
           ))}

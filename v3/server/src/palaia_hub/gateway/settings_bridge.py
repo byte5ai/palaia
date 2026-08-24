@@ -23,13 +23,14 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import yaml
 
-from ..config import GatewaySettings, HubConfig
+from ..config import GatewayProfileSettings, GatewaySettings, HubConfig
 from ..modes.patch import replace_config_section
 from ..upstream.models import UpstreamConfig
-from .config import ProfileConfig, VaultMountConfig
+from .config import CURATOR_PROFILE_PATH, ProfileConfig, VaultMountConfig
 
 
 class GatewaySettingsError(ValueError):
@@ -195,6 +196,43 @@ def persist_gateway_settings(path: Path, settings: GatewaySettings) -> None:
     replace_config_section(path, "gateway", render_gateway_section(settings))
 
 
+def snapshot_gateway_settings(dynamic_gateway: Any, config: HubConfig) -> GatewaySettings:
+    """The gateway's current live shape, in ``config.yaml``'s own
+    :class:`GatewaySettings` schema — the "live-then-persisted" snapshot
+    every REST surface that mutates the gateway writes back after applying
+    a change (SPEC-301's own profile CRUD builds this inline; SPEC-304's
+    marketplace install flow reuses this shared version instead of a third
+    hand-copy — see that module for why). ``dynamic_gateway`` is typed
+    ``Any`` here rather than
+    :class:`~palaia_hub.gateway.dynamic.DynamicGateway` to avoid a circular
+    import (``dynamic.py`` itself imports this module); only ``.config`` is
+    ever read off it.
+
+    The curator's own profile is excluded (synthesized from ``curator:``,
+    never itself persisted); every per-vault identity override already in
+    ``config.gateway.vaults`` is carried through untouched, since this
+    function never sees a vault edit.
+    """
+    existing_vaults = config.gateway.vaults if config.gateway is not None else []
+    profiles = [p for p in dynamic_gateway.config.profiles if p.path != CURATOR_PROFILE_PATH]
+    return GatewaySettings(
+        vaults=existing_vaults,
+        profiles=[
+            GatewayProfileSettings(
+                path=p.path,
+                label=p.label,
+                vaults=list(p.vaults),
+                stash=p.stash,
+                hidden_tools=list(p.hidden_tools),
+                semantic_routing=p.semantic_routing,
+                upstreams=list(p.upstreams),
+            )
+            for p in profiles
+        ],
+        upstreams=list(dynamic_gateway.config.upstreams),
+    )
+
+
 __all__ = [
     "GatewaySettingsError",
     "apply_vault_overrides",
@@ -203,4 +241,5 @@ __all__ = [
     "resolve_full_gateway_profiles",
     "resolve_profiles",
     "resolve_upstreams",
+    "snapshot_gateway_settings",
 ]

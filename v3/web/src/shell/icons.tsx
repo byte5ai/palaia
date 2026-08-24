@@ -192,3 +192,14 @@ export function WarningIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+/** SPEC-304: the marketplace nav item — a storefront glyph. */
+export function MarketplaceIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M4 9.5 5.5 4h13L20 9.5" />
+      <path d="M4 9.5h16V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" />
+      <path d="M9 9.5a3 3 0 0 0 6 0" />
+    </Icon>
+  );
+}

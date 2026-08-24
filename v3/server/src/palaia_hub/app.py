@@ -43,12 +43,19 @@ from .events import (
 from .gateway import DynamicGateway, GatewayASGI, VaultService
 from .gateway.api import build_gateway_profiles_router
 from .gateway.apps.hub_status_app import HubStatusDeps, build_hub_status_server
+from .gateway.apps.market_app import MarketAppDeps, build_market_server
 from .gateway.stash_tools import build_stash_gateway
 from .gateway.wiring import EngineVaultService
 from .hooks import OUTBOX_RELATIVE_PATH, HookDispatcher, HookOutbox, HookStore, build_hooks_router
 from .index import VaultIndex
 from .logging import setup_logging
-from .market import MarketService, build_market_router
+from .market import (
+    InstallService,
+    MarketService,
+    build_market_install_router,
+    build_market_router,
+    wire_market_index_updates,
+)
 from .mcpb import build_mcpb_router
 from .modes import AuthRateLimitMiddleware, ModeAuditLog, build_modes_router
 from .notifications import NotificationStore, build_notifications_router
@@ -87,6 +94,7 @@ def create_app(
     oauth_server: AuthorizationServer | None = None,
     stash_service: StashService | None = None,
     market_service: MarketService | None = None,
+    install_service: InstallService | None = None,
     hook_store: HookStore | None = None,
     hook_outbox: HookOutbox | None = None,
     curator: CuratorScheduler | None = None,
@@ -192,7 +200,21 @@ def create_app(
             mounts ``/api/market/*`` and wires its
             ``market.index.updated`` event onto ``event_bus``. Omitted
             (the default), the hub runs with no marketplace surface at
-            all, same as before this parameter existed.
+            all, same as before this parameter existed. Also mounts the
+            marketplace MCP App at ``/mcp/market`` (SPEC-304 deliverable
+            #5) — independent of ``install_service``: browsing needs only
+            this.
+        install_service: marketplace install/lifecycle flows (SPEC-304
+            deliverables #1/#3/#4 —
+            :class:`~palaia_hub.market.install.InstallService`). Given
+            together with ``market_service`` and ``event_bus``, mounts the
+            consent/install/installed-add-on REST surface under
+            ``/api/market/*`` (alongside ``market_service``'s own read-only
+            routes) and subscribes its update check onto
+            ``market.index.updated``. Omitted (the default), the hub
+            serves marketplace *browsing* (when ``market_service`` is
+            given) but no install flow at all — the dashboard's install
+            button then has nothing to call.
         hook_store: outbound-webhook configuration (SPEC-201). Given, mounts
             the ``/api/hooks`` REST surface and starts the delivery worker
             that turns every published event into a signed webhook POST for
@@ -299,6 +321,22 @@ def create_app(
         hub_status_server = build_hub_status_server(hub_status_deps)
         hub_status_asgi_app = hub_status_server.http_app(path="/")
 
+    # SPEC-304 deliverable #5: the marketplace MCP App, mounted at
+    # `/mcp/market` — hub-level, same standalone-FastMCP-instance shape as
+    # hub_status above. Gated on `market_service` alone (not
+    # `install_service`): browsing needs no install machinery at all.
+    market_asgi_app = None
+    if market_service is not None:
+        market_app_deps = MarketAppDeps(
+            market_service=market_service,
+            dashboard_url=(
+                config.exposure.public_url.rstrip("/")
+                if config.exposure.public_url
+                else None
+            ),
+        )
+        market_asgi_app = build_market_server(market_app_deps).http_app(path="/")
+
     # One lifespan runs BOTH concerns: the events background tasks (SPEC-109)
     # and, when a gateway is mounted, its session-manager lifespan (SPEC-105 —
     # skipping it hangs the mounted profiles on their first request). The
@@ -403,6 +441,8 @@ def create_app(
                     await stack.enter_async_context(stash_gateway.lifespan(app_))
                 if hub_status_asgi_app is not None:
                     await stack.enter_async_context(hub_status_asgi_app.lifespan(app_))
+                if market_asgi_app is not None:
+                    await stack.enter_async_context(market_asgi_app.lifespan(app_))
                 yield
         finally:
             await stop_background_tasks(tasks)
@@ -448,6 +488,8 @@ def create_app(
         app.mount("/mcp/stash", stash_gateway.app)
     if hub_status_asgi_app is not None:
         app.mount("/mcp/hub", hub_status_asgi_app)
+    if market_asgi_app is not None:
+        app.mount("/mcp/market", market_asgi_app)
     if dynamic_gateway is not None:
         # One mount, forever: DynamicGateway owns everything below "/mcp"
         # and rebuilds its own internal routing as profiles come and go
@@ -602,6 +644,12 @@ def create_app(
         app.include_router(build_stash_router(stash_service))
     if market_service is not None:
         app.include_router(build_market_router(market_service))
+    if install_service is not None:
+        app.include_router(build_market_install_router(install_service))
+        # SPEC-304 deliverable #4: recompute every installed container's
+        # update status whenever the curated index refreshes, and publish
+        # `addon.update_available` for whichever just turned stale.
+        wire_market_index_updates(event_bus, install_service)
     if hook_store is not None:
         assert outbox is not None  # built above, together with hook_store's dispatcher
         app.include_router(build_hooks_router(hook_store, outbox))
