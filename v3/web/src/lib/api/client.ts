@@ -84,6 +84,32 @@ export interface InboxStatus {
   last_captured_at: string | null;
 }
 
+/** SPEC-210 deliverable #3: one vault's index status, as
+ * `palaia_hub.dashboard_api.IndexStatusOut` returns it. */
+export interface EmbedStatus {
+  enabled: boolean;
+  available: boolean;
+  model: string;
+  dim: number;
+  total: number;
+  ready: number;
+  pending: number;
+  failed: number;
+  reason: string;
+}
+
+export interface IndexStatus {
+  vault: string;
+  schema_version: number;
+  notes: number;
+  observations: number;
+  relations: number;
+  unresolved_relations: number;
+  embeds: EmbedStatus;
+  embed_progress_percent: number;
+  embed_summary: string;
+}
+
 export interface TokenInfo {
   id: string;
   name: string;
@@ -99,6 +125,33 @@ export interface CreatedToken {
   /** Shown once — the caller must display it now, it cannot be recovered
    * from the store afterward. */
   token: string;
+}
+
+/** SPEC-201's webhook management surface — opt-in on the hub (present only
+ * when a `hook_store` is given to `create_app`), same reasoning as the
+ * token types above for why this is hand-written rather than generated. */
+export interface HookInfo {
+  id: string;
+  url: string;
+  events: string[];
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface CreatedHook {
+  info: HookInfo;
+  /** Shown once — signs every delivery; cannot be recovered afterward. */
+  secret: string;
+}
+
+export interface DeadLetter {
+  id: number;
+  hook_id: string;
+  event_id: string;
+  event_name: string;
+  attempts: number;
+  last_error: string;
+  created_at: string;
 }
 
 /** Base URL for API calls. Empty string = same-origin (the hub serves the
@@ -154,6 +207,24 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function patchJson<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "PATCH",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    let responseBody: unknown;
+    try {
+      responseBody = await response.json();
+    } catch {
+      responseBody = await response.text();
+    }
+    throw new ApiError(path, response.status, responseBody);
+  }
+  return (await response.json()) as T;
+}
+
 function queryString(params: Record<string, string | number | undefined>): string {
   const entries = Object.entries(params).filter(([, value]) => value !== undefined && value !== "");
   if (entries.length === 0) return "";
@@ -184,6 +255,8 @@ export const api = {
     getJson<SearchHit[]>(`/api/vaults/${vaultKey}/search${queryString({ q })}`),
   inboxStatus: (vaultKey: string) =>
     getJson<InboxStatus>(`/api/vaults/${vaultKey}/inbox_status`),
+  indexStatus: (vaultKey: string) =>
+    getJson<IndexStatus>(`/api/vaults/${vaultKey}/index_status`),
 
   // ---- SPEC-108's token surface, consumed here for "connected clients" ----
   listTokens: () => getJson<TokenInfo[]>("/api/auth/tokens"),
@@ -193,4 +266,17 @@ export const api = {
     fetch(`${API_BASE}/api/auth/tokens/${tokenId}`, { method: "DELETE" }).then((response) => {
       if (!response.ok) throw new ApiError("/api/auth/tokens", response.status, undefined);
     }),
+
+  // ---- SPEC-201's webhook surface ----
+  listHooks: () => getJson<HookInfo[]>("/api/hooks"),
+  createHook: (body: { url: string; events?: string[] }) =>
+    postJson<CreatedHook>("/api/hooks", body),
+  setHookEnabled: (hookId: string, enabled: boolean) =>
+    patchJson<HookInfo>(`/api/hooks/${hookId}`, { enabled }),
+  deleteHook: (hookId: string) =>
+    fetch(`${API_BASE}/api/hooks/${hookId}`, { method: "DELETE" }).then((response) => {
+      if (!response.ok) throw new ApiError("/api/hooks", response.status, undefined);
+    }),
+  hookDeadLetters: (hookId: string) =>
+    getJson<DeadLetter[]>(`/api/hooks/${hookId}/dead_letters`),
 };

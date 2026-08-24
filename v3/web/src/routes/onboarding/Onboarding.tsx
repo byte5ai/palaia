@@ -7,16 +7,23 @@
  *
  * Honest about which steps are real:
  * - Step 3 (first vault) is fully wired to `POST /api/vaults` — creating
- *   it here creates a real vault on disk, with a real git history.
+ *   it here creates a real vault on disk, with a real git history, and
+ *   (SPEC-210) mounts it live on the running hub's MCP gateway under the
+ *   `default` profile — no hub restart needed before step 4's client can
+ *   reach it.
  * - Step 4 (first client) reuses the same `ConnectPanel` the dedicated
- *   Clients page uses — issuing a token here is real.
+ *   Clients page uses — issuing a token here is real, and (as of
+ *   SPEC-210) so is the endpoint it names: the `default` profile the
+ *   wizard's vault creation just mounted.
  * - Steps 1 (owner account) and 2 (access mode) are NOT wired to anything
  *   server-side yet: there is no local-account system (Phase 2,
  *   MASTERPLAN §5.5) and no REST endpoint to change `HubConfig.mode` at
  *   runtime. Both stay in this component's own state — step 1's fields
  *   say so inline; step 2 previews how step 4 gates clients without
  *   claiming to change the hub's real mode (shown, read-only, from
- *   `GET /api/info`).
+ *   `GET /api/info`). SPEC-203 (owner accounts)/SPEC-205 (mode switching)
+ *   will wire these once merged — this component's own state is the seam
+ *   they replace.
  */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -95,7 +102,6 @@ export function Onboarding() {
   const [template, setTemplate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [createdKey, setCreatedKey] = useState<string | null>(null);
 
   const [clientId, setClientId] = useState(guidedClients()[0]!.id);
 
@@ -122,7 +128,6 @@ export function Onboarding() {
         path: vaultPath || undefined,
         template,
       });
-      setCreatedKey(vaultKey);
       setStep(4);
     } catch (err) {
       setCreateError(
@@ -383,7 +388,7 @@ export function Onboarding() {
               <ConnectPanel
                 key={selectedClient.id}
                 client={selectedClient}
-                defaultProfile={createdKey ?? vaultKey}
+                defaultProfile="default"
               />
               <div className="wiz__foot">
                 <button type="button" className="btn" onClick={() => setStep(3)}>

@@ -239,7 +239,7 @@ svg { display: block; }
 /* ---------- tiles (metrics) ----------
    Mono tabular ink numbers; attention colours the NUMBER only — never a
    fill, border or status dot (system.md §2, Surfaces & structure). */
-.tiles { display: grid; gap: var(--space-4); grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.tiles { display: grid; gap: var(--space-4); grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .tile { background: linear-gradient(180deg, var(--bg-surface-raised-top) 0%, var(--bg-surface-raised-btm) 100%);
   border: 1px solid var(--border-subtle-btm); border-top-color: var(--border-subtle-top);
   border-radius: var(--radius-lg); padding: var(--space-4) var(--space-5) var(--space-5);

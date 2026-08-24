@@ -23,7 +23,14 @@ from __future__ import annotations
 
 from .build import GatewayASGI, GatewayConfigError, build_gateway
 from .config import GatewayConfig, ProfileConfig, VaultMountConfig
+from .dynamic import DynamicGateway
 from .fake_vault import FakeVaultService
+from .stash_tools import (
+    STASH_TOOL_ACTIONS,
+    StashGatewayASGI,
+    build_stash_gateway,
+    build_stash_server,
+)
 from .vault_protocol import (
     INBOX_TOOL_ACTIONS,
     MEMORY_TOOL_ACTIONS,
@@ -40,7 +47,9 @@ from .wiring import EngineVaultService
 __all__ = [
     "INBOX_TOOL_ACTIONS",
     "MEMORY_TOOL_ACTIONS",
+    "STASH_TOOL_ACTIONS",
     "CaptureResult",
+    "DynamicGateway",
     "EngineVaultService",
     "FakeVaultService",
     "GatewayASGI",
@@ -51,8 +60,11 @@ __all__ = [
     "NoteSummary",
     "ProfileConfig",
     "SearchHit",
+    "StashGatewayASGI",
     "VaultMountConfig",
     "VaultService",
     "VaultServiceError",
     "build_gateway",
+    "build_stash_gateway",
+    "build_stash_server",
 ]

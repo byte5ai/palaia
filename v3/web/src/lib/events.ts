@@ -1,6 +1,7 @@
 /**
- * Live-state layer (SPEC-109): a React hook around the hub's
- * `/api/events` Server-Sent Events stream.
+ * Live-state layer: a React hook around the hub's `/api/events`
+ * Server-Sent Events stream, carrying the SPEC-201 public event envelope
+ * (see `v3/docs/events.md`).
  *
  * "No refresh button anywhere in this system" (system.md §0) — this hook
  * is how a list gets to be event-driven instead of polled. The browser's
@@ -18,15 +19,34 @@ export interface HealthEventData {
   [key: string]: unknown;
 }
 
-export interface VaultChangedEventData {
-  count: number;
-  paths: string[];
+/** The SSE frame names this hook listens for beyond `health` — SPEC-201's
+ * `memory.entry.*` vocabulary, superseding SPEC-109's raw `vault_changed`
+ * disk-watcher batches (one real vault event, not a debounced file-count). */
+const MEMORY_ENTRY_EVENTS = [
+  "memory.entry.created",
+  "memory.entry.updated",
+  "memory.entry.deleted",
+  "memory.entry.moved",
+] as const;
+
+export interface MemoryEntryEventData {
+  path?: string;
+  previous_path?: string;
+  checksum?: string;
+  previous_checksum?: string;
+  external?: boolean;
+  kind?: string;
+  [key: string]: unknown;
 }
 
-/** One entry of `recentChanges` — the raw event plus when it arrived, for
- * Home's activity feed (SPEC-110). */
-export interface VaultChangeEntry extends VaultChangedEventData {
+/** One entry of `recentChanges` — the envelope's identifying fields plus
+ * when it arrived, for Home's activity feed (SPEC-110/SPEC-201). */
+export interface VaultChangeEntry {
   ts: number;
+  event: string;
+  vault: string | null;
+  permalink: string | null;
+  data: MemoryEntryEventData;
 }
 
 /** How many `recentChanges` entries `EventStreamState` keeps — a feed, not
@@ -40,11 +60,11 @@ export interface EventStreamState {
   health: HealthEventData | null;
   /** Timestamp (ms) of the last received health snapshot/tick. */
   healthAt: number | null;
-  /** Running count of vault_changed events seen this session — the
+  /** Running count of memory.entry.* events seen this session — the
    * acceptance-criterion badge: "vault file touched on disk → explorer
    * badge updates without reload". */
   vaultChangeCount: number;
-  lastVaultChange: VaultChangedEventData | null;
+  lastVaultChange: VaultChangeEntry | null;
   /** The most recent `vaultChangeCount` events, newest first — Home's
    * activity feed (SPEC-110 deliverable #4: "recent activity feed
    * (SSE-live)"). Bounded to `RECENT_CHANGES_LIMIT` entries. */
@@ -99,21 +119,36 @@ export function useEventStream(
       }
     });
 
-    source.addEventListener("vault_changed", (event: MessageEvent<string>) => {
+    const onMemoryEntryEvent = (event: MessageEvent<string>) => {
       try {
-        const payload = JSON.parse(event.data) as { data: VaultChangedEventData; ts?: number };
-        const entry: VaultChangeEntry = { ...payload.data, ts: (payload.ts ?? Date.now() / 1000) * 1000 };
+        const payload = JSON.parse(event.data) as {
+          event: string;
+          vault?: string | null;
+          permalink?: string | null;
+          data: MemoryEntryEventData;
+          ts?: number;
+        };
+        const entry: VaultChangeEntry = {
+          ts: (payload.ts ?? Date.now() / 1000) * 1000,
+          event: payload.event,
+          vault: payload.vault ?? null,
+          permalink: payload.permalink ?? null,
+          data: payload.data,
+        };
         setState((prev) => ({
           ...prev,
           connection: "open",
-          vaultChangeCount: prev.vaultChangeCount + payload.data.count,
-          lastVaultChange: payload.data,
+          vaultChangeCount: prev.vaultChangeCount + 1,
+          lastVaultChange: entry,
           recentChanges: [entry, ...prev.recentChanges].slice(0, RECENT_CHANGES_LIMIT),
         }));
       } catch {
         // same as above: drop and wait for the next event
       }
-    });
+    };
+    for (const eventName of MEMORY_ENTRY_EVENTS) {
+      source.addEventListener(eventName, onMemoryEntryEvent);
+    }
 
     return () => {
       source.close();

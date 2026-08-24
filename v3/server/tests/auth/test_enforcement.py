@@ -55,3 +55,35 @@ def test_read_scope_does_not_cover_a_different_vault(monkeypatch: pytest.MonkeyP
 
     assert error is not None
     assert "vault:work:read" in error
+
+
+# -- stash (SPEC-202) --------------------------------------------------------
+
+
+def test_stash_no_access_token_allows_everything(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(enforcement, "get_access_token", lambda: None)
+
+    assert enforcement.missing_stash_scope_error("stash_set") is None
+    assert enforcement.missing_stash_scope_error("stash_get") is None
+
+
+def test_stash_sufficient_scope_allows(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        enforcement, "get_access_token", lambda: _FakeAccessToken(["stash:write"])
+    )
+
+    assert enforcement.missing_stash_scope_error("stash_set") is None
+    assert enforcement.missing_stash_scope_error("stash_del") is None
+
+
+def test_stash_read_scoped_token_cannot_write(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Acceptance criterion: 'read-scoped token cannot write'."""
+    monkeypatch.setattr(
+        enforcement, "get_access_token", lambda: _FakeAccessToken(["stash:read"])
+    )
+
+    assert enforcement.missing_stash_scope_error("stash_get") is None
+
+    error = enforcement.missing_stash_scope_error("stash_set")
+    assert error is not None
+    assert "stash:write" in error

@@ -199,6 +199,64 @@ await recall.build_context(ref="projects/recall-engine", depth=2, max_tokens=400
   encodes. Run it with
   `uv run pytest server/tests/recall/test_ranking_battery.py`.
 
+## OAuth 2.1 authorization server (SPEC-203)
+
+`palaia_hub.oauth` turns the hub into an authorization server *and* resource
+server, so claude.ai, ChatGPT and mobile apps connect as ordinary remote
+connectors. One authorization server fronts N resources: each MCP profile is a
+distinct protected resource with its own canonical audience, and each verifies
+access tokens locally against the published public key — no round trip back to
+the auth layer per call. The SPEC-108 `plt_` tokens keep working on every
+profile at the same time, so enabling this breaks no existing setup.
+
+```yaml
+# config.yaml — 'cloud'/'open' accept OAuth as the auth mandate
+mode: cloud
+oauth:
+  enabled: true
+  issuer: https://hub.example.com
+  profiles: [default]
+```
+
+```bash
+uv run palaia-hub oauth set-password --username you   # the single local owner
+uv run palaia-hub oauth machine-client --name nightly-job \
+    --profile default --scope vault:work:read         # pinned, secret shown once
+uv run palaia-hub oauth clients                      # who is registered
+uv run palaia-hub oauth gc                            # prune orphans now
+```
+
+Endpoints: `/.well-known/oauth-authorization-server` (also served at
+`/.well-known/openid-configuration`), `/.well-known/jwks.json`,
+`/.well-known/oauth-protected-resource/<profile>`, `/oauth/authorize`,
+`/oauth/token`, `/oauth/revoke`, `/oauth/register`, `/oauth/login`.
+
+Each of the three mcp-hub production lessons (MASTERPLAN §5.5) is a mechanism
+in one place, with its own regression test:
+
+- **Grace-windowed refresh rotation** (`store.rotate_refresh_token`) — a spent
+  refresh token stays usable for `refresh_grace_window` seconds, so one
+  connector fanned out over web, phone and desktop converges instead of
+  tearing the grant down. Strict single-use caused daily re-logins.
+- **Resolved resource indicators** (`resources.ResourceRegistry`) — the `aud`
+  claim is always composed here; a client's RFC 8707 `resource` is *matched*
+  against known profiles (tolerating `/mcp` and trailing slashes), never
+  copied into a token nobody can use.
+- **Registered-client GC** (`store.prune_clients`) — self-registered clients
+  holding no live refresh token are pruned, throttled, and triggered from the
+  token endpoint. Admin-provisioned machine clients never are.
+
+Registration is CIMD-first (MCP 2026-07-28 deprecated RFC 7591 DCR): an https
+`client_id` resolves to a metadata document, fetched through fastmcp's
+SSRF-hardened fetcher, so reconnects reuse one row instead of creating one.
+DCR remains as a fenced fallback — public clients only, PKCE mandatory, no way
+to request `client_credentials`, hard ceiling, GC'd.
+
+Access tokens are signed **ES256** rather than the Ed25519 the SPEC names:
+fastmcp 3.4.7's `JWTVerifier` — which deliverable #4 requires the resource
+side to use — accepts no `EdDSA`, and reimplementing JWT validation here is
+exactly what that deliverable forbids. See `oauth/keys.py`'s module docstring.
+
 ## Running it
 
 ```bash
