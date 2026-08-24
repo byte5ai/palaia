@@ -1,6 +1,7 @@
 export * from "./Badge";
 export * from "./Button";
 export * from "./Card";
+export * from "./ConfigSchemaForm";
 export * from "./ConnectPanel";
 export * from "./EmptyState";
 export * from "./Field";

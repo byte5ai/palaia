@@ -129,6 +129,21 @@ included in `data` at all.
 | `gateway.upstream.updated` | `gateway` | `upstream`, `display_name`, `enabled`, `profiles` | `PATCH /api/gateway/upstreams/{key}` changes one (including switching it off). |
 | `gateway.upstream.disconnected` | `gateway` | `upstream` | `DELETE /api/gateway/upstreams/{key}` removes one; every profile that mounted it is rebuilt without it. |
 
+### 3.5 Marketplace install/lifecycle events (SPEC-304, additive)
+
+Emitted by `palaia_hub.market.install.InstallService` — every one of these
+is on top of an ordinary `gateway.upstream.*` event above (an install
+connects an upstream the same way `POST /api/gateway/upstreams` does), so a
+webhook filtering on the marketplace names below sees the add-on's own
+lifecycle without also having to parse the generic upstream events.
+
+| Event | Origin | `data` fields | Fires when |
+|---|---|---|---|
+| `addon.installed` | `market` | `entry_id`, `upstream_key`, `kind`, `name` | `POST /api/market/entry/{id}/install` succeeds. |
+| `addon.updated` | `market` | `entry_id`, `upstream_key`, `installed_ref` | `POST /api/market/installed/{key}/update` succeeds (containers only — see the SPEC's non-goals: no auto-update). |
+| `addon.uninstalled` | `market` | `entry_id`, `upstream_key` | `DELETE /api/market/installed/{key}` removes an installed add-on. |
+| `addon.update_available` | `market` | `entry_id`, `upstream_key`, `installed_ref`, `available_ref` | The curated index refreshes (`market.index.updated`) and an installed container's recorded image no longer matches the entry's current one — the dashboard badge this SPEC's deliverable #4 asks for. |
+
 `health` also travels the same bus and wire format (SSE only; it is not a
 webhook-filterable v1 name — see §6) — it is the dashboard's periodic
 liveness snapshot, carried over unchanged from before this SPEC.

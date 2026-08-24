@@ -165,7 +165,28 @@ export interface GatewayProfile {
   hidden_tools: string[];
   semantic_routing: boolean;
   tool_count: number;
+  /** External servers (SPEC-302) this profile mounts, by key. */
+  upstreams: string[];
   managed: boolean;
+}
+
+/** SPEC-302's external-server registry, as the profile editor reads it to
+ * offer upstream-server checkboxes (SPEC-304 follow-up) — mirrors
+ * `palaia_hub.upstream.api.UpstreamOut`. */
+export interface GatewayUpstream {
+  key: string;
+  kind: "http" | "stdio";
+  display_name: string;
+  namespace: string;
+  enabled: boolean;
+  target: string;
+  profiles: string[];
+  up: boolean;
+  status: string;
+  checked_at: number | null;
+  tools: string[];
+  secret_names: string[];
+  tool_renames: Record<string, string>;
 }
 
 /** `palaia_hub.gateway.api.GatewayToolOut`. */
@@ -293,6 +314,76 @@ export interface NotificationRecord {
   source: string;
   created_at: string;
   read: boolean;
+}
+
+/** SPEC-303/304's marketplace — opt-in on the hub (present only when a
+ * `market_service` is given to `create_app`), hand-written for the same
+ * reason the other opt-in surfaces above are. Mirrors
+ * `palaia_hub.market.models.MarketEntry`. */
+export type MarketEntryKind = "remote" | "container" | "mcpb" | "skill" | "plugin";
+export type MarketProvenance = "registry" | "curated" | "manual";
+export type MarketSourceType = "registry_ref" | "image" | "url";
+
+export interface MarketSourceLocator {
+  type: MarketSourceType;
+  value: string;
+}
+
+/** A `config_schema` property (SPEC-304 deliverable #2's fixed subset).
+ * `type: "secret"` is palaia's own extension, not a JSON Schema primitive
+ * — the one signal the form renderer needs to route a value to the
+ * secret store instead of a plain field. `format: "path"` on a string
+ * marks a declared container mount. */
+export interface MarketConfigProperty {
+  type?: "string" | "number" | "boolean" | "secret";
+  title?: string;
+  enum?: string[];
+  format?: string;
+}
+
+export interface MarketConfigSchema {
+  type?: "object";
+  properties?: Record<string, MarketConfigProperty>;
+  required?: string[];
+}
+
+export interface MarketEntry {
+  id: string;
+  name: string;
+  one_liner: string;
+  kind: MarketEntryKind;
+  source: MarketSourceLocator;
+  config_schema: MarketConfigSchema | null;
+  permissions: string[];
+  maintainer: string;
+  verified: boolean;
+  provenance: MarketProvenance;
+}
+
+export interface MarketSearchResult {
+  entries: MarketEntry[];
+  stale: boolean;
+  notes: Record<string, string>;
+}
+
+export interface ConsentToken {
+  token: string;
+  expires_at: number;
+}
+
+export interface InstalledAddon {
+  upstream_key: string;
+  entry_id: string;
+  name: string;
+  kind: MarketEntryKind;
+  provenance: MarketProvenance;
+  installed_ref: string;
+  current_ref: string | null;
+  update_available: boolean;
+  up: boolean;
+  status: string;
+  profiles: string[];
+  installed_at: number;
 }
 
 /** Base URL for API calls. Empty string = same-origin (the hub serves the
@@ -442,6 +533,7 @@ export const api = {
     stash?: boolean;
     hidden_tools?: string[];
     semantic_routing?: boolean;
+    upstreams?: string[];
   }) => postJson<GatewayProfile>("/api/gateway/profiles", body),
   updateGatewayProfile: (
     profilePath: string,
@@ -451,6 +543,7 @@ export const api = {
       stash?: boolean;
       hidden_tools?: string[];
       semantic_routing?: boolean;
+      upstreams?: string[];
     },
   ) => patchJson<GatewayProfile>(`/api/gateway/profiles/${profilePath}`, body),
   deleteGatewayProfile: (profilePath: string) =>
@@ -465,6 +558,9 @@ export const api = {
     vaultKey: string,
     body: { name?: string; purpose?: string; tool_renames?: Record<string, string> },
   ) => patchJson<GatewayVaultIdentity>(`/api/gateway/vaults/${vaultKey}`, body),
+  // SPEC-302's registry, read here so the profile editor (SPEC-304 follow-up)
+  // can offer an upstream-server checkbox next to the vault checkboxes.
+  listGatewayUpstreams: () => getJson<GatewayUpstream[]>("/api/gateway/upstreams"),
 
   // ---- SPEC-108's token surface, consumed here for "connected clients" ----
   listTokens: () => getJson<TokenInfo[]>("/api/auth/tokens"),
@@ -560,4 +656,43 @@ export const api = {
     postJson<SelfTestResult>("/api/exposure/selftest", {
       public_url: publicUrl,
     }),
+
+  // ---- SPEC-303/304: the marketplace ----
+  searchMarket: (q = "", source?: MarketProvenance) =>
+    getJson<MarketSearchResult>(`/api/market/search${queryString({ q, source })}`),
+  getMarketEntry: (entryId: string) => getJson<MarketEntry>(`/api/market/entry/${entryId}`),
+  createManualMarketEntry: (body: {
+    id: string;
+    name: string;
+    one_liner: string;
+    kind: MarketEntryKind;
+    source: MarketSourceLocator;
+    config_schema?: MarketConfigSchema | null;
+    permissions?: string[];
+    maintainer: string;
+  }) => postJson<MarketEntry>("/api/market/manual", body),
+  /** The consent screen's own POST (SPEC-304 deliverable #3) — the token
+   * it returns is what `installMarketEntry` below must be given; there is
+   * no install path that skips this call. */
+  issueMarketConsent: (entryId: string) =>
+    postJson<ConsentToken>(`/api/market/entry/${entryId}/consent`, {}),
+  installMarketEntry: (
+    entryId: string,
+    body: {
+      consent_token: string;
+      config?: Record<string, string | number | boolean>;
+      profiles?: string[];
+      display_name?: string | null;
+    },
+  ) => postJson<InstalledAddon>(`/api/market/entry/${entryId}/install`, body),
+  listInstalledAddons: () => getJson<InstalledAddon[]>("/api/market/installed"),
+  updateInstalledAddon: (upstreamKey: string) =>
+    postJson<InstalledAddon>(`/api/market/installed/${upstreamKey}/update`, {}),
+  uninstallAddon: (upstreamKey: string) =>
+    fetch(`${API_BASE}/api/market/installed/${upstreamKey}`, { method: "DELETE" }).then(
+      (response) => {
+        if (!response.ok)
+          throw new ApiError("/api/market/installed", response.status, undefined);
+      },
+    ),
 };

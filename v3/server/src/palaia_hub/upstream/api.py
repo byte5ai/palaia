@@ -33,12 +33,12 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from ..config import GatewayProfileSettings, GatewaySettings, HubConfig, config_file_path
+from ..config import HubConfig, config_file_path
 from ..events import EventBus, publish_event
 from ..gateway.build import GatewayConfigError
 from ..gateway.config import CURATOR_PROFILE_PATH
 from ..gateway.dynamic import DynamicGateway
-from ..gateway.settings_bridge import persist_gateway_settings
+from ..gateway.settings_bridge import persist_gateway_settings, snapshot_gateway_settings
 from .models import UpstreamConfig, UpstreamConflictError
 from .secrets import SecretStore, SecretStoreError, validate_secret_name
 from .service import UpstreamNotConfiguredError, UpstreamService
@@ -282,26 +282,11 @@ def build_upstreams_router(
         the per-vault identity overrides already in the file are carried
         through untouched.
         """
-        existing_vaults = config.gateway.vaults if config.gateway is not None else []
-        profiles = [
-            p for p in dynamic_gateway.config.profiles if p.path != CURATOR_PROFILE_PATH
-        ]
+        # The shared live-then-persisted snapshot (settings_bridge): a
+        # hand-built copy here once dropped hidden_tools/semantic_routing
+        # from every profile on any upstream edit or secret rotation.
         persist_gateway_settings(
-            config_path,
-            GatewaySettings(
-                vaults=existing_vaults,
-                profiles=[
-                    GatewayProfileSettings(
-                        path=p.path,
-                        label=p.label,
-                        vaults=list(p.vaults),
-                        stash=p.stash,
-                        upstreams=list(p.upstreams),
-                    )
-                    for p in profiles
-                ],
-                upstreams=list(dynamic_gateway.config.upstreams),
-            ),
+            config_path, snapshot_gateway_settings(dynamic_gateway, config)
         )
 
     def _publish(event: str, data: dict[str, object]) -> None:

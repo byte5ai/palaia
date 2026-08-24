@@ -9,6 +9,10 @@
   (:mod:`palaia_hub.gateway.memory_tools`).
 - :mod:`palaia_hub.gateway.apps.review_app` — the review-queue app page
   attached to the memory tool family's ``review_queue`` tool.
+- :mod:`palaia_hub.gateway.apps.market_app` — SPEC-304's marketplace app:
+  a hub-level ``browse_marketplace`` tool + its card-grid page. Its
+  "Install" control always deep-links to the dashboard; it never installs
+  anything itself.
 
 ``vendor/`` holds the two third-party assets these pages embed inline (the
 MCP Apps view SDK bundle and two self-hosted font files) — see

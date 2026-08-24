@@ -52,7 +52,7 @@ from .gateway.settings_bridge import (
 from .gateway.wiring import EngineVaultService
 from .hooks import HookStore
 from .index import VaultIndex
-from .market import CuratedIndexClient, ManualEntryStore, MarketService
+from .market import CuratedIndexClient, InstallService, ManualEntryStore, MarketService
 from .notifications import NotificationStore
 from .notifications.store import NOTIFICATIONS_RELATIVE_PATH
 from .oauth import AuthorizationServer
@@ -93,6 +93,10 @@ class ProductionApp:
     #: The encrypted credential store backing those servers. Closed here,
     #: same as ``stash_store``.
     secret_store: SecretStore | None = None
+    #: Marketplace install/lifecycle flows (SPEC-304). Holds no resources
+    #: of its own to close — everything it touches (``upstream_service``,
+    #: ``secret_store``, ``dynamic_gateway``) is already listed above.
+    install_service: InstallService | None = None
 
 
 def _index_event_hook(event_bus: EventBus, vault_key: str) -> HubEventHook:
@@ -293,6 +297,23 @@ async def build_production_app(
         upstream_service, on_change=dynamic_gateway.refresh_upstreams
     )
 
+    # SPEC-304: marketplace install/lifecycle flows, on top of the same
+    # dynamic_gateway/upstream_service/secret_store the SPEC-302 upstream
+    # surface above already built — see palaia_hub.market.install for why
+    # this is a thin layer over that machinery rather than a parallel one.
+    def _publish_addon_event(event: str, data: dict[str, Any]) -> None:
+        publish_from_hook(event_bus, event, data, origin="market")
+
+    install_service = InstallService(
+        market_service=market_service,
+        dynamic_gateway=dynamic_gateway,
+        upstream_service=upstream_service,
+        secret_store=secret_store,
+        home=stash_home,
+        config=config,
+        publish=_publish_addon_event,
+    )
+
     app = create_app(
         config,
         dynamic_gateway=dynamic_gateway,
@@ -305,6 +326,7 @@ async def build_production_app(
         stash_service=stash_service,
         hook_store=hook_store,
         market_service=market_service,
+        install_service=install_service,
         curator=curator.scheduler if curator else None,
         automation_store=automation_store,
         automation_outbox=automation_outbox,
@@ -326,6 +348,7 @@ async def build_production_app(
         stash_store=stash_store,
         upstream_service=upstream_service,
         secret_store=secret_store,
+        install_service=install_service,
     )
 
 
