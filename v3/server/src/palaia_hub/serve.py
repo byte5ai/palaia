@@ -149,6 +149,7 @@ async def build_production_app(
         event_bus=event_bus,
         oauth_server=oauth_server,
         hook_store=hook_store,
+        home=home,
     )
     return ProductionApp(
         app=app,

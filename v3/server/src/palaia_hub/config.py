@@ -126,6 +126,20 @@ oauth:
   # MCP profile paths this server issues audience-scoped tokens for. Must
   # match the gateway's profile paths.
   profiles: []
+
+# Public exposure (SPEC-205): how this hub is reached from outside the
+# operator's own network in 'cloud'/'open' mode. Purely descriptive — it
+# does not change what the hub binds to (see 'host'/'mode' above) — but the
+# exposure wizard (dashboard) uses it to fill in the connect-a-client page
+# and to run its honest public-URL reachability self-test.
+exposure:
+  # The https URL this hub is reachable at from outside (a tunnel hostname,
+  # or your own reverse proxy's public name). Unset until the wizard's
+  # self-test passes, or you set it here yourself.
+  # public_url: https://hub.example.com
+  # How the public URL above is served: 'tailscale', 'cloudflared', or
+  # 'reverse_proxy' (bring-your-own). Purely informational.
+  tunnel: null
 """
 
 
@@ -244,6 +258,31 @@ class OAuthSettings(BaseModel):
     profiles: list[str] = Field(default_factory=list)
 
 
+class ExposureSettings(BaseModel):
+    """Public-exposure metadata (SPEC-205): descriptive, not enforcing.
+
+    Distinct from ``mode``/``host``/``auth_enabled`` above: those decide
+    what the hub *does* (bind address, whether it refuses to start without
+    auth); this section records what the operator has told the hub about
+    how a tunnel or reverse proxy makes it reachable, so the exposure
+    wizard can fill in the connect-a-client page and self-test the public
+    URL without asking twice. Leaving it unset changes nothing else.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The https URL this hub is reachable at from outside the operator's
+    #: own network. Not validated against ``host``/``mode`` here — the
+    #: wizard's self-test (``palaia_hub.modes.selftest``) is what actually
+    #: confirms it resolves and answers, honestly, rather than this model
+    #: pretending to.
+    public_url: str | None = None
+    #: How ``public_url`` is served. Purely informational — it only
+    #: changes which copy-paste config the wizard offers, never the hub's
+    #: own behavior.
+    tunnel: Literal["tailscale", "cloudflared", "reverse_proxy"] | None = None
+
+
 class HubConfig(BaseModel):
     """Validated hub configuration, merged from defaults/file/env."""
 
@@ -258,6 +297,7 @@ class HubConfig(BaseModel):
     auth_enabled: bool = True
     recall: RecallSettings = Field(default_factory=RecallSettings)
     oauth: OAuthSettings = Field(default_factory=OAuthSettings)
+    exposure: ExposureSettings = Field(default_factory=ExposureSettings)
 
     @model_validator(mode="after")
     def _check_operating_mode_policy(self) -> HubConfig:
