@@ -142,6 +142,38 @@ def test_redirect_matching_is_exact_never_prefix() -> None:
             match_redirect_uri(registered, attempt)
 
 
+def test_loopback_redirects_match_ignoring_only_the_port() -> None:
+    """RFC 8252 §7.3 (issue #233): an http loopback redirect URI picks its
+    port at request time, so the port — and nothing else — is ignored."""
+    registered = ("http://localhost/callback", "http://127.0.0.1/callback")
+
+    for presented in (
+        "http://localhost:49152/callback",
+        "http://localhost:/callback",  # the empty-port form Claude Code sends
+        "http://127.0.0.1:8123/callback",
+        "http://localhost/callback",
+    ):
+        assert match_redirect_uri(registered, presented) == presented
+
+    for attempt in (
+        "http://localhost:49152/other",  # different path
+        "http://localhost:49152/callback?x=1",  # different query
+        "http://[::1]:49152/callback",  # a loopback host the client never registered
+        "http://192.168.1.10:49152/callback",  # not loopback at all
+        "https://localhost:49152/callback",  # exemption is http-only
+        "http://localhost:49152/callback#frag",  # fragments are never valid
+    ):
+        with pytest.raises(OAuthError):
+            match_redirect_uri(registered, attempt)
+
+
+def test_loopback_port_exemption_never_applies_to_https_registrations() -> None:
+    """A registered https URI (even on a loopback name) keeps exact matching."""
+    registered = ("https://localhost/callback",)
+    with pytest.raises(OAuthError):
+        match_redirect_uri(registered, "http://localhost:49152/callback")
+
+
 # --------------------------------------------------------------- SSRF fence
 
 

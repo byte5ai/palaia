@@ -130,9 +130,9 @@ UX/trust issue (a user who checks status before signing in sees a
 scary-sounding, wrong verdict on a hub that works fine), not a functional
 one.
 
-### 2.3 The real login blocker — filed as #233 — and its confirmed workaround
+### 2.3 The default-path login blocker — filed as #233, now fixed
 
-`test_claude_code_cli_native_oauth_login_needs_a_preregistered_redirect_uri`
+`test_claude_code_cli_native_oauth_login_completes_on_the_default_path`
 (skipped, not failed, when this sandbox cannot reach `claude.ai` — the
 CIMD document fetch needs real internet):
 
@@ -140,21 +140,25 @@ CIMD document fetch needs real internet):
 ... ` then `claude mcp login <name> --no-browser`, exactly the connect-page's
 advertised one-liner): the CLI fetches Claude Code's own real, published
 CIMD document (`https://claude.ai/oauth/claude-code-client-metadata`),
-prints a real authorize URL, and — signed in for real as the owner — hits:
+prints a real authorize URL, and — signed in for real as the owner — the
+authorize request now completes with a `303` to the CLI's loopback
+callback, and the login finishes (`Authenticated with …`, exit 0).
 
-```
-400 invalid_redirect_uri
-"the redirect_uri does not exactly match one this client registered."
-```
+The blocker this section originally documented: Anthropic's CIMD document
+registers a **portless** loopback redirect URI
+(`http://localhost/callback`) while the CLI's real request always carries
+a live ephemeral port, and `palaia_hub.oauth.cimd.match_redirect_uri` was
+byte-exact with no RFC 8252 §7.3 loopback-port exemption — so every
+default, zero-flag login failed with `400 invalid_redirect_uri`. Filed as
+[byte5ai/palaia#233](https://github.com/byte5ai/palaia/issues/233) and
+fixed by adding exactly that exemption: an `http` loopback redirect URI
+matches a registered one when scheme, hostname, path and query all agree,
+ignoring only the port; nothing else about exact matching changed
+(`tests/oauth/test_cimd_and_pkce.py` pins both halves).
 
-Root cause: Anthropic's CIMD document registers a **portless** loopback
-redirect URI (`http://localhost/callback`); the CLI's real request always
-carries a live ephemeral port; `palaia_hub.oauth.cimd.match_redirect_uri`
-does byte-exact matching with no RFC 8252 §7.3 loopback-port exemption. The
-port differs on every attempt, so this can never match — every default,
-zero-flag Claude Code OAuth login fails, today, for everyone.
-
-**Part 2, the documented CLI workaround, completed for real**: Claude
+**Part 2, the CLI's fixed-port escape hatch, completed for real** (kept
+green as the DCR-path regression test — this was the pre-fix workaround):
+Claude
 Code's own `mcp add --help` names exactly this scenario ("`--callback-port`:
 Fixed port for OAuth callback, for servers requiring pre-registered
 redirect URIs"). The test pre-registers a real DCR client with a literal,
@@ -175,16 +179,9 @@ $ claude -p "call work_memory_write …" --allowedTools mcp__palaia__work_memory
 {"permalink":"native-login-e2e","title":"Native Login E2E", …}
 ```
 
-Exit code `0`. This proves the resource server, PKCE, DCR, and the CLI's
-own OAuth plumbing are all fine — **only** the loopback-port exemption is
-missing, and it specifically breaks the connect-page's no-extra-flags
-promise. Filed as
-[byte5ai/palaia#233](https://github.com/byte5ai/palaia/issues/233), with a
-suggested direction (accept a presented loopback redirect URI that matches
-a registered one on scheme/host/path but not port) flagged for an
-owner/architect decision rather than patched here — it touches SPEC-203's
-security-critical redirect-matching code and its existing exact-match
-tests.
+Exit code `0`. Together the two parts prove the resource server, PKCE,
+CIMD, DCR, and the CLI's own OAuth plumbing end to end — on the default
+path and on the fixed-port path.
 
 ## 3. Connect-page corrections shipped in this PR
 
@@ -235,12 +232,13 @@ green) exercises directly:
   resource-indicator-shape and scope-enforcement behaviors any of these
   clients could hit.
 
-Byte5ai/palaia#233's redirect_uri finding (§2.3) plausibly affects any of
-these clients too **if** their own published CIMD/DCR redirect URI is a
-portless loopback address the way Claude Code's is — genuinely not known
-without their real client, so left "not verified" rather than guessed at.
-ChatGPT and Grok are browser/mobile-first (not loopback-native-app clients
-in the RFC 8252 sense), so they are less likely to hit it than a CLI is;
+Byte5ai/palaia#233's redirect_uri finding (§2.3) — now fixed by the
+RFC 8252 §7.3 loopback-port exemption — would have affected any of these
+clients whose published CIMD/DCR redirect URI is a portless loopback
+address the way Claude Code's is; with the exemption in place they get the
+same behavior. ChatGPT and Grok are browser/mobile-first (not
+loopback-native-app clients in the RFC 8252 sense), so the exemption is
+unlikely to matter for them;
 Codex, being another native CLI, is the one worth checking first once a
 real Codex install is available.
 
