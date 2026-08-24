@@ -54,7 +54,7 @@ every such row.
 | # | Client | Cell | Verified how |
 |---|---|---|---|
 | 1 | Claude Code (CLI) | **Green, with two filed quirks** — §2 | Scripted, real CLI |
-| 2 | Claude Desktop | Not verified — not built | N/A (Phase 3) |
+| 2 | Claude Desktop | **Green for the proxy's wire protocol; the MCPB install dialog itself unverified** — §6 (SPEC-306) | Scripted (real proxy subprocess, real hub) + docs |
 | 3 | claude.ai (web/desktop/mobile/Cowork) | Not verified (no account in this environment); OAuth wire protocol shared with row 1 is green | Scripted (shared code path) + docs |
 | 4 | ChatGPT | Not verified (no account); OAuth wire protocol shared with row 1 is green | Scripted (shared code path) + docs |
 | 5 | Codex (CLI/IDE/desktop) | Not verified (binary unavailable); OAuth wire protocol (CIMD) shared with row 1 is green; **one connect-page correction shipped** — §3 | Scripted (shared code path) + docs |
@@ -244,9 +244,6 @@ real Codex install is available.
 
 ## 5. Rows out of scope for this validation
 
-- **Claude Desktop**: MCPB bundle not built yet (MASTERPLAN: Phase 3);
-  `v3/web/src/lib/clients.ts` already states this honestly (`notYet`,
-  with the reason and the Phase-3 note) — no correction needed.
 - **OpenClaw**: not a v3 launch target (v2's plugin serves it) — nothing
   to validate under SPEC-209.
 - **Local LLM frontends** (LM Studio, Open WebUI, llama.cpp): no install
@@ -254,3 +251,46 @@ real Codex install is available.
   against current docs. Open WebUI (via its MCPO proxy) and llama.cpp's
   MCP client are not in `clients.ts` as guided rows yet and were not
   otherwise touched by this SPEC.
+
+## 6. Claude Desktop — SPEC-306's proxy, and what remains unverified
+
+SPEC-306 built the row 2 cell this document previously called "not built".
+What is real evidence, and what is not:
+
+**Green, with a real subprocess proof:**
+`v3/server/tests/e2e/test_mcpb_proxy.py` spawns the actual
+`v3/tools/build-mcpb/proxy/palaia-proxy.mjs` as a Node child process
+(never a stub), drives it with `fastmcp.Client` over a genuine stdio
+transport, and that proxy speaks genuine streamable HTTP to a real hub
+subprocess (real `VaultEngine`, real SPEC-108 `TokenVerifier`, real
+`uvicorn` socket) over a real loopback TCP connection. Three things are
+proven this way: tools list and a memory tool round-trips through the
+proxy; the proxy survives the hub being killed and restarted on the same
+port (a transparent re-initialize on the resulting `404`, invisible to the
+MCP client); and a revoked token produces a clear, non-stack-trace error
+message on the resource side. Finding along the way: `mcp`'s Python
+server frames its per-request SSE reply with CRLF line endings, not LF —
+the proxy's frame parser normalizes both (`test/proxy.test.mjs` pins the
+regression).
+
+**Not verified, and said so rather than assumed:** no real Claude Desktop
+application was available in this environment (it is macOS/Windows-only,
+per `MANIFEST.md`'s `compatibility.platforms`). Two things that
+specifically depend on the real application, not on this SPEC's own code,
+remain open:
+
+- Whether Claude Desktop's install dialog renders `manifest.json`'s
+  `user_config` defaults pre-filled the way the spec describes, and
+  whether double-clicking a `/api/connect/mcpb` download actually launches
+  `palaia-proxy.mjs` the way `mcp_config` says.
+- What, if anything, Claude Desktop's installer does with the bundle's
+  PKCS#7 signature — genuinely undocumented upstream; see
+  `v3/tools/build-mcpb/SIGNING.md` for exactly what was checked (three
+  primary sources, plus running the official `mcpb verify`/`info` commands
+  against a self-signed bundle) and what remains an open question.
+
+A real macOS or Windows machine with Claude Desktop installed, downloading
+a bundle from a reachable hub and double-clicking it, would close both
+gaps — the same "needs a real device/account this sandbox cannot fake
+honestly" situation §0 and the Phase-2 gate note already describe for the
+phone-Claude half of the exit criterion.

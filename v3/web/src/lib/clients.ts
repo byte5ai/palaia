@@ -5,18 +5,23 @@
  * acceptance criterion) is checkable by diffing this array against that
  * table, not by memory.
  *
- * Two kinds of entry:
+ * Three kinds of entry:
  * - `guided`: the client connects to *this device* (a local process, or a
  *   custom MCP config it owns) — always reachable, in every operating
  *   mode, because nothing outside the operator's own network is involved.
  *   These get the real, working flow: `ConnectPanel` issues a token
  *   through the already-built `/api/auth/tokens` (SPEC-108) and shows the
- *   copy-command / paste-prompt pair.
+ *   copy-command / paste-prompt pair, plus a "download the file" one-click
+ *   for clients whose real install path is "put this file there"
+ *   (SPEC-306 deliverable #3 — `configFile`).
+ * - `download`: Claude Desktop (SPEC-306) — a signed bundle assembled
+ *   fresh per click by `/api/connect/mcpb`, with the hub's address and a
+ *   credential already filled in, so it is a genuine one-click install
+ *   rather than a copy/paste.
  * - `notYet`: the client connects *from the vendor's cloud* (claude.ai,
- *   ChatGPT, Grok) or needs a delivery mechanism this phase does not build
- *   yet (Claude Desktop's MCPB bundle, Phase 3). `notYetReason(mode)`
- *   returns the truthful, mode-aware explanation this SPEC's acceptance
- *   criterion asks for — never a dead end, always why and what changes it.
+ *   ChatGPT, Grok). `notYetReason(mode)` returns the truthful, mode-aware
+ *   explanation this SPEC's acceptance criterion asks for — never a dead
+ *   end, always why and what changes it.
  */
 import type { ComponentType, SVGProps } from "react";
 
@@ -30,6 +35,12 @@ import {
 
 export type HubMode = "locked" | "cloud" | "open";
 
+export interface ConfigFile {
+  filename: string;
+  content: string;
+  mimeType: string;
+}
+
 export interface GuidedClient {
   kind: "guided";
   id: string;
@@ -40,6 +51,24 @@ export interface GuidedClient {
   command: (origin: string, profile: string) => string;
   /** The self-configuring prompt for the "paste a prompt" tab. */
   prompt: (origin: string, profile: string) => string;
+  /** SPEC-306 deliverable #3: a one-click "download config file" — the
+   * client's own real config-file format (SPEC-209-corrected), computed
+   * client-side (no hub round-trip: it is just the origin and profile,
+   * templated). Present only on clients whose real install path is "put
+   * this file there" rather than "run this command". */
+  configFile?: (origin: string, profile: string) => ConfigFile;
+}
+
+export interface DownloadClient {
+  kind: "download";
+  id: string;
+  name: string;
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
+  subtitle: string;
+  /** ``/api/connect/mcpb`` (SPEC-306 deliverable #4) — the hub assembles
+   * and signs a bundle personalized for ``profile`` on every request; this
+   * just names where. */
+  downloadUrl: (origin: string, profile: string) => string;
 }
 
 export interface NotYetClient {
@@ -59,7 +88,7 @@ export interface NotYetClient {
   oauthConnect?: (issuer: string, profile: string) => { url: string; note: string };
 }
 
-export type ClientEntry = GuidedClient | NotYetClient;
+export type ClientEntry = GuidedClient | NotYetClient | DownloadClient;
 
 const CLOUD_CONNECTOR_REASON = (name: string, planNote: string) => (mode: HubMode): string =>
   mode === "locked"
@@ -98,17 +127,31 @@ export const CLIENTS: ClientEntry[] = [
     prompt: (origin, profile) =>
       `Please connect yourself to my palaia hub as an MCP server:\n${origin}/mcp/${profile}\n` +
       `Then run a test recall and tell me what you found.`,
+    // ~/.codex/config.toml's `[mcp_servers.*]` table (research/mcp-landscape-2026.md
+    // §6) — streamable HTTP, no bearer env set here since the address
+    // alone is what this guided flow's default (no-auth) profile needs;
+    // an operator on a token-required profile adds `bearer_token_env_var`
+    // by hand, same as they would add `--header` to the command above.
+    configFile: (origin, profile) => ({
+      filename: "palaia-codex-mcp.toml",
+      mimeType: "text/plain",
+      content:
+        `# Paste this into ~/.codex/config.toml (or merge it into an existing\n` +
+        `# [mcp_servers] table).\n` +
+        `[mcp_servers.palaia]\n` +
+        `url = "${origin}/mcp/${profile}"\n`,
+    }),
   },
   {
-    kind: "notYet",
+    kind: "download",
     id: "claude-desktop",
     name: "Claude Code (Desktop app)",
     icon: ExplorerIcon,
-    subtitle: "One-click MCPB bundle — signed, local-only by spec",
-    reason: () =>
-      "Claude Code (Desktop app) connects through a signed MCPB bundle (a thin stdio→hub proxy, " +
-      "since MCPB is local-only by spec) — palaia does not build and sign that bundle yet. " +
-      "Planned for Phase 3; use Claude Code CLI in the meantime, on the same machine.",
+    subtitle: "One-click download — a signed bridge to your hub, no typing required",
+    downloadUrl: (origin, profile) =>
+      `${origin}/api/connect/mcpb?profile=${encodeURIComponent(profile)}&client_name=${encodeURIComponent(
+        "Claude Code (Desktop app)",
+      )}`,
   },
   {
     kind: "notYet",
@@ -147,6 +190,17 @@ export const CLIENTS: ClientEntry[] = [
     prompt: (origin, profile) =>
       `Please connect yourself to my palaia hub as an MCP server:\n${origin}/mcp/${profile}\n` +
       `Then run a test recall and tell me what you found.`,
+    // A real, complete ~/.gemini/settings.json — not just the snippet to
+    // merge in, since a settings.json with only this key is itself valid.
+    configFile: (origin, profile) => ({
+      filename: "palaia-gemini-settings.json",
+      mimeType: "application/json",
+      content: `${JSON.stringify(
+        { mcpServers: { palaia: { httpUrl: `${origin}/mcp/${profile}` } } },
+        null,
+        2,
+      )}\n`,
+    }),
   },
   {
     kind: "notYet",
@@ -169,6 +223,19 @@ export const CLIENTS: ClientEntry[] = [
     prompt: (origin, profile) =>
       `Please connect yourself to my palaia hub as an MCP server:\n${origin}/mcp/${profile}\n` +
       `Then run a test recall and tell me what you found.`,
+    configFile: (origin, profile) => ({
+      filename: "palaia-lmstudio-mcp.json",
+      mimeType: "application/json",
+      content: `${JSON.stringify(
+        {
+          mcpServers: {
+            palaia: { type: "streamable-http", url: `${origin}/mcp/${profile}` },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    }),
   },
   {
     kind: "guided",

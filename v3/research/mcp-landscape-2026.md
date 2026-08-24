@@ -74,7 +74,13 @@ SSO, **gateway behavior**) — the spec itself is trending toward palaia's shape
   one-click path.
 - `user_config` auto-generates a settings UI in Claude Desktop (`sensitive` values go
   to the OS keychain). Signing: `mcpb sign` (PKCS#7/CMS), `mcpb verify`; whether
-  Claude Desktop *enforces* signatures is undocumented (unverified).
+  Claude Desktop *enforces* signatures is undocumented (unverified). **SPEC-306
+  update:** running the tooling confirms `mcpb verify`/`info` themselves report a
+  self-signed bundle as *unsigned* (not "signed but untrusted") — they additionally
+  check the signing cert against the OS trust store (`security verify-cert` /
+  `X509Chain` / `openssl verify -CApath`), which no self-signed cert ever passes;
+  Claude Desktop's own enforcement remains genuinely undocumented. Full accounting:
+  `v3/tools/build-mcpb/SIGNING.md`.
 - Anthropic now calls MCPB "the secondary distribution path — remote MCP servers are
   recommended" ([guide](https://claude.com/docs/connectors/building/mcpb)).
 

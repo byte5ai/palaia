@@ -32,6 +32,21 @@ jobs:
       - name: uv sync
         run: uv sync --all-packages
 
+      # SPEC-306: server/tests/mcpb's real-pack tests need the `mcpb` CLI
+      # on PATH (via a local devDependency install) — without this they
+      # skip cleanly rather than fail, but skipping in CI would silently
+      # stop proving the acceptance criterion, so it is installed here.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: v3/tools/build-mcpb/package-lock.json
+
+      - name: npm ci (mcpb build tooling)
+        working-directory: v3/tools/build-mcpb
+        run: npm ci
+
       - name: ruff check
         run: uv run ruff check .
 
@@ -67,6 +82,14 @@ jobs:
       - name: uv sync
         run: uv sync --all-packages
 
+      # SPEC-306: test_mcpb_proxy.py spawns the real palaia-proxy.mjs as a
+      # Node subprocess. No `npm ci` needed here — the proxy is a
+      # self-contained script (Node builtins only).
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: e2e scenario suite
         # --basetemp puts every scenario's tmp_path (hub subprocess logs,
         # the golden-vault copy each scenario mutates, progress logs) under
@@ -81,6 +104,55 @@ jobs:
         with:
           name: e2e-failure-bundle
           path: v3/e2e-artifacts
+          retention-days: 14
+
+  mcpb:
+    # SPEC-306 deliverable #2: the packed bundle validates against the
+    # MCPB manifest schema, and the build is reproducible in CI — proven
+    # by actually running it here, not by running `build.mjs` only on a
+    # developer's machine.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: v3/tools/build-mcpb
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: v3/tools/build-mcpb/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: proxy unit tests
+        run: npm test
+
+      - name: build (validate + pack + sign)
+        run: npm run build
+
+      - name: verify the packed bundle unpacks to a valid manifest + a real signature block
+        run: |
+          rm -rf /tmp/mcpb-unpacked
+          node_modules/.bin/mcpb unpack dist/palaia.mcpb /tmp/mcpb-unpacked
+          node_modules/.bin/mcpb validate /tmp/mcpb-unpacked/manifest.json
+          node -e "
+            const data = require('fs').readFileSync('dist/palaia.mcpb');
+            if (!data.includes('MCPB_SIG_V1') || !data.includes('MCPB_SIG_END')) {
+              console.error('no PKCS#7 signature block found in the packed bundle');
+              process.exit(1);
+            }
+            console.log('signature block present (' + data.length + ' bytes total)');
+          "
+
+      - name: upload the built bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: palaia-mcpb
+          path: v3/tools/build-mcpb/dist/palaia.mcpb
           retention-days: 14
 
   web:
