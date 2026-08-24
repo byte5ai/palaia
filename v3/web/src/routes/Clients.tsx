@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 
 import { ConnectPanel, formatAge } from "../components/ConnectPanel";
+import { SkillPanel } from "../components/SkillPanel";
 import type { TokenInfo } from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
 import { CLIENTS, type HubMode, type NotYetClient } from "../lib/clients";
@@ -160,6 +161,10 @@ export function Clients() {
         ) : (
           <NotYetCard client={selected} mode={mode} />
         )}
+        {/* Offered whether or not the connector itself is ready: a skill is
+            installed in the client, not in the hub, so a not-yet client can
+            still be taught the habit before its connector lands (SPEC-207). */}
+        <SkillPanel clientId={selected.id} clientName={selected.name} />
       </div>
     </section>
   );

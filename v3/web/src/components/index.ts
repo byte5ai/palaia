@@ -6,5 +6,6 @@ export * from "./EmptyState";
 export * from "./Field";
 export * from "./ListRow";
 export * from "./Skeleton";
+export * from "./SkillPanel";
 export * from "./Table";
 export * from "./Toast";

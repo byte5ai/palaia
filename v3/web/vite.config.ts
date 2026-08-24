@@ -15,6 +15,13 @@ const pkg = JSON.parse(
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  server: {
+    // `src/lib/skills.ts` imports the shipped SKILL.md files from
+    // ../../clients with `?raw` so the connect page hands over the real
+    // skill rather than a copy that can drift (SPEC-207). Bundling resolves
+    // them fine; the dev server needs the v3 root on its allow list.
+    fs: { allow: ['..'] },
+  },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
