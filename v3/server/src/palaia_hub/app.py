@@ -17,9 +17,15 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 
 from . import __version__
+from .admin_session import (
+    AdminSessionMiddleware,
+    build_admin_session_middleware_kwargs,
+    sign_in_required,
+    sign_in_url_for,
+)
 from .auth import TokenRecord, TokenStore, build_auth_router, check_gateway_auth_policy
 from .automations import (
     AutomationDispatcher,
@@ -63,6 +69,7 @@ from .mcpb import build_mcpb_router
 from .modes import AuthRateLimitMiddleware, ModeAuditLog, build_modes_router
 from .notifications import NotificationStore, build_notifications_router
 from .oauth import AuthorizationServer, build_oauth_router
+from .oauth.login import SESSION_COOKIE
 from .stash.service import StashService
 from .stash_api import build_stash_router
 from .static import mount_dashboard
@@ -492,11 +499,26 @@ def create_app(
     app.state.config = config
     app.state.start_time = start_time
     app.state.event_bus = event_bus
+    hub_home = home or palaia_home()
     if config.mode in ("cloud", "open"):
         # SPEC-205 deliverable #4: these endpoints become reachable off the
         # operator's own network in these two modes — 'locked' has no such
         # surface to throttle, so this middleware never exists there.
         app.add_middleware(AuthRateLimitMiddleware)
+    # SPEC-401: the admin session gate. Added last, so it sits OUTSIDE the
+    # rate limiter: an unauthenticated caller is turned away before any
+    # other middleware does work for it. Mounted only when there is an
+    # authorization server to resolve a session against — without one there
+    # is no sign-in flow at all, and enforcing would lock the operator out
+    # of their own hub with nothing to unlock it (see
+    # `admin_session.sign_in_required` for the per-mode policy, and the
+    # middleware itself for the "only once an account exists" half).
+    admin_session_enforced = oauth_server is not None and sign_in_required(config)
+    if oauth_server is not None and admin_session_enforced:  # the None check narrows the type
+        app.add_middleware(
+            AdminSessionMiddleware,
+            **build_admin_session_middleware_kwargs(oauth_server, config),
+        )
     if gateway is not None:
         for path, mounted_app in gateway.mounts.items():
             app.mount(path, mounted_app)
@@ -531,15 +553,23 @@ def create_app(
         ``sign_in`` is non-secret (no client id, no allow-list) and is what
         the dashboard's settings section (SPEC-204 deliverable #4) reads to
         show "Sign in with GitHub" / a configured provider's name / the
-        local password, in plain language.
+        local password, in plain language. SPEC-401 adds two equally
+        non-secret fields to it: whether signing in is *required* on this
+        hub, and where the one door is — which is what lets the dashboard
+        show a sign-in prompt (and a sign-out button) without first making a
+        call that fails.
         """
-        sign_in: dict[str, str | None]
+        sign_in: dict[str, str | bool | None]
         if oauth_server is not None and oauth_server.idp_configured:
             sign_in = {"method": "idp", "provider_name": oauth_server.idp_display_name}
         elif oauth_server is not None:
             sign_in = {"method": "password", "provider_name": None}
         else:
             sign_in = {"method": "none", "provider_name": None}
+        sign_in["required"] = admin_session_enforced
+        sign_in["sign_in_url"] = (
+            sign_in_url_for(oauth_server) if oauth_server is not None else None
+        )
         return {
             "version": __version__,
             "mode": config.mode,
@@ -575,7 +605,6 @@ def create_app(
     # is only ever used lazily, inside request handlers (config.yaml is
     # read/patched per-request, never at app-build time) — mounting this
     # router has no filesystem side effect by itself.
-    hub_home = home or palaia_home()
     app.include_router(
         build_modes_router(
             config,
@@ -594,6 +623,29 @@ def create_app(
     # "/" last.
     if oauth_server is not None:
         app.include_router(build_oauth_router(oauth_server))
+
+        @app.get("/api/session")
+        async def session(request: Request) -> dict[str, Any]:
+            """Who is signed in on this browser (SPEC-401 deliverable #6).
+
+            Deliberately *not* on the sign-in-free allowlist: with the gate
+            active this route answers 401 like every other admin route, and
+            the dashboard's own API client turns that one 401 into the
+            redirect to the sign-in page. With the gate off it answers
+            ``signed_in: false`` instead of failing, so a private LAN hub's
+            shell simply shows no sign-out button.
+            """
+            assert oauth_server is not None  # narrowing for mypy inside the closure
+            username = await asyncio.to_thread(
+                oauth_server.current_user, request.cookies.get(SESSION_COOKIE)
+            )
+            return {
+                "signed_in": username is not None,
+                "username": username,
+                "required": admin_session_enforced,
+                "sign_in_url": sign_in_url_for(oauth_server),
+                "session_ttl_seconds": config.oauth.session_ttl,
+            }
 
     if vault_registry is not None:
         app.include_router(

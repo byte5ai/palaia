@@ -29,7 +29,7 @@
     "/api/info": {
       "get": {
         "summary": "Info",
-        "description": "Version, operating mode, uptime, and how the owner signs in.\n\n``sign_in`` is non-secret (no client id, no allow-list) and is what\nthe dashboard's settings section (SPEC-204 deliverable #4) reads to\nshow \"Sign in with GitHub\" / a configured provider's name / the\nlocal password, in plain language.",
+        "description": "Version, operating mode, uptime, and how the owner signs in.\n\n``sign_in`` is non-secret (no client id, no allow-list) and is what\nthe dashboard's settings section (SPEC-204 deliverable #4) reads to\nshow \"Sign in with GitHub\" / a configured provider's name / the\nlocal password, in plain language. SPEC-401 adds two equally\nnon-secret fields to it: whether signing in is *required* on this\nhub, and where the one door is \u2014 which is what lets the dashboard\nshow a sign-in prompt (and a sign-out button) without first making a\ncall that fails.",
         "operationId": "info_api_info_get",
         "responses": {
           "200": {

@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 
+from ..admin_session import owner_account_exists
 from ..config import HubConfig, config_file_path, load_config
 from ..events import EventBus, publish_event
 from .audit import ModeAuditLog
@@ -83,22 +84,6 @@ class ModeChangeRequest(BaseModel):
 def _dotted_updates(body: ModeChangeRequest) -> dict[str, Any]:
     updates: dict[str, Any] = {}
     if body.mode is not None:
-        # Issue #242: same refusal as config.load_config — `open` makes the
-        # dashboard itself public, and the dashboard sign-in that requires
-        # does not exist yet. Refused at both operator entry points so
-        # neither a config edit nor this endpoint can reach an
-        # unauthenticated public admin surface.
-        if body.mode == "open":
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Fully public isn't available yet: it would make this "
-                    "dashboard reachable from the internet, and the sign-in "
-                    "that requires is still being built. Choose 'Reachable "
-                    "for AI services' instead — claude.ai and ChatGPT "
-                    "connect exactly the same way there."
-                ),
-            )
         updates["mode"] = body.mode
     if body.host is not None:
         updates["host"] = body.host
@@ -113,6 +98,26 @@ def _dotted_updates(body: ModeChangeRequest) -> dict[str, Any]:
     if body.tunnel is not None:
         updates["exposure.tunnel"] = body.tunnel
     return updates
+
+
+def _sign_in_configured(
+    candidate: HubConfig, *, home: Path, oauth_store: OAuthStore | None
+) -> bool:
+    """Does ``candidate`` describe a hub the owner can actually sign in to?
+
+    The same three-part question :func:`palaia_hub.admin_session.
+    sign_in_configured` asks — a sign-in server with an address, and either a
+    provider or an owner account — answered against the live store when this
+    router was given one (the authoritative source, and the one the running
+    hub itself reads), falling back to the read-only on-disk probe otherwise.
+    """
+    if not candidate.oauth.enabled or not candidate.oauth.issuer:
+        return False
+    if candidate.oauth.idp is not None:
+        return True
+    if oauth_store is not None:
+        return oauth_store.get_owner() is not None
+    return owner_account_exists(home)
 
 
 def _nested_overrides(updates: dict[str, Any]) -> dict[str, Any]:
@@ -246,6 +251,26 @@ def build_modes_router(
         target_mode = body.mode or current.mode
         try:
             candidate = build_candidate_config(current, _nested_overrides(updates))
+            # Issue #242 / SPEC-401 deliverable #5: `open` puts this
+            # dashboard on the public internet, so it is accepted only once
+            # there is a way to sign in to it. Checked against the
+            # *candidate* (the operator may be turning the sign-in server on
+            # in the same call) and refused before anything is written, so
+            # the wizard says why instead of leaving a config.yaml the hub
+            # would refuse to load on its next start. Same rule as
+            # `load_config`, in plain language for the person in the
+            # dashboard.
+            if candidate.mode == "open" and not _sign_in_configured(
+                candidate, home=home, oauth_store=oauth_store
+            ):
+                raise ModeChangeError(
+                    "Fully public also needs a way for you to sign in to this "
+                    "dashboard — it would otherwise be reachable from the "
+                    "internet by anyone. Fix: set your own password (run "
+                    "`palaia-hub oauth set-password`) or connect a sign-in "
+                    "provider, and turn the sign-in server on with a public "
+                    "address for it; then choose fully public again."
+                )
         except ModeChangeError as exc:
             audit.record(
                 from_mode=current.mode,

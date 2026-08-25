@@ -41,6 +41,22 @@ export type SelfTestResult =
 export interface SignInInfo {
   method: "password" | "idp" | "none";
   provider_name: string | null;
+  /** SPEC-401: whether this hub's admin surface requires a session at all
+   * (mandatory when the dashboard is public, off on a private network). */
+  required?: boolean;
+  /** Where the one sign-in door is — the password form, or the configured
+   * provider's start. `null` when this hub has no sign-in server. */
+  sign_in_url?: string | null;
+}
+
+/** `GET /api/session` (SPEC-401 deliverable #6) — mirrors the route in
+ * `palaia_hub.app`. */
+export interface SessionState {
+  signed_in: boolean;
+  username: string | null;
+  required: boolean;
+  sign_in_url: string;
+  session_ttl_seconds: number;
 }
 
 /**
@@ -405,74 +421,120 @@ export class ApiError extends Error {
   }
 }
 
-async function getJson<T>(path: string): Promise<T> {
+/**
+ * SPEC-401 deliverable #3: the hub requires this header on every
+ * state-changing call under `/api/*`, carrying the value of the cookie its
+ * sign-in flow set (a double-submit pair — see
+ * `palaia_hub.admin_session`). Read fresh per request rather than cached at
+ * module load: signing in replaces the cookie, and a value cached from
+ * before that would be stale for the rest of the page's life.
+ */
+const CSRF_COOKIE = "palaia_oauth_csrf";
+const CSRF_HEADER = "X-Palaia-CSRF";
+
+/** Methods the hub lets through with no token, because they change nothing. */
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+function readCookie(name: string): string {
+  // `document.cookie` is a single "a=1; b=2" string; the session cookie
+  // itself is HttpOnly and deliberately invisible here.
+  for (const part of document.cookie.split(";")) {
+    const [key, ...rest] = part.trim().split("=");
+    if (key === name) return decodeURIComponent(rest.join("="));
+  }
+  return "";
+}
+
+/** One redirect per page life, however many calls fail at once. */
+let signInRedirectStarted = false;
+
+/** Test seam: forget that a redirect already happened. */
+export function resetSignInRedirect(): void {
+  signInRedirectStarted = false;
+}
+
+/**
+ * Send the browser to the hub's one sign-in door, and come back here.
+ *
+ * `signInUrl` comes from the hub's own 401 body, so the password form and
+ * the identity-provider start are handled by the same code path (the hub
+ * decides which one exists). The screen the operator was on travels along as
+ * `next`, which is why a session expiring mid-use costs one redirect and
+ * not their place in the app.
+ */
+function redirectToSignIn(signInUrl: string): void {
+  if (signInRedirectStarted) return;
+  signInRedirectStarted = true;
+  const next = `${window.location.pathname}${window.location.search}`;
+  window.location.assign(`${signInUrl}?next=${encodeURIComponent(next)}`);
+}
+
+interface RequestOptions {
+  method?: string;
+  body?: unknown;
+  /** Set false for a call with no response body to parse (a 204 DELETE). */
+  expectJson?: boolean;
+}
+
+function signInUrlFrom(body: unknown): string | null {
+  if (typeof body !== "object" || body === null) return null;
+  const candidate = (body as { sign_in_url?: unknown }).sign_in_url;
+  return typeof candidate === "string" && candidate ? candidate : null;
+}
+
+async function request<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  const method = (options.method ?? "GET").toUpperCase();
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (options.body !== undefined) headers["Content-Type"] = "application/json";
+  if (!SAFE_METHODS.has(method)) {
+    const token = readCookie(CSRF_COOKIE);
+    if (token) headers[CSRF_HEADER] = token;
+  }
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: { Accept: "application/json" },
+    method,
+    headers,
+    ...(options.body === undefined
+      ? {}
+      : { body: JSON.stringify(options.body) }),
   });
   if (!response.ok) {
     let body: unknown;
     try {
       body = await response.json();
     } catch {
-      body = await response.text();
+      body = "";
+    }
+    if (response.status === 401) {
+      const signInUrl = signInUrlFrom(body);
+      if (signInUrl) redirectToSignIn(signInUrl);
     }
     throw new ApiError(path, response.status, body);
   }
+  if (options.expectJson === false) return undefined as T;
   return (await response.json()) as T;
 }
 
-async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    let responseBody: unknown;
-    try {
-      responseBody = await response.json();
-    } catch {
-      responseBody = await response.text();
-    }
-    throw new ApiError(path, response.status, responseBody);
-  }
-  return (await response.json()) as T;
+function getJson<T>(path: string): Promise<T> {
+  return request<T>(path);
 }
 
-async function patchJson<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: "PATCH",
-    headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    let responseBody: unknown;
-    try {
-      responseBody = await response.json();
-    } catch {
-      responseBody = await response.text();
-    }
-    throw new ApiError(path, response.status, responseBody);
-  }
-  return (await response.json()) as T;
+function postJson<T>(path: string, body: unknown): Promise<T> {
+  return request<T>(path, { method: "POST", body });
 }
 
-async function putJson<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: "PUT",
-    headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    let responseBody: unknown;
-    try {
-      responseBody = await response.json();
-    } catch {
-      responseBody = await response.text();
-    }
-    throw new ApiError(path, response.status, responseBody);
-  }
-  return (await response.json()) as T;
+function patchJson<T>(path: string, body: unknown): Promise<T> {
+  return request<T>(path, { method: "PATCH", body });
+}
+
+function putJson<T>(path: string, body: unknown): Promise<T> {
+  return request<T>(path, { method: "PUT", body });
+}
+
+function deleteRequest(path: string): Promise<void> {
+  return request<void>(path, { method: "DELETE", expectJson: false });
 }
 
 function queryString(
@@ -491,6 +553,26 @@ function queryString(
 export const api = {
   health: () => getJson<HealthResponse>("/api/health"),
   info: () => getJson<InfoResponse>("/api/info"),
+
+  // ---- SPEC-401: the admin session ----
+  /** Who is signed in on this browser, and whether this hub requires it.
+   *
+   * A hub whose gate is off answers 200 with `signed_in: false`, so a 401
+   * here means one thing only — this hub requires a session and this
+   * browser has none — and it redirects like any other call. That is what
+   * makes the shell bounce straight to the sign-in page even on a screen
+   * whose own data happens to come from a sign-in-free endpoint. */
+  session: () => request<SessionState>("/api/session"),
+  /** End the session and drop its cookies. Not under `/api/*`: signing out
+   * is part of the sign-in flow itself, which lives at `/oauth/logout`. */
+  signOut: () =>
+    fetch(`${API_BASE}/oauth/logout`, {
+      method: "POST",
+      headers: { Accept: "application/json" },
+    }).then((response) => {
+      if (!response.ok)
+        throw new ApiError("/oauth/logout", response.status, undefined);
+    }),
   /** Same-origin URL for the SSE stream — passed straight to `EventSource`
    * by `useEventStream` (./events.ts), never fetched with `fetch`. */
   eventsUrl: () => `${API_BASE}/api/events`,
@@ -547,12 +629,7 @@ export const api = {
     },
   ) => patchJson<GatewayProfile>(`/api/gateway/profiles/${profilePath}`, body),
   deleteGatewayProfile: (profilePath: string) =>
-    fetch(`${API_BASE}/api/gateway/profiles/${profilePath}`, {
-      method: "DELETE",
-    }).then((response) => {
-      if (!response.ok)
-        throw new ApiError("/api/gateway/profiles", response.status, undefined);
-    }),
+    deleteRequest(`/api/gateway/profiles/${profilePath}`),
   listGatewayVaults: () => getJson<GatewayVaultIdentity[]>("/api/gateway/vaults"),
   updateGatewayVault: (
     vaultKey: string,
@@ -567,12 +644,7 @@ export const api = {
   createToken: (body: { name: string; profile: string; scopes?: string[] }) =>
     postJson<CreatedToken>("/api/auth/tokens", { scopes: [], ...body }),
   revokeToken: (tokenId: string) =>
-    fetch(`${API_BASE}/api/auth/tokens/${tokenId}`, { method: "DELETE" }).then(
-      (response) => {
-        if (!response.ok)
-          throw new ApiError("/api/auth/tokens", response.status, undefined);
-      },
-    ),
+    deleteRequest(`/api/auth/tokens/${tokenId}`),
 
   // ---- SPEC-201's webhook surface ----
   listHooks: () => getJson<HookInfo[]>("/api/hooks"),
@@ -580,13 +652,7 @@ export const api = {
     postJson<CreatedHook>("/api/hooks", body),
   setHookEnabled: (hookId: string, enabled: boolean) =>
     patchJson<HookInfo>(`/api/hooks/${hookId}`, { enabled }),
-  deleteHook: (hookId: string) =>
-    fetch(`${API_BASE}/api/hooks/${hookId}`, { method: "DELETE" }).then(
-      (response) => {
-        if (!response.ok)
-          throw new ApiError("/api/hooks", response.status, undefined);
-      },
-    ),
+  deleteHook: (hookId: string) => deleteRequest(`/api/hooks/${hookId}`),
   hookDeadLetters: (hookId: string) =>
     getJson<DeadLetter[]>(`/api/hooks/${hookId}/dead_letters`),
 
@@ -611,12 +677,7 @@ export const api = {
   setAutomationEnabled: (automationId: string, enabled: boolean) =>
     patchJson<AutomationInfo>(`/api/automations/${automationId}`, { enabled }),
   deleteAutomation: (automationId: string) =>
-    fetch(`${API_BASE}/api/automations/${automationId}`, {
-      method: "DELETE",
-    }).then((response) => {
-      if (!response.ok)
-        throw new ApiError("/api/automations", response.status, undefined);
-    }),
+    deleteRequest(`/api/automations/${automationId}`),
   automationDeliveries: (automationId: string) =>
     getJson<DeliveryLogEntry[]>(`/api/automations/${automationId}/deliveries`),
   testFireAutomation: (
@@ -689,10 +750,5 @@ export const api = {
   updateInstalledAddon: (upstreamKey: string) =>
     postJson<InstalledAddon>(`/api/market/installed/${upstreamKey}/update`, {}),
   uninstallAddon: (upstreamKey: string) =>
-    fetch(`${API_BASE}/api/market/installed/${upstreamKey}`, { method: "DELETE" }).then(
-      (response) => {
-        if (!response.ok)
-          throw new ApiError("/api/market/installed", response.status, undefined);
-      },
-    ),
+    deleteRequest(`/api/market/installed/${upstreamKey}`),
 };
