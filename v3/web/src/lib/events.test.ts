@@ -82,6 +82,28 @@ describe('useEventStream', () => {
     })
   })
 
+  it('increments agentActivityCount on session.* and message.* events (SPEC-405: no polling loop)', async () => {
+    const { result } = renderHook(() => useEventStream(FakeEventSource as unknown as typeof EventSource))
+    const source = FakeEventSource.instances.at(-1)!
+
+    expect(result.current.agentActivityCount).toBe(0)
+
+    act(() => {
+      source.emit('session.registered', { event: 'session.registered', data: { handle: 'abc' } })
+    })
+    await waitFor(() => expect(result.current.agentActivityCount).toBe(1))
+
+    act(() => {
+      source.emit('message.sent', { event: 'message.sent', data: { id: 'm1' } })
+    })
+    await waitFor(() => expect(result.current.agentActivityCount).toBe(2))
+
+    act(() => {
+      source.emit('session.stale', { event: 'session.stale', data: { handle: 'abc' } })
+    })
+    await waitFor(() => expect(result.current.agentActivityCount).toBe(3))
+  })
+
   it('reports reconnecting after a drop that follows a successful connection', async () => {
     const { result } = renderHook(() => useEventStream(FakeEventSource as unknown as typeof EventSource))
     const source = FakeEventSource.instances.at(-1)!

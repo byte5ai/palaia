@@ -52,11 +52,19 @@ from palaia_hub.gateway.apps.hub_status_app import render_hub_status_html
 from palaia_hub.gateway.apps.recall_app import render_recall_explorer_html
 from palaia_hub.gateway.apps.review_app import render_review_queue_html
 from palaia_hub.gateway.apps.shell import render_app_page
+from palaia_hub.gateway.apps.stash_browser_app import render_stash_browser_html
+from palaia_hub.gateway.apps.team_app import render_team_html
 
 _PAGES = {
     "hub_status": render_hub_status_html,
     "recall_explorer": render_recall_explorer_html,
     "review_queue": render_review_queue_html,
+    # SPEC-405's two apps — the same "scripted harness" this module's own
+    # docstring documents (real MCP protocol via fastmcp.Client, elsewhere
+    # in test_apps_team.py/test_apps_stash_browser.py; the shared shell
+    # properties — CSP, theme tokens, self-containment — here).
+    "team": render_team_html,
+    "stash_browser": render_stash_browser_html,
 }
 
 # Constructs that cause a browser to make a network request. Not "https://"

@@ -24,9 +24,12 @@ def test_directory_absent_by_default() -> None:
 
 
 def test_directory_rest_mirror_is_read_only() -> None:
-    """Deliverable #4: 'list/query only'. There is no POST/PUT/DELETE on
-    this REST surface at all — mutations only ever come from MCP callers
-    holding their own session secret."""
+    """Deliverable #4: 'list/query only' — this root listing route itself
+    has no write verb; every ordinary mutation still only ever comes from
+    MCP callers holding their own session secret. (SPEC-405 adds exactly
+    one owner-only write elsewhere on this mount —
+    ``POST /{handle}/deregister`` — covered below, and it is not this
+    route.)"""
     service = DirectoryService(DirectoryStore(":memory:"))
     app = create_app(HubConfig(), directory_service=service)
     client = TestClient(app)
@@ -72,3 +75,30 @@ def test_directory_events_are_wired_onto_the_hub_event_bus() -> None:
     assert event.event == "session.registered"
     assert event.origin == "directory"
     assert event.data["handle"] == "abc123"
+
+
+# -- the owner control (SPEC-405 deliverable #2), over the real app ---------
+
+
+def test_admin_deregister_route_needs_no_secret() -> None:
+    service = DirectoryService(DirectoryStore(":memory:"))
+    app = create_app(HubConfig(), directory_service=service)
+    client = TestClient(app)
+
+    result = asyncio.run(service.register(scope="a stale session"))
+    handle = result.session.handle
+
+    response = client.post(f"/api/directory/{handle}/deregister")
+    assert response.status_code == 200
+    assert response.json() == {"handle": handle, "deregistered": True}
+    assert client.get("/api/directory/").json()["sessions"] == []
+
+
+def test_admin_deregister_route_is_idempotent_for_an_already_gone_handle() -> None:
+    service = DirectoryService(DirectoryStore(":memory:"))
+    app = create_app(HubConfig(), directory_service=service)
+    client = TestClient(app)
+
+    response = client.post("/api/directory/no-such-handle/deregister")
+    assert response.status_code == 200
+    assert response.json() == {"handle": "no-such-handle", "deregistered": False}

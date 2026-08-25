@@ -203,3 +203,15 @@ export function MarketplaceIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+/** SPEC-405: the agents nav item — two linked presence dots (the directory
+ * plus the messenger flow between them). */
+export function AgentsIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <circle cx="8" cy="8" r="3" />
+      <circle cx="16" cy="16" r="3" />
+      <path d="M10.2 10.2 13.8 13.8" />
+    </Icon>
+  );
+}

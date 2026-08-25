@@ -389,6 +389,31 @@ class DirectoryStore:
             self._conn.commit()
         return True, [h for h in newly_stale if h != handle]
 
+    def admin_deregister(
+        self, handle: str, *, now: float | None = None
+    ) -> tuple[bool, list[str]]:
+        """Owner control: remove a session's row with no secret required
+        (SPEC-405 deliverable #2 — "deregister a stale session").
+
+        Has exactly one caller in production,
+        :mod:`palaia_hub.directory_api`'s ``POST /api/directory/{handle}/
+        deregister``, which sits behind the owner's signed-in session and
+        CSRF token (:mod:`palaia_hub.admin_session`) — a *stronger* proof of
+        "the owner really did this" than the session secret :meth:`deregister`
+        demands of an ordinary caller, not a weaker substitute for it. Same
+        idempotent-success shape as :meth:`deregister`: an already-gone
+        handle answers ``False``, never :class:`SessionNotFoundError`.
+        """
+        current = self._now(now)
+        with self._lock:
+            newly_stale = self._sweep_locked(current)
+            row = self._get_row_locked(handle)
+            if row is None:
+                return False, newly_stale
+            self._conn.execute("DELETE FROM session_registry WHERE handle = ?", (handle,))
+            self._conn.commit()
+        return True, [h for h in newly_stale if h != handle]
+
     # `list` is defined last among this class's methods, deliberately: a
     # method literally named `list` shadows the builtin `list[...]` inside
     # every *subsequent* return-type annotation in this class body (mypy
