@@ -19,6 +19,13 @@ def test_known_event_names_cover_the_spec_201_v1_vocabulary() -> None:
     assert expected <= KNOWN_EVENT_NAMES
 
 
+def test_the_messenger_events_are_additive_names_on_the_same_bus() -> None:
+    """SPEC-403 deliverable #5: three additive names, so SPEC-307's
+    automations can notify/webhook on them with no new automation work."""
+    assert {"message.sent", "message.received", "message.expired"} <= KNOWN_EVENT_NAMES
+    assert SCHEMA_VERSION == 1  # additive names never bump the envelope version
+
+
 def test_envelope_to_json_carries_every_public_field() -> None:
     envelope = Envelope(
         event="memory.entry.created",

@@ -17,6 +17,7 @@ has never heard of) is treated as a write.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Literal
 
 Permission = Literal["read", "write"]
@@ -123,17 +124,77 @@ def required_scope_for_directory_action(action: str) -> str:
     return directory_scope(permission)
 
 
+# SPEC-403 (messenger): hub-level again, but with its own two-word
+# vocabulary rather than read/write — the SPEC names ``messenger:send`` as
+# *the* scope sending requires, so the write side is called ``send`` and not
+# ``write``. ``messenger:read`` covers looking at your own mail.
+#
+# Note what a scope here does *not* buy: reading an inbox additionally needs
+# the SPEC-402 session secret (SPEC-403 deliverable #4 — "a scope alone must
+# not read another session's inbox"), enforced in
+# :mod:`palaia_hub.messenger.service`, not here. A scope says what a client
+# may do; only the secret says which session it is.
+MessengerPermission = Literal["read", "send"]
+
+#: ``messenger_ack`` is deliberately **not** here: it mutates delivery
+#: state, so the fail-closed rule gives it the stronger scope. The SPEC
+#: names only ``messenger:send`` on the write side, so ack shares it rather
+#: than inventing a third scope string for one tool.
+MESSENGER_READ_ACTIONS: frozenset[str] = frozenset({"messenger_check", "messenger_thread"})
+MESSENGER_SEND_ACTIONS: frozenset[str] = frozenset({"messenger_send", "messenger_ack"})
+
+
+def messenger_scope(permission: MessengerPermission) -> str:
+    """The scope string for ``permission`` on the messenger tool family."""
+    return f"messenger:{permission}"
+
+
+def required_scope_for_messenger_action(action: str) -> str:
+    """The scope a token needs to call messenger-tool ``action``.
+
+    Fail-closed, same as every other family above: an action name this
+    module does not recognize requires ``messenger:send``, the stronger of
+    the two.
+    """
+    permission: MessengerPermission = "read" if action in MESSENGER_READ_ACTIONS else "send"
+    return messenger_scope(permission)
+
+
+def readable_vault_keys(scopes: Iterable[str]) -> frozenset[str]:
+    """Which vaults these scopes grant *read* access to.
+
+    Used by the messenger to decide which vaults an envelope's
+    ``memory://`` refs may resolve in (SPEC-403 deliverable #1: "validated
+    to resolve in a vault the sender can read"). Only an explicit
+    ``vault:<key>:read`` counts — a write scope is not silently treated as
+    implying read, because nothing else in this module does that either and
+    a ref check is not the place to invent a scope hierarchy.
+    """
+    keys: set[str] = set()
+    for scope in scopes:
+        parts = scope.split(":")
+        if len(parts) == 3 and parts[0] == "vault" and parts[2] == "read" and parts[1]:
+            keys.add(parts[1])
+    return frozenset(keys)
+
+
 __all__ = [
     "DIRECTORY_READ_ACTIONS",
     "DIRECTORY_WRITE_ACTIONS",
+    "MESSENGER_READ_ACTIONS",
+    "MESSENGER_SEND_ACTIONS",
     "READ_ACTIONS",
     "STASH_READ_ACTIONS",
     "STASH_WRITE_ACTIONS",
     "WRITE_ACTIONS",
+    "MessengerPermission",
     "Permission",
     "directory_scope",
+    "messenger_scope",
+    "readable_vault_keys",
     "required_scope_for_action",
     "required_scope_for_directory_action",
+    "required_scope_for_messenger_action",
     "required_scope_for_stash_action",
     "stash_scope",
     "vault_scope",

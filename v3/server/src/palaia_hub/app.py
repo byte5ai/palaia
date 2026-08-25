@@ -53,6 +53,7 @@ from .gateway.api import build_gateway_profiles_router
 from .gateway.apps.hub_status_app import HubStatusDeps, build_hub_status_server
 from .gateway.apps.market_app import MarketAppDeps, build_market_server
 from .gateway.directory_tools import build_directory_gateway
+from .gateway.messenger_tools import build_messenger_gateway
 from .gateway.stash_tools import build_stash_gateway
 from .gateway.wiring import EngineVaultService
 from .hooks import OUTBOX_RELATIVE_PATH, HookDispatcher, HookOutbox, HookStore, build_hooks_router
@@ -66,6 +67,8 @@ from .market import (
     wire_market_index_updates,
 )
 from .mcpb import build_mcpb_router
+from .messenger.service import MessengerService
+from .messenger_api import build_messenger_router
 from .modes import AuthRateLimitMiddleware, ModeAuditLog, build_modes_router
 from .notifications import NotificationStore, build_notifications_router
 from .oauth import AuthorizationServer, build_oauth_router
@@ -104,6 +107,7 @@ def create_app(
     oauth_server: AuthorizationServer | None = None,
     stash_service: StashService | None = None,
     directory_service: DirectoryService | None = None,
+    messenger_service: MessengerService | None = None,
     market_service: MarketService | None = None,
     install_service: InstallService | None = None,
     hook_store: HookStore | None = None,
@@ -212,6 +216,13 @@ def create_app(
             ``session.*`` events onto ``event_bus``. Omitted (the
             default), the hub runs with no session directory surface at
             all, same as before this parameter existed.
+        messenger_service: the hub's messenger (SPEC-403). Given, mounts
+            the ``messenger_*`` tool family at ``/mcp/messenger`` and the
+            read-only ``/api/messenger`` REST mirror, and wires its
+            ``message.*`` events onto this app's bus. Omitted (the default),
+            the hub runs with no messenger surface at all — every
+            ``messenger: true`` profile flag then mounts nothing, exactly
+            like ``stash``/``directory`` ahead of their services.
         market_service: the marketplace read model (SPEC-303 — official
             registry + curated index + manual entries, merged). Given,
             mounts ``/api/market/*`` and wires its
@@ -321,6 +332,14 @@ def create_app(
 
         directory_service.publish = _publish_directory
         directory_gateway = build_directory_gateway(directory_service)
+
+    messenger_gateway = None
+    if messenger_service is not None:
+        def _publish_messenger(action: str, data: dict[str, Any]) -> None:
+            publish_event(event_bus, action, origin="messenger", data=data)
+
+        messenger_service.publish = _publish_messenger
+        messenger_gateway = build_messenger_gateway(messenger_service)
 
     if market_service is not None:
         def _publish_market(action: str, data: dict[str, Any]) -> None:
@@ -466,6 +485,8 @@ def create_app(
                     await stack.enter_async_context(stash_gateway.lifespan(app_))
                 if directory_gateway is not None:
                     await stack.enter_async_context(directory_gateway.lifespan(app_))
+                if messenger_gateway is not None:
+                    await stack.enter_async_context(messenger_gateway.lifespan(app_))
                 if hub_status_asgi_app is not None:
                     await stack.enter_async_context(hub_status_asgi_app.lifespan(app_))
                 if market_asgi_app is not None:
@@ -530,6 +551,8 @@ def create_app(
         app.mount("/mcp/stash", stash_gateway.app)
     if directory_gateway is not None:
         app.mount("/mcp/directory", directory_gateway.app)
+    if messenger_gateway is not None:
+        app.mount("/mcp/messenger", messenger_gateway.app)
     if hub_status_asgi_app is not None:
         app.mount("/mcp/hub", hub_status_asgi_app)
     if market_asgi_app is not None:
@@ -718,6 +741,8 @@ def create_app(
         app.include_router(build_stash_router(stash_service))
     if directory_service is not None:
         app.include_router(build_directory_router(directory_service))
+    if messenger_service is not None:
+        app.include_router(build_messenger_router(messenger_service))
     if market_service is not None:
         app.include_router(build_market_router(market_service))
     if install_service is not None:

@@ -55,6 +55,9 @@ from .gateway.wiring import EngineVaultService
 from .hooks import HookStore
 from .index import VaultIndex
 from .market import CuratedIndexClient, InstallService, ManualEntryStore, MarketService
+from .messenger.refs import build_vault_ref_validator
+from .messenger.service import MessengerService
+from .messenger.store import MessengerStore
 from .notifications import NotificationStore
 from .notifications.store import NOTIFICATIONS_RELATIVE_PATH
 from .oauth import AuthorizationServer
@@ -72,6 +75,9 @@ from .vault import VaultEngine, VaultRegistry
 #: ``STASH_FILENAME``'s own convention — one file per hub-level store,
 #: living next to it under the hub's home directory.
 DIRECTORY_FILENAME = "directory.db"
+
+#: The hub's one messenger database (SPEC-403), same convention again.
+MESSENGER_FILENAME = "messenger.db"
 
 
 @dataclass
@@ -97,6 +103,11 @@ class ProductionApp:
     #: ``/mcp/directory`` tool family and the ``/api/directory`` REST
     #: mirror. Closed at shutdown, same as ``stash_store``.
     directory_store: DirectoryStore | None = None
+    #: The hub's one messenger database (SPEC-403), backing the
+    #: ``/mcp/messenger`` tool family, any profile with ``messenger: true``,
+    #: and the read-only ``/api/messenger`` mirror. Closed at shutdown, same
+    #: as ``directory_store``.
+    messenger_store: MessengerStore | None = None
     #: The external-server registry (SPEC-302). Its connections — including
     #: any ``stdio`` child process — are closed by the app's own lifespan;
     #: the handle is here so a caller can inspect health.
@@ -253,6 +264,22 @@ async def build_production_app(
     directory_store = DirectoryStore(stash_home / DIRECTORY_FILENAME)
     directory_service = DirectoryService(directory_store)
 
+    # One messenger for the whole hub (SPEC-403): the same "one home, one
+    # file" reasoning again. Its inbox authorization reuses `directory_
+    # service`'s session secret rather than minting a second credential, so
+    # the two are wired together here and nowhere else. `ref_validator` is
+    # built over the vault indexes opened above — that is what makes an
+    # envelope's `memory://` refs checkable at send time (SPEC-403
+    # deliverable #1); a hub with no vaults yet gets a validator that
+    # resolves nothing, so a send carrying refs is refused with the reason
+    # instead of accepted unchecked.
+    messenger_store = MessengerStore(stash_home / MESSENGER_FILENAME)
+    messenger_service = MessengerService(
+        messenger_store,
+        directory_service,
+        ref_validator=build_vault_ref_validator(indexes),
+    )
+
     # SPEC-206: the curator gets its own profile over the same vaults —
     # narrowed to seven actions and guarded by its own middleware (see
     # palaia_hub.curator.profile). Built before the gateway so the middleware
@@ -310,6 +337,7 @@ async def build_production_app(
         stash_service=stash_service,
         upstream_service=upstream_service,
         directory_service=directory_service,
+        messenger_service=messenger_service,
     )
     upstream_monitor = UpstreamHealthMonitor(
         upstream_service, on_change=dynamic_gateway.refresh_upstreams
@@ -343,6 +371,7 @@ async def build_production_app(
         oauth_server=oauth_server,
         stash_service=stash_service,
         directory_service=directory_service,
+        messenger_service=messenger_service,
         hook_store=hook_store,
         market_service=market_service,
         install_service=install_service,
@@ -366,6 +395,7 @@ async def build_production_app(
         curator=curator,
         stash_store=stash_store,
         directory_store=directory_store,
+        messenger_store=messenger_store,
         upstream_service=upstream_service,
         secret_store=secret_store,
         install_service=install_service,

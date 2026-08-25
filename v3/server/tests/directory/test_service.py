@@ -97,6 +97,52 @@ async def test_update_scope_emits_session_updated(service: DirectoryService) -> 
 
 
 @pytest.mark.anyio
+async def test_verify_emits_nothing_because_nothing_happened(
+    service: DirectoryService,
+) -> None:
+    """SPEC-403 reuses ``verify`` on every messenger call, so it must be
+    silent — otherwise polling an inbox would flood the bus with directory
+    events."""
+    result = await service.register(scope="a")
+    events = _captured(service)
+
+    verified = await service.verify(result.session.handle, result.session_secret)
+
+    assert verified.handle == result.session.handle
+    assert events == []
+
+
+@pytest.mark.anyio
+async def test_get_returns_a_peer_and_emits_nothing(service: DirectoryService) -> None:
+    result = await service.register(scope="a")
+    events = _captured(service)
+
+    fetched = await service.get(result.session.handle)
+
+    assert fetched.scope == "a"
+    assert events == []
+
+
+@pytest.mark.anyio
+async def test_verify_still_reports_a_third_partys_staleness(
+    service: DirectoryService, clock: _Clock
+) -> None:
+    """It emits nothing *of its own* — but the lazy sweep it runs still
+    reports another session crossing into stale, same as every other
+    method here."""
+    mine = await service.register(scope="a", ttl_seconds=60)
+    theirs = await service.register(scope="b", ttl_seconds=30)
+    events = _captured(service)
+    clock.now += 31
+
+    await service.verify(mine.session.handle, mine.session_secret)
+
+    assert [e for e in events if e[0] == "session.stale"] == [
+        ("session.stale", {"handle": theirs.session.handle})
+    ]
+
+
+@pytest.mark.anyio
 async def test_no_publisher_wired_does_not_error(service: DirectoryService) -> None:
     # `publish` defaults to None — every operation must still work silently.
     result = await service.register(scope="a")

@@ -106,6 +106,19 @@ EventName = Literal[
     "session.idle",
     "session.stale",
     "session.deregistered",
+    # SPEC-403 (messenger): one per envelope sent, one per envelope handed
+    # to its recipient by `messenger_check`, one per envelope the TTL sweep
+    # deletes. Additive to the v1 vocabulary, same rule as the events above.
+    #
+    # `data` is always a
+    # `palaia_hub.messenger.models.EnvelopeMetadata` dump — the envelope
+    # *without* its body, by construction rather than by convention (that
+    # class has no body field). SPEC-403 deliverable #5 requires it of
+    # `message.received` specifically; all three follow it, because a body
+    # on a bus is a body in every webhook receiver's logs.
+    "message.sent",
+    "message.received",
+    "message.expired",
     "health",
 ]
 

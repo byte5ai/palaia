@@ -325,6 +325,49 @@ class DirectoryStore:
             record = _row_to_record(row, now=current)
         return record, [h for h in newly_stale if h != handle]
 
+    def verify(
+        self, handle: str, session_secret: str, *, now: float | None = None
+    ) -> tuple[SessionRecord, list[str]]:
+        """Confirm ``handle`` + ``session_secret`` without changing anything.
+
+        Added for the messenger (SPEC-403 deliverable #4), whose inbox
+        authorization reuses *this* secret rather than minting a second
+        credential for the same session. Deliberately **not** a heartbeat:
+        reading your own mail says nothing about whether you are still
+        working, and the directory already has
+        :meth:`heartbeat`/:meth:`update` for liveness. Raises the same
+        :class:`SessionNotFoundError`/:class:`SessionSecretMismatchError`
+        the mutating methods do, so a caller cannot tell "guessing a secret"
+        apart from "unknown handle" by which error it gets.
+        """
+        current = self._now(now)
+        with self._lock:
+            newly_stale = self._sweep_locked(current)
+            row = self._get_row_locked(handle)
+            if row is None:
+                raise SessionNotFoundError(f"no session registered at handle {handle!r}")
+            self._check_secret_locked(row, session_secret)
+            record = _row_to_record(row, now=current)
+        return record, newly_stale
+
+    def get(self, handle: str, *, now: float | None = None) -> tuple[SessionRecord, list[str]]:
+        """One session by handle, no secret required — addressing a *peer*.
+
+        The public half of a handle (SPEC-402: "safe to hand to a peer for
+        addressing"). Used by the messenger to check that a recipient exists
+        and is not stale before accepting a message for them. Returns the
+        same record ``list``/``query`` would, so nothing is exposed here that
+        was not already listable.
+        """
+        current = self._now(now)
+        with self._lock:
+            newly_stale = self._sweep_locked(current)
+            row = self._get_row_locked(handle)
+            if row is None:
+                raise SessionNotFoundError(f"no session registered at handle {handle!r}")
+            record = _row_to_record(row, now=current)
+        return record, newly_stale
+
     def deregister(
         self, handle: str, session_secret: str, *, now: float | None = None
     ) -> tuple[bool, list[str]]:
