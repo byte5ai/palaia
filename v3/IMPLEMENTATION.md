@@ -248,3 +248,44 @@ different providers hand off work through palaia*).
   and the #242 dashboard-sign-in work carried into Phase 4's hardening
   scope. Reviewer: **Fable 5** (writes the Phase-4 SPECs at this gate) +
   owner (UX pass over marketplace/profiles/automations screens).
+- **Gate P4→P5 (draft — the architect holds the gate; SPEC-407 evidence,
+  2026-08-25):** every Phase-4 ship merged and integrated (SPECs 401–406:
+  dashboard sign-in, session directory, messenger core, messaging skills +
+  push adapters, team observability, add-on SDK). Exit criterion *"two
+  agents on different providers hand off work through palaia"* demonstrated
+  with SPEC-407's evidence
+  (`v3/docs/client-matrix-results.md` §8 has the full trace): the real
+  `claude` CLI (OAuth, profile `default`) registered, saved a fact to
+  memory, discovered a live peer through the session directory by a scope
+  query — never a hardcoded handle, provably so, since directory handles
+  are fresh random tokens the CLI's prompt/config never carried — and sent
+  it a `handoff` envelope carrying a `memory://` reference instead of the
+  fact itself; a scripted `fastmcp.Client` carrying a real SPEC-108 `plt_`
+  token, on the `mobile` profile, checked its own inbox and followed that
+  reference with `recall`, and its real recall output contained A's exact
+  fact. Run four times in a row, no flakes. This sandbox has no `codex`
+  binary, so the second party is a second-provider-*shaped* scripted
+  client rather than a second real vendor CLI — the same wire-level
+  substitution SPEC-209 and SPEC-308 already made and this SPEC's own task
+  explicitly sanctioned; the envelope shape, the directory query grammar
+  and the session-secret authorization it exercises are all
+  provider-agnostic protocol, not anything the real `claude` CLI gets
+  specially. A real quirk was found and fixed in the same PR
+  ([#257](https://github.com/byte5ai/palaia/issues/257)): a `plt_` token
+  could not be minted with `directory:*`/`messenger:*` scopes at all
+  through the real REST surface — the `plt_`-side twin of the OAuth
+  scope-ceiling bug SPEC-403 had already fixed on the OAuth side. The
+  skill-driven variant (SPEC-404's harness, `PALAIA_EFFECTIVENESS=1`, 3 real
+  runs per probe — this SPEC's stated budget) found the unprompted handoff
+  firing 3/3 times and the unprompted inbox-check firing 3/3 times as well
+  (`v3/docs/client-matrix-results.md` §8.4 has the full trace and cost),
+  reported honestly as a rate rather than hard-asserted per the SPEC's own
+  instruction — six real runs total, not a claim about the general-case
+  rate. What this
+  evidence does **not** cover, honestly: a real second AI provider's own
+  binary (no `codex` in this sandbox), a real public tunnel, and every gap
+  §6/§7.4 above already carry (the dashboard's own UI, Claude Desktop's
+  MCPB dialog, the owner's phone test) — SPEC-407 adds nothing new to any
+  of those. **This paragraph is a draft: the architect holds the gate** —
+  it records what was run and observed, not a verdict on whether Phase 4's
+  exit criterion is met or what Phase 5 should be.
