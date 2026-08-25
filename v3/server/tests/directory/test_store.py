@@ -243,3 +243,57 @@ def test_deregister_removes_the_session(store: DirectoryStore) -> None:
 def test_deregister_already_gone_handle_returns_false_not_error(store: DirectoryStore) -> None:
     deregistered, _ = store.deregister("no-such-handle", "whatever")
     assert deregistered is False
+
+
+# -- verify / get: the credential the messenger reuses (SPEC-403) -------------
+
+
+def test_verify_accepts_the_right_secret_and_changes_nothing(
+    store: DirectoryStore, clock: _Clock
+) -> None:
+    """The messenger's inbox auth (SPEC-403 deliverable #4) reuses *this*
+    secret. Verifying is a read, not a heartbeat: it must not extend a
+    session's liveness, or reading your mail would keep you looking busy."""
+    record, secret = _register(store, ttl_seconds=60)
+    clock.now += 30
+
+    verified, _ = store.verify(record.handle, secret)
+
+    assert verified.handle == record.handle
+    assert verified.last_seen_at == record.last_seen_at  # no heartbeat side effect
+    clock.now += 31
+    stale, _ = store.verify(record.handle, secret)
+    assert stale.status == "stale"
+
+
+def test_verify_refuses_a_wrong_secret(store: DirectoryStore) -> None:
+    record, _ = _register(store)
+    with pytest.raises(SessionSecretMismatchError):
+        store.verify(record.handle, "not-the-secret")
+
+
+def test_verify_refuses_an_unknown_handle(store: DirectoryStore) -> None:
+    with pytest.raises(SessionNotFoundError):
+        store.verify("no-such-handle", "whatever")
+
+
+def test_get_returns_a_peers_public_record_without_a_secret(store: DirectoryStore) -> None:
+    record, _ = _register(store, scope="refactoring billing")
+
+    fetched, _ = store.get(record.handle)
+
+    assert fetched.handle == record.handle
+    assert fetched.scope == "refactoring billing"
+
+
+def test_get_refuses_an_unknown_handle(store: DirectoryStore) -> None:
+    with pytest.raises(SessionNotFoundError):
+        store.get("no-such-handle")
+
+
+def test_get_reports_a_stale_peer_as_stale(store: DirectoryStore, clock: _Clock) -> None:
+    """What the messenger's "refuses a stale/unknown recipient" rests on."""
+    record, _ = _register(store, ttl_seconds=60)
+    clock.now += 61
+    fetched, _ = store.get(record.handle)
+    assert fetched.status == "stale"

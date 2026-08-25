@@ -159,6 +159,8 @@ async def _run(
             production.stash_store.close()
         if production.directory_store is not None:
             production.directory_store.close()
+        if production.messenger_store is not None:
+            production.messenger_store.close()
         await production.dynamic_gateway.aclose()
         oauth_server.store.close()
 

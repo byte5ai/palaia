@@ -41,6 +41,8 @@ def test_list_profiles_reports_the_live_shape(tmp_path: Path) -> None:
             "vaults": ["work"],
             "stash": False,
             "directory": False,
+            # SPEC-403: the messenger opt-in, off until a profile asks for it.
+            "messenger": False,
             "hidden_tools": [],
             "semantic_routing": False,
             "tool_count": 15,
@@ -120,6 +122,32 @@ def test_create_profile_with_directory_true_is_persisted(tmp_path: Path) -> None
     on_disk = yaml.safe_load((config_file_path(tmp_path)).read_text(encoding="utf-8"))
     profiles = on_disk["gateway"]["profiles"]
     assert next(p for p in profiles if p["path"] == "personal")["directory"] is True
+
+
+def test_update_profile_changes_messenger_flag_live(tmp_path: Path) -> None:
+    """SPEC-403: the ``messenger`` opt-in threads the same path as
+    ``stash``/``directory`` — REST → live gateway → config.yaml."""
+    gateway = _gateway()
+    with _client(tmp_path, gateway=gateway) as client:
+        response = client.patch("/api/gateway/profiles/default", json={"messenger": True})
+        assert response.status_code == 200
+        body = response.json()
+        assert body["messenger"] is True
+        assert body["directory"] is False  # omitted field keeps its value
+
+
+def test_create_profile_with_messenger_true_is_persisted(tmp_path: Path) -> None:
+    with _client(tmp_path, gateway=_gateway()) as client:
+        response = client.post(
+            "/api/gateway/profiles",
+            json={"path": "peers", "vaults": ["work"], "messenger": True},
+        )
+        assert response.status_code == 200
+        assert response.json()["messenger"] is True
+
+    on_disk = yaml.safe_load((config_file_path(tmp_path)).read_text(encoding="utf-8"))
+    profiles = on_disk["gateway"]["profiles"]
+    assert next(p for p in profiles if p["path"] == "peers")["messenger"] is True
 
 
 def test_update_profile_cannot_touch_the_curator_profile(tmp_path: Path) -> None:

@@ -124,6 +124,29 @@ class DirectoryService:
         self._emit_stale(newly_stale)
         return UpdateResult(session=session)
 
+    async def verify(self, handle: str, session_secret: str) -> SessionRecord:
+        """Confirm a handle/secret pair, changing nothing.
+
+        The messenger's inbox authorization (SPEC-403 deliverable #4) calls
+        this on every ``messenger_*`` tool call: one credential per session,
+        issued once by :meth:`register`, reused here — never a second one.
+        Emits no event of its own (nothing happened to the session), but
+        still reports any staleness the sweep noticed, same as every other
+        method here.
+        """
+        session, newly_stale = await asyncio.to_thread(
+            self._store.verify, handle, session_secret
+        )
+        self._emit_stale(newly_stale)
+        return session
+
+    async def get(self, handle: str) -> SessionRecord:
+        """One session by handle, no secret — addressing a peer (SPEC-403's
+        recipient resolution: "refuses a stale/unknown recipient")."""
+        session, newly_stale = await asyncio.to_thread(self._store.get, handle)
+        self._emit_stale(newly_stale)
+        return session
+
     async def deregister(self, handle: str, session_secret: str) -> DeregisterResult:
         deregistered, newly_stale = await asyncio.to_thread(
             self._store.deregister, handle, session_secret

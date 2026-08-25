@@ -141,6 +141,16 @@ class ProfileConfig(BaseModel):
     #: profile exactly as before this field existed; the hub-wide
     #: ``/mcp/directory`` mount is unaffected either way.
     directory: bool = False
+    #: Mount the messenger tool family (``messenger_send``/
+    #: ``messenger_check``/``messenger_ack``/``messenger_thread``,
+    #: SPEC-403) inside this profile too, same opt-in shape as ``stash`` and
+    #: ``directory`` above. ``False`` (default) leaves a profile exactly as
+    #: before this field existed; the hub-wide ``/mcp/messenger`` mount is
+    #: unaffected either way.
+    #:
+    #: Never settable on the curator profile — see
+    #: :meth:`_no_messenger_on_the_curator` below.
+    messenger: bool = False
     #: Final (post-namespace) tool names to hide from this profile's own
     #: surface, e.g. ``"work_memory_delete"`` (SPEC-305 deliverable #3): a
     #: profile can mount a whole vault family yet not expose one of its
@@ -189,6 +199,33 @@ class ProfileConfig(BaseModel):
                 "model over your own notes, and an outside tool in that session "
                 "could exfiltrate them. Fix: mount "
                 f"{sorted(self.upstreams)} on a profile your clients use instead."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _no_messenger_on_the_curator(self) -> ProfileConfig:
+        """The curator never gets a messenger tool (SPEC-403 deliverable #4).
+
+        Same fence as ``_no_upstreams_on_the_curator`` above, for the same
+        reason and in the same two halves: refused in the schema so the
+        mistake cannot be *expressed* (config.yaml, a REST payload and a
+        runtime rebuild all fail identically), and refused again at mount
+        time in :func:`palaia_hub.gateway.build._build_profile_server`.
+
+        Why the curator specifically: it is an unattended model running over
+        the operator's own notes (SPEC-206). An outbound message channel in
+        that session is an exfiltration path with a delivery guarantee — and
+        an *inbound* one is a way for anything holding a handle to feed
+        instructions into a session whose whole safety argument is that its
+        tool surface is fixed and small.
+        """
+        if self.path == CURATOR_PROFILE_PATH and self.messenger:
+            raise ValueError(
+                "the curator profile never carries messenger tools: it runs a model "
+                "over your own notes unattended, and a message channel there is "
+                "both a way out for their content and a way in for somebody else's "
+                "instructions. Fix: put `messenger: true` on a profile your own "
+                "clients connect to instead."
             )
         return self
 

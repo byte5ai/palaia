@@ -56,7 +56,7 @@ write.
 | `ts` | number | Unix timestamp (seconds, float) when the envelope was built. |
 | `vault` | string \| null | The vault this event concerns, when there is one. |
 | `permalink` | string \| null | The entry this event concerns, when there is one. |
-| `origin` | string | Which subsystem published it: `vault`, `hub`, `auth`, `inbox`, `index`, `doctor`, `gateway`. |
+| `origin` | string | Which subsystem published it: `vault`, `hub`, `auth`, `inbox`, `index`, `doctor`, `gateway`, `curator`, `stash`, `market`, `directory`, `messenger`. New subsystems add new values here — a consumer must not treat this as a closed set. |
 | `data` | object | Event-specific payload (§3). May also repeat `vault`/`permalink` for a consumer reading only `data`. |
 | `id` | string | Stable idempotency key for this occurrence — unchanged across webhook retries of the same delivery. |
 | `schema_version` | integer | Currently `1`. See §5. |
@@ -158,6 +158,33 @@ session secret — only the public fields also returned by
 | `session.stale` | `directory` | `handle` | A session's *computed* status (never self-reported) first crosses into `stale` — checked lazily on the next directory call after its TTL elapses, and fired exactly once per staleness spell (a heartbeat resets the mark, so going stale twice fires this twice). |
 | `session.deregistered` | `directory` | `handle` | `directory_deregister` removes a session (a repeat call on an already-gone handle does not re-fire this). |
 
+### 3.7 Messenger events (SPEC-403, additive)
+
+Emitted by `palaia_hub.messenger.MessengerService`. **`data` never carries a
+message body** — not on any of the three. It is always a dump of
+`palaia_hub.messenger.models.EnvelopeMetadata`, a class that has no `body`
+field at all, so this is a property of the code rather than a rule each
+call site remembers: `id`, `type`, `from`, `to`, `recipient`, `subject`,
+`urgency`, `expects_reply`, `refs`, `reply_to`, `created_at`, `expires_at`,
+`state`, `body_bytes`.
+
+`to` is the address as *written* (a handle, or the directory query for a
+broadcast); `recipient` is whose inbox this copy is in. `body_bytes` is the
+honest substitute for the body: how much there is to read, without reading
+it.
+
+| Event | Origin | `data` fields | Fires when |
+|---|---|---|---|
+| `message.sent` | `messenger` | the envelope metadata above | `messenger_send` mints an envelope — once per envelope, so a broadcast fires this once per resolved recipient. |
+| `message.received` | `messenger` | same shape (`state: delivered`) | `messenger_check` hands an envelope to its recipient. Fires exactly once per envelope, not on every poll: a checked envelope is `delivered` and is never handed over again. |
+| `message.expired` | `messenger` | same shape | The TTL sweep deletes an envelope past its `expires_at` (default 24h, per-message override up to 7 days). The row and its body are gone; this event is all that is left of it. |
+
+Bodies reach exactly two places: the recipient, through `messenger_check`'s
+own result, and the operator, through `GET /api/messenger/envelopes/{id}`
+behind the admin-session gate (`palaia_hub.admin_session`). The other
+`/api/messenger` routes — the flows feed, `outbox/{handle}` and
+`threads/{id}` — are metadata-only, like these events.
+
 `health` also travels the same bus and wire format (SSE only; it is not a
 webhook-filterable v1 name — see §6) — it is the dashboard's periodic
 liveness snapshot, carried over unchanged from before this SPEC.
@@ -215,9 +242,12 @@ alongside it.
   webhook can filter on (a webhook that requests `"*"` still receives it,
   since it travels the same bus — a filter naming it explicitly also
   works, it is simply not documented as a *meaningful* automation trigger).
-- Inbound webhooks and messenger-sourced events (`message.received`,
-  `session.*`) are explicitly out of scope for SPEC-201/307 (see their
-  Non-goals) — planned for later phases per MASTERPLAN §5.6.
+- Inbound webhooks remain out of scope (SPEC-201/307 Non-goals). The
+  session and messenger events that SPEC-201 listed as "later phases" have
+  since arrived — `session.*` with SPEC-402 (§3.6) and `message.*` with
+  SPEC-403 (§3.7) — as ordinary additive names on this same bus, which is
+  what lets SPEC-307's automation actions notify or webhook on them with no
+  new automation machinery.
 
 ## 7. Automations (SPEC-307)
 
