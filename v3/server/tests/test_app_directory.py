@@ -33,7 +33,11 @@ def test_directory_rest_mirror_is_read_only() -> None:
 
     for method in ("post", "put", "delete", "patch"):
         response = getattr(client, method)("/api/directory/")
-        assert response.status_code == 405
+        # 405 from FastAPI's router; 404 when a dashboard build is present
+        # (the SPA catch-all mount answers unmatched backend methods before
+        # the router's method-not-allowed logic — see static.py). Either
+        # way: refused, which is what "read-only" means.
+        assert response.status_code in (404, 405)
 
 
 def test_directory_rest_mirror_lists_and_queries() -> None:
