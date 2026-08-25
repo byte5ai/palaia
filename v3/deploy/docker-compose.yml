@@ -17,6 +17,12 @@ services:
       - palaia_home:/data
     environment:
       PALAIA_MODE: locked
+      # SPEC-501: tells the dashboard's "Update available" banner which
+      # instructions to show — this file, so "run `palaia-hub update`,
+      # then `docker compose pull && docker compose up -d`" rather than a
+      # store's own update button. Leave this as-is; it describes this
+      # file, not a preference to change.
+      PALAIA_DEPLOYMENT: compose
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8420/api/health"]

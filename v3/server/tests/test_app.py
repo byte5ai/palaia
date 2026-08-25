@@ -27,6 +27,7 @@ def test_info_reports_single_source_version_and_mode() -> None:
     body = response.json()
     assert body["version"] == __version__
     assert body["mode"] == "cloud"
+    assert body["channel"] == "edge"
     assert body["uptime_seconds"] >= 0
 
 

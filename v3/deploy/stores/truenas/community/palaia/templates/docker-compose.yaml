@@ -1,0 +1,31 @@
+{#
+  Jinja2 compose template (truenas/apps convention) — rendered by their
+  tooling against ix_values.yaml + the operator's own answers to
+  questions.yaml. NOT independently rendered/tested in this environment
+  (no truenas/apps checkout, no docker daemon here) — see this package's
+  SUBMIT.md before opening a PR.
+#}
+services:
+  hub:
+    image: "{{ ix_values.image.repository }}:{{ ix_values.image.tag }}"
+    restart: unless-stopped
+    environment:
+      PALAIA_MODE: "{{ values.mode | default(ix_values.palaia.mode) }}"
+      PALAIA_DEPLOYMENT: "{{ ix_values.palaia.deployment }}"
+    ports:
+      - target: 8420
+        published: "{{ values.web_port | default(ix_values.palaia.webPort) }}"
+        protocol: tcp
+    volumes:
+      - type: volume
+        source: palaia-data
+        target: /data
+        volume:
+          nocopy: true
+
+volumes:
+  palaia-data:
+    driver_opts:
+      type: none
+      device: "{{ values.data_dataset }}"
+      o: bind

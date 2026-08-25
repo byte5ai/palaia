@@ -37,6 +37,7 @@ pids+=("$nginx_pid")
 
 echo "palaia-hub: ready — open http://<this-host's-ip>:${PUBLIC_PORT}/ " \
      "(http://palaia.local:${PUBLIC_PORT}/ if mDNS reaches your LAN; see v3/deploy/README.md)" >&2
+echo "palaia-hub: channel=${PALAIA_CHANNEL:-edge} deployment=${PALAIA_DEPLOYMENT:-unknown}" >&2
 
 _term() {
     trap - TERM INT

@@ -53,6 +53,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/update/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Update Check
+         * @description "Up to date" / "Update available" / "could not check" — never an
+         *     error page (this hub might simply be offline). See
+         *     :func:`palaia_hub.update.check_for_update` for what each state
+         *     means and how the remote version is read.
+         */
+        get: operations["update_check_api_update_check_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/vaults/{vault_key}/inbox_status": {
         parameters: {
             query?: never;
@@ -333,6 +356,28 @@ export interface operations {
         };
     };
     info_api_info_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    update_check_api_update_check_get: {
         parameters: {
             query?: never;
             header?: never;

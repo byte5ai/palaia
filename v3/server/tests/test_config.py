@@ -20,7 +20,27 @@ def test_defaults_when_no_file_and_creates_one(tmp_path: Path) -> None:
     assert config.port == 8420
     assert config.log_level == "info"
     assert config.log_format == "human"
+    # SPEC-501: a fresh, non-Docker checkout is the "edge"/"unknown" case —
+    # only a built image (channel) or a store package (deployment) sets
+    # these away from their defaults.
+    assert config.channel == "edge"
+    assert config.deployment == "unknown"
     assert (tmp_path / "config.yaml").exists()
+
+
+def test_channel_and_deployment_are_env_overridable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SPEC-501 deliverable #3/#4: the release image bakes PALAIA_CHANNEL,
+    each store package bakes PALAIA_DEPLOYMENT — both via the same
+    defaults < config.yaml < env precedence every other setting uses."""
+    monkeypatch.setenv("PALAIA_CHANNEL", "stable")
+    monkeypatch.setenv("PALAIA_DEPLOYMENT", "umbrel")
+
+    config = load_config(home=tmp_path)
+
+    assert config.channel == "stable"
+    assert config.deployment == "umbrel"
 
 
 def test_file_overrides_defaults(tmp_path: Path) -> None:
