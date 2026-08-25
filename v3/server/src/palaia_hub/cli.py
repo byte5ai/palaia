@@ -225,20 +225,30 @@ async def _serve_async(config: HubConfig) -> None:
 
 def _profile_scopes(profiles: Sequence[ProfileConfig]) -> dict[str, list[str]]:
     """``{profile: grantable scopes}``, one entry per profile, scoped to
-    exactly the vaults *that* profile mounts (SPEC-301) — every vault a
-    profile serves contributes a read and a write scope, the same
-    vocabulary SPEC-108 tokens use (:func:`palaia_hub.auth.scopes.
-    vault_scope`), so a client's scopes mean the same thing whichever
-    credential carried them.
+    exactly what *that* profile mounts (SPEC-301) — every vault it serves
+    contributes a read and a write scope, and each mounted built-in family
+    (stash SPEC-202, directory SPEC-402, messenger SPEC-403) contributes its
+    own pair. The same vocabulary SPEC-108 tokens use, so a client's scopes
+    mean the same thing whichever credential carried them; before this
+    listed the built-ins, an OAuth client could never be granted them at
+    all, only a ``plt_`` token could (found during SPEC-403).
     """
-    return {
-        profile.path: [
+
+    def scopes_for(profile: ProfileConfig) -> list[str]:
+        scopes = [
             scope
             for key in profile.vaults
             for scope in (f"vault:{key}:read", f"vault:{key}:write")
         ]
-        for profile in profiles
-    }
+        if profile.stash:
+            scopes += ["stash:read", "stash:write"]
+        if profile.directory:
+            scopes += ["directory:read", "directory:write"]
+        if profile.messenger:
+            scopes += ["messenger:read", "messenger:send"]
+        return scopes
+
+    return {profile.path: scopes_for(profile) for profile in profiles}
 
 
 def _gateway_profiles_for_oauth(config: HubConfig) -> list[ProfileConfig]:

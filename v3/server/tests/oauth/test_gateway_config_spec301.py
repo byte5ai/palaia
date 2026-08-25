@@ -140,3 +140,36 @@ async def test_old_oauth_profiles_config_still_works_with_no_gateway_section(
     oauth_server = _maybe_oauth_server(config)
     assert oauth_server is not None
     assert set(oauth_server.resources.profiles) == {"legacy"}
+
+
+def test_profile_scopes_include_mounted_builtin_families() -> None:
+    """An OAuth client can be granted the stash/directory/messenger scopes
+    of the profiles that actually mount those families (SPEC-403 follow-up:
+    before this, only plt_ tokens could carry them)."""
+    from palaia_hub.cli import _profile_scopes
+    from palaia_hub.gateway.config import ProfileConfig
+
+    scopes = _profile_scopes(
+        [
+            ProfileConfig(
+                path="team",
+                vaults=["work"],
+                stash=True,
+                directory=True,
+                messenger=True,
+            ),
+            ProfileConfig(path="plain", vaults=["work"]),
+        ]
+    )
+
+    assert scopes["team"] == [
+        "vault:work:read",
+        "vault:work:write",
+        "stash:read",
+        "stash:write",
+        "directory:read",
+        "directory:write",
+        "messenger:read",
+        "messenger:send",
+    ]
+    assert scopes["plain"] == ["vault:work:read", "vault:work:write"]
