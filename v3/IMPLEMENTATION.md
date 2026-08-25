@@ -248,8 +248,8 @@ different providers hand off work through palaia*).
   and the #242 dashboard-sign-in work carried into Phase 4's hardening
   scope. Reviewer: **Fable 5** (writes the Phase-4 SPECs at this gate) +
   owner (UX pass over marketplace/profiles/automations screens).
-- **Gate P4→P5 (draft — the architect holds the gate; SPEC-407 evidence,
-  2026-08-25):** every Phase-4 ship merged and integrated (SPECs 401–406:
+- **Gate P4→P5 (held 2026-08-25):** every Phase-4 ship merged and
+  integrated (SPECs 401–406:
   dashboard sign-in, session directory, messenger core, messaging skills +
   push adapters, team observability, add-on SDK). Exit criterion *"two
   agents on different providers hand off work through palaia"* demonstrated
