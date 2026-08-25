@@ -45,12 +45,24 @@ logger = logging.getLogger("palaia_hub.auth.store")
 TOKENS_FILE = "tokens.yaml"
 TOKEN_PREFIX = "plt"
 
-# vault:<key>:read|write — the only scope shape store.create() accepts.
-# Deliberately not importing the gateway's key charset validator: the auth
-# package must not depend on the gateway package (see the module docstring
-# of palaia_hub.gateway.vault_protocol for the mirror-image rule), so this
-# is its own narrow, self-contained check.
-_SCOPE_RE = re.compile(r"^vault:[a-z0-9_-]+:(read|write)$")
+# vault:<key>:read|write, plus the hub-level families' own scope shapes
+# (stash:read|write, directory:read|write, messenger:read|send) — the only
+# scope strings store.create() accepts. Found during SPEC-407: this regex
+# still only matched the per-vault shape after SPEC-402/403/cli.py's own
+# `_profile_scopes` had already grown the hub-level families, which meant a
+# plt_ token could never be minted with a stash/directory/messenger scope
+# through the real `POST /api/auth/tokens` surface at all — the OAuth side
+# of that same ceiling was fixed for `_profile_scopes` (see its docstring),
+# but this plt_-token-side twin of it was missed. Kept as its own narrow,
+# self-contained check rather than importing `palaia_hub.auth.scopes`'s
+# action lists: the auth package must not depend on the gateway package
+# (see the module docstring of palaia_hub.gateway.vault_protocol for the
+# mirror-image rule), and this file only needs the scope *shape*, not the
+# per-action mapping that lives there.
+_SCOPE_RE = re.compile(
+    r"^(?:vault:[a-z0-9_-]+:(?:read|write)|stash:(?:read|write)"
+    r"|directory:(?:read|write)|messenger:(?:read|send))$"
+)
 
 _TOKEN_RE = re.compile(rf"^{TOKEN_PREFIX}_([A-Za-z0-9_-]{{8,}})\.([A-Za-z0-9_-]{{16,}})$")
 
@@ -72,8 +84,11 @@ def _validate_scopes(scopes: Sequence[str]) -> list[str]:
     bad = [s for s in scopes if not _SCOPE_RE.match(s)]
     if bad:
         raise TokenError(
-            f"invalid scope(s) {bad!r}. Fix: use 'vault:<key>:read' or "
-            f"'vault:<key>:write' — see palaia_hub.auth.scopes.vault_scope()."
+            f"invalid scope(s) {bad!r}. Fix: use 'vault:<key>:read'/'vault:<key>:write' "
+            "for a vault, 'stash:read'/'stash:write' for the stash, "
+            "'directory:read'/'directory:write' for the session directory, or "
+            "'messenger:read'/'messenger:send' for the messenger — see "
+            "palaia_hub.auth.scopes."
         )
     return list(scopes)
 

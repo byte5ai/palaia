@@ -21,7 +21,13 @@ from __future__ import annotations
 
 from fastmcp.server.dependencies import get_access_token
 
-from .scopes import required_scope_for_action, required_scope_for_stash_action
+from .scopes import (
+    readable_vault_keys,
+    required_scope_for_action,
+    required_scope_for_directory_action,
+    required_scope_for_messenger_action,
+    required_scope_for_stash_action,
+)
 
 
 def missing_scope_error(vault_key: str, action: str) -> str | None:
@@ -69,4 +75,69 @@ def missing_stash_scope_error(action: str) -> str | None:
     )
 
 
-__all__ = ["missing_scope_error", "missing_stash_scope_error"]
+def missing_directory_scope_error(action: str) -> str | None:
+    """Same contract as :func:`missing_scope_error`, for the session
+    directory tool family (SPEC-402) — hub-level ``directory:read``/
+    ``directory:write`` scopes rather than a per-vault one.
+    """
+    access_token = get_access_token()
+    if access_token is None:
+        return None
+    needed = required_scope_for_directory_action(action)
+    if needed in access_token.scopes:
+        return None
+    return (
+        f"this token is missing scope {needed!r} "
+        f"(it has: {sorted(access_token.scopes)!r}). Fix: create or use a token "
+        f"that includes {needed!r} for the session directory."
+    )
+
+
+def missing_messenger_scope_error(action: str) -> str | None:
+    """Same contract as :func:`missing_scope_error`, for the messenger tool
+    family (SPEC-403) — hub-level ``messenger:read``/``messenger:send``.
+
+    This is only half of the messenger's authorization: passing this check
+    says the *client* may use the messenger, not that it is the session it
+    claims to be. That second half is the SPEC-402 session secret, checked
+    in :class:`palaia_hub.messenger.service.MessengerService` on every call
+    (SPEC-403 deliverable #4: "a scope alone must not read another
+    session's inbox").
+    """
+    access_token = get_access_token()
+    if access_token is None:
+        return None
+    needed = required_scope_for_messenger_action(action)
+    if needed in access_token.scopes:
+        return None
+    return (
+        f"this token is missing scope {needed!r} "
+        f"(it has: {sorted(access_token.scopes)!r}). Fix: create or use a token "
+        f"that includes {needed!r} for the messenger."
+    )
+
+
+def readable_vaults_for_call() -> frozenset[str] | None:
+    """Which vaults the *current* call's token may read, or ``None``.
+
+    ``None`` means no token verifier is attached to this mount at all (the
+    same locked-mode posture :func:`missing_scope_error`'s docstring
+    describes), and the caller should treat every vault it knows as
+    readable. Used by the messenger to bound its ``refs`` validation to
+    vaults the sender can actually read (SPEC-403 deliverable #1), so a
+    refused ref never doubles as an oracle for "that note exists somewhere
+    you cannot see".
+    """
+    access_token = get_access_token()
+    if access_token is None:
+        return None
+    return readable_vault_keys(access_token.scopes)
+
+
+__all__ = [
+    "missing_directory_scope_error",
+    "missing_messenger_scope_error",
+    "missing_scope_error",
+    "missing_stash_scope_error",
+    "readable_vaults_for_call",
+]

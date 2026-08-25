@@ -87,3 +87,91 @@ def test_stash_read_scoped_token_cannot_write(monkeypatch: pytest.MonkeyPatch) -
     error = enforcement.missing_stash_scope_error("stash_set")
     assert error is not None
     assert "stash:write" in error
+
+
+# -- session directory (SPEC-402) --------------------------------------------
+
+
+def test_directory_no_access_token_allows_everything(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(enforcement, "get_access_token", lambda: None)
+
+    assert enforcement.missing_directory_scope_error("directory_register") is None
+    assert enforcement.missing_directory_scope_error("directory_list") is None
+
+
+def test_directory_sufficient_scope_allows(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        enforcement, "get_access_token", lambda: _FakeAccessToken(["directory:write"])
+    )
+
+    assert enforcement.missing_directory_scope_error("directory_register") is None
+    assert enforcement.missing_directory_scope_error("directory_deregister") is None
+
+
+def test_directory_read_scoped_token_cannot_register(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Acceptance criterion: 'read-scoped token cannot register'."""
+    monkeypatch.setattr(
+        enforcement, "get_access_token", lambda: _FakeAccessToken(["directory:read"])
+    )
+
+    assert enforcement.missing_directory_scope_error("directory_list") is None
+    assert enforcement.missing_directory_scope_error("directory_query") is None
+
+    error = enforcement.missing_directory_scope_error("directory_register")
+    assert error is not None
+    assert "directory:write" in error
+
+
+# -- messenger (SPEC-403) -----------------------------------------------------
+
+
+def test_messenger_no_access_token_allows_everything(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(enforcement, "get_access_token", lambda: None)
+
+    assert enforcement.missing_messenger_scope_error("messenger_send") is None
+    assert enforcement.missing_messenger_scope_error("messenger_check") is None
+
+
+def test_messenger_send_scope_allows_sending(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        enforcement, "get_access_token", lambda: _FakeAccessToken(["messenger:send"])
+    )
+
+    assert enforcement.missing_messenger_scope_error("messenger_send") is None
+    assert enforcement.missing_messenger_scope_error("messenger_ack") is None
+
+
+def test_messenger_read_scoped_token_cannot_send(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SPEC-403 deliverable #4: "sending requires messenger:send scope"."""
+    monkeypatch.setattr(
+        enforcement, "get_access_token", lambda: _FakeAccessToken(["messenger:read"])
+    )
+
+    assert enforcement.missing_messenger_scope_error("messenger_check") is None
+    assert enforcement.missing_messenger_scope_error("messenger_thread") is None
+
+    error = enforcement.missing_messenger_scope_error("messenger_send")
+    assert error is not None
+    assert "messenger:send" in error
+
+
+def test_readable_vaults_for_call_is_none_without_a_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No verifier on this mount means "every vault this validator knows" —
+    the same locked-mode posture every other check here takes."""
+    monkeypatch.setattr(enforcement, "get_access_token", lambda: None)
+
+    assert enforcement.readable_vaults_for_call() is None
+
+
+def test_readable_vaults_for_call_reads_the_tokens_vault_read_scopes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        enforcement,
+        "get_access_token",
+        lambda: _FakeAccessToken(["vault:work:read", "vault:home:write", "messenger:send"]),
+    )
+
+    assert enforcement.readable_vaults_for_call() == frozenset({"work"})

@@ -1,6 +1,7 @@
 import type { ComponentType, SVGProps } from "react";
 
 import {
+  AgentsIcon,
   AutomationsIcon,
   ClientsIcon,
   ExplorerIcon,
@@ -52,6 +53,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { path: "/clients", label: "Clients", icon: ClientsIcon },
       { path: "/tools", label: "Tools & skills", icon: ToolsIcon },
       { path: "/marketplace", label: "Marketplace", icon: MarketplaceIcon },
+      { path: "/agents", label: "Agents", icon: AgentsIcon },
     ],
   },
   {

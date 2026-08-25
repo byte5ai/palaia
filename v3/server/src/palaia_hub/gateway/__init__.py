@@ -23,6 +23,12 @@ from __future__ import annotations
 
 from .build import GatewayASGI, GatewayConfigError, build_gateway
 from .config import DEFAULT_GATEWAY_PROFILE, GatewayConfig, ProfileConfig, VaultMountConfig
+from .directory_tools import (
+    DIRECTORY_TOOL_ACTIONS,
+    DirectoryGatewayASGI,
+    build_directory_gateway,
+    build_directory_server,
+)
 from .dynamic import DynamicGateway
 from .fake_vault import FakeVaultService
 from .stash_tools import (
@@ -46,10 +52,12 @@ from .wiring import EngineVaultService
 
 __all__ = [
     "DEFAULT_GATEWAY_PROFILE",
+    "DIRECTORY_TOOL_ACTIONS",
     "INBOX_TOOL_ACTIONS",
     "MEMORY_TOOL_ACTIONS",
     "STASH_TOOL_ACTIONS",
     "CaptureResult",
+    "DirectoryGatewayASGI",
     "DynamicGateway",
     "EngineVaultService",
     "FakeVaultService",
@@ -65,6 +73,8 @@ __all__ = [
     "VaultMountConfig",
     "VaultService",
     "VaultServiceError",
+    "build_directory_gateway",
+    "build_directory_server",
     "build_gateway",
     "build_stash_gateway",
     "build_stash_server",

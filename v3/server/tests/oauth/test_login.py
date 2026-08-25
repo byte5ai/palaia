@@ -329,3 +329,87 @@ async def test_the_login_page_escapes_the_error_it_renders(harness: Harness) -> 
 
     assert response.status_code == 200
     assert "<script>x</script>" not in response.text
+
+
+@pytest.mark.anyio
+async def test_signing_in_leaves_the_dashboard_a_readable_csrf_token(
+    harness: Harness,
+) -> None:
+    """SPEC-401 deliverable #3: the session-lifetime half of the double-submit
+    pair. Readable by script on purpose — the dashboard has to echo it in a
+    header the hub then checks — and the session cookie next to it is not."""
+    async with harness.app.router.lifespan_context(harness.app):
+        async with _http(harness) as http:
+            await http.get("/oauth/login")
+            response = await http.post(
+                "/oauth/login",
+                data={
+                    "username": OWNER_USERNAME,
+                    "password": OWNER_PASSWORD,
+                    "csrf_token": http.cookies["palaia_oauth_csrf"],
+                    "next": "",
+                },
+            )
+
+            assert response.status_code == 303
+            csrf_header = next(
+                value
+                for _name, value in response.headers.multi_items()
+                if _name.lower() == "set-cookie" and value.startswith("palaia_oauth_csrf=")
+            )
+            assert "HttpOnly" not in csrf_header
+            assert "SameSite=lax" in csrf_header.replace("samesite", "SameSite")
+            # And the token survives into the browser's jar, so the next
+            # dashboard call can send it.
+            assert http.cookies["palaia_oauth_csrf"]
+
+
+@pytest.mark.anyio
+async def test_signing_out_drops_both_cookies(harness: Harness) -> None:
+    async with harness.app.router.lifespan_context(harness.app):
+        async with _http(harness) as http:
+            await http.get("/oauth/login")
+            await http.post(
+                "/oauth/login",
+                data={
+                    "username": OWNER_USERNAME,
+                    "password": OWNER_PASSWORD,
+                    "csrf_token": http.cookies["palaia_oauth_csrf"],
+                    "next": "",
+                },
+            )
+            response = await http.post("/oauth/logout")
+
+    assert response.status_code == 204
+    cleared = [
+        value
+        for name, value in response.headers.multi_items()
+        if name.lower() == "set-cookie"
+    ]
+    assert any(value.startswith("palaia_oauth_session=") for value in cleared)
+    assert any(value.startswith("palaia_oauth_csrf=") for value in cleared)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("next_url", ["/explorer", "/clients?vault=work", "/"])
+async def test_a_dashboard_page_is_an_allowed_continuation(
+    harness: Harness, next_url: str
+) -> None:
+    """SPEC-401 deliverable #2: the dashboard's sign-in redirect has to be
+    able to come back to the screen the operator was on — which is a page on
+    this server, and still never an off-site URL or a backend path."""
+    async with harness.app.router.lifespan_context(harness.app):
+        async with _http(harness) as http:
+            await http.get("/oauth/login")
+            response = await http.post(
+                "/oauth/login",
+                data={
+                    "username": OWNER_USERNAME,
+                    "password": OWNER_PASSWORD,
+                    "csrf_token": http.cookies["palaia_oauth_csrf"],
+                    "next": next_url,
+                },
+            )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == next_url

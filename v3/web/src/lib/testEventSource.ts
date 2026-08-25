@@ -40,6 +40,14 @@ export class FakeEventSource implements Pick<EventSource, "close" | "url"> {
       | "memory.entry.updated"
       | "memory.entry.deleted"
       | "memory.entry.moved"
+      | "session.registered"
+      | "session.updated"
+      | "session.idle"
+      | "session.stale"
+      | "session.deregistered"
+      | "message.sent"
+      | "message.received"
+      | "message.expired"
       | "open"
       | "error",
     data?: unknown,

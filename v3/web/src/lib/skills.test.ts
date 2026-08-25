@@ -10,8 +10,12 @@ import {
 } from "./skills";
 
 describe("skill catalog", () => {
-  it("carries both SPEC-207 packages, read from the shipped files", () => {
-    expect(SKILLS.map((s) => s.slug)).toEqual(["palaia-memory", "palaia-capture"]);
+  it("carries every shipped package, read from the shipped files", () => {
+    expect(SKILLS.map((s) => s.slug)).toEqual([
+      "palaia-memory",
+      "palaia-capture",
+      "palaia-messenger",
+    ]);
   });
 
   it("shows the skill's own words — the page cannot drift from the file", () => {

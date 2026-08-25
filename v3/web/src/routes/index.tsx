@@ -2,6 +2,7 @@ import { createBrowserRouter } from "react-router-dom";
 
 import { AppShell } from "../shell/AppShell";
 import { NAV_GROUPS } from "../shell/navConfig";
+import { Agents } from "./Agents";
 import { Automations } from "./Automations";
 import { Clients } from "./Clients";
 import { ComingSoon } from "./ComingSoon";
@@ -26,6 +27,7 @@ const BUILT_PATHS = new Set([
   "/settings",
   "/tools",
   "/marketplace",
+  "/agents",
 ]);
 
 const placeholderRoutes = NAV_GROUPS.flatMap((group) => group.items)
@@ -52,6 +54,7 @@ export const router = createBrowserRouter([
       { path: "settings", element: <Settings /> },
       { path: "tools", element: <ToolProfiles /> },
       { path: "marketplace", element: <Marketplace /> },
+      { path: "agents", element: <Agents /> },
       ...placeholderRoutes,
     ],
   },

@@ -93,6 +93,32 @@ EventName = Literal[
     # trigger (palaia_hub.automations.dispatcher).
     "automation.fired",
     "automation.failed",
+    # SPEC-402 (session directory): one per lifecycle transition a session
+    # goes through — registered on `directory_register`, updated/idle on a
+    # `directory_update` call (idle specifically when the self-reported
+    # status becomes "idle"; every other update field change is `updated`),
+    # stale the first time a session's computed status crosses into `stale`
+    # (never repeated for the same staleness spell), deregistered on
+    # `directory_deregister`. Additive to the v1 vocabulary, same rule as
+    # the curator's events above. Named `session.*` per MASTERPLAN §5.6.
+    "session.registered",
+    "session.updated",
+    "session.idle",
+    "session.stale",
+    "session.deregistered",
+    # SPEC-403 (messenger): one per envelope sent, one per envelope handed
+    # to its recipient by `messenger_check`, one per envelope the TTL sweep
+    # deletes. Additive to the v1 vocabulary, same rule as the events above.
+    #
+    # `data` is always a
+    # `palaia_hub.messenger.models.EnvelopeMetadata` dump — the envelope
+    # *without* its body, by construction rather than by convention (that
+    # class has no body field). SPEC-403 deliverable #5 requires it of
+    # `message.received` specifically; all three follow it, because a body
+    # on a bus is a body in every webhook receiver's logs.
+    "message.sent",
+    "message.received",
+    "message.expired",
     "health",
 ]
 

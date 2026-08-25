@@ -55,7 +55,8 @@ const MODE_COPY: Record<Mode, { title: string; body: string }> = {
     title: "Everything is reachable from the internet — including this dashboard",
     body:
       "Only choose this if you mean it: vault contents, tokens and hooks management all " +
-      "become public, not just your memory. Go through the checklist below first.",
+      "become reachable from anywhere, not just your memory. Everything here is then " +
+      "behind your sign-in, which this mode requires. Go through the checklist below first.",
   },
 };
 

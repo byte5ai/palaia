@@ -24,11 +24,19 @@ export function Topbar({
   subtitle,
   health,
   userInitials,
+  signedInAs,
+  onSignOut,
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
   health: HealthState;
   userInitials: string;
+  /** SPEC-401 deliverable #6: the owner's name when someone is signed in on
+   * this browser, `null` on a hub that asks nobody to sign in — which is
+   * also when the sign-out button is left off, since there is nothing to
+   * sign out of. */
+  signedInAs?: string | null;
+  onSignOut?: () => void;
 }) {
   return (
     <header className="topbar">
@@ -51,9 +59,18 @@ export function Topbar({
           {HEALTH_LABEL[health]}
         </span>
         <NotificationBell />
-        <span className="avatar" aria-hidden="true">
+        <span
+          className="avatar"
+          aria-hidden={signedInAs ? undefined : true}
+          title={signedInAs ? `Signed in as ${signedInAs}` : undefined}
+        >
           {userInitials}
         </span>
+        {signedInAs && onSignOut ? (
+          <button className="btn btn--ghost" type="button" onClick={onSignOut}>
+            Sign out
+          </button>
+        ) : null}
       </div>
     </header>
   );

@@ -13,13 +13,14 @@ function mount(clientId: string, clientName = "Test Client") {
 }
 
 describe("SkillPanel", () => {
-  it("offers both skills with install steps to a client that loads them", () => {
+  it("offers every skill with install steps to a client that loads them", () => {
     mount("claude-code-cli", "Claude Code CLI");
 
     expect(screen.getByText(/teaching it to use the memory/i)).toBeInTheDocument();
     expect(screen.getByText("palaia-memory")).toBeInTheDocument();
     expect(screen.getByText("palaia-capture")).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: /download skill\.md/i })).toHaveLength(2);
+    expect(screen.getByText("palaia-messenger")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: /download skill\.md/i })).toHaveLength(3);
     expect(screen.getByText(/--plugin-dir/)).toBeInTheDocument();
   });
 
@@ -44,6 +45,6 @@ describe("SkillPanel", () => {
 
     expect(screen.getByText(/if your tool reads skill\.md folders/i)).toBeInTheDocument();
     // Unverified is not unsupported: the files are still offered.
-    expect(screen.getAllByRole("link", { name: /download skill\.md/i })).toHaveLength(2);
+    expect(screen.getAllByRole("link", { name: /download skill\.md/i })).toHaveLength(3);
   });
 });

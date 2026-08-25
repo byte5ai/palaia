@@ -110,6 +110,32 @@ def test_invalid_scope_format_is_rejected(tmp_path: Path) -> None:
         store.create("client", "default", ["not-a-real-scope"])
 
 
+def test_hub_level_family_scopes_are_accepted(tmp_path: Path) -> None:
+    """SPEC-407 regression: a plt_ token must be mintable with the
+    hub-level families' own scopes (stash/directory/messenger), not just
+    ``vault:<key>:read|write`` — the plt_-token-side twin of the OAuth
+    scope-ceiling fix ``palaia_hub.cli._profile_scopes`` already carries.
+    Found while building SPEC-407's two-agent handoff e2e: minting a plt_
+    token for a session that needs to register itself and use the
+    messenger failed outright before this fix, with every one of these
+    scopes rejected as 'invalid'."""
+    store = TokenStore(home=tmp_path)
+    scopes = [
+        "vault:work:read",
+        "vault:work:write",
+        "stash:read",
+        "stash:write",
+        "directory:read",
+        "directory:write",
+        "messenger:read",
+        "messenger:send",
+    ]
+
+    created = store.create("client", "default", scopes)
+
+    assert created.info.scopes == scopes
+
+
 def test_empty_name_or_profile_is_rejected(tmp_path: Path) -> None:
     store = TokenStore(home=tmp_path)
     with pytest.raises(TokenError):

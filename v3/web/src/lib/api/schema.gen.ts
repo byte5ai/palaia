@@ -38,7 +38,11 @@ export interface paths {
          *     ``sign_in`` is non-secret (no client id, no allow-list) and is what
          *     the dashboard's settings section (SPEC-204 deliverable #4) reads to
          *     show "Sign in with GitHub" / a configured provider's name / the
-         *     local password, in plain language.
+         *     local password, in plain language. SPEC-401 adds two equally
+         *     non-secret fields to it: whether signing in is *required* on this
+         *     hub, and where the one door is — which is what lets the dashboard
+         *     show a sign-in prompt (and a sign-out button) without first making a
+         *     call that fails.
          */
         get: operations["info_api_info_get"];
         put?: never;

@@ -95,19 +95,39 @@ def _basic_auth(request: Request) -> tuple[str, str] | None:
     return client_id, client_secret
 
 
-def _is_safe_next(next_url: str) -> bool:
-    """Is ``next_url`` a local authorization-request URL we may redirect to?
+#: Path prefixes a ``next`` may never point at. These are backend surfaces,
+#: not pages: sending a freshly signed-in browser to one of them would at
+#: best show it JSON and at worst replay a state-changing call, so the only
+#: paths worth continuing to are the authorization endpoint and the
+#: dashboard's own client-side routes.
+_NEVER_NEXT_PREFIXES = ("/api/", "/oauth/", "/mcp/")
 
-    Only a path on this server, and only the authorize endpoint. Anything
-    else — an absolute URL, a scheme-relative ``//evil.example``, a different
-    local path — is refused, because ``next`` comes from the query string and
-    an unchecked one is an open redirect with the operator's freshly minted
-    session cookie attached.
+
+def _is_safe_next(next_url: str) -> bool:
+    """Is ``next_url`` a local URL we may redirect a signed-in browser to?
+
+    Two kinds are allowed, and nothing else: the authorization endpoint (the
+    SPEC-203 flow's own continuation) and a dashboard page — a path on this
+    server that is not one of this hub's backend surfaces (SPEC-401: the
+    dashboard's sign-in redirect has to be able to come back to the screen
+    the operator was on). An absolute URL, a scheme-relative
+    ``//evil.example``, or anything not starting with a single ``/`` is
+    refused, because ``next`` comes from the query string and an unchecked
+    one is an open redirect with the operator's freshly minted session cookie
+    attached.
     """
     parts = urlsplit(next_url)
     if parts.scheme or parts.netloc:
         return False
-    return parts.path == AUTHORIZE_PATH
+    path = parts.path
+    if path == AUTHORIZE_PATH:
+        return True
+    if not path.startswith("/") or path.startswith("//"):
+        return False
+    return not any(
+        path == prefix.rstrip("/") or path.startswith(prefix)
+        for prefix in _NEVER_NEXT_PREFIXES
+    )
 
 
 def _set_cookie(
@@ -122,6 +142,36 @@ def _set_cookie(
         secure=secure,
         samesite="lax",
     )
+
+
+def _start_session(
+    target: str, *, session: str, max_age: int, secure: bool
+) -> RedirectResponse:
+    """Redirect to ``target`` carrying a fresh session and its CSRF token.
+
+    Both doors (password, provider) end here, so the pair is always set
+    together. The session cookie is ``HttpOnly``; the CSRF cookie
+    deliberately is **not** — the dashboard has to read it to echo it in the
+    ``X-Palaia-CSRF`` header that :class:`palaia_hub.admin_session.
+    AdminSessionMiddleware` requires on every state-changing REST call
+    (SPEC-401 deliverable #3, the same double-submit pattern the sign-in form
+    itself uses). A readable CSRF token is not a weakness: what a
+    double-submit token proves is that the caller can both *read* a value
+    from this origin and *set a header*, neither of which another site can
+    do. Its lifetime matches the session's, so an expired session never
+    leaves a stale token behind that outlives it.
+    """
+    response = RedirectResponse(target, status_code=303, headers=NO_STORE)
+    _set_cookie(response, SESSION_COOKIE, session, secure=secure, max_age=max_age)
+    _set_cookie(
+        response,
+        CSRF_COOKIE,
+        new_csrf_token(),
+        secure=secure,
+        max_age=max_age,
+        http_only=False,
+    )
+    return response
 
 
 def build_oauth_router(server: AuthorizationServer) -> APIRouter:
@@ -301,16 +351,15 @@ def build_oauth_router(server: AuthorizationServer) -> APIRouter:
                     secure=secure_cookies,
                 )
             target = next_url if _is_safe_next(next_url) else "/"
-            response = RedirectResponse(target, status_code=303, headers=NO_STORE)
-            _set_cookie(
-                response,
-                SESSION_COOKIE,
-                session,
-                secure=secure_cookies,
+            # The login form's own short-lived CSRF cookie is replaced here
+            # (not deleted) by the session-lifetime one the dashboard reads —
+            # see _start_session.
+            return _start_session(
+                target,
+                session=session,
                 max_age=max(0, expires_at - server.now()),
+                secure=secure_cookies,
             )
-            response.delete_cookie(CSRF_COOKIE, path="/")
-            return response
 
     # ------------------------------------------------------------- idp (204)
 
@@ -339,15 +388,12 @@ def build_oauth_router(server: AuthorizationServer) -> APIRouter:
             except OAuthError as exc:
                 return _authorize_error_page(exc)
             target = next_url if _is_safe_next(next_url) else "/"
-            response = RedirectResponse(target, status_code=303, headers=NO_STORE)
-            _set_cookie(
-                response,
-                SESSION_COOKIE,
-                session,
-                secure=secure_cookies,
+            return _start_session(
+                target,
+                session=session,
                 max_age=max(0, expires_at - server.now()),
+                secure=secure_cookies,
             )
-            return response
 
     @router.post(LOGOUT_PATH)
     async def logout(request: Request) -> Response:
@@ -355,6 +401,10 @@ def build_oauth_router(server: AuthorizationServer) -> APIRouter:
         await asyncio.to_thread(server.sign_out, request.cookies.get(SESSION_COOKIE))
         response = Response(status_code=204, headers=NO_STORE)
         response.delete_cookie(SESSION_COOKIE, path="/")
+        # The CSRF token is part of the session (see _start_session), so it
+        # goes with it — leaving it behind would hand the next visitor on
+        # this browser a token for a session that no longer exists.
+        response.delete_cookie(CSRF_COOKIE, path="/")
         return response
 
     return router

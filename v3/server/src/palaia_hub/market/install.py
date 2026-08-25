@@ -578,6 +578,7 @@ class InstallService:
                 list(current.vaults),
                 label=current.label,
                 stash=current.stash,
+                directory=current.directory,
                 upstreams=[*current.upstreams, key],
             )
 

@@ -38,6 +38,8 @@ from fastmcp.server.middleware import Middleware
 from fastmcp.utilities.lifespan import combine_lifespans
 from starlette.types import ASGIApp
 
+from ..directory.service import DirectoryService
+from ..messenger.service import MessengerService
 from ..stash.service import StashService
 from ..upstream.models import UpstreamConfig
 from .apps.recall_app import RESOURCE_URI as RECALL_EXPLORER_URI
@@ -45,7 +47,9 @@ from .apps.recall_app import render_recall_explorer_html
 from .apps.review_app import RESOURCE_URI as REVIEW_QUEUE_URI
 from .apps.review_app import render_review_queue_html
 from .config import CURATOR_PROFILE_PATH, GatewayConfig, ProfileConfig
+from .directory_tools import build_directory_server
 from .memory_tools import build_vault_server, vault_identity_block
+from .messenger_tools import build_messenger_server
 from .naming import resolve_tool_names
 from .semantic_routing import build_semantic_routing_server
 from .stash_tools import build_stash_server
@@ -146,6 +150,8 @@ def _build_profile_server(
     middleware: Sequence[Middleware] = (),
     stash_service: StashService | None = None,
     upstream_mounts: Mapping[str, UpstreamMount] | None = None,
+    directory_service: DirectoryService | None = None,
+    messenger_service: MessengerService | None = None,
 ) -> FastMCP:
     # SPEC-302 deliverable #6, second half of the fence: `ProfileConfig`
     # already refuses to *hold* upstreams on the curator path, so reaching
@@ -156,6 +162,17 @@ def _build_profile_server(
             "refusing to mount an external server on the curator profile: the "
             "curator runs a model over your own notes, and an outside tool in "
             f"that session could exfiltrate them (asked for: {sorted(profile.upstreams)})"
+        )
+    # SPEC-403 deliverable #4, the same fence for the messenger: no message
+    # channel — in or out — inside the curator's unattended session. Also
+    # refused by `ProfileConfig` itself; this is the half that holds even if
+    # a future caller constructs the profile some other way.
+    if profile.path == CURATOR_PROFILE_PATH and profile.messenger:
+        raise GatewayConfigError(
+            "refusing to mount messenger tools on the curator profile: the curator "
+            "runs a model over your own notes unattended, and a message channel "
+            "there is both a way out for their content and a way in for somebody "
+            "else's instructions."
         )
     # `mount()` does not propagate a mounted server's `instructions` to its
     # parent, so a real client connecting to this profile would otherwise
@@ -205,6 +222,17 @@ def _build_profile_server(
     # of the service existing.
     if profile.stash and stash_service is not None:
         server.mount(build_stash_server(stash_service))
+    # `profile.directory` (SPEC-402): same opt-in shape as stash above —
+    # `directory_service is None` (no hub-wide directory configured at
+    # all) silently mounts nothing, so a profile with `directory: true`
+    # ahead of the service existing never fails to build.
+    if profile.directory and directory_service is not None:
+        server.mount(build_directory_server(directory_service))
+    # `profile.messenger` (SPEC-403): same opt-in shape again. The curator
+    # path is already fenced off above, so reaching here means this is an
+    # ordinary profile a client connects to.
+    if profile.messenger and messenger_service is not None:
+        server.mount(build_messenger_server(messenger_service))
     # SPEC-302: external servers, namespaced and renamable exactly like a
     # vault's tool family. `tool_names` values are pre-namespace (FINDINGS
     # Q4) — the one composition rule `gateway.naming` owns, applied here
@@ -273,6 +301,8 @@ def build_gateway(
     profile_middleware: Mapping[str, Sequence[Middleware]] | None = None,
     stash_service: StashService | None = None,
     upstream_mounts: Mapping[str, UpstreamMount] | None = None,
+    directory_service: DirectoryService | None = None,
+    messenger_service: MessengerService | None = None,
 ) -> GatewayASGI:
     """Build the full gateway from a validated config and its backing services.
 
@@ -296,6 +326,13 @@ def build_gateway(
             default) leaves every profile exactly as before this parameter
             existed, even one with ``stash: true`` — the flag only takes
             effect once a service exists to back it.
+        directory_service: the hub-wide session directory (SPEC-402),
+            mounted into any profile whose ``directory`` flag is set — same
+            "flag ahead of the service" contract as ``stash_service``.
+        messenger_service: the hub-wide messenger (SPEC-403), mounted into
+            any profile whose ``messenger`` flag is set — same contract
+            again. Never onto the curator profile: that combination is
+            refused, both here and by ``ProfileConfig`` itself.
         upstream_mounts: external MCP servers ready to mount (SPEC-302),
             keyed by upstream key — built by the async caller via
             :meth:`palaia_hub.upstream.service.UpstreamService.proxy_for`.
@@ -318,7 +355,15 @@ def build_gateway(
         auth = (token_verifiers or {}).get(profile.path)
         middleware = (profile_middleware or {}).get(profile.path, ())
         server = _build_profile_server(
-            profile, config, vault_servers, auth, middleware, stash_service, upstream_mounts
+            profile,
+            config,
+            vault_servers,
+            auth,
+            middleware,
+            stash_service,
+            upstream_mounts,
+            directory_service,
+            messenger_service,
         )
         profile_servers[profile.path] = server
         asgi_app = server.http_app(path="/")

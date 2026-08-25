@@ -17,9 +17,15 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 
 from . import __version__
+from .admin_session import (
+    AdminSessionMiddleware,
+    build_admin_session_middleware_kwargs,
+    sign_in_required,
+    sign_in_url_for,
+)
 from .auth import TokenRecord, TokenStore, build_auth_router, check_gateway_auth_policy
 from .automations import (
     AutomationDispatcher,
@@ -32,6 +38,8 @@ from .config import HubConfig, load_config, palaia_home
 from .curator import CuratorScheduler
 from .curator.wiring import CuratorWiring
 from .dashboard_api import build_dashboard_router
+from .directory.service import DirectoryService
+from .directory_api import build_directory_router
 from .events import (
     EventBus,
     bridge_vault_events,
@@ -44,6 +52,9 @@ from .gateway import DynamicGateway, GatewayASGI, VaultService
 from .gateway.api import build_gateway_profiles_router
 from .gateway.apps.hub_status_app import HubStatusDeps, build_hub_status_server
 from .gateway.apps.market_app import MarketAppDeps, build_market_server
+from .gateway.apps.team_app import TeamAppDeps, build_team_server
+from .gateway.directory_tools import build_directory_gateway
+from .gateway.messenger_tools import build_messenger_gateway
 from .gateway.stash_tools import build_stash_gateway
 from .gateway.wiring import EngineVaultService
 from .hooks import OUTBOX_RELATIVE_PATH, HookDispatcher, HookOutbox, HookStore, build_hooks_router
@@ -57,9 +68,12 @@ from .market import (
     wire_market_index_updates,
 )
 from .mcpb import build_mcpb_router
+from .messenger.service import MessengerService
+from .messenger_api import build_messenger_router
 from .modes import AuthRateLimitMiddleware, ModeAuditLog, build_modes_router
 from .notifications import NotificationStore, build_notifications_router
 from .oauth import AuthorizationServer, build_oauth_router
+from .oauth.login import SESSION_COOKIE
 from .stash.service import StashService
 from .stash_api import build_stash_router
 from .static import mount_dashboard
@@ -93,6 +107,8 @@ def create_app(
     event_bus: EventBus | None = None,
     oauth_server: AuthorizationServer | None = None,
     stash_service: StashService | None = None,
+    directory_service: DirectoryService | None = None,
+    messenger_service: MessengerService | None = None,
     market_service: MarketService | None = None,
     install_service: InstallService | None = None,
     hook_store: HookStore | None = None,
@@ -195,6 +211,23 @@ def create_app(
             mirror, and wires its ``stash.*`` events onto ``event_bus``.
             Omitted (the default), the hub runs with no stash surface at
             all, same as before this parameter existed.
+        directory_service: the hub's session directory (SPEC-402). Given,
+            mounts the ``directory_*`` tool family at ``/mcp/directory``
+            and the ``/api/directory`` read-only REST mirror, and wires its
+            ``session.*`` events onto ``event_bus``. Omitted (the
+            default), the hub runs with no session directory surface at
+            all, same as before this parameter existed.
+        messenger_service: the hub's messenger (SPEC-403). Given, mounts
+            the ``messenger_*`` tool family at ``/mcp/messenger`` and the
+            ``/api/messenger`` REST mirror (read-only plus the two SPEC-405
+            owner controls — sending as the owner, ending a conversation),
+            and wires its ``message.*`` events onto this app's bus. Omitted
+            (the default), the hub runs with no messenger surface at all —
+            every ``messenger: true`` profile flag then mounts nothing,
+            exactly like ``stash``/``directory`` ahead of their services.
+            Given together with ``directory_service``, also mounts the
+            session-monitor MCP App (SPEC-405 deliverable #3) at
+            ``/mcp/team``.
         market_service: the marketplace read model (SPEC-303 — official
             registry + curated index + manual entries, merged). Given,
             mounts ``/api/market/*`` and wires its
@@ -297,6 +330,22 @@ def create_app(
         stash_service.publish = _publish_stash
         stash_gateway = build_stash_gateway(stash_service)
 
+    directory_gateway = None
+    if directory_service is not None:
+        def _publish_directory(action: str, data: dict[str, Any]) -> None:
+            publish_event(event_bus, action, origin="directory", data=data)
+
+        directory_service.publish = _publish_directory
+        directory_gateway = build_directory_gateway(directory_service)
+
+    messenger_gateway = None
+    if messenger_service is not None:
+        def _publish_messenger(action: str, data: dict[str, Any]) -> None:
+            publish_event(event_bus, action, origin="messenger", data=data)
+
+        messenger_service.publish = _publish_messenger
+        messenger_gateway = build_messenger_gateway(messenger_service)
+
     if market_service is not None:
         def _publish_market(action: str, data: dict[str, Any]) -> None:
             publish_event(event_bus, action, origin="market", data=data)
@@ -336,6 +385,25 @@ def create_app(
             ),
         )
         market_asgi_app = build_market_server(market_app_deps).http_app(path="/")
+
+    # SPEC-405 deliverable #3: the session-monitor MCP App, mounted at
+    # `/mcp/team` — hub-level, same standalone-FastMCP-instance shape as
+    # hub_status/market above. Gated on *both* directory_service and
+    # messenger_service: there is nothing to monitor with only one of the
+    # two (a directory with no messenger has no flows to show; a messenger
+    # with no directory has no peers to address).
+    team_asgi_app = None
+    if directory_service is not None and messenger_service is not None:
+        team_app_deps = TeamAppDeps(
+            directory_service=directory_service,
+            messenger_service=messenger_service,
+            dashboard_url=(
+                config.exposure.public_url.rstrip("/")
+                if config.exposure.public_url
+                else None
+            ),
+        )
+        team_asgi_app = build_team_server(team_app_deps).http_app(path="/")
 
     # One lifespan runs BOTH concerns: the events background tasks (SPEC-109)
     # and, when a gateway is mounted, its session-manager lifespan (SPEC-105 —
@@ -439,10 +507,16 @@ def create_app(
                     await stack.enter_async_context(gateway.lifespan(app_))
                 if stash_gateway is not None:
                     await stack.enter_async_context(stash_gateway.lifespan(app_))
+                if directory_gateway is not None:
+                    await stack.enter_async_context(directory_gateway.lifespan(app_))
+                if messenger_gateway is not None:
+                    await stack.enter_async_context(messenger_gateway.lifespan(app_))
                 if hub_status_asgi_app is not None:
                     await stack.enter_async_context(hub_status_asgi_app.lifespan(app_))
                 if market_asgi_app is not None:
                     await stack.enter_async_context(market_asgi_app.lifespan(app_))
+                if team_asgi_app is not None:
+                    await stack.enter_async_context(team_asgi_app.lifespan(app_))
                 yield
         finally:
             await stop_background_tasks(tasks)
@@ -472,11 +546,26 @@ def create_app(
     app.state.config = config
     app.state.start_time = start_time
     app.state.event_bus = event_bus
+    hub_home = home or palaia_home()
     if config.mode in ("cloud", "open"):
         # SPEC-205 deliverable #4: these endpoints become reachable off the
         # operator's own network in these two modes — 'locked' has no such
         # surface to throttle, so this middleware never exists there.
         app.add_middleware(AuthRateLimitMiddleware)
+    # SPEC-401: the admin session gate. Added last, so it sits OUTSIDE the
+    # rate limiter: an unauthenticated caller is turned away before any
+    # other middleware does work for it. Mounted only when there is an
+    # authorization server to resolve a session against — without one there
+    # is no sign-in flow at all, and enforcing would lock the operator out
+    # of their own hub with nothing to unlock it (see
+    # `admin_session.sign_in_required` for the per-mode policy, and the
+    # middleware itself for the "only once an account exists" half).
+    admin_session_enforced = oauth_server is not None and sign_in_required(config)
+    if oauth_server is not None and admin_session_enforced:  # the None check narrows the type
+        app.add_middleware(
+            AdminSessionMiddleware,
+            **build_admin_session_middleware_kwargs(oauth_server, config),
+        )
     if gateway is not None:
         for path, mounted_app in gateway.mounts.items():
             app.mount(path, mounted_app)
@@ -486,10 +575,16 @@ def create_app(
     # gateway would shadow them.
     if stash_gateway is not None:
         app.mount("/mcp/stash", stash_gateway.app)
+    if directory_gateway is not None:
+        app.mount("/mcp/directory", directory_gateway.app)
+    if messenger_gateway is not None:
+        app.mount("/mcp/messenger", messenger_gateway.app)
     if hub_status_asgi_app is not None:
         app.mount("/mcp/hub", hub_status_asgi_app)
     if market_asgi_app is not None:
         app.mount("/mcp/market", market_asgi_app)
+    if team_asgi_app is not None:
+        app.mount("/mcp/team", team_asgi_app)
     if dynamic_gateway is not None:
         # One mount, forever: DynamicGateway owns everything below "/mcp"
         # and rebuilds its own internal routing as profiles come and go
@@ -509,15 +604,23 @@ def create_app(
         ``sign_in`` is non-secret (no client id, no allow-list) and is what
         the dashboard's settings section (SPEC-204 deliverable #4) reads to
         show "Sign in with GitHub" / a configured provider's name / the
-        local password, in plain language.
+        local password, in plain language. SPEC-401 adds two equally
+        non-secret fields to it: whether signing in is *required* on this
+        hub, and where the one door is — which is what lets the dashboard
+        show a sign-in prompt (and a sign-out button) without first making a
+        call that fails.
         """
-        sign_in: dict[str, str | None]
+        sign_in: dict[str, str | bool | None]
         if oauth_server is not None and oauth_server.idp_configured:
             sign_in = {"method": "idp", "provider_name": oauth_server.idp_display_name}
         elif oauth_server is not None:
             sign_in = {"method": "password", "provider_name": None}
         else:
             sign_in = {"method": "none", "provider_name": None}
+        sign_in["required"] = admin_session_enforced
+        sign_in["sign_in_url"] = (
+            sign_in_url_for(oauth_server) if oauth_server is not None else None
+        )
         return {
             "version": __version__,
             "mode": config.mode,
@@ -553,7 +656,6 @@ def create_app(
     # is only ever used lazily, inside request handlers (config.yaml is
     # read/patched per-request, never at app-build time) — mounting this
     # router has no filesystem side effect by itself.
-    hub_home = home or palaia_home()
     app.include_router(
         build_modes_router(
             config,
@@ -572,6 +674,29 @@ def create_app(
     # "/" last.
     if oauth_server is not None:
         app.include_router(build_oauth_router(oauth_server))
+
+        @app.get("/api/session")
+        async def session(request: Request) -> dict[str, Any]:
+            """Who is signed in on this browser (SPEC-401 deliverable #6).
+
+            Deliberately *not* on the sign-in-free allowlist: with the gate
+            active this route answers 401 like every other admin route, and
+            the dashboard's own API client turns that one 401 into the
+            redirect to the sign-in page. With the gate off it answers
+            ``signed_in: false`` instead of failing, so a private LAN hub's
+            shell simply shows no sign-out button.
+            """
+            assert oauth_server is not None  # narrowing for mypy inside the closure
+            username = await asyncio.to_thread(
+                oauth_server.current_user, request.cookies.get(SESSION_COOKIE)
+            )
+            return {
+                "signed_in": username is not None,
+                "username": username,
+                "required": admin_session_enforced,
+                "sign_in_url": sign_in_url_for(oauth_server),
+                "session_ttl_seconds": config.oauth.session_ttl,
+            }
 
     if vault_registry is not None:
         app.include_router(
@@ -642,6 +767,10 @@ def create_app(
 
     if stash_service is not None:
         app.include_router(build_stash_router(stash_service))
+    if directory_service is not None:
+        app.include_router(build_directory_router(directory_service))
+    if messenger_service is not None:
+        app.include_router(build_messenger_router(messenger_service))
     if market_service is not None:
         app.include_router(build_market_router(market_service))
     if install_service is not None:

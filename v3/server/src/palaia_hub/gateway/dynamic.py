@@ -97,6 +97,8 @@ from starlette.routing import Mount, Router
 from starlette.types import ASGIApp
 
 from ..auth.policy import check_gateway_auth_policy
+from ..directory.service import DirectoryService
+from ..messenger.service import MessengerService
 from ..stash.service import StashService
 from ..upstream.models import UpstreamConfig
 from ..upstream.service import UpstreamCredentialError, UpstreamService
@@ -166,6 +168,13 @@ class DynamicGateway:
         stash_service: the hub-wide stash (SPEC-202), mounted into any
             profile whose ``stash`` flag is set (SPEC-301) — same contract
             as :func:`~.build.build_gateway`.
+        directory_service: the hub-wide session directory (SPEC-402),
+            mounted into any profile whose ``directory`` flag is set — same
+            "flag ahead of the service" contract as ``stash_service``.
+        messenger_service: the hub-wide messenger (SPEC-403), mounted into
+            any profile whose ``messenger`` flag is set — same contract
+            again, and never onto the curator profile (refused by
+            ``ProfileConfig`` and again at mount time).
         upstream_service: the external-server registry (SPEC-302). Given,
             a profile's ``upstreams`` entries are mounted **only while the
             upstream's last probe said it was reachable** — a down or
@@ -190,6 +199,8 @@ class DynamicGateway:
         profile_middleware: Mapping[str, Sequence[Middleware]] | None = None,
         stash_service: StashService | None = None,
         upstream_service: UpstreamService | None = None,
+        directory_service: DirectoryService | None = None,
+        messenger_service: MessengerService | None = None,
     ) -> None:
         self._config = config
         self._upstream_service = upstream_service
@@ -201,6 +212,8 @@ class DynamicGateway:
             profile_middleware or {}
         )
         self._stash_service = stash_service
+        self._directory_service = directory_service
+        self._messenger_service = messenger_service
         self.router = Router(routes=[])
         self._profile_servers: dict[str, FastMCP] = {}
         self._lock = asyncio.Lock()
@@ -324,6 +337,8 @@ class DynamicGateway:
         *,
         label: str | None = None,
         stash: bool = False,
+        directory: bool = False,
+        messenger: bool = False,
         hidden_tools: Sequence[str] = (),
         semantic_routing: bool = False,
         upstreams: Sequence[str] | None = None,
@@ -346,6 +361,10 @@ class DynamicGateway:
             label: the display name; ``None`` clears it back to "use the
                 path".
             stash: whether this profile also carries the stash tool family.
+            directory: whether this profile also carries the session
+                directory tool family (SPEC-402).
+            messenger: whether this profile also carries the messenger tool
+                family (SPEC-403). Never valid on the curator profile.
             hidden_tools: final (post-namespace) tool names this profile
                 should hide (SPEC-305 deliverable #3) — replaces whatever
                 it hid before, same "whole list, not a delta" contract as
@@ -405,6 +424,8 @@ class DynamicGateway:
                 label=label,
                 vaults=list(vault_keys),
                 stash=stash,
+                directory=directory,
+                messenger=messenger,
                 hidden_tools=list(hidden_tools),
                 semantic_routing=semantic_routing,
                 upstreams=resolved_upstreams,
@@ -561,6 +582,8 @@ class DynamicGateway:
             middleware,
             self._stash_service,
             upstream_mounts,
+            self._directory_service,
+            self._messenger_service,
         )
         asgi_app = server.http_app(path="/")
         done: asyncio.Future[None] = asyncio.get_running_loop().create_future()

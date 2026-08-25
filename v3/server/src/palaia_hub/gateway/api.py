@@ -68,6 +68,13 @@ class GatewayProfileOut(BaseModel):
     label: str | None
     vaults: list[str]
     stash: bool
+    #: Whether this profile also carries the session directory tool family
+    #: (SPEC-402), same opt-in shape as ``stash`` above.
+    directory: bool
+    #: Whether this profile also carries the messenger tool family
+    #: (SPEC-403), same opt-in shape again. Always ``false`` on the curator
+    #: profile — that combination is refused by ``ProfileConfig`` itself.
+    messenger: bool
     #: Final (post-namespace) tool names hidden from this profile's own
     #: surface (SPEC-305 deliverable #3).
     hidden_tools: list[str]
@@ -113,6 +120,8 @@ class CreateGatewayProfileRequest(BaseModel):
     label: str | None = None
     vaults: list[str] = []
     stash: bool = False
+    directory: bool = False
+    messenger: bool = False
     hidden_tools: list[str] = []
     semantic_routing: bool = False
     upstreams: list[str] = []
@@ -128,6 +137,8 @@ class UpdateGatewayProfileRequest(BaseModel):
     label: str | None = None
     vaults: list[str] | None = None
     stash: bool | None = None
+    directory: bool | None = None
+    messenger: bool | None = None
     hidden_tools: list[str] | None = None
     semantic_routing: bool | None = None
     #: Same whole-list contract as ``vaults`` (SPEC-302): given, it replaces
@@ -233,6 +244,8 @@ async def _out(profile: ProfileConfig, dynamic_gateway: DynamicGateway) -> Gatew
         label=profile.label,
         vaults=list(profile.vaults),
         stash=profile.stash,
+        directory=profile.directory,
+        messenger=profile.messenger,
         hidden_tools=list(profile.hidden_tools),
         semantic_routing=profile.semantic_routing,
         tool_count=tool_count,
@@ -310,6 +323,8 @@ def build_gateway_profiles_router(
                     label=p.label,
                     vaults=list(p.vaults),
                     stash=p.stash,
+                    directory=p.directory,
+                    messenger=p.messenger,
                     hidden_tools=list(p.hidden_tools),
                     semantic_routing=p.semantic_routing,
                     upstreams=list(p.upstreams),
@@ -372,6 +387,8 @@ def build_gateway_profiles_router(
                 label=body.label,
                 vaults=body.vaults,
                 stash=body.stash,
+                directory=body.directory,
+                messenger=body.messenger,
                 hidden_tools=body.hidden_tools,
                 semantic_routing=body.semantic_routing,
                 upstreams=body.upstreams,
@@ -385,6 +402,8 @@ def build_gateway_profiles_router(
                 body.vaults,
                 label=body.label,
                 stash=body.stash,
+                directory=body.directory,
+                messenger=body.messenger,
                 hidden_tools=body.hidden_tools,
                 semantic_routing=body.semantic_routing,
                 upstreams=body.upstreams,
@@ -418,6 +437,8 @@ def build_gateway_profiles_router(
         label = body.label if body.label is not None else current.label
         vaults = body.vaults if body.vaults is not None else list(current.vaults)
         stash = body.stash if body.stash is not None else current.stash
+        directory = body.directory if body.directory is not None else current.directory
+        messenger = body.messenger if body.messenger is not None else current.messenger
         hidden_tools = (
             body.hidden_tools if body.hidden_tools is not None else list(current.hidden_tools)
         )
@@ -433,6 +454,8 @@ def build_gateway_profiles_router(
                 label=label,
                 vaults=vaults,
                 stash=stash,
+                directory=directory,
+                messenger=messenger,
                 hidden_tools=hidden_tools,
                 semantic_routing=semantic_routing,
                 upstreams=upstreams,
@@ -448,6 +471,8 @@ def build_gateway_profiles_router(
                 vaults,
                 label=label,
                 stash=stash,
+                directory=directory,
+                messenger=messenger,
                 hidden_tools=hidden_tools,
                 semantic_routing=semantic_routing,
                 upstreams=upstreams,

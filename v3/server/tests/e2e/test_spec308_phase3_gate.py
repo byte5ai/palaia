@@ -204,12 +204,27 @@ def market_hub(tmp_path: Path) -> Iterator[MarketHub]:
         hub.stop()
 
 
+def _admin_client(base_url: str) -> httpx.Client:
+    """A client shaped like the dashboard itself (SPEC-401): signed in with
+    the owner's password, and echoing its CSRF cookie in the header the hub
+    requires on every state-changing ``/api/*`` call.
+    """
+    client = httpx.Client(base_url=base_url, timeout=15.0)
+    _csrf_and_sign_in(client, base_url)
+    client.headers["X-Palaia-CSRF"] = client.cookies["palaia_oauth_csrf"]
+    return client
+
+
 def _install_once(base_url: str, entry_id: str, profiles: list[str]) -> dict[str, object]:
     """The real, full REST install flow (deliverable #3): consent, then
     install onto every profile named — refused without a fresh, matching
     consent token (see :mod:`palaia_hub.market.install`'s ``ConsentStore``).
+
+    Driven through a signed-in admin client, because this hub runs in cloud
+    mode and SPEC-401's session gate covers every ``/api/*`` call the
+    dashboard makes — including these.
     """
-    client = httpx.Client(base_url=base_url, timeout=15.0)
+    client = _admin_client(base_url)
 
     # SPEC-303 deliverable #4's merged surface: the curated entry is
     # visible over the exact same `/api/market/search` a dashboard would
@@ -239,7 +254,7 @@ def _mint_plt_token(base_url: str, *, name: str, profile: str) -> str:
     ``POST /api/auth/tokens`` REST surface — no client-side tool config,
     the same credential shape any non-OAuth client (a phone app, a
     scripted integration) would carry."""
-    client = httpx.Client(base_url=base_url, timeout=15.0)
+    client = _admin_client(base_url)
     response = client.post(
         "/api/auth/tokens",
         json={

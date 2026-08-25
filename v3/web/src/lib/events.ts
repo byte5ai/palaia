@@ -53,6 +53,23 @@ export interface VaultChangeEntry {
  * an unbounded log; older entries fall off the end. */
 const RECENT_CHANGES_LIMIT = 20;
 
+/** SPEC-405's directory + messenger events (SPEC-201/402/403's public
+ * vocabulary) — the Agents screen's live-update signal. This hook does not
+ * decode their payloads (the directory/messenger REST mirrors are the
+ * source of truth for that, per SPEC-405 deliverable #1: "no polling
+ * loop" means the Agents screen refetches *on* one of these arriving, not
+ * that it parses the event itself). */
+const AGENT_ACTIVITY_EVENTS = [
+  "session.registered",
+  "session.updated",
+  "session.idle",
+  "session.stale",
+  "session.deregistered",
+  "message.sent",
+  "message.received",
+  "message.expired",
+] as const;
+
 export type ConnectionState = "connecting" | "open" | "reconnecting" | "closed";
 
 export interface EventStreamState {
@@ -69,6 +86,12 @@ export interface EventStreamState {
    * activity feed (SPEC-110 deliverable #4: "recent activity feed
    * (SSE-live)"). Bounded to `RECENT_CHANGES_LIMIT` entries. */
   recentChanges: VaultChangeEntry[];
+  /** Running count of `AGENT_ACTIVITY_EVENTS` seen this session (SPEC-405
+   * deliverable #1: "live updates ... no polling loop") — the Agents
+   * screen watches this number and refetches the directory/message flows
+   * whenever it changes, the same "count as a change signal" shape
+   * `vaultChangeCount` already established for the explorer badge. */
+  agentActivityCount: number;
 }
 
 const INITIAL_STATE: EventStreamState = {
@@ -78,6 +101,7 @@ const INITIAL_STATE: EventStreamState = {
   vaultChangeCount: 0,
   lastVaultChange: null,
   recentChanges: [],
+  agentActivityCount: 0,
 };
 
 /** Build an `EventSource` unless a test/story has already provided one via
@@ -148,6 +172,17 @@ export function useEventStream(
     };
     for (const eventName of MEMORY_ENTRY_EVENTS) {
       source.addEventListener(eventName, onMemoryEntryEvent);
+    }
+
+    const onAgentActivityEvent = () => {
+      setState((prev) => ({
+        ...prev,
+        connection: "open",
+        agentActivityCount: prev.agentActivityCount + 1,
+      }));
+    };
+    for (const eventName of AGENT_ACTIVITY_EVENTS) {
+      source.addEventListener(eventName, onAgentActivityEvent);
     }
 
     return () => {

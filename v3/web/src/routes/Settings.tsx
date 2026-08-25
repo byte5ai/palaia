@@ -76,6 +76,12 @@ export function Settings() {
             <div className="stack" style={{ gap: 4 }}>
               <p className="card__subject">{signInSummary(signIn).label}</p>
               <p className="t-sm t-muted">{signInSummary(signIn).detail}</p>
+              {/* SPEC-401: whether this dashboard asks for that sign-in. */}
+              <p className="t-sm t-muted">
+                {signIn.required
+                  ? "This dashboard asks you to sign in before it shows or changes anything."
+                  : "This dashboard does not ask you to sign in — it is reachable only from your own network."}
+              </p>
             </div>
           ) : null}
         </CardBody>

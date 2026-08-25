@@ -49,6 +49,10 @@ async def _run(*, host: str, port: int, home: Path) -> None:
             await index.close()
         if production.stash_store is not None:
             production.stash_store.close()
+        if production.directory_store is not None:
+            production.directory_store.close()
+        if production.messenger_store is not None:
+            production.messenger_store.close()
         await production.registry.aclose()
 
 

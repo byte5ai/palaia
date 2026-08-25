@@ -174,6 +174,16 @@ oauth:
   #     allowed_users: ["you@example.com"]
   #     display_name: "Example Workspace"
 
+# The dashboard's own sign-in gate (SPEC-401). Left unset, it follows the
+# operating mode above: required when the dashboard is public ('open'), on
+# by default when MCP is public but the dashboard is not ('cloud'), and off
+# on a private network ('locked'), where the first-run wizard has to be
+# reachable before any account exists. Set it yourself to require signing in
+# on a private network too — it takes effect once you have set a password
+# (`palaia-hub oauth set-password`) or configured a sign-in provider.
+# dashboard:
+#   require_sign_in: true
+
 # Public exposure (SPEC-205): how this hub is reached from outside the
 # operator's own network in 'cloud'/'open' mode. Purely descriptive — it
 # does not change what the hub binds to (see 'host'/'mode' above) — but the
@@ -216,6 +226,8 @@ exposure:
 #       label: Default
 #       vaults: [work]
 #       stash: false
+#       directory: false
+#       messenger: false
 #       # Other MCP servers this profile also offers, by key (see below).
 #       upstreams: [linear]
 #   # Other people's MCP servers, connected once here instead of in every
@@ -541,6 +553,26 @@ class ExposureSettings(BaseModel):
     tunnel: Literal["tailscale", "cloudflared", "reverse_proxy"] | None = None
 
 
+class DashboardSettings(BaseModel):
+    """The dashboard's own admin session gate (SPEC-401).
+
+    One knob, and it is deliberately three-valued: ``None`` (the default,
+    and what a config.yaml with no ``dashboard:`` section parses to) means
+    "whatever this operating mode requires" — mandatory in ``open``, on in
+    ``cloud``, off in ``locked``. See
+    :func:`palaia_hub.admin_session.sign_in_required` for why each mode
+    defaults that way; an explicit ``true``/``false`` overrides it in
+    ``locked`` and ``cloud``, and ``open`` refuses ``false`` outright (a
+    public dashboard with no sign-in is the one combination the masterplan's
+    mode table rules out).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: ``None`` = follow the operating mode's own policy.
+    require_sign_in: bool | None = None
+
+
 class GatewayVaultSettings(BaseModel):
     """One vault's gateway identity override (SPEC-301 deliverable #1).
 
@@ -593,6 +625,13 @@ class GatewayProfileSettings(BaseModel):
     vaults: list[str] = Field(default_factory=list)
     #: Mount the stash tool family inside this profile too (SPEC-202/301).
     stash: bool = False
+    #: Mount the session directory tool family inside this profile too
+    #: (SPEC-402), same opt-in shape as ``stash`` above.
+    directory: bool = False
+    #: Mount the messenger tool family inside this profile too (SPEC-403),
+    #: same opt-in shape again. Refused on the curator profile — see
+    #: ``palaia_hub.gateway.config.ProfileConfig``.
+    messenger: bool = False
     #: Final (post-namespace) tool names hidden from this profile (SPEC-305
     #: deliverable #3). See ``palaia_hub.gateway.config.ProfileConfig``.
     hidden_tools: list[str] = Field(default_factory=list)
@@ -731,6 +770,8 @@ class HubConfig(BaseModel):
     curator: CuratorSettings = Field(default_factory=CuratorSettings)
     exposure: ExposureSettings = Field(default_factory=ExposureSettings)
     market: MarketSettings = Field(default_factory=MarketSettings)
+    #: The dashboard's admin session gate (SPEC-401).
+    dashboard: DashboardSettings = Field(default_factory=DashboardSettings)
     #: The gateway's profiles/vault-identity shape (SPEC-301). ``None`` (the
     #: default, and what an old config.yaml with no ``gateway:`` section
     #: parses to) means "today's zero-config behavior": every vault on one
@@ -787,6 +828,20 @@ class HubConfig(BaseModel):
                 f"tailnet/Tailscale IP) in config.yaml and reach it publicly via "
                 f"a tunnel (Tailscale Funnel, cloudflared); or set `mode: open` "
                 f"if you intend the dashboard itself to be public."
+            )
+        if self.mode == "open" and self.dashboard.require_sign_in is False:
+            # SPEC-401 deliverable #4: sign-in is mandatory in `open` mode —
+            # that mode puts the dashboard itself on the public internet, so
+            # "public admin surface, no sign-in" is the one combination the
+            # masterplan's mode table rules out. Refused loudly rather than
+            # silently ignored, so an operator who wrote this never believes
+            # it took effect.
+            raise ValueError(
+                "mode 'open' cannot set `dashboard.require_sign_in: false` — in "
+                "this mode the dashboard itself is reachable from the internet, "
+                "so signing in is mandatory. Fix: remove that key (or set it to "
+                "true), or use `mode: cloud` if you want the dashboard to stay "
+                "on your own network."
             )
         return self
 
@@ -882,22 +937,35 @@ def load_config(home: Path | None = None, *, create_if_missing: bool = True) -> 
         config = HubConfig.model_validate(merged)
     except ValidationError as exc:
         raise ConfigError(_format_validation_error(path, exc)) from exc
-    # Issue #242: `open` mode's contract (masterplan mode table) is a PUBLIC
-    # dashboard with mandatory sign-in — and the dashboard's owner sign-in
-    # does not exist yet. Until it does, an operator choosing `open` (here
-    # or via the dashboard's mode endpoint, which enforces the same rule)
-    # would put every admin endpoint — token minting, profile editing, mode
-    # changes, vault contents — on the public internet with no check at all.
-    # Refused at the operator entry points rather than in HubConfig's own
-    # validator, so the mode's internal semantics (rate limiting, policy,
-    # tunnel handling) stay implemented and tested for the SPEC that adds
-    # the admin-session gate and lifts this.
+    # Issue #242 / SPEC-401 deliverable #5: `open` mode's contract (the
+    # masterplan mode table) is a PUBLIC dashboard with mandatory sign-in.
+    # The sign-in now exists (palaia_hub.admin_session), so the blanket
+    # refusal is lifted — but only for a hub that actually has a way in.
+    # Without one, choosing `open` would put every admin endpoint — token
+    # minting, profile editing, mode changes, vault contents — on the public
+    # internet with no check at all, so that config is still refused, in the
+    # same place and with a message that now names the missing piece.
+    # Checked here rather than in HubConfig's own validator because the
+    # answer depends on state outside the config file (whether an owner
+    # account exists under `home`), which a pure model validator has no
+    # business reading.
     if config.mode == "open":
-        raise ConfigError(
-            f"{path}: mode 'open' is not available yet: it makes the dashboard "
-            f"itself public, and the dashboard sign-in that this requires is "
-            f"still being built. Fix: use `mode: cloud` — clients like "
-            f"claude.ai and ChatGPT connect exactly the same way there, only "
-            f"the dashboard stays on your own network."
-        )
+        # Imported here, not at module scope: `admin_session` reads the
+        # session/CSRF cookie names from `palaia_hub.oauth`, whose package
+        # chain imports this module back. A function-level import keeps that
+        # edge out of the import graph entirely.
+        from .admin_session import sign_in_configured
+
+        if not sign_in_configured(config, resolved_home):
+            raise ConfigError(
+                f"{path}: mode 'open' makes this dashboard reachable from the "
+                f"internet, so it needs a way for you to sign in first — and "
+                f"this hub has none configured yet. Fix: turn the sign-in "
+                f"server on (`oauth.enabled: true` plus an `oauth.issuer`) and "
+                f"either set your password with `palaia-hub oauth set-password` "
+                f"or configure a sign-in provider (`oauth.idp`); or use "
+                f"`mode: cloud`, where clients like claude.ai and ChatGPT "
+                f"connect exactly the same way and the dashboard stays on your "
+                f"own network."
+            )
     return config
