@@ -58,6 +58,32 @@ def test_both_spec_207_skill_packages_are_present() -> None:
     assert {"palaia-memory", "palaia-capture"} <= slugs, slugs
 
 
+def test_the_spec_404_messenger_skill_package_is_present() -> None:
+    slugs = {directory.name for directory in discover_skills()}
+    assert "palaia-messenger" in slugs, slugs
+
+
+def test_messenger_skill_teaches_every_spec_404_habit() -> None:
+    """Deliverable #1's five habits, each traceable to a line in the skill:
+    register on start, check before starting work, the reply discipline,
+    the short-message-plus-reference rule, and winding down."""
+    skill, issues = parse_skill(CLIENTS_ROOT / "skills" / "palaia-messenger")
+    assert issues == [], issues
+    assert skill is not None
+    lowered = skill.body.lower()
+    for phrase in (
+        "directory_register",
+        "messenger_check",
+        "messenger_send",
+        "messenger_ack",
+        "expects_reply",
+        "handoff",
+        "memory://",
+        "deregister",
+    ):
+        assert phrase.lower() in lowered, phrase
+
+
 def test_capture_skill_is_the_smaller_one() -> None:
     """``palaia-capture`` exists for constrained agents (SPEC-207 #1).
 
@@ -92,13 +118,18 @@ def test_every_skill_carries_per_model_guidance() -> None:
 
 def test_skills_name_the_four_capture_fields() -> None:
     """The 4-field contract is the one thing a capture cannot be composed
-    without (format spec §7 / SPEC-107's mandatory fields)."""
-    for directory in discover_skills():
-        skill, _ = parse_skill(directory)
+    without (format spec §7 / SPEC-107's mandatory fields).
+
+    Scoped to the two skills that actually teach capture — `palaia-
+    messenger` (SPEC-404) teaches a different discipline entirely and has
+    no reason to name these fields.
+    """
+    for slug in ("palaia-memory", "palaia-capture"):
+        skill, _ = parse_skill(CLIENTS_ROOT / "skills" / slug)
         assert skill is not None
         lowered = skill.body.lower()
         for field in ("what it concerns", "why keep it", "content", "source"):
-            assert field in lowered, (directory.name, field)
+            assert field in lowered, (slug, field)
 
 
 # --- the linter itself -------------------------------------------------
