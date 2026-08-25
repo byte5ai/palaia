@@ -182,6 +182,23 @@ different providers hand off work through palaia*).
 | [406](specs/SPEC-406-addon-sdk.md) | Add-on SDK + submission flow | 303, 304 | Sonnet 5 | medium | — |
 | [407](specs/SPEC-407-phase4-gate.md) | Phase-4 gate evidence | 401–405 | Sonnet 5 | medium | gate evidence |
 
+## 4e. Phase 5 SPEC index (written at the Phase-4 gate, 2026-08-25)
+
+Waves: **5a** = 501, 502, 503, 505 (no mutual deps) → **5b** = 504 (needs
+503's theme + 501's install paths) → **5c** = 506 + Phase-5 gate (exit
+criterion: *a non-developer completes install → first shared memory
+unaided* — scripted twin + the owner's real-person session per the shipped
+protocol).
+
+| SPEC | Title | Depends on | Model | Effort | Review gate |
+|---|---|---|---|---|---|
+| [501](specs/SPEC-501-distribution.md) | App-store packages, channels, self-update | 112 | Sonnet 5 | high | — |
+| [502](specs/SPEC-502-hardening.md) | Hardening pass + external-review brief | 401, 302, 203 | **Opus 5** | high | **Fable 5 security review (max)** |
+| [503](specs/SPEC-503-docs-site.md) | Docs site | 110, 304, 405 | Sonnet 5 | high | owner pass |
+| [504](specs/SPEC-504-onboarding.md) | Onboarding page + first-run funnel | 503, 501, 110 | Sonnet 5 | high | owner UX pass |
+| [505](specs/SPEC-505-v2-sunset.md) | v2 sunset + migration guide | 111 | Sonnet 5 | medium | owner (timeline) |
+| [506](specs/SPEC-506-phase5-gate.md) | RC + gate evidence | 501–505 | Sonnet 5 | medium | gate evidence |
+
 ## 5. Phase 2 work packages (superseded by §4b — kept for provenance)
 
 | Package | Content | Model | Effort |
