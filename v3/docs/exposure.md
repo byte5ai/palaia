@@ -24,6 +24,12 @@ This table (MASTERPLAN §5.5) is enforced in code, in two layers:
    wizard-specific checks config-loading has no reason to make: an
    `oauth.enabled` with no `oauth.issuer`, and an `exposure.public_url`
    that is not `https://`.
+3. **Request time** (`palaia_hub.admin_session.AdminSessionMiddleware`) — the
+   "Sign-in" column of the table above, for the *dashboard* rather than for
+   MCP: every `/api/*` route needs a live owner session, mandatory in Open,
+   on by default in Cloud, opt-in in Locked. See
+   [dashboard-signin.md](dashboard-signin.md), which also covers why Open
+   mode is refused on a hub that has no way to sign in at all (issue #242).
 
 **The vendor-cloud reality check, stated plainly:** claude.ai and ChatGPT
 connect to a custom connector *from their own vendor cloud*, never from
@@ -143,7 +149,7 @@ operator can confirm it (`auto: false`, `passed: null`):
 | Sign-in is required | Auto — `auth_enabled` or `oauth.enabled`. |
 | Auth endpoints are rate-limited | Auto — whether §5's middleware is actually mounted. |
 | The public URL serves valid TLS | Auto once a self-test has run against it (a successful fetch implies a valid handshake); manual, "not checked yet", until then. |
-| The owner account has its own password | Auto when the caller has OAuth-store access to check; manual otherwise. |
+| The owner account has its own password | Auto when the caller has OAuth-store access to check; manual otherwise. Open mode additionally *refuses to load* without it — see [dashboard-signin.md](dashboard-signin.md) §5. |
 | You understand the dashboard itself is now public | Always manual — a conscious choice, not a fact to verify. |
 
 ## 7. Why this stays dashboard-only

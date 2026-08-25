@@ -315,7 +315,15 @@ async def test_api_info_reports_the_sign_in_method_for_the_dashboard(tmp_path: P
         async with _http(harness) as http:
             response = await http.get("/api/info")
             assert response.status_code == 200
-            assert response.json()["sign_in"] == {"method": "idp", "provider_name": "GitHub"}
+            # SPEC-401 added `required`/`sign_in_url` to the same block: an
+            # IdP hub in cloud mode has the gate on, and its one door is the
+            # provider start (there is no password form to point at).
+            assert response.json()["sign_in"] == {
+                "method": "idp",
+                "provider_name": "GitHub",
+                "required": True,
+                "sign_in_url": "/oauth/idp/start",
+            }
     finally:
         harness.store.close()
 
@@ -327,7 +335,12 @@ async def test_api_info_reports_password_when_no_idp_is_configured(tmp_path: Pat
         async with _http(harness) as http:
             response = await http.get("/api/info")
             assert response.status_code == 200
-            assert response.json()["sign_in"] == {"method": "password", "provider_name": None}
+            assert response.json()["sign_in"] == {
+                "method": "password",
+                "provider_name": None,
+                "required": True,
+                "sign_in_url": "/oauth/login",
+            }
     finally:
         harness.store.close()
 
@@ -362,6 +375,8 @@ async def test_generic_oidc_resolves_username_via_discovery(tmp_path: Path) -> N
             assert info.json()["sign_in"] == {
                 "method": "idp",
                 "provider_name": "Example Workspace",
+                "required": True,
+                "sign_in_url": "/oauth/idp/start",
             }
 
             start = await http.get("/oauth/idp/start?next=%2Foauth%2Fauthorize%3Fx%3D1")
