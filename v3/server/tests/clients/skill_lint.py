@@ -18,7 +18,11 @@ Two things get checked, and they are different in kind:
   exact duplicate is recognised and dropped" does. Enforced as a word
   blocklist over the prose only — fenced blocks, inline code and table rows
   naming tools are stripped first, because ``work_memory_capture`` is a real
-  identifier the skill has to be able to print.
+  identifier the skill has to be able to print. The blocklist itself lives
+  in :mod:`palaia_addon_sdk.jargon` (SPEC-406: "one blocklist, one place" —
+  the add-on SDK's ``validate`` command holds the canonical copy so a
+  third-party author has no dependency on this repository's server package,
+  and this lint imports it back).
 
 Importable as a plain module (the pytest suite in ``test_skill_format.py``
 drives it) and runnable by hand for a quick check::
@@ -36,6 +40,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from palaia_addon_sdk.jargon import find_jargon
 
 #: ``v3/clients`` — the skill packages plus the Claude Code plugin wrapper.
 CLIENTS_ROOT = Path(__file__).resolve().parents[3] / "clients"
@@ -69,34 +74,6 @@ MIN_DESCRIPTION_LENGTH = 60
 #: reference files rather than growing its always-loaded half.
 MAX_BODY_LINES = 300
 
-#: Words that mean something inside this repository and nothing to a model
-#: reading the skill in someone else's agent. Checked against prose only.
-JARGON: tuple[str, ...] = (
-    "mcp",
-    "vault",
-    "permalink",
-    "frontmatter",
-    "namespace",
-    "inbox",
-    "curator",
-    "curate",
-    "idempotent",
-    "wikilink",
-    "observation",
-    "provenance",
-    "dedup",
-    "dedups",
-    "deduplicate",
-    "schema",
-    "spec-",
-    "adr",
-    "token budget",
-    "knowledge graph",
-)
-
-_FENCE_RE = re.compile(r"^```.*?^```", re.MULTILINE | re.DOTALL)
-_INLINE_CODE_RE = re.compile(r"`[^`]*`")
-_TABLE_ROW_RE = re.compile(r"^\s*\|.*$", re.MULTILINE)
 _FRONTMATTER_RE = re.compile(r"\A---\n(?P<yaml>.*?)\n---\n(?P<body>.*)\Z", re.DOTALL)
 
 
@@ -123,32 +100,6 @@ class Skill:
     @property
     def slug(self) -> str:
         return self.directory.name
-
-
-def strip_code(text: str) -> str:
-    """Drop fenced blocks, inline code and table rows.
-
-    Those are where tool names live (``work_memory_capture``), and a tool
-    name is not jargon — it is the string the model has to type.
-    """
-    without_fences = _FENCE_RE.sub("", text)
-    without_tables = _TABLE_ROW_RE.sub("", without_fences)
-    return _INLINE_CODE_RE.sub("", without_tables)
-
-
-def find_jargon(text: str) -> list[str]:
-    """Blocklisted words present in ``text``, in blocklist order, deduplicated."""
-    haystack = strip_code(text).lower()
-    hits: list[str] = []
-    for word in JARGON:
-        pattern = (
-            rf"\b{re.escape(word)}"
-            if word.endswith("-")
-            else rf"\b{re.escape(word)}(?:s|es|ed|ing)?\b"
-        )
-        if re.search(pattern, haystack) and word not in hits:
-            hits.append(word)
-    return hits
 
 
 def parse_skill(directory: Path) -> tuple[Skill | None, list[Issue]]:

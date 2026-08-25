@@ -43,7 +43,18 @@ dev = [
     "mypy>=1.11",
     "types-PyYAML>=6.0",
     "anyio>=4",
+    # SPEC-406: the skill format lint (server/tests/clients/skill_lint.py)
+    # and the marketplace schema-parity test import the add-on SDK's
+    # jargon blocklist and manifest model — see those modules' docstrings
+    # for why the shared copy lives in v3/sdk rather than here.
+    "palaia-addon-sdk",
 ]
+
+[tool.uv.sources]
+# A sibling package, not a workspace member on purpose (SPEC-406: the SDK
+# must stay independently `uv run --project v3/sdk`-able, with no
+# dependency in the other direction ever creeping in via workspace glue).
+palaia-addon-sdk = { path = "../sdk" }
 
 [build-system]
 requires = ["hatchling"]
