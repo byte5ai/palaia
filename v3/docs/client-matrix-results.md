@@ -395,3 +395,163 @@ live, exactly as the HTTP paths do.
   combination (SPEC-301) and the marketplace install flow (SPEC-304) both
   worked exactly as documented on the first real run against two profiles
   at once.
+
+## 8. Phase-4 gate: messenger (SPEC-407, 2026-08-25)
+
+The Phase-4 exit criterion is **two agents on different providers hand off
+work through palaia**: a handoff envelope with a vault reference, sent by
+one, picked up and acted on by the other. Scripted evidence lives in
+[`v3/server/tests/e2e/test_spec407_phase4_gate.py`](../server/tests/e2e/test_spec407_phase4_gate.py),
+against a new hub subprocess,
+[`support/hub_server_messenger.py`](../server/tests/e2e/support/hub_server_messenger.py),
+that wires `palaia_hub.serve.build_production_app` exactly the way
+`palaia-hub serve` does — real `VaultEngine`, real `AuthorizationServer`,
+real directory/messenger services, two gateway profiles (`default`,
+`mobile`) both carrying the one shared vault plus `directory: true`/
+`messenger: true` — over a real `uvicorn` socket.
+
+### 8.1 What was actually run
+
+```
+$ cd v3 && uv run pytest server/tests/e2e/test_spec407_phase4_gate.py -q
+.                                                                        [100%]
+1 passed in 33.36s
+```
+Run four times in a row (33.36s, 37.85s, 32.59s, 33.44s), no flakes. The
+full `tests/e2e/` directory (36 tests total, including SPEC-209's,
+SPEC-306's and SPEC-308's own suites) was also run once end-to-end with
+this new file added: green, 36 passed in 186.85s — no regression in any
+pre-existing harness. The full `server/tests` suite (1986 tests) was also
+run green, 1986 passed / 23 skipped in 429.13s.
+
+### 8.2 The two-agents handoff, and the directory half
+
+`test_two_agents_on_different_providers_hand_off_work_through_palaia`:
+
+1. **Session B** — a scripted `fastmcp.Client` carrying a real SPEC-108
+   `plt_` token, minted through `POST /api/auth/tokens` — registers first,
+   on the `mobile` profile, with `scope="the Q3 billing rate-limiter
+   incident"`. This sandbox has no `codex` binary, so a second-provider-
+   shaped scripted client is the honest stand-in for "the other provider"
+   here, the same wire-level substitution SPEC-209 already pinned for "a
+   client that is not the real claude CLI".
+2. **Session A** — the real `claude` CLI, over a real scripted OAuth 2.1 +
+   PKCE code flow (SPEC-209's own machinery, reused verbatim, no `scope`
+   requested — see §8.4 on what that exercises), against the `default`
+   profile — is driven by one mechanical task prompt: register with the
+   directory, save a specific fact to memory with the vault's `write`
+   tool, find the peer via `directory_query(scope_contains="the Q3 billing
+   rate-limiter incident")` (**never told B's handle anywhere** — not in
+   the prompt, not in `--mcp-config`, not in the environment: directory
+   handles are fresh, random 16-character tokens, so the only way A's
+   `messenger_send` call can address B correctly is to have actually
+   called `directory_query` and read the handle back out of the result),
+   then `messenger_send` a `type="handoff"` envelope to that discovered
+   handle with `refs=["memory://<the permalink just written>"]` and a body
+   that does **not** repeat the fact.
+3. **Session B** calls `messenger_check` on its own handle/secret, finds
+   the handoff, and follows `refs[0]` with `recall` — a full
+   `memory://...` reference, the exact form `recall`'s own tool
+   description says it accepts.
+4. The assertion that matters: B's real, literal `recall` output contains
+   A's exact fact string
+   (`"The billing retry batch is capped at 200 items because a larger
+   batch trips the downstream rate limiter; raising it needs the request
+   queue split first."`) — the handoff carried knowledge, not just an
+   envelope, and B found it through the directory, not a hardcoded handle.
+
+### 8.3 A real quirk, fixed in this PR: [#257](https://github.com/byte5ai/palaia/issues/257)
+
+Minting session B's `plt_` token with `directory:read`/`directory:write`/
+`messenger:read`/`messenger:send` scopes failed outright on the first real
+run: `POST /api/auth/tokens` rejected every one of them as an "invalid
+scope", because `palaia_hub.auth.store._validate_scopes`'s regex had only
+ever matched `vault:<key>:read|write` — even though the gateway's own
+enforcement layer has recognized `directory:*`/`messenger:*` (and
+`stash:*`) scopes since SPEC-402/403. This is the `plt_`-token-side twin of
+the OAuth scope-ceiling bug `palaia_hub.cli._profile_scopes`'s own
+docstring already documents fixing on the OAuth side (found during
+SPEC-403) — the twin bug meant no non-OAuth client could ever be minted a
+token that could use the directory or messenger at all, through the real
+REST surface. Fixed in this PR (`server/src/palaia_hub/auth/store.py`,
+regression test in `server/tests/auth/test_store.py`); this SPEC's own
+acceptance depended on the fix, so it went straight in rather than into a
+follow-up — see the issue for the full trace.
+
+### 8.4 Skill-driven variant (SPEC-404's harness, env-gated)
+
+SPEC-407 deliverable #3 asks a harder question than §8.2's scripted
+mechanism proof: with only the task and the `palaia-messenger` skill
+loaded — the prompt never names a tool, "the messenger", or "the
+directory" — does a real agent reach for the handoff on its own? Reusing
+SPEC-404's own harness (`server/tests/effectiveness/messaging_harness.py`,
+its `HANDOFF_PROMPT`/`CHECK_PROMPT` probes) rather than inventing a second
+one, run for real via
+`server/tests/effectiveness/test_spec407_skill_driven_handoff.py`
+(`PALAIA_EFFECTIVENESS=1`, this SPEC's stated budget of 3 real attempts per
+probe) — reported as a rate, per the SPEC's own instruction, **not
+hard-asserted** either way (SPEC-404's own suite already hard-asserts "at
+least one hit in N attempts" for the same prompts; this run is gate
+evidence about the unprompted rate, not a second regression test for the
+skill):
+
+```
+$ cd v3 && PALAIA_EFFECTIVENESS=1 uv run pytest \
+    server/tests/effectiveness/test_spec407_skill_driven_handoff.py -s -v
+...
+### SPEC-407 gate evidence — skill-driven handoff, unprompted
+- attempts: 3
+- registered with the directory: 3/3
+- sent a handoff carrying a memory:// ref (not a pasted copy): 3/3
+...
+### SPEC-407 gate evidence — skill-driven check-on-start, unprompted
+- attempts: 3
+- checked its inbox unprompted: 3/3
+2 passed in 231.09s (0:03:51)
+```
+
+Run once, for real, on 2026-08-25 (real model calls, real money — $0.9767
+total across the six attempts: three handoff attempts at $0.1225/$0.1178/
+$0.1185, three check-on-start attempts at $0.2486/$0.1852/$0.1842). Both
+probes hit every single attempt:
+
+- **Handoff probe** (task: "end of your shift ... hand the branch off to
+  whichever other session is already working on the billing service" —
+  never names a tool): all three attempts called `directory_register`,
+  `directory_query`, then `messenger_send` with `message_type="handoff"`
+  and a `memory://inbox/...` reference in `refs` (never the fact pasted
+  into the body) — 3/3 registered, 3/3 handed off with a real reference.
+- **Check-on-start probe** (task: "another session ... may have left you
+  something ... get yourself oriented" — never says "message" or
+  "inbox"): all three attempts called `messenger_check` before doing
+  anything else — 3/3.
+
+Six real runs is a small sample, honestly — the SPEC's own stated budget
+is 3 attempts per probe, and this is exactly that, not a claim that the
+skill fires 100% of the time in general. SPEC-404's own effectiveness
+suite (`test_messenger_effectiveness.py`, a separate, already-green
+regression test with its own hard assert) is the place a lower future rate
+would first show up as a real regression; this run is Phase-4 gate
+evidence about the unprompted rate on one real day, not a substitute for
+that suite.
+
+### 8.5 Honest gaps
+
+- **A real second provider (e.g. a real `codex` binary)** was not part of
+  this evidence — this sandbox has none, and none of palaia's own protocol
+  surface (the envelope shape, the directory query grammar, the session
+  secret) is provider-specific, so a scripted `fastmcp.Client` is the same
+  substitution SPEC-209/308 already made for "not the real claude CLI",
+  reused here for "not a second real provider" too.
+- **A real public tunnel** in front of the hub was not part of this
+  evidence, for the same reason §2's and §7.4's notes give.
+- **Claude Desktop's/claude.ai's own UI** was not exercised here — §6/§7.4
+  already carry that gap, and SPEC-407 adds nothing new to it; the owner's
+  standing phone test remains the item that would close it, per this
+  SPEC's own non-goals.
+- **Claude Code's `claude/channel` push capability** (a live push into an
+  already-open session rather than pull-based `messenger_check`) is not
+  exercised — `docs/messenger.md` §8 already says why: the pinned `fastmcp`
+  3.4.7 has no support for declaring it. Pull-based delivery (`messenger_
+  check`) is what both §8.2 and §8.4 exercise, and it is the universal
+  baseline the SPEC itself treats as sufficient.
