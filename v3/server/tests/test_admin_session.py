@@ -420,3 +420,37 @@ def test_open_mode_public_bind_sign_in_and_one_admin_call(tmp_path: Path) -> Non
             assert client.get("/api/vaults").status_code == 401
     finally:
         server.store.close()
+
+
+def test_a_guarded_websocket_scope_is_closed_not_passed_through() -> None:
+    """The gate fails closed for every scope type: a websocket handshake
+    under /api/* is refused (4401) even though no such route exists today —
+    so the first one added later cannot ship unguarded by construction."""
+    import asyncio
+
+    from palaia_hub.admin_session import AdminSessionMiddleware
+
+    inner_called = False
+
+    async def inner(scope, receive, send):  # type: ignore[no-untyped-def]
+        nonlocal inner_called
+        inner_called = True
+
+    sent: list[dict] = []
+
+    async def send(message):  # type: ignore[no-untyped-def]
+        sent.append(message)
+
+    async def receive():  # type: ignore[no-untyped-def]
+        return {"type": "websocket.connect"}
+
+    middleware = AdminSessionMiddleware(
+        inner,
+        current_user=lambda session: None,
+        sign_in_configured=lambda: True,
+    )
+    scope = {"type": "websocket", "path": "/api/events", "headers": []}
+    asyncio.run(middleware(scope, receive, send))
+
+    assert not inner_called
+    assert sent == [{"type": "websocket.close", "code": 4401}]

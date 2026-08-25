@@ -251,11 +251,17 @@ class AdminSessionMiddleware:
         return False, self._current_user(session)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope.get("type") != "http":
-            await self._app(scope, receive, send)
-            return
+        scope_type = scope.get("type")
         path = str(scope.get("path", ""))
-        if not path.startswith(GUARDED_PREFIX) or path in self._free_paths:
+        guarded = path.startswith(GUARDED_PREFIX) and path not in self._free_paths
+        if scope_type == "websocket" and guarded:
+            # No websocket route exists under /api/* today — but the gate
+            # must fail CLOSED for every scope type, or the first such route
+            # added later ships unguarded by construction. 4401: the
+            # conventional "policy violation / auth required" close range.
+            await send({"type": "websocket.close", "code": 4401})
+            return
+        if scope_type != "http" or not guarded:
             await self._app(scope, receive, send)
             return
         cookies = _parse_cookies(scope)
