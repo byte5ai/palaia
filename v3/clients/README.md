@@ -16,10 +16,12 @@ vendor-specific — [Agent Skills](https://agentskills.io) (`SKILL.md`), with
 |---|---|---|
 | [`skills/palaia-memory`](skills/palaia-memory/SKILL.md) | the default | Both halves: recall before deciding, resume with `build_context`, which memory to use, and the capture discipline. |
 | [`skills/palaia-capture`](skills/palaia-capture/SKILL.md) | constrained agents | Saving only — the 4-field contract and drop-and-move-on, nothing about looking things up. |
+| [`skills/palaia-messenger`](skills/palaia-messenger/SKILL.md) | any agent working alongside others | Register on start, check before picking up a task, reply-or-decline, and keeping a message short with a reference instead of pasted content. See [`docs/messenger.md`](../docs/messenger.md) for the full contract. |
 
-Both carry a `## Per-model notes` section, written with the vault format's own
-variant markers (`[anthropic]`, `[openai]`, `[google]`) — the same idea as
-per-model observation variants in a note, applied to skill prose.
+All three carry a `## Per-model notes` section, written with the vault
+format's own variant markers (`[anthropic]`, `[openai]`, `[google]`) — the
+same idea as per-model observation variants in a note, applied to skill
+prose.
 
 ## Installing one
 
@@ -36,7 +38,7 @@ cp v3/clients/skills/palaia-memory/SKILL.md ~/.claude/skills/palaia-memory/
 ## The plugin wrapper
 
 [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json) makes this
-directory a loadable plugin, so both skills install as one unit:
+directory a loadable plugin, so all three skills install as one unit:
 
 ```bash
 claude --plugin-dir v3/clients      # this session only
@@ -63,6 +65,8 @@ calls actually happened. It is excluded from CI (real model calls) and gated:
 cd v3 && PALAIA_EFFECTIVENESS=1 uv run pytest server/tests/effectiveness -s -v
 ```
 
-Read `server/tests/effectiveness/harness.py` before changing a word of a
-skill: it explains the probes, the no-skill baseline they are compared
-against, and why the evidence is collected server-side.
+Read `server/tests/effectiveness/harness.py` before changing a word of the
+memory/capture skills, or `server/tests/effectiveness/messaging_harness.py`
+before changing a word of the messenger skill — each explains its own
+probes, the no-skill baseline they are compared against, and why the
+evidence is collected server-side.

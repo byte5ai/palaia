@@ -7,7 +7,7 @@
  * clients that can actually load one, which is what `SkillSupport` on each
  * catalog entry decides.
  *
- * The text is not restated here: both packages are imported straight from
+ * The text is not restated here: every package is imported straight from
  * `v3/clients/skills/**` with `?raw`, and the name and one-line summary shown
  * in the UI are read out of that file's own frontmatter. There is exactly one
  * copy of every word a user sees, and it is the file the agent loads — so the
@@ -16,6 +16,7 @@
  */
 import captureSource from "../../../clients/skills/palaia-capture/SKILL.md?raw";
 import memorySource from "../../../clients/skills/palaia-memory/SKILL.md?raw";
+import messengerSource from "../../../clients/skills/palaia-messenger/SKILL.md?raw";
 
 export interface SkillInstall {
   /** One line: how this client takes a skill. */
@@ -71,6 +72,10 @@ export const SKILLS: SkillPackage[] = [
     captureSource,
     "For a smaller or tightly budgeted agent: saving only, nothing about looking things up.",
   ),
+  pkg(
+    messengerSource,
+    "For an agent working alongside other AI sessions on the same work: register, check in before starting, and reply or decline.",
+  ),
 ];
 
 export function skillBySlug(slug: string): SkillPackage | undefined {
@@ -92,7 +97,7 @@ const CLAUDE_SKILLS_FOLDER: SkillInstall = {
   steps: [
     "Create ~/.claude/skills/<name>/ and save SKILL.md into it — one folder per skill.",
     "Start a new session; the skill is offered from then on, and loads itself when a task needs it.",
-    "Trying it out first: clone this repo and pass v3/clients as a plugin, which loads both skills for that session only.",
+    "Trying it out first: clone this repo and pass v3/clients as a plugin, which loads every skill in it for that session only.",
   ],
   command: "claude --plugin-dir /path/to/palaia/v3/clients",
 };
