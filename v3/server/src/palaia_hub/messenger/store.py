@@ -337,10 +337,13 @@ class MessengerStore:
             item = _row_to_item(row) if row is not None else None
         return item, expired
 
-    def thread(
-        self, envelope_id: str, *, now: float | None = None
-    ) -> tuple[list[InboxItem], list[EnvelopeMetadata]]:
-        """One envelope's whole reply chain, oldest first.
+    def _collect_thread_rows_locked(self, envelope_id: str) -> list[sqlite3.Row]:
+        """Every row in ``envelope_id``'s whole thread (its root's full
+        subtree), oldest first. Must be called already holding ``self._lock``,
+        after a sweep. Shared by :meth:`thread` (read) and
+        :meth:`expire_thread` (SPEC-405's "end a conversation") so both walk
+        the *identical* tree — the second was added as this method's own
+        second caller, not as a hand-copied variant of the walk below.
 
         Walks ``reply_to`` up to the root (bounded by
         :data:`MAX_THREAD_DEPTH`, so a cycle cannot hang the hub), then
@@ -349,48 +352,83 @@ class MessengerStore:
         what still exists, honestly, rather than an error about a message
         nobody can read any more.
         """
+        row = self._row_locked(envelope_id)
+        if row is None:
+            raise EnvelopeNotFoundError(
+                f"no envelope {envelope_id!r}. Fix: check the id — an envelope "
+                "past its expires_at is deleted, threads included."
+            )
+        root = row
+        seen_up = {root["id"]}
+        for _ in range(MAX_THREAD_DEPTH):
+            parent_id = root["reply_to"]
+            if parent_id is None or parent_id in seen_up:
+                break
+            parent = self._row_locked(parent_id)
+            if parent is None:
+                break
+            root = parent
+            seen_up.add(root["id"])
+        collected: dict[str, sqlite3.Row] = {root["id"]: root}
+        frontier = [root["id"]]
+        while frontier:
+            placeholders = ",".join("?" for _ in frontier)
+            children = self._conn.execute(
+                "SELECT rowid AS seq, * FROM messenger_envelopes "
+                f"WHERE reply_to IN ({placeholders})",
+                tuple(frontier),
+            ).fetchall()
+            frontier = []
+            for child in children:
+                if child["id"] in collected:
+                    continue
+                collected[child["id"]] = child
+                frontier.append(child["id"])
+        return sorted(collected.values(), key=lambda r: (r["created_at"], r["seq"]))
+
+    def thread(
+        self, envelope_id: str, *, now: float | None = None
+    ) -> tuple[list[InboxItem], list[EnvelopeMetadata]]:
+        """One envelope's whole reply chain, oldest first.
+
+        See :meth:`_collect_thread_rows_locked` for how the chain is found.
+        """
         current = self._now(now)
         with self._lock:
             expired = self._sweep_locked(current)
-            row = self._row_locked(envelope_id)
-            if row is None:
-                raise EnvelopeNotFoundError(
-                    f"no envelope {envelope_id!r}. Fix: check the id — an envelope "
-                    "past its expires_at is deleted, threads included."
-                )
-            root = row
-            seen_up = {root["id"]}
-            for _ in range(MAX_THREAD_DEPTH):
-                parent_id = root["reply_to"]
-                if parent_id is None or parent_id in seen_up:
-                    break
-                parent = self._row_locked(parent_id)
-                if parent is None:
-                    break
-                root = parent
-                seen_up.add(root["id"])
-            collected: dict[str, sqlite3.Row] = {root["id"]: root}
-            frontier = [root["id"]]
-            while frontier:
-                placeholders = ",".join("?" for _ in frontier)
-                children = self._conn.execute(
-                    "SELECT rowid AS seq, * FROM messenger_envelopes "
-                    f"WHERE reply_to IN ({placeholders})",
-                    tuple(frontier),
-                ).fetchall()
-                frontier = []
-                for child in children:
-                    if child["id"] in collected:
-                        continue
-                    collected[child["id"]] = child
-                    frontier.append(child["id"])
-            items = [
-                _row_to_item(row)
-                for row in sorted(
-                    collected.values(), key=lambda r: (r["created_at"], r["seq"])
-                )
-            ]
+            rows = self._collect_thread_rows_locked(envelope_id)
+            items = [_row_to_item(row) for row in rows]
         return items, expired
+
+    def expire_thread(
+        self, envelope_id: str, *, now: float | None = None
+    ) -> tuple[str, list[EnvelopeMetadata], list[EnvelopeMetadata]]:
+        """Owner control: end a conversation (SPEC-405 deliverable #2) by
+        expiring every still-``pending`` (undelivered) copy in
+        ``envelope_id``'s whole thread. Returns ``(root_id, thread_expired,
+        swept_expired)`` — ``thread_expired`` is what this call itself
+        deleted; ``swept_expired`` is whatever the routine TTL sweep found
+        stale on the way in, same as every other method here.
+
+        Delivered/acked copies are left standing: this ends the parts of
+        the conversation that have not reached anyone yet, not the record
+        of what already has (see :class:`~palaia_hub.messenger.models.
+        EndConversationResult`'s docstring for why).
+        """
+        current = self._now(now)
+        with self._lock:
+            swept = self._sweep_locked(current)
+            rows = self._collect_thread_rows_locked(envelope_id)
+            root_id = rows[0]["id"]
+            pending = [row for row in rows if row["state"] == "pending"]
+            thread_expired = [EnvelopeMetadata.of(_row_to_item(row)) for row in pending]
+            if pending:
+                self._conn.executemany(
+                    "DELETE FROM messenger_envelopes WHERE id = ?",
+                    [(row["id"],) for row in pending],
+                )
+                self._conn.commit()
+        return root_id, thread_expired, swept
 
     def outbox(
         self, sender: str, *, now: float | None = None

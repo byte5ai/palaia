@@ -70,9 +70,13 @@ def test_messenger_absent_by_default() -> None:
 
 
 def test_messenger_rest_mirror_is_read_only() -> None:
-    """Deliverable #6: a read-only mirror. There is no write verb on this
-    surface at all — sending and checking only ever happen over MCP, from
-    the session itself, holding its own session secret."""
+    """Deliverable #6: the listing surface itself has no write verb —
+    sending and checking *as a session* only ever happen over MCP, from
+    the session itself, holding its own session secret. (SPEC-405 adds two
+    write routes elsewhere on this mount — ``POST /send``, sending *as the
+    owner*, and ``POST /threads/{id}/end`` — covered in
+    ``test_owner_controls.py`` below; neither is this root listing route.)
+    """
     service, _ = _service()
     app = create_app(HubConfig(), messenger_service=service)
     client = TestClient(app)
@@ -193,3 +197,107 @@ def test_messenger_events_are_wired_onto_the_hub_event_bus() -> None:
     assert event.event == "message.received"
     assert event.origin == "messenger"
     assert event.data["id"] == "abc123"
+
+
+# -- owner controls (SPEC-405 deliverable #2), over the real app -------------
+
+
+def test_send_as_owner_route_delivers_with_the_owner_handle() -> None:
+    service, directory = _service()
+    app = create_app(HubConfig(), messenger_service=service, directory_service=directory)
+    client = TestClient(app)
+
+    async def _recipient() -> tuple[str, str]:
+        registered = await directory.register(scope="waiting on the owner")
+        return registered.session.handle, registered.session_secret
+
+    recipient, recipient_secret = asyncio.run(_recipient())
+
+    response = client.post(
+        "/api/messenger/send",
+        json={"to": recipient, "subject": "a note from the owner", "body": "hello"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["envelopes"][0]["from"] == "owner"
+
+    delivered = asyncio.run(service.check(recipient, recipient_secret))
+    assert [e.subject for e in delivered.envelopes] == ["a note from the owner"]
+    assert delivered.envelopes[0].from_ == "owner"
+
+
+def test_send_as_owner_route_rejects_an_over_long_subject() -> None:
+    service, directory = _service()
+    app = create_app(HubConfig(), messenger_service=service, directory_service=directory)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/messenger/send", json={"to": "someone", "subject": "s" * 300}
+    )
+    assert response.status_code == 422  # the schema itself refuses it
+
+
+def test_send_as_owner_route_names_an_unknown_recipient_in_the_body() -> None:
+    service, directory = _service()
+    app = create_app(HubConfig(), messenger_service=service, directory_service=directory)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/messenger/send", json={"to": "nobody-registered", "subject": "hi"}
+    )
+    assert response.status_code == 400
+    assert "nobody-registered" in response.json()["detail"]
+
+
+def test_end_conversation_route_expires_the_undelivered_copy() -> None:
+    service, directory = _service()
+    app = create_app(HubConfig(), messenger_service=service, directory_service=directory)
+    client = TestClient(app)
+
+    async def _thread_with_one_undelivered_followup() -> dict[str, str]:
+        a = await directory.register(scope="reviewing")
+        b = await directory.register(scope="refactoring")
+        request = await service.send(
+            sender=a.session.handle,
+            session_secret=a.session_secret,
+            message_type="request",
+            to=b.session.handle,
+            subject="please rename it",
+            expects_reply=True,
+        )
+        request_id = request.envelopes[0].id
+        # b checks (delivers) the request but never replies — this copy
+        # stays `delivered`, so ending the conversation must not touch it.
+        await service.check(b.session.handle, b.session_secret)
+        # b sends a follow-up in the same thread that a never checks — this
+        # one stays `pending`, which is what "undelivered" means.
+        followup = await service.send(
+            sender=b.session.handle,
+            session_secret=b.session_secret,
+            message_type="inform",
+            to=a.session.handle,
+            subject="unread follow-up",
+            reply_to=request_id,
+        )
+        return {"request_id": request_id, "followup_id": followup.envelopes[0].id}
+
+    ids = asyncio.run(_thread_with_one_undelivered_followup())
+
+    response = client.post(f"/api/messenger/threads/{ids['request_id']}/end")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["root_id"] == ids["request_id"]
+    assert [e["id"] for e in payload["expired"]] == [ids["followup_id"]]
+
+    # The already-delivered request is untouched.
+    thread = client.get(f"/api/messenger/threads/{ids['request_id']}")
+    assert [f["id"] for f in thread.json()["flows"]] == [ids["request_id"]]
+
+
+def test_end_conversation_route_on_an_unknown_id_is_404() -> None:
+    service, directory = _service()
+    app = create_app(HubConfig(), messenger_service=service, directory_service=directory)
+    client = TestClient(app)
+
+    response = client.post("/api/messenger/threads/no-such-id/end")
+    assert response.status_code == 404

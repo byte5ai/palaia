@@ -89,6 +89,19 @@ CAPABILITY_QUERY_PREFIX = "capability:"
 #: ``to`` value meaning "every live session in the directory".
 EVERYONE_QUERY = "*"
 
+#: The ``from`` every owner-sent envelope carries (SPEC-405 deliverable #2:
+#: "send as owner"). Never a SPEC-402 directory handle — the owner has no
+#: session to register, and never needs one: the dashboard's own
+#: ``/api/messenger/send`` route is already behind the owner's signed-in
+#: session and CSRF token (:mod:`palaia_hub.admin_session`), which is what
+#: :meth:`~palaia_hub.messenger.service.MessengerService.send_as_owner`
+#: trusts instead of a session secret. A real directory handle can never
+#: collide with this value (handles are random
+#: :data:`~palaia_hub.directory.store.HANDLE_CHARS`-character tokens, never
+#: a plain word), so a recipient can tell "the owner" apart from any agent
+#: session on sight.
+OWNER_HANDLE = "owner"
+
 
 class Envelope(BaseModel):
     """One message between two sessions — the fixed protocol shape.
@@ -277,6 +290,26 @@ class ThreadMetadataResult(BaseModel):
 
     root_id: str
     flows: list[EnvelopeMetadata]
+
+
+class EndConversationResult(BaseModel):
+    """Owner control: "end a conversation" (SPEC-405 deliverable #2,
+    MASTERPLAN §5.4 trust rule #7 — "shut a conversation down").
+
+    ``expired`` is only the envelopes this call itself expired — the
+    thread's still-``pending`` (undelivered) copies. Delivered/acked copies
+    are left alone: the SPEC's own words are "expires the thread's
+    undelivered envelopes", not "deletes the conversation's history", and a
+    recipient who already has a copy locally is not un-sent to by this
+    call. Deliberately not exposed as an MCP tool: the SPEC-304 rule this
+    SPEC inherits keeps destructive owner controls dashboard-only, and this
+    is one — see :mod:`palaia_hub.messenger_api`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    root_id: str
+    expired: list[EnvelopeMetadata]
 
 
 class EnvelopeDetailResult(BaseModel):
@@ -493,11 +526,13 @@ __all__ = [
     "MAX_SUBJECT_CHARS",
     "MAX_TTL_SECONDS",
     "MEMORY_SCHEME",
+    "OWNER_HANDLE",
     "AckResult",
     "BodyTooLargeError",
     "BroadcastError",
     "CheckResult",
     "DeliveryState",
+    "EndConversationResult",
     "Envelope",
     "EnvelopeDetailResult",
     "EnvelopeMetadata",

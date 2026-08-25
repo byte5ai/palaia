@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from typing import Annotated, Any
 
 from fastmcp import FastMCP
+from fastmcp.apps import AppConfig
 from fastmcp.tools.base import ToolResult
 from mcp.types import ToolAnnotations
 from pydantic import AliasChoices, Field
@@ -37,6 +38,14 @@ from starlette.types import ASGIApp
 from ..auth.enforcement import missing_stash_scope_error
 from ..stash.models import StashError
 from ..stash.service import StashService
+from .apps.stash_browser_app import (
+    RESOURCE_URI as STASH_BROWSER_URI,
+)
+from .apps.stash_browser_app import (
+    collect_stash_browse,
+    render_stash_browser_html,
+    stash_browse_summary,
+)
 
 STASH_TOOL_ACTIONS: tuple[str, ...] = (
     "stash_set",
@@ -44,6 +53,7 @@ STASH_TOOL_ACTIONS: tuple[str, ...] = (
     "stash_del",
     "stash_list",
     "stash_status",
+    "stash_browse",
 )
 
 STASH_IDENTITY = (
@@ -206,6 +216,42 @@ def build_stash_server(service: StashService) -> FastMCP:
             f"{result.total_bytes}/{result.budget_bytes} bytes used"
         )
         return ToolResult(content=text, structured_content=result)
+
+    @server.tool(
+        name="stash_browse",
+        description=desc(
+            "Browse the stash as an inspection panel: namespace, key, size, "
+            "and expiry — never the stored value itself (this is for seeing "
+            "what is cached and how big it is, not for reading it; use "
+            "stash_get for that). Call with no namespace for the overview "
+            "of every namespace and its entry count; pass one of those "
+            "namespaces back in to see its entries."
+        ),
+        annotations=ToolAnnotations(
+            readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False
+        ),
+        app=AppConfig(resource_uri=STASH_BROWSER_URI),
+    )
+    async def stash_browse(
+        namespace: Annotated[
+            str,
+            Field(
+                validation_alias=AliasChoices("namespace", "ns", "scope"),
+                description=(
+                    "Drill into this namespace's entries, or leave unset for "
+                    "the namespace overview."
+                ),
+            ),
+        ] = "",
+    ) -> ToolResult:
+        if (err := _scope_error("stash_browse")) is not None:
+            return err
+        result = await collect_stash_browse(service, namespace)
+        return ToolResult(content=stash_browse_summary(result), structured_content=result)
+
+    @server.resource(STASH_BROWSER_URI, name="stash_browser_app")
+    def _stash_browser_resource() -> str:
+        return render_stash_browser_html()
 
     return server
 

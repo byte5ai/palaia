@@ -54,10 +54,12 @@ from ..directory.models import (
 )
 from .models import (
     MAX_BROADCAST_RECIPIENTS,
+    OWNER_HANDLE,
     AckResult,
     BroadcastError,
     CheckResult,
     DeliveryState,
+    EndConversationResult,
     Envelope,
     EnvelopeDetailResult,
     EnvelopeMetadata,
@@ -200,9 +202,100 @@ class MessengerService:
         delivered broadcast is not a state this store can reach.
         """
         await self._authenticate(sender, session_secret)
+        return await self._send(
+            sender=sender,
+            message_type=message_type,
+            to=to,
+            subject=subject,
+            body=body,
+            urgency=urgency,
+            expects_reply=expects_reply,
+            refs=refs,
+            reply_to=reply_to,
+            ttl_seconds=ttl_seconds,
+            readable_vaults=readable_vaults,
+            fence_reply=True,
+        )
+
+    async def send_as_owner(
+        self,
+        *,
+        message_type: MessageType,
+        to: str,
+        subject: str,
+        body: str = "",
+        urgency: Urgency = "normal",
+        expects_reply: bool = False,
+        refs: list[str] | None = None,
+        reply_to: str | None = None,
+        ttl_seconds: float | None = None,
+        readable_vaults: frozenset[str] | None = None,
+    ) -> SendResult:
+        """Owner control: send as the hub's owner (SPEC-405 deliverable #2,
+        MASTERPLAN §5.4 trust rule #7 — "the human can ... join in").
+
+        No SPEC-402 session secret is checked here — there is no session to
+        prove one for. This is safe only because it has exactly one caller,
+        :mod:`palaia_hub.messenger_api`'s ``POST /api/messenger/send``,
+        which sits behind the owner's signed-in session and CSRF token
+        (:mod:`palaia_hub.admin_session`): a *stronger* proof of "this really
+        is the owner" than a session secret is of "this really is session
+        X", not a weaker substitute for it. The sender is always
+        :data:`~palaia_hub.messenger.models.OWNER_HANDLE`, and a reply is not
+        fenced to a thread the owner already took part in — reading along
+        and then answering is exactly trust rule #7's "join in", so the
+        fence :meth:`send` applies to an ordinary session does not apply
+        here.
+        """
+        return await self._send(
+            sender=OWNER_HANDLE,
+            message_type=message_type,
+            to=to,
+            subject=subject,
+            body=body,
+            urgency=urgency,
+            expects_reply=expects_reply,
+            refs=refs,
+            reply_to=reply_to,
+            ttl_seconds=ttl_seconds,
+            readable_vaults=readable_vaults,
+            fence_reply=False,
+        )
+
+    async def _send(
+        self,
+        *,
+        sender: str,
+        message_type: MessageType,
+        to: str,
+        subject: str,
+        body: str,
+        urgency: Urgency,
+        expects_reply: bool,
+        refs: list[str] | None,
+        reply_to: str | None,
+        ttl_seconds: float | None,
+        readable_vaults: frozenset[str] | None,
+        fence_reply: bool,
+    ) -> SendResult:
+        """The validate-address-store pipeline shared by :meth:`send` (an
+        authenticated session, fenced to threads it took part in) and
+        :meth:`send_as_owner` (already-authenticated by the dashboard's own
+        gate, never fenced) — one implementation of "what a send actually
+        does", not two copies that could drift.
+        """
         clean_refs = check_refs(refs)
         self._check_refs_resolve(clean_refs, readable_vaults)
-        parent = await self._resolve_reply_to(sender, reply_to)
+        parent = await self._reply_target(reply_to)
+        if fence_reply and parent is not None and sender not in (
+            parent.envelope.from_,
+            parent.recipient,
+        ):
+            raise NotYourEnvelopeError(
+                f"envelope {reply_to!r} is not yours to reply to — you are neither "
+                "its sender nor its recipient. Fix: reply only to envelopes "
+                "messenger_check handed you."
+            )
         if parent is not None and message_type == "broadcast":
             raise InvalidEnvelopeError(
                 "a broadcast cannot be a reply. Fix: reply to the one envelope you "
@@ -263,12 +356,12 @@ class MessengerService:
                 "nowhere, which is the whole reason refs exists."
             )
 
-    async def _resolve_reply_to(self, sender: str, reply_to: str | None) -> InboxItem | None:
-        """The envelope being answered — and the fence around it.
-
-        A reply may only be written against an envelope the sender actually
-        took part in. Without this, ``reply_to`` would be a way to inject a
-        message into a stranger's thread by guessing an id.
+    async def _reply_target(self, reply_to: str | None) -> InboxItem | None:
+        """The envelope ``reply_to`` names, or ``None`` — no participant
+        fence here (that is :meth:`_send`'s job, via ``fence_reply``): an
+        ordinary session's reply may only answer a thread it took part in,
+        but the owner's :meth:`send_as_owner` may reply to anything (trust
+        rule #7's "join in"), and this helper is what both share.
         """
         if reply_to is None:
             return None
@@ -278,12 +371,6 @@ class MessengerService:
             raise EnvelopeNotFoundError(
                 f"reply_to names no envelope ({reply_to!r}). Fix: reply to an id "
                 "messenger_check gave you — an envelope past its expires_at is gone."
-            )
-        if sender not in (item.envelope.from_, item.recipient):
-            raise NotYourEnvelopeError(
-                f"envelope {reply_to!r} is not yours to reply to — you are neither "
-                "its sender nor its recipient. Fix: reply only to envelopes "
-                "messenger_check handed you."
             )
         return item
 
@@ -462,6 +549,23 @@ class MessengerService:
                 f"no envelope {envelope_id!r} (never sent, or expired away)."
             )
         return EnvelopeDetailResult(item=item)
+
+    async def end_conversation(self, envelope_id: str) -> EndConversationResult:
+        """Owner control: expire a thread's undelivered envelopes (SPEC-405
+        deliverable #2, MASTERPLAN §5.4 trust rule #7 — "shut a conversation
+        down"). See :meth:`~palaia_hub.messenger.store.MessengerStore.
+        expire_thread` for exactly what "undelivered" excludes. Fires
+        ``message.expired`` for every envelope this call itself expired, and
+        for whatever the routine TTL sweep found on the way in — both are
+        the same event, because both mean the same thing to whoever would
+        have received them: this envelope will not be delivered.
+        """
+        root_id, thread_expired, swept = await asyncio.to_thread(
+            self._store.expire_thread, envelope_id
+        )
+        self._emit_expired(swept)
+        self._emit_expired(thread_expired)
+        return EndConversationResult(root_id=root_id, expired=thread_expired)
 
     async def sweep(self) -> list[EnvelopeMetadata]:
         """Run the TTL sweep alone and fire ``message.expired`` for each.

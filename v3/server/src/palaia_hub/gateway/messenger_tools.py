@@ -137,9 +137,20 @@ def render_envelopes(envelopes: list[Envelope], *, empty: str) -> str:
     return "\n".join(lines)
 
 
-def build_messenger_server(service: MessengerService) -> FastMCP:
-    """Build the messenger tool family, backed by ``service``."""
-    server = FastMCP(name="palaia-messenger", instructions=MESSENGER_IDENTITY)
+def register_messenger_send_tool(server: FastMCP, service: MessengerService) -> None:
+    """Register ``messenger_send`` on ``server``, backed by ``service``.
+
+    Factored out of :func:`build_messenger_server` so a *second*,
+    independent ``FastMCP`` instance — the session-monitor MCP App's own
+    server (:mod:`palaia_hub.gateway.apps.team_app`, SPEC-405) — can carry a
+    working compose action. That app's page calls back through the MCP Apps
+    bridge (``app.callServerTool``), which only ever reaches a tool on the
+    *same* server that served the calling page's ``ui://`` resource — it
+    cannot reach across to this module's own ``/mcp/messenger`` mount. Both
+    registrations call this exact function, so "compose from the team app"
+    and "call messenger_send on ``/mcp/messenger`` directly" are the same
+    tool running twice, not two implementations of one rule.
+    """
 
     def desc(detail: str) -> str:
         return f"{MESSENGER_IDENTITY}\n\n{detail}"
@@ -270,6 +281,16 @@ def build_messenger_server(service: MessengerService) -> FastMCP:
             )
         return ToolResult(content=text, structured_content=result)
 
+
+def build_messenger_server(service: MessengerService) -> FastMCP:
+    """Build the messenger tool family, backed by ``service``."""
+    server = FastMCP(name="palaia-messenger", instructions=MESSENGER_IDENTITY)
+
+    def desc(detail: str) -> str:
+        return f"{MESSENGER_IDENTITY}\n\n{detail}"
+
+    register_messenger_send_tool(server, service)
+
     @server.tool(
         name="messenger_check",
         description=desc(
@@ -379,5 +400,6 @@ __all__ = [
     "MessengerGatewayASGI",
     "build_messenger_gateway",
     "build_messenger_server",
+    "register_messenger_send_tool",
     "render_envelopes",
 ]

@@ -148,3 +148,34 @@ async def test_no_publisher_wired_does_not_error(service: DirectoryService) -> N
     result = await service.register(scope="a")
     await service.heartbeat(result.session.handle, result.session_secret)
     await service.deregister(result.session.handle, result.session_secret)
+
+
+# -- admin_deregister: the owner control (SPEC-405 deliverable #2) -----------
+
+
+@pytest.mark.anyio
+async def test_admin_deregister_needs_no_secret(service: DirectoryService) -> None:
+    result = await service.register(scope="a stale session")
+    outcome = await service.admin_deregister(result.session.handle)
+    assert outcome.deregistered is True
+    listed = await service.list()
+    assert result.session.handle not in {s.handle for s in listed.sessions}
+
+
+@pytest.mark.anyio
+async def test_admin_deregister_of_an_already_gone_handle_is_idempotent(
+    service: DirectoryService,
+) -> None:
+    outcome = await service.admin_deregister("no-such-handle")
+    assert outcome.deregistered is False
+
+
+@pytest.mark.anyio
+async def test_admin_deregister_emits_session_deregistered(
+    service: DirectoryService,
+) -> None:
+    result = await service.register(scope="a")
+    events = _captured(service)
+    await service.admin_deregister(result.session.handle)
+    names = [e[0] for e in events]
+    assert "session.deregistered" in names

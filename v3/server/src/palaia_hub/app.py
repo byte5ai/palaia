@@ -52,6 +52,7 @@ from .gateway import DynamicGateway, GatewayASGI, VaultService
 from .gateway.api import build_gateway_profiles_router
 from .gateway.apps.hub_status_app import HubStatusDeps, build_hub_status_server
 from .gateway.apps.market_app import MarketAppDeps, build_market_server
+from .gateway.apps.team_app import TeamAppDeps, build_team_server
 from .gateway.directory_tools import build_directory_gateway
 from .gateway.messenger_tools import build_messenger_gateway
 from .gateway.stash_tools import build_stash_gateway
@@ -218,11 +219,15 @@ def create_app(
             all, same as before this parameter existed.
         messenger_service: the hub's messenger (SPEC-403). Given, mounts
             the ``messenger_*`` tool family at ``/mcp/messenger`` and the
-            read-only ``/api/messenger`` REST mirror, and wires its
-            ``message.*`` events onto this app's bus. Omitted (the default),
-            the hub runs with no messenger surface at all — every
-            ``messenger: true`` profile flag then mounts nothing, exactly
-            like ``stash``/``directory`` ahead of their services.
+            ``/api/messenger`` REST mirror (read-only plus the two SPEC-405
+            owner controls — sending as the owner, ending a conversation),
+            and wires its ``message.*`` events onto this app's bus. Omitted
+            (the default), the hub runs with no messenger surface at all —
+            every ``messenger: true`` profile flag then mounts nothing,
+            exactly like ``stash``/``directory`` ahead of their services.
+            Given together with ``directory_service``, also mounts the
+            session-monitor MCP App (SPEC-405 deliverable #3) at
+            ``/mcp/team``.
         market_service: the marketplace read model (SPEC-303 — official
             registry + curated index + manual entries, merged). Given,
             mounts ``/api/market/*`` and wires its
@@ -381,6 +386,25 @@ def create_app(
         )
         market_asgi_app = build_market_server(market_app_deps).http_app(path="/")
 
+    # SPEC-405 deliverable #3: the session-monitor MCP App, mounted at
+    # `/mcp/team` — hub-level, same standalone-FastMCP-instance shape as
+    # hub_status/market above. Gated on *both* directory_service and
+    # messenger_service: there is nothing to monitor with only one of the
+    # two (a directory with no messenger has no flows to show; a messenger
+    # with no directory has no peers to address).
+    team_asgi_app = None
+    if directory_service is not None and messenger_service is not None:
+        team_app_deps = TeamAppDeps(
+            directory_service=directory_service,
+            messenger_service=messenger_service,
+            dashboard_url=(
+                config.exposure.public_url.rstrip("/")
+                if config.exposure.public_url
+                else None
+            ),
+        )
+        team_asgi_app = build_team_server(team_app_deps).http_app(path="/")
+
     # One lifespan runs BOTH concerns: the events background tasks (SPEC-109)
     # and, when a gateway is mounted, its session-manager lifespan (SPEC-105 —
     # skipping it hangs the mounted profiles on their first request). The
@@ -491,6 +515,8 @@ def create_app(
                     await stack.enter_async_context(hub_status_asgi_app.lifespan(app_))
                 if market_asgi_app is not None:
                     await stack.enter_async_context(market_asgi_app.lifespan(app_))
+                if team_asgi_app is not None:
+                    await stack.enter_async_context(team_asgi_app.lifespan(app_))
                 yield
         finally:
             await stop_background_tasks(tasks)
@@ -557,6 +583,8 @@ def create_app(
         app.mount("/mcp/hub", hub_status_asgi_app)
     if market_asgi_app is not None:
         app.mount("/mcp/market", market_asgi_app)
+    if team_asgi_app is not None:
+        app.mount("/mcp/team", team_asgi_app)
     if dynamic_gateway is not None:
         # One mount, forever: DynamicGateway owns everything below "/mcp"
         # and rebuilds its own internal routing as profiles come and go

@@ -156,6 +156,20 @@ class DirectoryService:
         self._emit_stale(newly_stale)
         return DeregisterResult(handle=handle, deregistered=deregistered)
 
+    async def admin_deregister(self, handle: str) -> DeregisterResult:
+        """Owner control: deregister a session with no secret (SPEC-405
+        deliverable #2). See :meth:`~palaia_hub.directory.store.
+        DirectoryStore.admin_deregister` for why this is safe: it has
+        exactly one caller, already behind the owner's own sign-in gate.
+        """
+        deregistered, newly_stale = await asyncio.to_thread(
+            self._store.admin_deregister, handle
+        )
+        if deregistered:
+            self._emit("session.deregistered", {"handle": handle})
+        self._emit_stale(newly_stale)
+        return DeregisterResult(handle=handle, deregistered=deregistered)
+
     async def list(
         self,
         *,

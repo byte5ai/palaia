@@ -75,7 +75,9 @@ def required_scope_for_action(vault_key: str, action: str) -> str:
 # scopes are plain ``stash:read``/``stash:write`` rather than
 # ``vault:<key>:<permission>``. Same fail-closed rule as above: only actions
 # on :data:`STASH_READ_ACTIONS` get the weaker scope.
-STASH_READ_ACTIONS: frozenset[str] = frozenset({"stash_get", "stash_list", "stash_status"})
+STASH_READ_ACTIONS: frozenset[str] = frozenset(
+    {"stash_get", "stash_list", "stash_status", "stash_browse"}
+)
 STASH_WRITE_ACTIONS: frozenset[str] = frozenset({"stash_set", "stash_del"})
 
 

@@ -1,4 +1,25 @@
 {
+  "stash_browse": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "IDENTITY: this is the stash \u2014 a structured cross-session cache. Use it for data you need to survive between sessions but that is disposable: job state, a rate-limit counter, a work-in-progress draft, dedup markers. It is NOT memory: anything worth remembering \u2014 a fact, a decision, a preference, a rule \u2014 belongs in the memory tools' write, not here. Entries expire (TTL) and can be evicted under the size budget (least-recently-accessed first); never rely on a stash entry surviving indefinitely.\n\nBrowse the stash as an inspection panel: namespace, key, size, and expiry \u2014 never the stored value itself (this is for seeing what is cached and how big it is, not for reading it; use stash_get for that). Call with no namespace for the overview of every namespace and its entry count; pass one of those namespaces back in to see its entries.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "namespace": {
+          "default": "",
+          "description": "Drill into this namespace's entries, or leave unset for the namespace overview.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
   "stash_del": {
     "annotations": {
       "destructiveHint": true,

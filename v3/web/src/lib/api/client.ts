@@ -402,6 +402,117 @@ export interface InstalledAddon {
   installed_at: number;
 }
 
+/** SPEC-402/403/405's session directory and messenger — opt-in on the hub
+ * (present only when `directory_service`/`messenger_service` are given to
+ * `create_app`), hand-written for the same reason the token/hook/
+ * automation types above are: the generator runs `create_app(HubConfig())`
+ * with neither wired, so the schema never sees these routes. Mirrors
+ * `palaia_hub.directory.models`/`palaia_hub.messenger.models`. */
+export type SessionStatus = "active" | "idle" | "stale";
+
+export interface SessionRecord {
+  handle: string;
+  scope: string;
+  host: string;
+  platform: string;
+  agent_kind: string;
+  model: string;
+  status: SessionStatus;
+  capabilities: string[];
+  registered_at: number;
+  last_seen_at: number;
+  ttl_seconds: number;
+}
+
+export interface SessionListResult {
+  sessions: SessionRecord[];
+}
+
+export interface DeregisterResult {
+  handle: string;
+  deregistered: boolean;
+}
+
+export type MessageType = "request" | "inform" | "question" | "handoff" | "broadcast";
+export type Urgency = "low" | "normal" | "high";
+export type DeliveryState = "pending" | "delivered" | "acked";
+
+/** An envelope with its body withheld, plus delivery state — the shape
+ * every messenger listing route returns (`palaia_hub.messenger.models.
+ * EnvelopeMetadata`). `from` is a reserved-looking name in the wire shape
+ * (mirroring the Python model's own `from_`/`from` split) but a perfectly
+ * ordinary TypeScript property key. */
+export interface EnvelopeMetadata {
+  id: string;
+  type: MessageType;
+  from: string;
+  to: string;
+  recipient: string;
+  subject: string;
+  urgency: Urgency;
+  expects_reply: boolean;
+  refs: string[];
+  reply_to: string | null;
+  created_at: number;
+  expires_at: number;
+  state: DeliveryState;
+  body_bytes: number;
+}
+
+export interface MessageFlowsResult {
+  flows: EnvelopeMetadata[];
+}
+
+export interface ThreadMetadataResult {
+  root_id: string;
+  flows: EnvelopeMetadata[];
+}
+
+/** The envelope shape a send actually returns (with a body, unlike the
+ * metadata-only listing shapes above) — mirrors
+ * `palaia_hub.messenger.models.Envelope`. */
+export interface Envelope {
+  id: string;
+  type: MessageType;
+  from: string;
+  to: string;
+  subject: string;
+  urgency: Urgency;
+  expects_reply: boolean;
+  body: string;
+  refs: string[];
+  reply_to: string | null;
+  created_at: number;
+  expires_at: number;
+}
+
+export interface SendResult {
+  envelopes: Envelope[];
+  recipients: string[];
+  broadcast_query: string | null;
+}
+
+export interface EndConversationResult {
+  root_id: string;
+  expired: EnvelopeMetadata[];
+}
+
+/** One envelope copy **with** its body — the owner's read (mirrors
+ * `palaia_hub.messenger.models.InboxItem`/`EnvelopeDetailResult`). The one
+ * shape the Agents screen fetches on expanding a message row (deliverable
+ * #1: "metadata first, body on expand — owner-only surface"). */
+export interface InboxItem {
+  envelope: Envelope;
+  recipient: string;
+  state: DeliveryState;
+  delivered_at: number | null;
+  acked_at: number | null;
+}
+
+export interface EnvelopeDetailResult {
+  item: InboxItem;
+}
+
 /** Base URL for API calls. Empty string = same-origin (the hub serves the
  * dashboard build itself, per this SPEC's static-serving deliverable), so
  * this only needs a value in local dev against a hub on another port. */
@@ -751,4 +862,46 @@ export const api = {
     postJson<InstalledAddon>(`/api/market/installed/${upstreamKey}/update`, {}),
   uninstallAddon: (upstreamKey: string) =>
     deleteRequest(`/api/market/installed/${upstreamKey}`),
+
+  // ---- SPEC-402/405: the session directory ----
+  listSessions: (params: { status?: SessionStatus; platform?: string } = {}) =>
+    getJson<SessionListResult>(`/api/directory/${queryString(params)}`),
+  querySessions: (scopeContains: string) =>
+    getJson<SessionListResult>(
+      `/api/directory/query${queryString({ scope_contains: scopeContains })}`,
+    ),
+  /** Owner control (SPEC-405 deliverable #2): deregister a session with no
+   * secret. Idempotent — an already-gone handle answers
+   * `deregistered: false`, not an error. */
+  deregisterSession: (handle: string) =>
+    postJson<DeregisterResult>(`/api/directory/${handle}/deregister`, {}),
+
+  // ---- SPEC-403/405: the messenger ----
+  messageFlows: (
+    params: { handle?: string; type?: MessageType; state?: DeliveryState; limit?: number } = {},
+  ) => getJson<MessageFlowsResult>(`/api/messenger/${queryString(params)}`),
+  messageThread: (envelopeId: string) =>
+    getJson<ThreadMetadataResult>(`/api/messenger/threads/${envelopeId}`),
+  /** The owner's body-bearing read (deliverable #1: "body on expand") —
+   * the one route on this mirror that ever returns a body. */
+  envelopeDetail: (envelopeId: string) =>
+    getJson<EnvelopeDetailResult>(`/api/messenger/envelopes/${envelopeId}`),
+  /** Owner control (SPEC-405 deliverable #2): compose and send as the
+   * owner. No handle/secret in the body — the owner has neither; the
+   * signed-in session and its CSRF token are the proof of identity. */
+  sendAsOwner: (body: {
+    type?: MessageType;
+    to: string;
+    subject: string;
+    body?: string;
+    urgency?: Urgency;
+    expects_reply?: boolean;
+    refs?: string[];
+    reply_to?: string | null;
+    ttl_seconds?: number | null;
+  }) => postJson<SendResult>("/api/messenger/send", body),
+  /** Owner control (SPEC-405 deliverable #2): end a conversation — expires
+   * the thread's still-undelivered envelopes. */
+  endConversation: (envelopeId: string) =>
+    postJson<EndConversationResult>(`/api/messenger/threads/${envelopeId}/end`, {}),
 };

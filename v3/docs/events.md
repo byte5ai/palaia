@@ -156,7 +156,7 @@ session secret — only the public fields also returned by
 | `session.updated` | `directory` | same shape | `directory_update` changes `scope`/`capabilities` (or sets `status` to `active`). |
 | `session.idle` | `directory` | same shape | `directory_update` sets `status` to `idle` — fired instead of `session.updated` for that call. |
 | `session.stale` | `directory` | `handle` | A session's *computed* status (never self-reported) first crosses into `stale` — checked lazily on the next directory call after its TTL elapses, and fired exactly once per staleness spell (a heartbeat resets the mark, so going stale twice fires this twice). |
-| `session.deregistered` | `directory` | `handle` | `directory_deregister` removes a session (a repeat call on an already-gone handle does not re-fire this). |
+| `session.deregistered` | `directory` | `handle` | `directory_deregister` removes a session, or (SPEC-405) the owner does the same with no secret via `POST /api/directory/{handle}/deregister` — the same event either way; a repeat call on an already-gone handle does not re-fire this. |
 
 ### 3.7 Messenger events (SPEC-403, additive)
 
@@ -175,9 +175,9 @@ it.
 
 | Event | Origin | `data` fields | Fires when |
 |---|---|---|---|
-| `message.sent` | `messenger` | the envelope metadata above | `messenger_send` mints an envelope — once per envelope, so a broadcast fires this once per resolved recipient. |
+| `message.sent` | `messenger` | the envelope metadata above | `messenger_send` mints an envelope — once per envelope, so a broadcast fires this once per resolved recipient. (SPEC-405) The owner's `POST /api/messenger/send` mints one the same way, with `from: "owner"`. |
 | `message.received` | `messenger` | same shape (`state: delivered`) | `messenger_check` hands an envelope to its recipient. Fires exactly once per envelope, not on every poll: a checked envelope is `delivered` and is never handed over again. |
-| `message.expired` | `messenger` | same shape | The TTL sweep deletes an envelope past its `expires_at` (default 24h, per-message override up to 7 days). The row and its body are gone; this event is all that is left of it. |
+| `message.expired` | `messenger` | same shape | The TTL sweep deletes an envelope past its `expires_at` (default 24h, per-message override up to 7 days), or (SPEC-405) the owner ends a conversation via `POST /api/messenger/threads/{id}/end`, which expires only that thread's still-`pending` copies. Either way: the row and its body are gone; this event is all that is left of it. |
 
 Bodies reach exactly two places: the recipient, through `messenger_check`'s
 own result, and the operator, through `GET /api/messenger/envelopes/{id}`
@@ -188,6 +188,32 @@ behind the admin-session gate (`palaia_hub.admin_session`). The other
 `health` also travels the same bus and wire format (SSE only; it is not a
 webhook-filterable v1 name — see §6) — it is the dashboard's periodic
 liveness snapshot, carried over unchanged from before this SPEC.
+
+### 3.8 Team observability: owner controls and the two MCP Apps (SPEC-405)
+
+No new event names — §3.6/§3.7's tables above already say where the two
+owner-only writes land. What SPEC-405 actually adds:
+
+* **Two owner-only REST writes**, both behind
+  `palaia_hub.admin_session`'s sign-in-and-CSRF gate: `POST
+  /api/directory/{handle}/deregister` (no session secret — the owner's
+  signed-in session is the stronger proof) and `POST /api/messenger/send`
+  (compose and send as the owner; `POST /api/messenger/threads/{id}/end`
+  ends a conversation). None of the three is exposed as an MCP tool —
+  MASTERPLAN §5.7's rule that destructive administration stays
+  dashboard-only.
+* **The dashboard's Agents screen**, reading the directory and message
+  flows live off this same SSE bus (`session.*`/`message.*` — no polling
+  loop) and driving the three writes above.
+* **Two MCP Apps** on the SPEC-208 shell: the session-monitor app
+  (`/mcp/team`, mounted when both `directory_service` and
+  `messenger_service` are wired) — read-only directory + flows, plus a
+  compose form that calls the *same* `messenger_send` tool a session would
+  call directly (never the owner routes above); and the stash browser app
+  (a `stash_browse` tool added to the existing `/mcp/stash` mount) —
+  namespace/key/size/expiry, never a stored value. Both deep-link to this
+  dashboard for anything destructive, same pattern as the marketplace
+  app's "Install" link (SPEC-304).
 
 ## 4. Outbound webhooks
 
