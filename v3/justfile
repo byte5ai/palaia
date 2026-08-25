@@ -28,3 +28,13 @@ dev:
 # Build the web app for production.
 build:
     cd web && npm run build
+
+# v3/sdk (the add-on SDK, SPEC-406) is deliberately its own uv project,
+# not a workspace member — it must stay independently installable with
+# zero dependency on palaia_hub. Check it on its own:
+sdk-test:
+    cd sdk && uv run pytest
+
+sdk-lint:
+    cd sdk && uv run ruff check .
+    cd sdk && uv run mypy src
