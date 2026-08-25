@@ -93,6 +93,19 @@ EventName = Literal[
     # trigger (palaia_hub.automations.dispatcher).
     "automation.fired",
     "automation.failed",
+    # SPEC-402 (session directory): one per lifecycle transition a session
+    # goes through — registered on `directory_register`, updated/idle on a
+    # `directory_update` call (idle specifically when the self-reported
+    # status becomes "idle"; every other update field change is `updated`),
+    # stale the first time a session's computed status crosses into `stale`
+    # (never repeated for the same staleness spell), deregistered on
+    # `directory_deregister`. Additive to the v1 vocabulary, same rule as
+    # the curator's events above. Named `session.*` per MASTERPLAN §5.6.
+    "session.registered",
+    "session.updated",
+    "session.idle",
+    "session.stale",
+    "session.deregistered",
     "health",
 ]
 

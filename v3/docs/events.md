@@ -144,6 +144,20 @@ lifecycle without also having to parse the generic upstream events.
 | `addon.uninstalled` | `market` | `entry_id`, `upstream_key` | `DELETE /api/market/installed/{key}` removes an installed add-on. |
 | `addon.update_available` | `market` | `entry_id`, `upstream_key`, `installed_ref`, `available_ref` | The curated index refreshes (`market.index.updated`) and an installed container's recorded image no longer matches the entry's current one — the dashboard badge this SPEC's deliverable #4 asks for. |
 
+### 3.6 Session directory events (SPEC-402, additive)
+
+Emitted by `palaia_hub.directory.DirectoryService`. `data` never carries a
+session secret — only the public fields also returned by
+`directory_list`/`directory_query`.
+
+| Event | Origin | `data` fields | Fires when |
+|---|---|---|---|
+| `session.registered` | `directory` | `handle`, `scope`, `host`, `platform`, `agent_kind`, `model`, `status`, `capabilities` | `directory_register` mints a new session. |
+| `session.updated` | `directory` | same shape | `directory_update` changes `scope`/`capabilities` (or sets `status` to `active`). |
+| `session.idle` | `directory` | same shape | `directory_update` sets `status` to `idle` — fired instead of `session.updated` for that call. |
+| `session.stale` | `directory` | `handle` | A session's *computed* status (never self-reported) first crosses into `stale` — checked lazily on the next directory call after its TTL elapses, and fired exactly once per staleness spell (a heartbeat resets the mark, so going stale twice fires this twice). |
+| `session.deregistered` | `directory` | `handle` | `directory_deregister` removes a session (a repeat call on an already-gone handle does not re-fire this). |
+
 `health` also travels the same bus and wire format (SSE only; it is not a
 webhook-filterable v1 name — see §6) — it is the dashboard's periodic
 liveness snapshot, carried over unchanged from before this SPEC.

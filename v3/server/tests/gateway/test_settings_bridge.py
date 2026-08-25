@@ -74,7 +74,7 @@ def test_resolve_profiles_default_when_no_vaults_yet() -> None:
 def test_resolve_profiles_uses_configured_shape() -> None:
     settings = GatewaySettings(
         profiles=[
-            GatewayProfileSettings(path="alpha", vaults=["work"], stash=True),
+            GatewayProfileSettings(path="alpha", vaults=["work"], stash=True, directory=True),
             GatewayProfileSettings(path="beta", vaults=["home"]),
         ]
     )
@@ -83,7 +83,9 @@ def test_resolve_profiles_uses_configured_shape() -> None:
 
     assert [p.path for p in profiles] == ["alpha", "beta"]
     assert profiles[0].stash is True
+    assert profiles[0].directory is True
     assert profiles[1].stash is False
+    assert profiles[1].directory is False
 
 
 def test_resolve_profiles_unknown_vault_raises() -> None:
@@ -112,7 +114,9 @@ def test_resolve_full_gateway_profiles_no_curator_profile_without_vaults() -> No
 def test_render_and_persist_round_trips(tmp_path: Path) -> None:
     settings = GatewaySettings(
         vaults=[GatewayVaultSettings(key="work", tool_renames={"search": "find"})],
-        profiles=[GatewayProfileSettings(path="default", vaults=["work"], stash=True)],
+        profiles=[
+            GatewayProfileSettings(path="default", vaults=["work"], stash=True, directory=True)
+        ],
     )
     path = tmp_path / "config.yaml"
     path.write_text("mode: locked\n# a comment that must survive\n", encoding="utf-8")
@@ -124,6 +128,7 @@ def test_render_and_persist_round_trips(tmp_path: Path) -> None:
     reloaded = yaml.safe_load(text)
     assert reloaded["gateway"]["vaults"][0]["key"] == "work"
     assert reloaded["gateway"]["profiles"][0]["stash"] is True
+    assert reloaded["gateway"]["profiles"][0]["directory"] is True
     # Re-parses cleanly as a real HubConfig too.
     from palaia_hub.config import load_config
 

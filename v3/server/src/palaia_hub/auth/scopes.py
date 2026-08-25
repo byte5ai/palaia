@@ -93,13 +93,47 @@ def required_scope_for_stash_action(action: str) -> str:
     return stash_scope(permission)
 
 
+# SPEC-402 (session directory): also hub-level, not per-vault, same
+# ``directory:read``/``directory:write`` shape as stash above. Registering,
+# heartbeating, updating and deregistering a session are all writes (they
+# mutate the directory); listing and querying are reads.
+DIRECTORY_READ_ACTIONS: frozenset[str] = frozenset({"directory_list", "directory_query"})
+DIRECTORY_WRITE_ACTIONS: frozenset[str] = frozenset(
+    {
+        "directory_register",
+        "directory_heartbeat",
+        "directory_update",
+        "directory_deregister",
+    }
+)
+
+
+def directory_scope(permission: Permission) -> str:
+    """The scope string for ``permission`` on the session directory."""
+    return f"directory:{permission}"
+
+
+def required_scope_for_directory_action(action: str) -> str:
+    """The scope a token needs to call directory-tool ``action``.
+
+    Fail-closed, same as :func:`required_scope_for_action`: an action name
+    this module does not recognize requires the stronger ``write`` scope.
+    """
+    permission: Permission = "read" if action in DIRECTORY_READ_ACTIONS else "write"
+    return directory_scope(permission)
+
+
 __all__ = [
+    "DIRECTORY_READ_ACTIONS",
+    "DIRECTORY_WRITE_ACTIONS",
     "READ_ACTIONS",
     "STASH_READ_ACTIONS",
     "STASH_WRITE_ACTIONS",
     "WRITE_ACTIONS",
     "Permission",
+    "directory_scope",
     "required_scope_for_action",
+    "required_scope_for_directory_action",
     "required_scope_for_stash_action",
     "stash_scope",
     "vault_scope",

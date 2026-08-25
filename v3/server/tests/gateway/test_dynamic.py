@@ -14,6 +14,8 @@ import pytest
 from fastmcp import Client
 
 from palaia_hub.auth.policy import AuthPolicyError
+from palaia_hub.directory.service import DirectoryService
+from palaia_hub.directory.store import DirectoryStore
 from palaia_hub.gateway.build import GatewayConfigError
 from palaia_hub.gateway.config import GatewayConfig, ProfileConfig, VaultMountConfig
 from palaia_hub.gateway.dynamic import DynamicGateway
@@ -277,6 +279,43 @@ async def test_profile_with_stash_false_has_no_stash_tools() -> None:
     async with Client(gateway.profile_servers["default"]) as client:
         names = {t.name for t in await client.list_tools()}
     assert "stash_set" not in names
+
+    await gateway.aclose()
+
+
+async def test_profile_with_directory_true_mounts_the_directory_tools_too() -> None:
+    config = GatewayConfig(
+        vaults=[VaultMountConfig(key="work", name="work")],
+        profiles=[ProfileConfig(path="default", vaults=["work"], directory=True)],
+    )
+    directory_service = DirectoryService(DirectoryStore(":memory:"))
+    gateway = DynamicGateway(
+        config, {"work": FakeVaultService()}, directory_service=directory_service
+    )
+    await gateway.start()
+
+    async with Client(gateway.profile_servers["default"]) as client:
+        names = {t.name for t in await client.list_tools()}
+    assert "directory_register" in names
+    assert "work_memory_search" in names
+
+    await gateway.aclose()
+
+
+async def test_profile_with_directory_false_has_no_directory_tools() -> None:
+    config = GatewayConfig(
+        vaults=[VaultMountConfig(key="work", name="work")],
+        profiles=[ProfileConfig(path="default", vaults=["work"])],
+    )
+    directory_service = DirectoryService(DirectoryStore(":memory:"))
+    gateway = DynamicGateway(
+        config, {"work": FakeVaultService()}, directory_service=directory_service
+    )
+    await gateway.start()
+
+    async with Client(gateway.profile_servers["default"]) as client:
+        names = {t.name for t in await client.list_tools()}
+    assert "directory_register" not in names
 
     await gateway.aclose()
 

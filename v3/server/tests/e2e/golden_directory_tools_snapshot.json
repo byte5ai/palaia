@@ -1,0 +1,287 @@
+{
+  "directory_deregister": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": false,
+      "title": null
+    },
+    "description": "IDENTITY: this is the session directory \u2014 a live registry of connected agent sessions (presence and context: scope, host, platform, model, status), NOT memory and NOT the stash. Do not write facts, decisions or cache data here \u2014 those belong in the memory tools' write or the stash tools, respectively. Register once per session with directory_register, keep the returned session_secret for every later call on that handle (heartbeat/update/deregister) \u2014 nobody else can act on your session without it \u2014 and heartbeat periodically or your session will show as stale to everyone else.\n\nRemove this session from the directory. Irreversible. Requires the handle and session_secret this session registered with; already-gone handles report deregistered=false rather than an error.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "handle": {
+          "description": "This session's handle, from directory_register's result.",
+          "type": "string"
+        },
+        "session_secret": {
+          "description": "This session's secret, from directory_register's result. Never shared.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "handle",
+        "session_secret"
+      ],
+      "type": "object"
+    }
+  },
+  "directory_heartbeat": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": false,
+      "title": null
+    },
+    "description": "IDENTITY: this is the session directory \u2014 a live registry of connected agent sessions (presence and context: scope, host, platform, model, status), NOT memory and NOT the stash. Do not write facts, decisions or cache data here \u2014 those belong in the memory tools' write or the stash tools, respectively. Register once per session with directory_register, keep the returned session_secret for every later call on that handle (heartbeat/update/deregister) \u2014 nobody else can act on your session without it \u2014 and heartbeat periodically or your session will show as stale to everyone else.\n\nKeep this session marked active/idle (not stale) by bumping its last-seen time. Requires the handle and session_secret this session registered with; a wrong secret is refused.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "handle": {
+          "description": "This session's handle, from directory_register's result.",
+          "type": "string"
+        },
+        "session_secret": {
+          "description": "This session's secret, from directory_register's result. Never shared.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "handle",
+        "session_secret"
+      ],
+      "type": "object"
+    }
+  },
+  "directory_list": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "IDENTITY: this is the session directory \u2014 a live registry of connected agent sessions (presence and context: scope, host, platform, model, status), NOT memory and NOT the stash. Do not write facts, decisions or cache data here \u2014 those belong in the memory tools' write or the stash tools, respectively. Register once per session with directory_register, keep the returned session_secret for every later call on that handle (heartbeat/update/deregister) \u2014 nobody else can act on your session without it \u2014 and heartbeat periodically or your session will show as stale to everyone else.\n\nList every session in the directory, most recently registered first. Optional filters: status ('active'/'idle'/'stale'), platform (exact match), capability (must be one of the session's tags).",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "capability": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Filter to sessions carrying this capability tag."
+        },
+        "platform": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Filter by exact platform match."
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "active",
+                "idle",
+                "stale"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Filter by effective status."
+        }
+      },
+      "type": "object"
+    }
+  },
+  "directory_query": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "IDENTITY: this is the session directory \u2014 a live registry of connected agent sessions (presence and context: scope, host, platform, model, status), NOT memory and NOT the stash. Do not write facts, decisions or cache data here \u2014 those belong in the memory tools' write or the stash tools, respectively. Register once per session with directory_register, keep the returned session_secret for every later call on that handle (heartbeat/update/deregister) \u2014 nobody else can act on your session without it \u2014 and heartbeat periodically or your session will show as stale to everyone else.\n\nFind sessions by a substring of their self-reported scope (case-insensitive \u2014 e.g. 'who is working on repo X') and/or a capability tag. Both filters optional; neither given returns every session.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "capability": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Filter to sessions carrying this capability tag."
+        },
+        "scope_contains": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Case-insensitive substring to match against scope."
+        }
+      },
+      "type": "object"
+    }
+  },
+  "directory_register": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false,
+      "title": null
+    },
+    "description": "IDENTITY: this is the session directory \u2014 a live registry of connected agent sessions (presence and context: scope, host, platform, model, status), NOT memory and NOT the stash. Do not write facts, decisions or cache data here \u2014 those belong in the memory tools' write or the stash tools, respectively. Register once per session with directory_register, keep the returned session_secret for every later call on that handle (heartbeat/update/deregister) \u2014 nobody else can act on your session without it \u2014 and heartbeat periodically or your session will show as stale to everyone else.\n\nRegister this session with the directory. Returns a handle (stable for this registration's lifetime, safe to share for addressing) and a session_secret (keep it private \u2014 needed for every later heartbeat/update/deregister on this handle). ttl_seconds controls how long this session may go without a heartbeat before showing as stale to others (default 300s).",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_kind": {
+          "default": "",
+          "description": "What kind of agent this is (e.g. 'coding assistant', 'reviewer').",
+          "type": "string"
+        },
+        "capabilities": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Free-text capability tags this session offers."
+        },
+        "host": {
+          "default": "",
+          "description": "This session's machine/host identifier.",
+          "type": "string"
+        },
+        "model": {
+          "default": "",
+          "description": "Model name, self-reported verbatim (display only, never trusted).",
+          "type": "string"
+        },
+        "platform": {
+          "default": "",
+          "description": "The client platform, e.g. claude-code, claude-desktop, claude-ai, codex, gemini, other. Free text, stored verbatim.",
+          "type": "string"
+        },
+        "scope": {
+          "default": "",
+          "description": "Free text: what this session is working on right now.",
+          "type": "string"
+        },
+        "ttl_seconds": {
+          "default": 300.0,
+          "description": "Seconds without a heartbeat before this session goes stale.",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "directory_update": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": false,
+      "title": null
+    },
+    "description": "IDENTITY: this is the session directory \u2014 a live registry of connected agent sessions (presence and context: scope, host, platform, model, status), NOT memory and NOT the stash. Do not write facts, decisions or cache data here \u2014 those belong in the memory tools' write or the stash tools, respectively. Register once per session with directory_register, keep the returned session_secret for every later call on that handle (heartbeat/update/deregister) \u2014 nobody else can act on your session without it \u2014 and heartbeat periodically or your session will show as stale to everyone else.\n\nUpdate this session's self-reported scope/status/capabilities. status is 'active' or 'idle' (never 'stale' \u2014 that is always computed from the heartbeat clock, not settable). Any field left unset keeps its current value. Also counts as a heartbeat. Requires the handle and session_secret this session registered with.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Replaces the full capability tag list, or unset to keep it."
+        },
+        "handle": {
+          "description": "This session's handle, from directory_register's result.",
+          "type": "string"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "New scope text, or unset to keep it."
+        },
+        "session_secret": {
+          "description": "This session's secret, from directory_register's result. Never shared.",
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "active",
+                "idle"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "'active' or 'idle', or unset to keep it. Never 'stale'."
+        }
+      },
+      "required": [
+        "handle",
+        "session_secret"
+      ],
+      "type": "object"
+    }
+  }
+}

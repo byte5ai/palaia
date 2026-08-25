@@ -87,3 +87,36 @@ def test_stash_read_scoped_token_cannot_write(monkeypatch: pytest.MonkeyPatch) -
     error = enforcement.missing_stash_scope_error("stash_set")
     assert error is not None
     assert "stash:write" in error
+
+
+# -- session directory (SPEC-402) --------------------------------------------
+
+
+def test_directory_no_access_token_allows_everything(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(enforcement, "get_access_token", lambda: None)
+
+    assert enforcement.missing_directory_scope_error("directory_register") is None
+    assert enforcement.missing_directory_scope_error("directory_list") is None
+
+
+def test_directory_sufficient_scope_allows(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        enforcement, "get_access_token", lambda: _FakeAccessToken(["directory:write"])
+    )
+
+    assert enforcement.missing_directory_scope_error("directory_register") is None
+    assert enforcement.missing_directory_scope_error("directory_deregister") is None
+
+
+def test_directory_read_scoped_token_cannot_register(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Acceptance criterion: 'read-scoped token cannot register'."""
+    monkeypatch.setattr(
+        enforcement, "get_access_token", lambda: _FakeAccessToken(["directory:read"])
+    )
+
+    assert enforcement.missing_directory_scope_error("directory_list") is None
+    assert enforcement.missing_directory_scope_error("directory_query") is None
+
+    error = enforcement.missing_directory_scope_error("directory_register")
+    assert error is not None
+    assert "directory:write" in error

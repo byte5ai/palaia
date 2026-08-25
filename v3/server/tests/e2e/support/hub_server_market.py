@@ -157,6 +157,8 @@ async def _run(
             await index.close()
         if production.stash_store is not None:
             production.stash_store.close()
+        if production.directory_store is not None:
+            production.directory_store.close()
         await production.dynamic_gateway.aclose()
         oauth_server.store.close()
 
