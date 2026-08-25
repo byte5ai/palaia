@@ -12,7 +12,7 @@
     {
       "name": "palaia-memory",
       "source": "./",
-      "description": "Makes an agent use palaia's shared memory without being told: when to recall, how to resume work, and what deserves capturing."
+      "description": "Makes an agent use palaia's shared memory without being told, and work alongside other agent sessions: when to recall, how to resume work, what deserves capturing, and when to register, check in and reply."
     }
   ]
 }
