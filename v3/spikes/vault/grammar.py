@@ -188,7 +188,7 @@ def parse_note(text: str, path: str) -> Entity:
 
 
 def parse_file(fs_path: str, vault_root: str) -> Entity:
-    with open(fs_path, "r", encoding="utf-8") as f:
+    with open(fs_path, encoding="utf-8") as f:
         text = f.read()
     rel_path = fs_path[len(vault_root) :].lstrip("/")
     return parse_note(text, rel_path)

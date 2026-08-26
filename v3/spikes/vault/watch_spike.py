@@ -36,12 +36,14 @@ import gen_vault  # noqa: E402
 from watchfiles import watch  # noqa: E402
 
 
-def watcher_thread(vault_dir: str, out_q: "queue.Queue", stop_event: threading.Event, debounce_ms: int):
+def watcher_thread(
+    vault_dir: str, out_q: queue.Queue, stop_event: threading.Event, debounce_ms: int
+):
     for changes in watch(vault_dir, debounce=debounce_ms, stop_event=stop_event):
         out_q.put((time.perf_counter(), changes))
 
 
-def drain_first(out_q: "queue.Queue", timeout: float):
+def drain_first(out_q: queue.Queue, timeout: float):
     try:
         return out_q.get(timeout=timeout)
     except queue.Empty:
@@ -52,9 +54,11 @@ def run(n: int, debounce_ms: int) -> dict:
     vault_dir = tempfile.mkdtemp(prefix="watch-vault-")
     gen_vault.write_vault(vault_dir, n, seed=3)
 
-    out_q: "queue.Queue" = queue.Queue()
+    out_q: queue.Queue = queue.Queue()
     stop_event = threading.Event()
-    t = threading.Thread(target=watcher_thread, args=(vault_dir, out_q, stop_event, debounce_ms), daemon=True)
+    t = threading.Thread(
+        target=watcher_thread, args=(vault_dir, out_q, stop_event, debounce_ms), daemon=True
+    )
     t.start()
     time.sleep(0.5)  # let the watcher establish its baseline snapshot
 
@@ -81,7 +85,8 @@ def run(n: int, debounce_ms: int) -> dict:
     dst = Path(vault_dir) / "note-000010-renamed.md"
     t0 = time.perf_counter()
     src.rename(dst)
-    dst.write_text(dst.read_text(encoding="utf-8") + "\n<!-- renamed+edited -->\n", encoding="utf-8")
+    edited = dst.read_text(encoding="utf-8") + "\n<!-- renamed+edited -->\n"
+    dst.write_text(edited, encoding="utf-8")
     batches = []
     deadline = time.perf_counter() + 5.0
     while time.perf_counter() < deadline:
@@ -93,7 +98,10 @@ def run(n: int, debounce_ms: int) -> dict:
         "n_batches_observed": len(batches),
         "first_batch_latency_seconds": (batches[0][0] - t0) if batches else None,
         "batches": [
-            {"latency_seconds": ts - t0, "changes": [(str(kind), str(Path(p).name)) for kind, p in ch]}
+            {
+                "latency_seconds": ts - t0,
+                "changes": [(str(kind), str(Path(p).name)) for kind, p in ch],
+            }
             for ts, ch in batches
         ],
     }

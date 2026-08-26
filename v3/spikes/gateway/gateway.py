@@ -25,10 +25,9 @@ import os
 from fastmcp import FastMCP
 from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
 from fastmcp.utilities.lifespan import combine_lifespans
+from servers.local_memory import local_server
 from starlette.applications import Starlette
 from starlette.routing import Mount
-
-from servers.local_memory import local_server
 
 REMOTE_UPSTREAM_URL = os.environ.get(
     "REMOTE_UPSTREAM_URL", "http://127.0.0.1:8811/mcp"

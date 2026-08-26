@@ -58,7 +58,7 @@ def make_note_text(n: int, total: int, rng: random.Random) -> tuple[str, str]:
     title = _title(n, rng)
     tags = rng.sample(TOPICS, k=rng.randint(1, 3))
     created = (
-        dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)
+        dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
         + dt.timedelta(minutes=n)
     ).isoformat()
 
@@ -76,7 +76,8 @@ def make_note_text(n: int, total: int, rng: random.Random) -> tuple[str, str]:
         cat = rng.choice(CATEGORIES)
         text = " ".join(rng.choices(WORDS, k=rng.randint(4, 10)))
         obs_tags = " ".join(f"#{t}" for t in rng.sample(TOPICS, k=rng.randint(0, 2)))
-        ctx = f" ({rng.choice(['from review', 'user reported', 'design call'])})" if rng.random() < 0.4 else ""
+        has_ctx = rng.random() < 0.4
+        ctx = f" ({rng.choice(['from review', 'user reported', 'design call'])})" if has_ctx else ""
         obs_lines.append(f"- [{cat}] {text} {obs_tags}{ctx}".rstrip())
 
     n_rel = rng.randint(0, 2)

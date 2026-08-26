@@ -23,7 +23,7 @@ try:
     from zeroconf import IPVersion, ServiceInfo, Zeroconf
 except ImportError:  # pragma: no cover - always installed in the runtime image
     print("mdns_announce: python-zeroconf not installed, skipping mDNS", file=sys.stderr)
-    raise SystemExit(0)
+    raise SystemExit(0) from None
 
 HOSTNAME = "palaia.local."
 SERVICE_TYPE = "_http._tcp.local."

@@ -41,7 +41,9 @@ def main() -> None:
 
     vault_dir = Path(args.vault_dir)
     md_files = sorted(vault_dir.glob("*.md"))
-    tmp_files = sorted(p for p in vault_dir.iterdir() if p.name.startswith(".") and p.name.endswith(".tmp"))
+    tmp_files = sorted(
+        p for p in vault_dir.iterdir() if p.name.startswith(".") and p.name.endswith(".tmp")
+    )
 
     parse_failures = []
     for p in md_files:

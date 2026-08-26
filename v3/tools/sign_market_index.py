@@ -95,7 +95,8 @@ def cmd_sign(args: argparse.Namespace) -> None:
             raise SystemExit(1)
     signature = private_key.sign(canonical_bytes(document))
     document["signature"] = base64.b64encode(signature).decode()
-    Path(args.out).write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    signed = json.dumps(document, indent=2, sort_keys=True) + "\n"
+    Path(args.out).write_text(signed, encoding="utf-8")
     print(f"signed index written to {args.out}")
 
 

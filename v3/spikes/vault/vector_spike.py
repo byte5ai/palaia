@@ -32,7 +32,8 @@ MODEL_NAME = "BAAI/bge-small-en-v1.5"  # fastembed default, per research/basic-m
 
 
 def entity_text(entity) -> str:
-    return entity.title + "\n" + entity.body + "\n" + "\n".join(o.content for o in entity.observations)
+    observations = "\n".join(o.content for o in entity.observations)
+    return entity.title + "\n" + entity.body + "\n" + observations
 
 
 def run(n: int) -> dict:
@@ -46,7 +47,8 @@ def run(n: int) -> dict:
     from fastembed import TextEmbedding
 
     model = TextEmbedding(model_name=MODEL_NAME)
-    t_cold_start = time.perf_counter() - t0  # includes first-run ONNX model load (+ download if not cached)
+    # includes first-run ONNX model load (+ download if not cached)
+    t_cold_start = time.perf_counter() - t0
 
     files = index_lib.list_vault_files(vault_dir)
     entities = [grammar.parse_file(f, vault_dir) for f in files]
@@ -68,12 +70,14 @@ def run(n: int) -> dict:
     )
 
     t0 = time.perf_counter()
-    for i, (entity, emb) in enumerate(zip(entities, embeddings)):
+    for i, (entity, emb) in enumerate(zip(entities, embeddings, strict=True)):
         conn.execute(
             "INSERT INTO vec_entities(rowid, embedding) VALUES (?, ?)",
             (i, sqlite_vec.serialize_float32(emb.tolist())),
         )
-        conn.execute("INSERT INTO vec_rowid_map(rowid_, permalink) VALUES (?, ?)", (i, entity.permalink))
+        conn.execute(
+            "INSERT INTO vec_rowid_map(rowid_, permalink) VALUES (?, ?)", (i, entity.permalink)
+        )
     conn.commit()
     t_insert_vec = time.perf_counter() - t0
 

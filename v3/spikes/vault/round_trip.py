@@ -83,7 +83,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--n", type=int, default=2000)
     ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--out", default=None, help="keep the generated vault here instead of a throwaway tmpdir")
+    ap.add_argument(
+        "--out", default=None, help="keep the generated vault here instead of a throwaway tmpdir"
+    )
     ap.add_argument("--json", action="store_true", help="print machine-readable JSON only")
     args = ap.parse_args()
 
@@ -93,7 +95,10 @@ def main() -> None:
         print(json.dumps(report, indent=2))
         return
 
-    print(f"generated {report['n_notes_requested']} notes in {report['generate_seconds']:.3f}s -> {report['vault_dir']}")
+    print(
+        f"generated {report['n_notes_requested']} notes"
+        f" in {report['generate_seconds']:.3f}s -> {report['vault_dir']}"
+    )
     b1, b2 = report["build_1"], report["build_2_after_delete"]
     print(
         f"build #1 (fresh):        {b1['n_entities']} entities, {b1['n_observations']} obs, "
