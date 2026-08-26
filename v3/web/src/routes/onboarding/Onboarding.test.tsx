@@ -78,5 +78,19 @@ describe("Onboarding wizard", () => {
 
     expect(await screen.findByRole("heading", { name: /connect your first client/i })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: /issue token/i })).toBeInTheDocument());
+
+    // SPEC-504 deliverable #4: the wizard's final step links the exact
+    // next actions — connect a second AI, install a tool, read the docs.
+    expect(screen.getByRole("link", { name: /connect a second ai/i })).toHaveAttribute(
+      "href",
+      "/clients",
+    );
+    expect(screen.getByRole("link", { name: /install a tool/i })).toHaveAttribute(
+      "href",
+      "/marketplace",
+    );
+    const docsLink = screen.getByRole("link", { name: /read the docs/i });
+    expect(docsLink).toHaveAttribute("target", "_blank");
+    expect(docsLink.getAttribute("href")).toMatch(/^https:\/\//);
   });
 });

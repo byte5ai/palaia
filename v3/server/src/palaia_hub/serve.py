@@ -328,11 +328,29 @@ async def build_production_app(
         resources=oauth_server.resources if oauth_server is not None else None,
         token_store=token_store if config.auth_enabled else None,
     )
+
+    def _auth_provider_for(path: str) -> Any | None:
+        """SPEC-504 first-run funnel audit fix: the same recipe
+        `token_verifiers` above was built with, for exactly one profile
+        path — called by `DynamicGateway.add_vault` the first time it
+        mounts a path `token_verifiers` never covered (no vaults existed
+        yet at hub-startup, so no profile — and no verifier — did either).
+        Without this, the wizard's very first vault would mount its
+        `default` profile with no auth check at all, on every fresh
+        install, regardless of `auth_enabled`."""
+        return build_profile_auth(
+            [path],
+            key=oauth_server.key if oauth_server is not None else None,
+            resources=oauth_server.resources if oauth_server is not None else None,
+            token_store=token_store if config.auth_enabled else None,
+        ).get(path)
+
     dynamic_gateway = DynamicGateway(
         gateway_config,
         vault_services,
         mode=config.mode,
         token_verifiers=token_verifiers,  # type: ignore[arg-type]
+        auth_provider_factory=_auth_provider_for,
         profile_middleware=curator.profile_middleware if curator else None,
         stash_service=stash_service,
         upstream_service=upstream_service,

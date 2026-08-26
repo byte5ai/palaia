@@ -16,8 +16,15 @@ docker run -d --name palaia-hub \
   -p 8420:8420 \
   -v palaia_home:/data \
   --restart unless-stopped \
+  --security-opt no-new-privileges:true --cap-drop ALL \
+  --read-only --tmpfs /tmp --tmpfs /run \
   ghcr.io/byte5ai/palaia-hub:stable
 ```
+
+The five extra flags close off what a non-root container process could
+otherwise still reach — nothing about the install changes if you leave
+them off, they simply make the container harder to escape from if
+something inside it were ever compromised.
 
 That pulls the image, starts it, and keeps it running (and restarting after
 a reboot). Everything palaia saves lives in the `palaia_home` volume, so the

@@ -148,6 +148,7 @@ See [§8](#8-accepted-risks-and-open-gaps).
 | `/api/notifications` | the dashboard notification centre | |
 | `/api/connect` | the connect page's client bundles (MCPB) | |
 | `/api/update` | release-channel update check against GHCR (SPEC-501) — read-only, outbound fetch is size/time-capped, "cannot check" is a state not an error | makes one outbound registry request |
+| `/api/funnel` | local-only first-run funnel status — wizard-step timestamps, time-to-first-memory (SPEC-504) — **read-only**, never accepts a caller-supplied timestamp | every value it returns was set from a real server-side event, never from a request; `server/tests/funnel/test_no_egress.py` proves the whole path never opens a socket |
 | `/api/_test` | a deliberately slow endpoint for shutdown testing | **only exists when `PALAIA_TEST_SLOW_ENDPOINT_SECONDS` is set**; never in a shipped hub |
 
 | Threat | Mitigation as built | Where |

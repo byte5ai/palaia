@@ -26,8 +26,9 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { CreatedToken, TokenInfo } from "../lib/api/client";
-import { api, ApiError } from "../lib/api/client";
+import { api } from "../lib/api/client";
 import type { GuidedClient } from "../lib/clients";
+import { describeApiError } from "../lib/errors";
 import { CheckIcon, CopyIcon } from "../shell/icons";
 import { Badge } from "./Badge";
 import { Button } from "./Button";
@@ -35,15 +36,6 @@ import { Card, CardBody, CardFoot, CardHead, CardSubject } from "./Card";
 import { Input } from "./Field";
 import { Waiting } from "./Skeleton";
 import { useToast } from "./Toast";
-
-function describeError(err: unknown): string {
-  if (err instanceof ApiError) {
-    const body = err.body as { detail?: string } | undefined;
-    if (body?.detail) return body.detail;
-    return `The hub answered ${err.status}.`;
-  }
-  return "Could not reach the hub.";
-}
 
 export function formatAge(iso: string): string {
   const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
@@ -137,7 +129,7 @@ export function ConnectPanel({
       setPlaintext(result.token);
       onTokenIssued?.(result.info);
     } catch (err) {
-      setError(describeError(err));
+      setError(describeApiError(err));
     } finally {
       setIssuing(false);
     }

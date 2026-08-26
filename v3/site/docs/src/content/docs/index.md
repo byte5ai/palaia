@@ -43,6 +43,8 @@ reads it.
   a new AI tool in, and decide how far your memory reaches — just this
   device, or the internet too.
 
-Ready to try it? [Install it](/install/) takes about five minutes, and
-[Your first shared memory](/first-shared-memory/) walks through
-connecting two AI tools and watching them share one fact.
+Ready to try it? [Get palaia running](/onboarding/) — pick your platform,
+paste one thing, about five minutes start to finish. Or read
+[Install it](/install/) for the longer version, and
+[Your first shared memory](/first-shared-memory/) for what connecting two
+AI tools and watching them share one fact actually looks like.

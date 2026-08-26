@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 
 import { Badge, CardFoot, CardHead, EmptyState } from "../components";
-import type { InfoResponse, TokenInfo, VaultSummary } from "../lib/api/client";
+import type { FunnelStatus, InfoResponse, TokenInfo, VaultSummary } from "../lib/api/client";
 import { api } from "../lib/api/client";
 import type { EventStreamState, VaultChangeEntry } from "../lib/events";
-import { ClientsIcon, ExplorerIcon } from "../shell/icons";
+import { CheckIcon, ClientsIcon, ExplorerIcon } from "../shell/icons";
 
 interface InboxAggregate {
   count: number;
@@ -92,6 +92,7 @@ export function Home() {
   const [inbox, setInbox] = useState<InboxAggregate | null>(null);
   const [tokens, setTokens] = useState<TokenInfo[] | null>(null);
   const [indexAggregate, setIndexAggregate] = useState<IndexAggregate | null>(null);
+  const [funnel, setFunnel] = useState<FunnelStatus | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -151,10 +152,35 @@ export function Home() {
       .catch(() => {
         if (!cancelled) setTokens([]);
       });
+    api
+      .funnelStatus()
+      .then((status) => {
+        if (!cancelled) setFunnel(status);
+      })
+      .catch(() => {
+        // no funnel store reachable yet — the rest of the page still works
+      });
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // SPEC-504 deliverable #3: poll for the celebration moment the same
+  // "no refresh button anywhere" way ConnectPanel.tsx polls for a client's
+  // first call — this tile just isn't event-stream-backed either. Stops
+  // once a first memory is recorded; nothing left to wait for after that.
+  useEffect(() => {
+    if (funnel?.first_memory_at) return;
+    const id = window.setInterval(() => {
+      api
+        .funnelStatus()
+        .then(setFunnel)
+        .catch(() => {
+          // a transient fetch failure just means the next tick tries again
+        });
+    }, 3000);
+    return () => window.clearInterval(id);
+  }, [funnel?.first_memory_at]);
 
   const isHealthy = stream.health?.status === "ok";
   const hasVaults = (vaults?.length ?? 0) > 0;
@@ -205,6 +231,19 @@ export function Home() {
           )}
         </div>
       </section>
+
+      {funnel?.time_to_first_memory_display ? (
+        <section className="banner banner--ok" data-testid="first-memory-celebration">
+          <CheckIcon className="icon icon--sm" />
+          <div>
+            <p className="banner__title">Your first memory is in.</p>
+            <p className="t-sm t-muted">
+              Set up in {funnel.time_to_first_memory_display} — from install to a client's
+              first successful write, timed by the hub itself. This number never leaves this hub.
+            </p>
+          </div>
+        </section>
+      ) : null}
 
       <section className="tiles">
         <Tile
