@@ -34,6 +34,7 @@ from palaia.cli_commands import (  # noqa: E402
     cmd_status,
 )
 from palaia.cli_helpers import (  # noqa: E402, I001
+    check_v2_sunset_notice,
     check_version_nag,
     detect_current_agent as _detect_current_agent,
     json_out as _json_out,
@@ -1585,6 +1586,8 @@ def main():
     if not args.command:
         parser.print_help()
         return 1
+
+    check_v2_sunset_notice(args)
 
     # Gatekeeper: block store commands without valid init
     if not _check_gatekeeper(args.command):

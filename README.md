@@ -19,6 +19,15 @@ ___________  |  | _____  |__|____
 
 ---
 
+> **This version (v2) is in maintenance mode.** It stays fully installable and
+> keeps receiving hotfixes (security, data loss, a broken release) — no new
+> features land here. A ground-up rewrite, v3, is under active development;
+> when you're ready to move, [the migration guide](https://github.com/byte5ai/palaia/blob/main/v3/docs/migrate-from-v2.md)
+> covers what carries over, what changes, and how to roll back if you change
+> your mind. Nobody has to move today.
+
+---
+
 ## What palaia Does
 
 AI agents are stateless by default. Every session starts from scratch — no memory of past decisions, no shared knowledge between agents, no context that survives a restart.
