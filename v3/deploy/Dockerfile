@@ -21,7 +21,10 @@
 # ---------------------------------------------------------------------------
 FROM node:22-slim AS web-build
 WORKDIR /web
-COPY v3/web/package.json v3/web/package-lock.json ./
+# .npmrc must ride along: it carries legacy-peer-deps=true (see its own
+# comment), without which `npm ci` fails peer resolution inside this image
+# while passing everywhere the file is present.
+COPY v3/web/package.json v3/web/package-lock.json v3/web/.npmrc ./
 RUN npm ci
 COPY v3/web/ ./
 RUN npm run build
