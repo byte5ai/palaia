@@ -32,6 +32,14 @@ export default defineConfig({
             { label: "Get palaia running", link: "/onboarding/" },
             { label: "Install it (the full version)", slug: "install" },
             { label: "Your first shared memory", slug: "first-shared-memory" },
+            {
+              label: "Moving from v2?",
+              // The guide itself lives with the rest of the engineering docs
+              // (v3/docs/), not in this site's own content — same pattern as
+              // the "For developers" links below, one canonical copy.
+              link: "https://github.com/byte5ai/palaia/blob/main/v3/docs/migrate-from-v2.md",
+              attrs: { target: "_blank", rel: "noreferrer" },
+            },
           ],
         },
         {
