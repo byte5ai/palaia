@@ -13,7 +13,6 @@ docstring for why) — it never leaves this file except inside the one
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import secrets
 from collections.abc import Mapping, Sequence
@@ -24,6 +23,7 @@ from typing import Any
 import yaml
 
 from ..config import palaia_home
+from ..security.files import harden_directory, harden_file
 from ..vault.atomic import atomic_write_text
 from .models import CreatedHook, HookInfo, HookRecord
 
@@ -94,8 +94,10 @@ class HookStore:
         payload = {"hooks": [r.model_dump(mode="json") for r in self._records.values()]}
         text = _HEADER + yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
         atomic_write_text(self.store_path, text)
-        with contextlib.suppress(OSError):  # pragma: no cover - platform dependent
-            self.store_path.chmod(0o600)
+        # SPEC-502: one shared rule for every persisted file, rather than a
+        # literal mode repeated per store.
+        harden_file(self.store_path)
+        harden_directory(self.home)
 
     # ----------------------------------------------------------------- queries
 

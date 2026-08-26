@@ -130,4 +130,21 @@ describe("signing out", () => {
     expect(url).toBe("/oauth/logout");
     expect(init.method).toBe("POST");
   });
+
+  it("carries the double-submit token (SPEC-502)", async () => {
+    await api.signOut();
+
+    expect(headersOf(fetchMock.mock.calls[0])[CSRF_HEADER]).toBe(
+      "token-from-the-cookie",
+    );
+  });
+
+  it("omits the header when there is no cookie to echo", async () => {
+    document.cookie =
+      "palaia_oauth_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+
+    await api.signOut();
+
+    expect(headersOf(fetchMock.mock.calls[0])[CSRF_HEADER]).toBeUndefined();
+  });
 });

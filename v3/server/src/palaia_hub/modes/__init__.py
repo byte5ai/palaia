@@ -23,6 +23,8 @@ from .hardening import ChecklistItem, build_checklist
 from .patch import patch_config_values
 from .policy import build_candidate_config
 from .rate_limit import (
+    ADMIN_BUCKET,
+    ADMIN_PREFIX,
     DEFAULT_LIMIT,
     DEFAULT_RATE_LIMITED_PATHS,
     DEFAULT_WINDOW_SECONDS,
@@ -37,6 +39,8 @@ from .tunnel import (
 )
 
 __all__ = [
+    "ADMIN_BUCKET",
+    "ADMIN_PREFIX",
     "AUDIT_FILE",
     "CLOUD_PUBLIC_PATH_PREFIXES",
     "DEFAULT_LIMIT",

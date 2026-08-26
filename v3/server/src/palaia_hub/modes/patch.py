@@ -21,6 +21,7 @@ from typing import Any
 
 import yaml
 
+from ..config import harden_config_file
 from ..vault.atomic import atomic_write_text
 
 
@@ -140,6 +141,7 @@ def replace_config_section(path: Path, section: str, rendered_body: str) -> None
         text = text[:start] + rendered_body + text[end:]
     path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(path, text)
+    harden_config_file(path)
 
 
 def patch_config_values(path: Path, updates: dict[str, Any]) -> None:
@@ -167,6 +169,7 @@ def patch_config_values(path: Path, updates: dict[str, Any]) -> None:
 
     path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(path, text)
+    harden_config_file(path)
 
 
 __all__ = ["patch_config_values", "replace_config_section"]

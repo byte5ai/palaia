@@ -34,6 +34,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from ..config import palaia_home
+from ..security.files import harden_file
 from .models import MarketEntry, SourceLocator
 
 logger = logging.getLogger("palaia_hub.market.curated")
@@ -187,7 +188,9 @@ class CuratedIndexClient:
         self.last_good_path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.last_good_path.with_suffix(".tmp")
         tmp.write_text(json.dumps(document), encoding="utf-8")
+        harden_file(tmp)  # SPEC-502: narrowed before it becomes the real file
         tmp.replace(self.last_good_path)
+        harden_file(self.last_good_path)
 
     def _fallback_result(self, warning: str) -> CuratedIndexResult:
         last_good = self._read_last_good()

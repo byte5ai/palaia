@@ -99,6 +99,27 @@ def hub(tmp_path: Path) -> Iterator[Hub]:
         built.server.store.close()
 
 
+@pytest.fixture
+def walk_hub(tmp_path: Path) -> Iterator[Hub]:
+    """The same wide surface, in a mode with no failed-attempt limiter.
+
+    SPEC-502 made the admin gate's 401s feed
+    :class:`~palaia_hub.modes.rate_limit.AuthRateLimitMiddleware`, which is
+    mounted in ``cloud``/``open`` only. A walk that refuses ~40 routes in a
+    row is, correctly, exactly the traffic pattern that limiter exists to
+    stop — it starts answering 429 partway through. ``locked`` with the
+    sign-in opt-in gives the identical gate with no limiter in front of it,
+    so this walk keeps asserting one thing (every route is gated) instead of
+    two. The limiter's own behavior is asserted in
+    ``tests/security/test_admin_rate_limit.py``.
+    """
+    built = _build_hub(tmp_path, mode="locked", require_sign_in=True)
+    try:
+        yield built
+    finally:
+        built.server.store.close()
+
+
 def _api_routes(app: FastAPI) -> list[tuple[str, str]]:
     """Every ``(method, concrete path)`` under ``/api/`` this app really serves.
 
@@ -145,18 +166,18 @@ def _call(client: TestClient, method: str, path: str, **kwargs: Any) -> Any:
 # ------------------------------------------------------- the route walk (#1)
 
 
-def test_the_walk_actually_covers_the_surface(hub: Hub) -> None:
+def test_the_walk_actually_covers_the_surface(walk_hub: Hub) -> None:
     """Guard the guard: a walk over an empty route table proves nothing."""
-    routes = _api_routes(hub.app)
+    routes = _api_routes(walk_hub.app)
     assert len(routes) > 20, routes
     paths = {path for _method, path in routes}
     for expected in ("/api/vaults", "/api/auth/tokens", "/api/mode", "/api/session"):
         assert expected in paths
 
 
-def test_every_gated_route_refuses_a_caller_with_no_session(hub: Hub) -> None:
-    with TestClient(hub.app) as client:
-        for method, path in _api_routes(hub.app):
+def test_every_gated_route_refuses_a_caller_with_no_session(walk_hub: Hub) -> None:
+    with TestClient(walk_hub.app) as client:
+        for method, path in _api_routes(walk_hub.app):
             if path in SIGN_IN_FREE_PATHS:
                 continue
             response = _call(client, method, path)
@@ -164,13 +185,13 @@ def test_every_gated_route_refuses_a_caller_with_no_session(hub: Hub) -> None:
             assert response.json()["sign_in_url"] == "/oauth/login"
 
 
-def test_every_gated_route_answers_a_signed_in_caller(hub: Hub) -> None:
+def test_every_gated_route_answers_a_signed_in_caller(walk_hub: Hub) -> None:
     """"Works with one": the gate is what changed, not the route's own answer,
     so this asserts only that nothing is refused for lack of a session."""
-    with TestClient(hub.app) as client:
-        client.cookies.set(SESSION_COOKIE, hub.session_cookie())
+    with TestClient(walk_hub.app) as client:
+        client.cookies.set(SESSION_COOKIE, walk_hub.session_cookie())
         client.cookies.set(CSRF_COOKIE, "csrf-token-value")
-        for method, path in _api_routes(hub.app):
+        for method, path in _api_routes(walk_hub.app):
             if path in STREAMING_PATHS:
                 continue
             response = _call(client, method, path, headers={CSRF_HEADER: "csrf-token-value"})
@@ -179,17 +200,17 @@ def test_every_gated_route_answers_a_signed_in_caller(hub: Hub) -> None:
             )
 
 
-def test_the_allowlist_works_with_no_session(hub: Hub) -> None:
-    with TestClient(hub.app) as client:
+def test_the_allowlist_works_with_no_session(walk_hub: Hub) -> None:
+    with TestClient(walk_hub.app) as client:
         assert client.get("/api/health").status_code == 200
         info = client.get("/api/info")
         assert info.status_code == 200
         assert info.json()["sign_in"]["required"] is True
 
 
-def test_the_event_stream_needs_a_session(hub: Hub) -> None:
+def test_the_event_stream_needs_a_session(walk_hub: Hub) -> None:
     """It carries vault activity, so it is gated like any other route."""
-    with TestClient(hub.app) as client:
+    with TestClient(walk_hub.app) as client:
         assert client.get("/api/events").status_code == 401
 
 
@@ -416,7 +437,13 @@ def test_open_mode_public_bind_sign_in_and_one_admin_call(tmp_path: Path) -> Non
             assert created.status_code == 200, created.text
 
             # Signing out closes the door again.
-            assert client.post("/oauth/logout").status_code == 204
+            assert (
+                client.post(
+                    "/oauth/logout",
+                    headers={CSRF_HEADER: csrf},
+                ).status_code
+                == 204
+            )
             assert client.get("/api/vaults").status_code == 401
     finally:
         server.store.close()

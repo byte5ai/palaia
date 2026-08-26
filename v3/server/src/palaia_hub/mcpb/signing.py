@@ -32,7 +32,6 @@ from __future__ import annotations
 import datetime
 import logging
 import os
-import stat
 from pathlib import Path
 
 from cryptography import x509
@@ -40,14 +39,19 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
+from ..security.files import DIR_MODE, FILE_MODE, enforce_private_mode
+
 logger = logging.getLogger("palaia_hub.mcpb.signing")
 
 MCPB_DIR_NAME = "mcpb"
 CERT_FILE = "signing-cert.pem"
 KEY_FILE = "signing-key.pem"
 
-DIR_MODE = 0o700
-KEY_FILE_MODE = 0o600
+#: The key material gets the hub's one on-disk posture
+#: (:mod:`palaia_hub.security.files`); the *certificate* deliberately does
+#: not — it is the public half, meant to be handed to whoever verifies a
+#: bundle, and it sits inside a ``0700`` directory either way.
+KEY_FILE_MODE = FILE_MODE
 CERT_FILE_MODE = 0o644
 
 #: How long the self-signed cert is valid for — matching the official
@@ -60,17 +64,8 @@ def mcpb_dir(home: Path) -> Path:
     """``<home>/mcpb``, created ``0700`` if it does not exist."""
     path = Path(home) / MCPB_DIR_NAME
     path.mkdir(parents=True, exist_ok=True)
-    _enforce_mode(path, DIR_MODE)
+    enforce_private_mode(path, DIR_MODE)
     return path
-
-
-def _enforce_mode(path: Path, mode: int) -> None:
-    try:
-        current = stat.S_IMODE(path.stat().st_mode)
-        if current != mode:
-            path.chmod(mode)
-    except OSError as exc:  # pragma: no cover - platform dependent
-        logger.warning("could not enforce mode %o on %s: %s", mode, path, exc)
 
 
 def signing_cert_paths(home: Path) -> tuple[Path, Path]:
@@ -106,7 +101,7 @@ def signing_cert_paths(home: Path) -> tuple[Path, Path]:
     if not cert_path.exists() or not key_path.exists():
         _generate_self_signed(cert_path, key_path)
     else:
-        _enforce_mode(key_path, KEY_FILE_MODE)
+        enforce_private_mode(key_path, KEY_FILE_MODE)
     return cert_path, key_path
 
 
@@ -152,11 +147,11 @@ def _generate_self_signed(cert_path: Path, key_path: Path) -> None:
         os.write(fd, key_pem)
     finally:
         os.close(fd)
-    _enforce_mode(key_path, KEY_FILE_MODE)
+    enforce_private_mode(key_path, KEY_FILE_MODE)
 
     cert_pem = cert.public_bytes(serialization.Encoding.PEM)
     cert_path.write_bytes(cert_pem)
-    _enforce_mode(cert_path, CERT_FILE_MODE)
+    enforce_private_mode(cert_path, CERT_FILE_MODE)
     logger.info("generated a new self-signed MCPB signing certificate at %s", cert_path)
 
 

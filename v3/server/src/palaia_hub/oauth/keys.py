@@ -30,13 +30,19 @@ from __future__ import annotations
 
 import logging
 import os
-import stat
 import time
 from pathlib import Path
 from typing import Any
 
 from joserfc import jwt
 from joserfc.jwk import ECKey
+
+# The hub's one on-disk posture rule. It used to live in this module, and
+# had grown two more copies (the OAuth store, the secret store) by the time
+# SPEC-502 folded all three into `palaia_hub.security.files`. Imported —
+# not re-implemented — and still importable from here, because every
+# existing caller reaches for these names at this address.
+from ..security.files import DIR_MODE, FILE_MODE, enforce_private_mode
 
 logger = logging.getLogger("palaia_hub.oauth.keys")
 
@@ -51,9 +57,6 @@ CURVE = "P-256"
 OAUTH_DIR_NAME = "oauth"
 SIGNING_KEY_FILE = "signing-key.pem"
 
-DIR_MODE = 0o700
-FILE_MODE = 0o600
-
 
 def oauth_dir(home: Path) -> Path:
     """Return ``<home>/oauth``, created ``0700`` if it does not exist."""
@@ -61,24 +64,6 @@ def oauth_dir(home: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     enforce_private_mode(path, DIR_MODE)
     return path
-
-
-def enforce_private_mode(path: Path, mode: int) -> None:
-    """Narrow ``path`` to ``mode`` if it is currently wider.
-
-    Called on every load, not only at creation: a key or database whose
-    permissions were widened (an ``rsync -a`` from a laxer box, a manual
-    ``chmod``) is quietly narrowed again. Failures are logged rather than
-    raised — a filesystem that cannot represent POSIX modes at all (some
-    network and container mounts) must not stop the hub from starting, but
-    the operator should see it in the log.
-    """
-    try:
-        current = stat.S_IMODE(path.stat().st_mode)
-        if current != mode:
-            path.chmod(mode)
-    except OSError as exc:  # pragma: no cover - platform dependent
-        logger.warning("could not enforce mode %o on %s: %s", mode, path, exc)
 
 
 class SigningKey:
