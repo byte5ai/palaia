@@ -86,9 +86,13 @@ def test_hardening_flags_match_install_sh_verbatim() -> None:
 def built_image() -> str:
     if not _docker_ready():
         pytest.skip("no reachable docker daemon in this environment")
+    # Build context is the REPO ROOT, not v3/ — the Dockerfile's COPY
+    # directives are all `v3/`-prefixed because that is how the release
+    # workflow builds it (`.github/workflows/v3-release.yml`: context `.`,
+    # file `v3/deploy/Dockerfile`); this build mirrors it exactly.
     result = subprocess.run(  # noqa: S603 - fixed argv, no shell
-        ["docker", "build", "-f", "deploy/Dockerfile", "-t", IMAGE_TAG, "."],
-        cwd=V3_ROOT,
+        ["docker", "build", "-f", "v3/deploy/Dockerfile", "-t", IMAGE_TAG, "."],
+        cwd=V3_ROOT.parent,
         capture_output=True,
         text=True,
         timeout=600,
