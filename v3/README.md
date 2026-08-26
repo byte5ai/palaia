@@ -1,10 +1,13 @@
 # palaia v3
 
-**Status: planning.** This directory contains everything belonging to palaia v3 —
-a ground-up rewrite with a much larger scope than v2 ("Home Assistant for AI").
+**Status: release candidate (`3.0.0-rc1`, see [VERSION](VERSION)).** This
+directory contains everything belonging to palaia v3 — a ground-up rewrite
+with a much larger scope than v2 ("Home Assistant for AI"). The Phase-5
+gate is held as a draft (`IMPLEMENTATION.md` §6); `RELEASING.md` is the
+ordered path from here to a final, non-candidate `3.0.0`.
 
-Nothing in here is released. palaia v2 (the repo root) remains the stable product;
-v2 hotfixes happen on the `v2-maintenance` branch.
+Not yet tagged `3.0.0`. palaia v2 (the repo root) remains the stable
+product until then; v2 hotfixes happen on the `v2-maintenance` branch.
 
 ## Navigation
 
@@ -19,6 +22,10 @@ v2 hotfixes happen on the `v2-maintenance` branch.
 | [docs/external-servers.md](docs/external-servers.md) | Connecting other people's MCP servers, and where their credentials live |
 | [SECURITY.md](SECURITY.md) | **Supported versions, and how to report a vulnerability** |
 | [docs/security/](docs/security/) | Threat model (as built), the brief for an external review, and the dependency policy |
+| [VERSION](VERSION) / [CHANGELOG.md](CHANGELOG.md) | The current release candidate's version, and what's in it, by capability |
+| [RELEASING.md](RELEASING.md) | The ordered checklist from "the gate is held" to a tagged, published `3.0.0` |
+| [docs/client-matrix-results.md](docs/client-matrix-results.md) | Real, run evidence for every phase gate, including the Phase-5 RC (§9) |
+| [docs/usability-test-protocol.md](docs/usability-test-protocol.md) | The owner's script for the one thing this repository's own tests cannot run: a real non-developer, unaided |
 
 ## Dev setup
 

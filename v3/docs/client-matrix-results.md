@@ -555,3 +555,162 @@ that suite.
   3.4.7 has no support for declaring it. Pull-based delivery (`messenger_
   check`) is what both §8.2 and §8.4 exercise, and it is the universal
   baseline the SPEC itself treats as sufficient.
+
+## 9. RC validation: the Phase-5 gate (SPEC-506, 2026-08-26)
+
+The Phase-5 exit criterion is **a non-developer completes install → first
+shared memory unaided**. The literal criterion needs a real person this
+sandbox does not have — `v3/docs/usability-test-protocol.md` is the
+owner's script for that session. This section is everything scriptable:
+the funnel's mechanical twin, timed, plus what could and could not be
+checked about the shipped Docker one-liner in this environment.
+
+### 9.1 What was actually run
+
+```
+$ cd v3 && uv run pytest server/tests/e2e/test_spec506_phase5_gate.py -q -s
+```
+run twice, each against a fresh hub subprocess and a genuinely empty home
+directory (`assert not (home / "vaults.yaml").exists()` in the fixture).
+Both green, no flakes:
+
+- Run 1: `1 passed in 16.27s` — wall clock (fresh home → B's recall):
+  **12.25s**; hub-side `time_to_first_memory_seconds`: **8.53s** (displayed
+  "9s").
+- Run 2: `1 passed in 14.79s` — wall clock: **10.57s**; hub-side
+  `time_to_first_memory_seconds`: **7.15s** (displayed "7s").
+
+Both numbers, both runs, are more than an order of magnitude inside
+MASTERPLAN §13's <5 minute (300s) machine-time target. (Three more runs
+taken while building this test landed at 10.58s/7.07s, 10.81s/7.29s and
+11.47s/7.75s — quoted here for context, not as a third "official" run;
+the two above are the ones this SPEC's acceptance criterion asks for.)
+The hub-side number is the one that matters for §13 — it is computed
+server-side, event-driven, from `hub_started_at` to `first_memory_at`
+(`palaia_hub.funnel.FunnelSnapshot`), never from a client-reported
+timestamp; the wall-clock number additionally includes this test's own
+Python-side OAuth/PKCE scripting and subprocess overhead around the real
+`claude` CLI invocation, so it is always a little higher and is reported
+alongside honestly rather than presented as the metric.
+
+### 9.2 The scenario
+
+`test_full_funnel_fresh_home_to_second_client_recall`
+(`v3/server/tests/e2e/test_spec506_phase5_gate.py`), against a new hub
+subprocess, `support/hub_server_funnel.py`:
+
+1. **Fresh home.** A hub subprocess boots against an empty `PALAIA_HOME`
+   (no `vaults.yaml`), Cloud mode, OAuth enabled from the first line — see
+   §9.3 for why the OAuth scopes are pre-declared for a vault key ("work")
+   that does not exist yet at that point, and why that is not a shortcut.
+2. **Wizard → vault.** `GET /api/info` (unauthenticated, the sign-in
+   gate's own allowlist), then a signed-in dashboard session (Cloud mode's
+   default `dashboard.require_sign_in: true`) drives `GET /api/funnel/
+   status` and `POST /api/vaults` — the exact REST surface `Onboarding.
+   tsx` step 3 calls, identical to `test_s7_spec504_first_run_funnel.py`'s
+   own wizard walk (SPEC-504).
+3. **Connect client A: the real `claude` CLI, OAuth's own default path.**
+   A real, scripted OAuth 2.1 + PKCE code flow (the same machinery
+   `test_spec209_client_matrix.py`/`test_spec308_phase3_gate.py`/
+   `test_spec407_phase4_gate.py` already established, reused rather than
+   reinvented) mints an access token with no `scope` requested — the
+   resource's full grantable set, RFC 6749 §3.3's server default. The real
+   `claude` CLI then runs with that token pre-filled in `--mcp-config`
+   (never typed by a person — the "your AI configures itself" promise
+   `docs/connect/clients/claude-code-cli.md` makes) and writes the funnel's
+   first memory: `work_memory_write` with a distinctive fact.
+4. **`GET /api/funnel/status`** confirms `first_memory_at` is now set —
+   the real claude CLI's own write, not a seed note (the wizard's
+   template-notes switch stays off, same funnel-audit reasoning
+   `test_s7`'s own file documents).
+5. **Connect client B: a `plt_` token, scripted.** `POST /api/auth/tokens`
+   mints a real SPEC-108 token; a scripted `fastmcp.Client` carrying it
+   calls `work_memory_recall` — a different credential shape than A's, on
+   the same profile, reaching the vault A just wrote to with zero
+   client-side reconfiguration.
+6. The assertion that matters: B's real, literal recall output contains
+   A's exact fact string, proving the shared-memory half of the exit
+   criterion end to end, mechanically.
+
+### 9.3 A design note, not a shortcut: pre-declared OAuth scopes
+
+`AuthorizationServer` freezes its grantable-scopes-per-profile dict at
+construction (`palaia_hub/oauth/service.py`) — production's own CLI path
+(`palaia_hub.cli._maybe_oauth_server`) keeps this honest by refusing to
+start the OAuth server at all until a vault already exists. This test's
+support script legitimately takes the case that guard protects against as
+its own scenario: an operator who chooses Cloud mode from the very first
+boot, already knowing the vault key ("work") the wizard is about to
+create — the scope dict names it up front, but the vault itself is
+created only later, over the real wizard REST call, exactly as this
+section's step 2 describes. Nothing about this required a production code
+change; the *runtime* verification side (`_auth_provider_for` in
+`palaia_hub.serve`, a SPEC-504 fix) already builds a real OAuth+`plt_`
+verifier for a vault the moment it mounts dynamically, no restart needed
+— this script only had to supply the scope dict a real `_maybe_oauth_
+server`-driven boot could not, for the reason named above. Two real,
+honest product gaps were found and filed rather than fixed in this PR
+(neither blocks this SPEC's acceptance criteria):
+[#272](https://github.com/byte5ai/palaia/issues/272) (OAuth-authenticated
+clients never fire `client.connected`/`client_connected_at` — confirmed in
+this very test: `client_connected_at` stays `null` after A's OAuth
+connection and only becomes non-null once B's `plt_` token verifies,
+asserted explicitly rather than hidden) and
+[#273](https://github.com/byte5ai/palaia/issues/273) (an operator cannot
+express "Cloud mode from boot, for a vault I'm about to create" through
+`config.yaml` today — only this test's own direct `AuthorizationServer.
+build()` call can).
+
+### 9.4 Docker one-liner smoke: env-gated, honestly skipped here
+
+```
+$ cd v3 && uv run pytest server/tests/e2e/test_docker_one_liner_smoke.py -q -rs
+.s
+1 passed, 1 skipped in 2.22s
+SKIPPED [1] server/tests/e2e/test_docker_one_liner_smoke.py:95: no reachable docker daemon in this environment
+```
+
+This sandbox has the `docker` CLI on `PATH` but no reachable daemon
+(`docker info` fails: "Cannot connect to the Docker daemon at
+unix:///var/run/docker.sock"), the same real check
+`server/tests/market/test_install_container.py` already gates on
+(`palaia_hub.market.docker_runtime.docker_available`, reused here rather
+than reinvented) — so the actual "build the image, run it with
+`install.sh`'s exact hardening flags, check `GET /`/`GET /api/health`"
+smoke skips honestly rather than being faked. The one part of this test
+that *does* run everywhere — a pure text check that its hardening flags
+(`--security-opt no-new-privileges:true`, `--cap-drop ALL`, `--read-only`,
+two `--tmpfs` mounts) still match `deploy/install.sh`'s real content
+verbatim — passed.
+
+What this sandbox's skip rests on instead, honestly, per this SPEC's own
+task: **SPEC-112's existing evidence**
+(`v3/specs/SPEC-112-packaging.md`'s acceptance criterion, "fresh Linux VM:
+`docker run` one-liner → wizard reachable, data survives restart") plus
+the working, hardened `docker run` one-liner itself
+(`v3/deploy/README.md`'s Quick start, byte-for-byte what
+`v3/site/docs`'s onboarding page renders — `onboarding.test.ts` already
+proves that match) and the `v3-release.yml` CI workflow's own arm64 QEMU
+smoke step (`docker run` + polled `/api/health`, on every image build,
+`v3/server/tests/test_release_workflow.py` pins its structure) are the
+standing, real, already-green evidence for "the image starts and answers
+health" — this SPEC's own smoke test is additional coverage for the
+*specific hardening flags*, not the only evidence the one-liner works at
+all.
+
+### 9.5 Honest gaps
+
+- **The literal exit criterion** (a real non-developer, unaided) is not
+  and cannot be part of this scripted evidence — `v3/docs/usability-test-
+  protocol.md` is the owner's script for that session; §5/§8's standing
+  gaps (a real phone/claude.ai account, a real `codex` binary, a real
+  public tunnel) are unaffected by this SPEC and carry forward unchanged.
+- **The rc image itself** was not built and smoke-tested against a real
+  docker daemon in this environment (§9.4) — the version/changelog drift
+  test (`server/tests/test_version_drift.py`) and the real `npm run
+  build` transcript in this PR's description are what stands in for that
+  here: every artifact (server, web, sdk, the mcpb bundle) reports
+  `3.0.0-rc1` from the same `v3/VERSION` source, checked mechanically.
+- **Claude Desktop's own UI**, a real public tunnel, and the dashboard's
+  own click-through UI remain out of scope here exactly as §6/§7.4/§8.5
+  already say — this SPEC adds nothing new to those gaps.

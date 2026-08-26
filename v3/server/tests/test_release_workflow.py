@@ -54,3 +54,20 @@ def test_the_compute_tags_step_derives_stable_and_beta_channels() -> None:
     assert 'channel="beta"' in script
     assert 'channel="edge"' in script
     assert "echo \"channel=${channel}\" >> \"$GITHUB_OUTPUT\"" in script
+
+
+def test_the_compute_tags_step_fails_the_build_on_a_version_file_mismatch() -> None:
+    """SPEC-506: a `v3.*` tag whose stripped version disagrees with
+    `v3/VERSION` must fail the release build loudly, not silently publish
+    an image under the wrong tag — the last-mile guard on top of
+    `test_version_drift.py`'s artifact checks, which only run on the repo
+    checkout, not on the tag actually being released."""
+    workflow = _load_workflow()
+    steps = workflow["jobs"]["build-and-push"]["steps"]
+    compute_step = next(s for s in steps if s.get("id") == "tags")
+    script = compute_step["run"]
+
+    assert "file_version=" in script
+    assert 'cat v3/VERSION' in script
+    assert '"${version}" != "${file_version}"' in script
+    assert "exit 1" in script
