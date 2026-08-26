@@ -64,6 +64,14 @@ shapes and the safe subset of conditions an automation can express (never
 a general scripting language — a deliberate limit) are documented at
 [`v3/docs/events.md`](https://github.com/byte5ai/palaia/blob/main/v3/docs/events.md).
 
+## Coming from the previous version
+
+The version before this one is still fully supported, on its own separate
+branch, for anyone not ready to move. If you're one of its users, start
+with the [migration guide](https://github.com/byte5ai/palaia/blob/main/v3/docs/migrate-from-v2.md)
+instead — it covers what carries over, what changes, and what this version
+doesn't do yet.
+
 ## Running the server yourself
 
 The hub itself — the program this whole site is documentation *for* — is

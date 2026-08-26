@@ -19,10 +19,18 @@ ___________  |  | _____  |__|____
 
 ---
 
-> **palaia v3 is in the making.** A ground-up rewrite — self-hosted infrastructure that
-> unifies memory, MCP tools, and agent communication across AI providers — is being
-> planned under [`v3/`](v3/MASTERPLAN.md). palaia v2 (this README) remains the stable
-> release line; hotfixes continue on the [`v2-maintenance`](https://github.com/byte5ai/palaia/tree/v2-maintenance) branch.
+> **palaia v3 is on its way — a ground-up rewrite.** A self-hosted hub that
+> unifies memory, MCP tools, and agent communication across AI providers, replacing
+> the package-per-machine install below. Track progress in
+> [`v3/MASTERPLAN.md`](v3/MASTERPLAN.md).
+>
+> **v2 (this README) is now maintenance-only.** It stays fully installable and keeps
+> receiving hotfixes (security, data loss, broken release) on the
+> [`v2-maintenance`](https://github.com/byte5ai/palaia/tree/v2-maintenance) branch —
+> no new features land here. Nobody is stranded: when v3 is ready for you,
+> [the migration guide](v3/docs/migrate-from-v2.md) covers what carries over
+> (all of it — one command imports your existing knowledge, unchanged), what
+> changes, what v3 doesn't have yet, and how to roll back if you change your mind.
 
 ---
 
