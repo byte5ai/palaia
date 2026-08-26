@@ -18,6 +18,10 @@ import yaml
 from platformdirs import user_data_dir
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+# SPEC-502: the hub's one on-disk posture rule, applied to `config.yaml`
+# below. Stdlib only, so it is safe to import this early.
+from .security.files import harden_directory, harden_file
+
 # SPEC-302: the external-server schema, imported rather than duplicated.
 # `palaia_hub.upstream.models` (and its package `__init__`) import nothing
 # from the rest of `palaia_hub` and nothing from fastmcp, precisely so this
@@ -57,6 +61,8 @@ _ENV_KEYS = (
     "log_format",
     "graceful_shutdown_timeout",
     "auth_enabled",
+    "channel",
+    "deployment",
 )
 
 DEFAULT_CONFIG_TEMPLATE = """\
@@ -307,6 +313,20 @@ curator:
 # hub trust a different signer. null uses the built-in default URL.
 market:
   index_url: null
+
+# SPEC-501: which release stream this hub tracks, and where it is running.
+# Neither is meant to be hand-edited on a normal install — the container
+# image bakes `channel` in at build time (baked from the image tag: `stable`
+# for a release, `beta` for a pre-release, `edge` for every `main` build),
+# and each app-store package sets `deployment` to its own platform. They
+# only decide what `GET /api/update/check` compares against and what the
+# dashboard's "Update available" banner tells you to do next — neither
+# changes how the hub itself runs.
+#   channel: edge | beta | stable
+#   deployment: compose | umbrel | casaos | runtipi | truenas |
+#               home_assistant | unknown
+channel: edge
+deployment: unknown
 """
 
 
@@ -765,6 +785,23 @@ class HubConfig(BaseModel):
     log_format: Literal["human", "json"] = "human"
     graceful_shutdown_timeout: float = 30.0
     auth_enabled: bool = True
+    #: Which release stream this hub tracks (SPEC-501). Baked into the
+    #: container image at build time (``PALAIA_CHANNEL``) from the GHCR tag
+    #: the image was published under — a release tag becomes ``stable`` (or
+    #: ``beta`` for a pre-release), a plain ``main`` build stays ``edge``.
+    #: ``GET /api/update/check`` compares this hub's own version against
+    #: this channel's latest published version, never a different one.
+    channel: Literal["edge", "beta", "stable"] = "edge"
+    #: Where this hub is running (SPEC-501) — purely descriptive, like
+    #: ``exposure`` above. Set by each app-store package's own manifest
+    #: (``PALAIA_DEPLOYMENT``); ``compose`` in the shipped
+    #: ``docker-compose.yml``. Only changes which update instructions the
+    #: dashboard's "Update available" banner shows — a store deployment
+    #: points at that store's own update mechanism by name instead of
+    #: pretending the container can update itself.
+    deployment: Literal[
+        "compose", "umbrel", "casaos", "runtipi", "truenas", "home_assistant", "unknown"
+    ] = "unknown"
     recall: RecallSettings = Field(default_factory=RecallSettings)
     oauth: OAuthSettings = Field(default_factory=OAuthSettings)
     curator: CuratorSettings = Field(default_factory=CuratorSettings)
@@ -859,12 +896,29 @@ def config_file_path(home: Path | None = None) -> Path:
     return (home or palaia_home()) / "config.yaml"
 
 
+def harden_config_file(path: Path) -> None:
+    """Narrow ``config.yaml`` and the hub home that holds it (SPEC-502).
+
+    ``config.yaml`` is documentation-shaped and mostly boring — but it is
+    also where an identity provider's ``client_secret`` is configured
+    (:class:`IdpSettings`), and where the issuer, bind address and exposure
+    URL of the hub are written down. Before this SPEC it was created with
+    the process umask (usually ``0644``) inside a ``0755`` home, so on a
+    shared machine any other account could read the provider secret. It now
+    gets the same owner-only posture as every other file the hub writes.
+    """
+    harden_directory(path.parent)
+    harden_file(path)
+
+
 def ensure_default_config(path: Path) -> None:
     """Write a commented default config file at ``path`` if none exists."""
     if path.exists():
+        harden_config_file(path)
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(DEFAULT_CONFIG_TEMPLATE, encoding="utf-8")
+    harden_config_file(path)
 
 
 def _read_file_values(path: Path) -> dict[str, Any]:

@@ -26,6 +26,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from ..security.files import harden_sqlite_database
+
 OUTBOX_RELATIVE_PATH = "hooks_outbox.sqlite3"
 
 DeliveryStatus = str  # "pending" | "delivered" | "dead"
@@ -97,10 +99,15 @@ class HookOutbox:
         self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.executescript(_SCHEMA_SQL)
         self._conn.commit()
+        # SPEC-502: queued payloads carry the event bodies a webhook will
+        # receive, and each row's signature is computed from a hook secret.
+        # Owner-only, write-ahead siblings included.
+        harden_sqlite_database(self.path)
 
     def close(self) -> None:
         with self._lock:
             self._conn.close()
+        harden_sqlite_database(self.path)
 
     # ------------------------------------------------------------- mutations
 

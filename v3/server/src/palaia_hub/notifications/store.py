@@ -16,6 +16,7 @@ import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
+from ..security.files import harden_sqlite_database
 from .models import NotificationRecord
 
 NOTIFICATIONS_RELATIVE_PATH = "notifications.sqlite3"
@@ -65,10 +66,15 @@ class NotificationStore:
         self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.executescript(_SCHEMA_SQL)
         self._conn.commit()
+        # SPEC-502: notification bodies quote whatever triggered them, which
+        # can be a note title or an automation payload. Owner-only, siblings
+        # included.
+        harden_sqlite_database(self.path)
 
     def close(self) -> None:
         with self._lock:
             self._conn.close()
+        harden_sqlite_database(self.path)
 
     def create(self, *, title: str, body: str = "", source: str = "") -> NotificationRecord:
         with self._lock:

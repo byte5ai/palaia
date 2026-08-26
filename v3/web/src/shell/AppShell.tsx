@@ -5,6 +5,7 @@ import { initialsFor, useSession } from "../lib/session";
 import { NAV_GROUPS } from "./navConfig";
 import { Sidebar } from "./Sidebar";
 import { type HealthState, Topbar } from "./Topbar";
+import { UpdateBanner } from "./UpdateBanner";
 
 function currentPageTitle(pathname: string): string {
   for (const group of NAV_GROUPS) {
@@ -51,6 +52,7 @@ export function AppShell() {
           onSignOut={signOut}
         />
         <div className="content">
+          <UpdateBanner />
           <Outlet context={stream} />
         </div>
       </div>

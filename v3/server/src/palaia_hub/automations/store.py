@@ -20,6 +20,7 @@ from typing import Any
 import yaml
 
 from ..config import palaia_home
+from ..security.files import harden_file
 from ..vault.atomic import atomic_write_text
 from .conditions import ConditionError, validate_condition
 from .models import Action, AutomationInfo, AutomationRecord, ConditionClause
@@ -108,6 +109,12 @@ class AutomationStore:
         }
         text = _HEADER + yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
         atomic_write_text(self.store_path, text)
+        # SPEC-502: `atomic_write_text` already lands a 0600 file (its temp
+        # file comes from `tempfile.mkstemp`), but the mode is then an
+        # accident of that helper rather than a stated property of this
+        # store — and an automation's action template can carry a webhook
+        # URL. Say it here, like the token and hook stores do.
+        harden_file(self.store_path)
 
     # ----------------------------------------------------------------- queries
 

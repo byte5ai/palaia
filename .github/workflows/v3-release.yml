@@ -16,6 +16,17 @@ on:
     # release actually contain v3 changes" — filtering by path risks
     # silently skipping a real release build. Layer caching (below) keeps
     # the cost of a v3-free `main` push (e.g. a v2 hotfix) low.
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: >-
+          Also publish this build under this channel tag (in addition to
+          whatever the triggering ref already produces below) — e.g.
+          re-promoting an existing commit to `stable`/`beta` without
+          cutting a new tag. Leave as 'none' for a plain manual rebuild.
+        type: choice
+        options: [none, stable, beta]
+        default: none
 
 permissions:
   contents: read
@@ -47,22 +58,42 @@ jobs:
 
       - name: Compute tags
         id: tags
+        # `channel` (SPEC-501) is baked into the image as PALAIA_CHANNEL —
+        # the running hub's own answer to "which release stream am I on",
+        # read back by `GET /api/update/check`. `annotation_version` is
+        # the value the OCI `org.opencontainers.image.version` annotation
+        # on the manifest gets (set below, in the build step): what that
+        # same check compares a channel's *latest* against. edge builds
+        # get an informational version only — the edge channel is never
+        # version-compared (palaia_hub.update.check_for_update).
         run: |
           short_sha="${GITHUB_SHA:0:12}"
           echo "short_sha=${short_sha}" >> "$GITHUB_OUTPUT"
           tags="${IMAGE}:edge-${short_sha}"
+          channel="edge"
+          annotation_version="0.0.0+edge.${short_sha}"
           if [[ "${GITHUB_REF}" == refs/heads/main ]]; then
             tags="${tags},${IMAGE}:edge"
           elif [[ "${GITHUB_REF}" == refs/tags/v3.* ]]; then
             version="${GITHUB_REF#refs/tags/v3.}"
             tags="${tags},${IMAGE}:v3.${version}"
+            annotation_version="${version}"
             if [[ "${version}" == *beta* || "${version}" == *rc* ]]; then
               tags="${tags},${IMAGE}:beta"
+              channel="beta"
             else
               tags="${tags},${IMAGE}:stable"
+              channel="stable"
             fi
           fi
+          manual_channel="${{ github.event.inputs.channel }}"
+          if [[ -n "${manual_channel}" && "${manual_channel}" != "none" ]]; then
+            tags="${tags},${IMAGE}:${manual_channel}"
+            channel="${manual_channel}"
+          fi
           echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+          echo "channel=${channel}" >> "$GITHUB_OUTPUT"
+          echo "annotation_version=${annotation_version}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push (amd64 + arm64)
         uses: docker/build-push-action@v6
@@ -72,6 +103,14 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            PALAIA_CHANNEL=${{ steps.tags.outputs.channel }}
+          # SPEC-501: the annotation `palaia_hub.update.check_for_update`
+          # reads back from the channel tag's manifest. `docker/build-
+          # push-action` >= v6 forwards this to `buildx build --annotation`
+          # (OCI Distribution Spec annotations, index- and manifest-level).
+          annotations: |
+            org.opencontainers.image.version=${{ steps.tags.outputs.annotation_version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

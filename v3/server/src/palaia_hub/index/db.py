@@ -23,6 +23,7 @@ import sqlite3
 import threading
 from pathlib import Path
 
+from ..security.files import harden_sqlite_database
 from .schema import (
     META_SCHEMA_VERSION,
     META_VAULT,
@@ -109,6 +110,12 @@ class IndexDatabase:
             for suffix in ("-wal", "-shm"):
                 self.path.with_name(self.path.name + suffix).unlink(missing_ok=True)
             self._open_once(force_create=True)
+        # SPEC-502: the index holds every note's text and its embeddings —
+        # the same content as the vault, in one queryable file. It is
+        # derived data, but it is not less sensitive than what it derives
+        # from, so it gets the same owner-only posture as every hub store
+        # (siblings included; the WAL carries committed rows too).
+        harden_sqlite_database(self.path)
 
     def _open_once(self, *, force_create: bool = False) -> str | None:
         conn = sqlite3.connect(self.path, check_same_thread=False)
@@ -165,6 +172,7 @@ class IndexDatabase:
         """Close the connection (the file stays; it is rebuildable anyway)."""
         with self.lock:
             self._close_conn()
+        harden_sqlite_database(self.path)
 
     # ------------------------------------------------------------------- meta
 

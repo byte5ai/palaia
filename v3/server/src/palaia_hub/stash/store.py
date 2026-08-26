@@ -39,6 +39,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from ..security.files import harden_sqlite_database
 from .models import StashEntry, StashError
 
 #: Default per-entry size limit (bytes of the JSON-encoded value).
@@ -110,10 +111,15 @@ class StashStore:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.executescript(_SCHEMA_SQL)
         self._conn.commit()
+        # SPEC-502: stash entries are hand-off payloads between agents —
+        # nothing about them is public. The database and its write-ahead
+        # siblings stay readable only by the account running the hub.
+        harden_sqlite_database(self.path)
 
     def close(self) -> None:
         with self._lock:
             self._conn.close()
+        harden_sqlite_database(self.path)
 
     # -- helpers -------------------------------------------------------
 

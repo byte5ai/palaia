@@ -70,13 +70,15 @@ from .market import (
 from .mcpb import build_mcpb_router
 from .messenger.service import MessengerService
 from .messenger_api import build_messenger_router
-from .modes import AuthRateLimitMiddleware, ModeAuditLog, build_modes_router
+from .modes import ADMIN_PREFIX, AuthRateLimitMiddleware, ModeAuditLog, build_modes_router
 from .notifications import NotificationStore, build_notifications_router
 from .oauth import AuthorizationServer, build_oauth_router
 from .oauth.login import SESSION_COOKIE
+from .security import SecurityHeadersMiddleware
 from .stash.service import StashService
 from .stash_api import build_stash_router
 from .static import mount_dashboard
+from .update import UpdateCheckResult, check_for_update
 from .upstream.api import (
     build_secret_change_hook,
     build_secrets_router,
@@ -547,14 +549,24 @@ def create_app(
     app.state.start_time = start_time
     app.state.event_bus = event_bus
     hub_home = home or palaia_home()
-    if config.mode in ("cloud", "open"):
-        # SPEC-205 deliverable #4: these endpoints become reachable off the
-        # operator's own network in these two modes — 'locked' has no such
-        # surface to throttle, so this middleware never exists there.
-        app.add_middleware(AuthRateLimitMiddleware)
-    # SPEC-401: the admin session gate. Added last, so it sits OUTSIDE the
-    # rate limiter: an unauthenticated caller is turned away before any
-    # other middleware does work for it. Mounted only when there is an
+    # Middleware order matters here and is the whole point of this block.
+    # Starlette builds the stack so that the LAST `add_middleware` call is
+    # the OUTERMOST layer, so these three are added innermost-first:
+    #
+    #   security headers  <- outermost, sees every response including 401s
+    #     failed-attempt limiter
+    #       admin session gate
+    #         the app's own routes                <- innermost
+    #
+    # SPEC-401 originally had the gate outermost, reasoning that an
+    # unauthenticated caller should be turned away before any other
+    # middleware does work for it. SPEC-502 reverses that pair on purpose:
+    # with the gate outside, its 401/403s never reached the limiter and
+    # session-cookie guessing was unthrottled (SPEC-401's own note, and
+    # `modes.rate_limit`'s docstring). The work the limiter does first is a
+    # dictionary lookup and a list trim.
+    #
+    # SPEC-401: the admin session gate. Mounted only when there is an
     # authorization server to resolve a session against — without one there
     # is no sign-in flow at all, and enforcing would lock the operator out
     # of their own hub with nothing to unlock it (see
@@ -566,6 +578,23 @@ def create_app(
             AdminSessionMiddleware,
             **build_admin_session_middleware_kwargs(oauth_server, config),
         )
+    if config.mode in ("cloud", "open"):
+        # SPEC-205 deliverable #4: these endpoints become reachable off the
+        # operator's own network in these two modes — 'locked' has no such
+        # surface to throttle, so this middleware never exists there.
+        # SPEC-502: `admin_prefix` is passed only when the gate above is
+        # actually mounted — with no gate there are no 401s from it to
+        # count, and throttling on a route's own 403 would be a different
+        # (unasked-for) policy.
+        app.add_middleware(
+            AuthRateLimitMiddleware,
+            admin_prefix=ADMIN_PREFIX if admin_session_enforced else None,
+        )
+    # SPEC-502 deliverable #2: the browser-hardening headers, outermost so
+    # they are on every response — including the ones the two middlewares
+    # above generate themselves, which are exactly the responses an attacker
+    # sees most of.
+    app.add_middleware(SecurityHeadersMiddleware)
     if gateway is not None:
         for path, mounted_app in gateway.mounts.items():
             app.mount(path, mounted_app)
@@ -624,8 +653,38 @@ def create_app(
         return {
             "version": __version__,
             "mode": config.mode,
+            "channel": config.channel,
             "uptime_seconds": round(time.monotonic() - start_time, 3),
             "sign_in": sign_in,
+        }
+
+    # SPEC-501 deliverable #3/#5: mounted unconditionally, like /api/health
+    # and /api/info above — every hub has a channel and a deployment, even
+    # a fresh checkout that has never touched config.yaml.
+    @app.get("/api/update/check")
+    async def update_check() -> dict[str, Any]:
+        """"Up to date" / "Update available" / "could not check" — never an
+        error page (this hub might simply be offline). See
+        :func:`palaia_hub.update.check_for_update` for what each state
+        means and how the remote version is read."""
+        result: UpdateCheckResult = await check_for_update(
+            channel=config.channel,
+            current_version=__version__,
+            deployment=config.deployment,
+        )
+        return {
+            "state": result.state,
+            "channel": result.channel,
+            "current_version": result.current_version,
+            "latest_version": result.latest_version,
+            "checked_at": result.checked_at,
+            "deployment": result.deployment,
+            "reason": result.reason,
+            "guidance": {
+                "kind": result.guidance.kind,
+                "message": result.guidance.message,
+                "commands": list(result.guidance.commands),
+            },
         }
 
     # SPEC-107: inbox visibility outside the MCP surface (deliverable #3).

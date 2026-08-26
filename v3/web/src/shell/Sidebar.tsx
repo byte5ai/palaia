@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
 
+import { api } from "../lib/api/client";
 import { __version__ } from "../version";
 import { NAV_GROUPS } from "./navConfig";
 
@@ -10,6 +12,23 @@ export function Sidebar({
   mode: "locked" | "cloud" | "open";
   vaultChangeCount: number;
 }) {
+  // SPEC-501 deliverable #5: the hub's own release channel, next to the
+  // dashboard build's own version above it. Quiet failure (stays `null`,
+  // the line is just shorter) — same rule as the update banner itself.
+  const [channel, setChannel] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .info()
+      .then((info) => {
+        if (!cancelled && typeof info.channel === "string") setChannel(info.channel);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <aside className="sidebar">
       <NavLink className="brand" to="/">
@@ -50,7 +69,10 @@ export function Sidebar({
             <strong style={{ fontWeight: 600 }}>{MODE_LABEL[mode]}</strong>
           </span>
         </div>
-        <div className="t-meta">v{__version__}</div>
+        <div className="t-meta">
+          v{__version__}
+          {channel ? ` · ${channel}` : ""}
+        </div>
       </div>
     </aside>
   );

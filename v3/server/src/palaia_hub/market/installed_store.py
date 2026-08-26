@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config import palaia_home
+from ..security.files import harden_file
 
 INSTALLED_RELATIVE_PATH = "market_installed.json"
 
@@ -98,7 +99,11 @@ class InstalledAddonStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(records), encoding="utf-8")
+        # SPEC-502: narrow the temp file *before* it becomes the real one,
+        # so there is no window in which the record set is world-readable.
+        harden_file(tmp)
         tmp.replace(self.path)
+        harden_file(self.path)
 
     def put(self, record: InstalledAddonRecord) -> None:
         with self._lock:

@@ -1,0 +1,13 @@
+services:
+  hub:
+    image: ghcr.io/byte5ai/palaia-hub:stable
+    environment:
+      - PALAIA_MODE=locked
+      - PALAIA_DEPLOYMENT=runtipi
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+    x-runtipi:
+      is_main: true
+      internal_port: 8420
+x-runtipi:
+  schema_version: 2

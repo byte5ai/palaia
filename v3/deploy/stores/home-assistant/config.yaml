@@ -1,0 +1,43 @@
+# Home Assistant add-on config (SPEC-501 deliverable #2). See
+# EVALUATION.md in this directory for the full evaluation this config is
+# the "positive" half of.
+name: palaia
+version: "stable"
+slug: palaia
+description: Shared memory for every AI assistant you use
+url: https://github.com/byte5ai/palaia
+# HA's names for the two architectures the release workflow already
+# publishes (v3-release.yml: linux/amd64, linux/arm64).
+arch:
+  - amd64
+  - aarch64
+# Points at the same published image every other channel in this SPEC
+# uses — no separate add-on build. `version` above must match this tag,
+# per HA's own `image` field contract.
+image: ghcr.io/byte5ai/palaia-hub
+startup: application
+boot: auto
+# See EVALUATION.md's "What doesn't" section: trades Supervisor-managed
+# port isolation for working mDNS, the same tradeoff the plain compose
+# deployment documents (and defaults to *not* taking) in
+# v3/deploy/README.md.
+host_network: true
+# No `map:` entry: HA gives every add-on its own persistent `/data`
+# automatically (see EVALUATION.md) — nothing to opt into.
+#
+# `PALAIA_MODE` is intentionally static here, not wired to the `mode`
+# option below — HA's `environment:` values are fixed at install time,
+# and templating one from `options.mode` needs the add-on's own run
+# script to read `/data/options.json` (bashio) and export it, which this
+# evaluation does not add (see EVALUATION.md's honest gap on this). The
+# `mode` option still shows up in the add-on's Configuration tab so an
+# operator sees the setting exists; change it from palaia's own dashboard
+# (Access mode wizard) once the add-on is running, the same as any other
+# deployment.
+options:
+  mode: locked
+schema:
+  mode: "list(locked|cloud|open)"
+environment:
+  PALAIA_MODE: locked
+  PALAIA_DEPLOYMENT: home_assistant

@@ -136,7 +136,45 @@ itself a failure (status ≥ 400). A legitimate burst of successful traffic
 "mcp-hub daily re-login incident" this hub must not reproduce — is never
 throttled; repeated *failed* logins, token requests or registrations are.
 Covers `/oauth/token`, `/oauth/login`, `/oauth/register`, `/oauth/revoke`,
-and `POST /api/auth/tokens`.
+`/oauth/logout`, and `POST /api/auth/tokens`.
+
+**SPEC-502 added two things to this** (see
+[security/threat-model.md](security/threat-model.md) §5):
+
+- **The admin surface is covered too.** SPEC-401's session gate refuses an
+  unauthenticated caller with a 401, and those refusals now fill a bucket
+  of their own — one shared bucket per caller for the whole of `/api/*`,
+  so walking routes does not buy ten fresh tries per route. `/api/health`
+  and `/api/info` are never throttled: the sign-in page reads them, and a
+  locked-out operator must still be able to see that the hub is alive.
+- **The caller is identified correctly behind a reverse proxy.** In the
+  packaged image nginx is the only public listener and the hub sees
+  loopback for every request, which used to collapse every caller into one
+  bucket — no per-attacker limit, and one attacker locking out everyone.
+  The bucket key now reads `X-Forwarded-For` **only** when the immediate
+  peer is loopback, and takes its **last** entry — the one the proxy
+  appended, which a caller cannot forge (`palaia_hub.security.client_ip`).
+
+## 5b. Browser-hardening headers, and HSTS
+
+Every response the hub serves carries `X-Content-Type-Options: nosniff`,
+`Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`,
+`Cross-Origin-Opener-Policy: same-origin`, a `Permissions-Policy`, and a
+content-security policy chosen per surface — a strict one for the
+dashboard, a stricter "nothing at all" one for the sign-in pages (which
+carry no script), and a deny-everything one for `/api/*` and `/mcp/*`,
+which nothing should ever render (`palaia_hub.security.headers`). The
+packaged image's nginx repeats the same set on the static dashboard it
+serves directly.
+
+**`Strict-Transport-Security` is sent only when the request actually
+arrived over TLS** — learned from `X-Forwarded-Proto` behind a tunnel or
+reverse proxy, or from the connection itself. This is the one hardening
+header that must not be a default: a browser that pinned
+`http://palaia.local` to HTTPS could not reach a LAN hub at all. So it
+appears exactly when it should — the moment you put a tunnel in front of
+the hub — and never before. If you terminate TLS in your own reverse proxy,
+make sure it forwards `X-Forwarded-Proto`, or the header will not be sent.
 
 ## 6. The Open-mode hardening checklist
 
