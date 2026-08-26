@@ -6,6 +6,8 @@ __pycache__/
 .ruff_cache/
 .pytest_cache/
 *.egg-info/
+# SPEC-502: hypothesis's example database, written by the parser fuzz.
+.hypothesis/
 
 # Node / web
 web/node_modules/

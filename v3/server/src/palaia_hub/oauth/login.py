@@ -52,6 +52,13 @@ logger = logging.getLogger("palaia_hub.oauth.login")
 SESSION_COOKIE = "palaia_oauth_session"
 CSRF_COOKIE = "palaia_oauth_csrf"
 CSRF_FIELD = "csrf_token"
+#: The request header the double-submit token is echoed in by anything that
+#: is not an HTML form — the dashboard's API client, and the sign-out call.
+#: Lives here, with the cookie and the form field it is paired against, so
+#: the whole double-submit contract reads in one place;
+#: :mod:`palaia_hub.admin_session` re-exports it under the same name for the
+#: middleware that enforces it.
+CSRF_HEADER = "x-palaia-csrf"
 
 #: How long a browser login session lives. Short by web-app standards
 #: because its only job is to carry the operator from ``/login`` back to
@@ -185,6 +192,7 @@ def new_csrf_token() -> str:
 __all__ = [
     "CSRF_COOKIE",
     "CSRF_FIELD",
+    "CSRF_HEADER",
     "DEFAULT_SESSION_TTL_SECONDS",
     "LOCKOUT_SECONDS",
     "MAX_FAILED_ATTEMPTS",

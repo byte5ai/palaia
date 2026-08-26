@@ -675,15 +675,24 @@ export const api = {
    * whose own data happens to come from a sign-in-free endpoint. */
   session: () => request<SessionState>("/api/session"),
   /** End the session and drop its cookies. Not under `/api/*`: signing out
-   * is part of the sign-in flow itself, which lives at `/oauth/logout`. */
-  signOut: () =>
-    fetch(`${API_BASE}/oauth/logout`, {
+   * is part of the sign-in flow itself, which lives at `/oauth/logout`.
+   *
+   * Carries the double-submit token like every other state-changing call:
+   * SPEC-502 put one on `/oauth/logout` too, because it sits outside the
+   * `/api/*` prefix the session middleware covers and was therefore the one
+   * state-changing surface any page on the internet could trigger. */
+  signOut: () => {
+    const headers: Record<string, string> = { Accept: "application/json" };
+    const token = readCookie(CSRF_COOKIE);
+    if (token) headers[CSRF_HEADER] = token;
+    return fetch(`${API_BASE}/oauth/logout`, {
       method: "POST",
-      headers: { Accept: "application/json" },
+      headers,
     }).then((response) => {
       if (!response.ok)
         throw new ApiError("/oauth/logout", response.status, undefined);
-    }),
+    });
+  },
   /** Same-origin URL for the SSE stream — passed straight to `EventSource`
    * by `useEventStream` (./events.ts), never fetched with `fetch`. */
   eventsUrl: () => `${API_BASE}/api/events`,

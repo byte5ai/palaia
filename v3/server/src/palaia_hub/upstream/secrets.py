@@ -15,9 +15,11 @@ a log line or a REST response.
   overwrites an existing key.
 
 Both are re-narrowed on every load via
-:func:`palaia_hub.oauth.keys.enforce_private_mode` — the exact pattern
-SPEC-203's signing key established, reused rather than re-derived (the SPEC
-names that reuse explicitly).
+:func:`palaia_hub.security.files.enforce_private_mode` — the pattern
+SPEC-203's signing key established, which SPEC-502 moved into
+:mod:`palaia_hub.security.files` so every store in the hub shares one copy
+of it. The database's write-ahead siblings are narrowed with it (SPEC-502
+finding: they were not, and they carry the same pages).
 
 **The never-return-values rule.** :meth:`SecretStore.get` exists because the
 hub itself must decrypt a value to build an upstream's ``Authorization``
@@ -43,7 +45,13 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from ..oauth.keys import DIR_MODE, FILE_MODE, enforce_private_mode
+from ..security.files import (
+    DIR_MODE,
+    FILE_MODE,
+    enforce_private_mode,
+    harden_directory,
+    harden_sqlite_database,
+)
 
 logger = logging.getLogger("palaia_hub.upstream.secrets")
 
@@ -143,7 +151,6 @@ class SecretStore:
         self._key = load_or_create_key(self._home)
         self._fernet = Fernet(self._key)
         self._path = self._home / SECRETS_DB_NAME
-        existed = self._path.exists()
         self._conn = sqlite3.connect(self._path, check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute(
@@ -157,15 +164,14 @@ class SecretStore:
             """
         )
         self._conn.commit()
-        if not existed:
-            # WAL mode leaves -wal/-shm siblings; narrowing the main file is
-            # what matters (the sidecars carry the same pages and are
-            # created with the same umask-independent mode by SQLite as the
-            # db itself once the db is 0600 — re-narrowed on every open
-            # below regardless).
-            enforce_private_mode(self._path, FILE_MODE)
-        enforce_private_mode(self._path, FILE_MODE)
-        enforce_private_mode(self._home, DIR_MODE)
+        # SPEC-502 finding: the paragraph that used to stand here claimed
+        # SQLite creates the ``-wal``/``-shm`` siblings with the database's
+        # own mode. It does not — it creates them under the process umask,
+        # so this store's ciphertext pages sat in a world-readable
+        # ``secrets.sqlite3-wal`` next to a ``0600`` database until the next
+        # checkpoint. :func:`~palaia_hub.security.files.
+        # harden_sqlite_database` narrows the whole set, here and on close.
+        self._harden()
 
     # ------------------------------------------------------------------ API
 
@@ -250,9 +256,18 @@ class SecretStore:
         """Whether a secret called ``name`` exists."""
         return self.info(name) is not None
 
+    def _harden(self) -> None:
+        """Re-narrow the database, its write-ahead siblings and the home."""
+        harden_sqlite_database(self._path)
+        harden_directory(self._home)
+
     def close(self) -> None:
         """Close the SQLite handle."""
         self._conn.close()
+        # Closing checkpoints and removes the ``-wal``/``-shm`` pair; a
+        # rollback ``-journal`` can appear in its place on some platforms,
+        # so the whole set is narrowed again here rather than assumed gone.
+        self._harden()
 
 
 __all__ = [

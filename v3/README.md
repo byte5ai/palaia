@@ -17,6 +17,8 @@ v2 hotfixes happen on the `v2-maintenance` branch.
 | [decisions/](decisions/) | Architecture Decision Records (ADRs) for v3 |
 | [docs/design/](docs/design/) | UX north star: design system, principles, and HTML mockups of the key screens |
 | [docs/external-servers.md](docs/external-servers.md) | Connecting other people's MCP servers, and where their credentials live |
+| [SECURITY.md](SECURITY.md) | **Supported versions, and how to report a vulnerability** |
+| [docs/security/](docs/security/) | Threat model (as built), the brief for an external review, and the dependency policy |
 
 ## Dev setup
 

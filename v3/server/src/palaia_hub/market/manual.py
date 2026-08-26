@@ -15,6 +15,7 @@ import threading
 from pathlib import Path
 
 from ..config import palaia_home
+from ..security.files import harden_sqlite_database
 from .models import ManualEntryCreate, MarketEntry, SourceLocator
 
 DB_RELATIVE_PATH = "market_manual.sqlite3"
@@ -59,10 +60,14 @@ class ManualEntryStore:
         with self._lock:
             self._conn.executescript(_SCHEMA_SQL)
             self._conn.commit()
+        # SPEC-502: a manually added entry names an internal server and the
+        # locator to reach it. Owner-only, siblings included.
+        harden_sqlite_database(self.db_path)
 
     def close(self) -> None:
         with self._lock:
             self._conn.close()
+        harden_sqlite_database(self.db_path)
 
     def add(self, payload: ManualEntryCreate) -> MarketEntry:
         entry_dict = payload.model_dump(mode="json")

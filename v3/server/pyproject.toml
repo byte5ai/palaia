@@ -43,6 +43,10 @@ dev = [
     "mypy>=1.11",
     "types-PyYAML>=6.0",
     "anyio>=4",
+    # SPEC-502: property-based fuzzing of the vault-format parser
+    # (server/tests/security/test_parser_fuzz.py), seeded from the
+    # conformance corpus and bounded by an explicit hypothesis profile.
+    "hypothesis>=6.100",
     # SPEC-406: the skill format lint (server/tests/clients/skill_lint.py)
     # and the marketplace schema-parity test import the add-on SDK's
     # jargon blocklist and manifest model — see those modules' docstrings

@@ -33,6 +33,7 @@ import base64
 import binascii
 import html
 import logging
+from secrets import compare_digest
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -40,7 +41,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from .errors import OAuthError
-from .login import CSRF_COOKIE, CSRF_FIELD, SESSION_COOKIE, new_csrf_token
+from .login import CSRF_COOKIE, CSRF_FIELD, CSRF_HEADER, SESSION_COOKIE, new_csrf_token
 from .models import ClientInfo
 from .service import (
     AUTHORIZE_PATH,
@@ -397,7 +398,37 @@ def build_oauth_router(server: AuthorizationServer) -> APIRouter:
 
     @router.post(LOGOUT_PATH)
     async def logout(request: Request) -> Response:
-        """Drop the browser session (the sign-in half of a revocation UI)."""
+        """Drop the browser session (the sign-in half of a revocation UI).
+
+        Double-submit protected like every other state-changing call
+        (SPEC-502): signing out lives at ``/oauth/logout``, outside the
+        ``/api/*`` prefix :class:`palaia_hub.admin_session.
+        AdminSessionMiddleware` covers, so before this SPEC any page on the
+        internet could sign the operator out of their own hub with a form
+        post. That is a nuisance rather than a breach — but it is a
+        state-changing surface with no token on it, and the SPEC's rule is
+        that there are none of those.
+
+        The token is accepted from the ``X-Palaia-CSRF`` header (what the
+        dashboard's API client sends) or from a ``csrf_token`` form field
+        (what a plain HTML sign-out button would send), and must equal the
+        cookie the sign-in flow set.
+        """
+        cookie_csrf = request.cookies.get(CSRF_COOKIE, "")
+        submitted = request.headers.get(CSRF_HEADER, "")
+        if not submitted and "form" in request.headers.get("content-type", ""):
+            submitted = str(dict(await request.form()).get(CSRF_FIELD, "") or "")
+        if not cookie_csrf or not submitted or not compare_digest(submitted, cookie_csrf):
+            return JSONResponse(
+                {
+                    "detail": (
+                        "This sign-out request could not be confirmed as coming "
+                        "from the dashboard. Please reload the page and try again."
+                    )
+                },
+                status_code=403,
+                headers=NO_STORE,
+            )
         await asyncio.to_thread(server.sign_out, request.cookies.get(SESSION_COOKIE))
         response = Response(status_code=204, headers=NO_STORE)
         response.delete_cookie(SESSION_COOKIE, path="/")

@@ -184,3 +184,63 @@ jobs:
 
       - name: build
         run: npm run build
+
+  dependency-audit:
+    # SPEC-502 deliverable #2, the dependency half. Reports without gating,
+    # on purpose: a third party publishing an advisory overnight must not
+    # turn every branch red until someone wakes up, because a build that is
+    # red for reasons outside the change trains people to ignore it. What
+    # gates instead is the policy in v3/docs/security/dependencies.md — a
+    # high/critical advisory in something a user actually runs blocks the
+    # next release, checked at release time with a human present.
+    #
+    # `uv lock --check` is the exception and DOES gate: a manifest edited
+    # without re-locking is this repository's own mistake, not the world's.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.8.x"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: the lockfile matches the manifests
+        working-directory: v3
+        run: uv lock --check
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: python advisories (runtime dependencies)
+        working-directory: v3
+        continue-on-error: true
+        run: |
+          uv export --no-hashes --no-dev -o /tmp/runtime-reqs.txt
+          uv run --with pip-audit pip-audit --no-deps --disable-pip -r /tmp/runtime-reqs.txt
+
+      - name: python advisories (including development dependencies)
+        working-directory: v3
+        continue-on-error: true
+        run: |
+          uv export --no-hashes -o /tmp/all-reqs.txt
+          uv run --with pip-audit pip-audit --no-deps --disable-pip -r /tmp/all-reqs.txt
+
+      - name: node advisories (dashboard)
+        working-directory: v3/web
+        continue-on-error: true
+        run: |
+          npm ci
+          npm audit
+
+      - name: node advisories (bundle build tooling)
+        working-directory: v3/tools/build-mcpb
+        continue-on-error: true
+        run: |
+          npm ci
+          npm audit

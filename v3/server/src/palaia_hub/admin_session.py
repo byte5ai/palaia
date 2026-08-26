@@ -72,7 +72,7 @@ from secrets import compare_digest
 from typing import TYPE_CHECKING, Any
 
 from .oauth.keys import OAUTH_DIR_NAME
-from .oauth.login import CSRF_COOKIE, SESSION_COOKIE
+from .oauth.login import CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE
 from .oauth.store import DATABASE_FILE
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -84,11 +84,12 @@ Receive = Callable[[], Awaitable[dict[str, Any]]]
 Send = Callable[[dict[str, Any]], Awaitable[None]]
 ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 
-#: The header the dashboard echoes its CSRF cookie in. Named, not guessed:
-#: :mod:`palaia_hub.oauth.routes` sets the cookie and ``web/src/lib/api/
-#: client.ts`` sends the header, and both read the name from their own side
-#: of this contract.
-CSRF_HEADER = "x-palaia-csrf"
+#: The header the dashboard echoes its CSRF cookie in, re-exported from
+#: :mod:`palaia_hub.oauth.login` — which owns the whole double-submit
+#: contract (cookie, form field, header) since SPEC-502 put a token on
+#: ``/oauth/logout`` too. Named, not guessed: ``web/src/lib/api/client.ts``
+#: sends this header, and both sides read the name from their own side of
+#: the contract.
 
 #: HTTP methods that change nothing and therefore need no CSRF token.
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})

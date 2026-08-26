@@ -36,11 +36,20 @@ if docker inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
 fi
 
 echo "palaia install: starting ${CONTAINER_NAME} on port ${PORT} ..."
+# The hardening flags mirror docker-compose.yml's `security_opt`/`cap_drop`/
+# `read_only`/`tmpfs` block (SPEC-502) — the one-liner and the compose file
+# must not give different containers different postures. See that file for
+# why each one is safe here.
 docker run -d \
     --name "${CONTAINER_NAME}" \
     -p "${PORT}:8420" \
     -v "${VOLUME}:/data" \
     --restart unless-stopped \
+    --security-opt no-new-privileges:true \
+    --cap-drop ALL \
+    --read-only \
+    --tmpfs /tmp \
+    --tmpfs /run \
     "${IMAGE}"
 
 echo ""

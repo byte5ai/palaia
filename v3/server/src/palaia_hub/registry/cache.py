@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..security.files import harden_directory, harden_file
+
 
 @dataclass(frozen=True, slots=True)
 class CacheEntry:
@@ -34,6 +36,7 @@ class DiskCache:
     def __init__(self, cache_dir: Path) -> None:
         self.cache_dir = cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        harden_directory(self.cache_dir)
 
     def _path(self, key: str) -> Path:
         digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
@@ -60,7 +63,9 @@ class DiskCache:
         }
         tmp_path = path.with_suffix(".tmp")
         tmp_path.write_text(json.dumps(envelope), encoding="utf-8")
+        harden_file(tmp_path)  # SPEC-502: narrowed before it becomes the real file
         tmp_path.replace(path)
+        harden_file(path)
 
 
 __all__ = ["CacheEntry", "DiskCache"]

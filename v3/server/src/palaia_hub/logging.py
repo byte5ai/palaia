@@ -47,9 +47,19 @@ _KV_SECRET_RE = re.compile(
 # name, so a JSON body (`{"refresh_token": "..."}`) is covered as well as a
 # query string (`refresh_token=...`) — token responses are JSON, and a log
 # line that echoed one would otherwise slip through.
+#
+# SPEC-502 finding: ``session_secret`` — the credential the session
+# directory mints (SPEC-402) and the messenger authenticates every send
+# with — matched *none* of the patterns above. ``\bsecret\b`` cannot match
+# inside ``session_secret`` (``_`` is a word character), so a log line
+# reading ``session_secret=...`` passed through untouched. It is named
+# explicitly here, with its siblings, rather than by loosening ``secret``
+# into a substring match: a substring rule would also mask
+# ``secret_hash=``/``has_secret=True``, which are exactly the diagnostics an
+# operator needs to read.
 _OAUTH_SECRET_RE = re.compile(
     r"(?i)\b(code|code_verifier|client_secret|refresh_token|access_token|id_token"
-    r"|assertion|session|csrf_token)\b"
+    r"|assertion|session|csrf_token|session_secret|secret_half|token_secret)\b"
     r"([\"']?\s*[:=]\s*)"
     r"([\"'])?"
     r"([^\s\"',}&]{3,})"

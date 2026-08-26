@@ -314,7 +314,10 @@ async def test_signing_out_drops_the_session(harness: Harness) -> None:
                 },
             )
             session = http.cookies["palaia_oauth_session"]
-            response = await http.post("/oauth/logout")
+            response = await http.post(
+                "/oauth/logout",
+                headers={"X-Palaia-CSRF": http.cookies["palaia_oauth_csrf"]},
+            )
 
     assert response.status_code == 204
     assert harness.store.get_login_session(session, harness.clock()) is None
@@ -378,7 +381,10 @@ async def test_signing_out_drops_both_cookies(harness: Harness) -> None:
                     "next": "",
                 },
             )
-            response = await http.post("/oauth/logout")
+            response = await http.post(
+                "/oauth/logout",
+                headers={"X-Palaia-CSRF": http.cookies["palaia_oauth_csrf"]},
+            )
 
     assert response.status_code == 204
     cleared = [
