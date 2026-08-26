@@ -42,6 +42,13 @@ EventName = Literal[
     "hub.started",
     "hub.mode_changed",
     "client.connected",
+    # SPEC-504: the wizard's "first vault" step, fired once per
+    # `POST /api/vaults` call (dashboard_api.build_dashboard_router). Named
+    # `memory.vault.*` (not `vault.*`) to sit next to `memory.entry.*` in
+    # this vocabulary — both describe the same "memory" concept the rest of
+    # the public API talks about. Additive to the v1 vocabulary, same rule
+    # as every other addition below.
+    "memory.vault.created",
     "memory.entry.created",
     "memory.entry.updated",
     "memory.entry.deleted",

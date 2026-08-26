@@ -66,13 +66,20 @@ class SimulatedClient:
         *,
         client_name: str = "simulated-client",
         client_version: str = "0.0.0",
+        token: str | None = None,
     ) -> None:
         self._url = url
         self._client_info = Implementation(name=client_name, version=client_version)
         self._client: Client[Any] | None = None
+        #: A `plt_...` bearer token (SPEC-108), for scenarios against a hub
+        #: with auth enabled — fastmcp's `Client(auth=<str>)` wraps a plain
+        #: string in `BearerAuth` itself, so this is just threaded through.
+        self._token = token
 
     async def __aenter__(self) -> SimulatedClient:
-        client: Client[Any] = Client(self._url, client_info=self._client_info)
+        client: Client[Any] = Client(
+            self._url, client_info=self._client_info, auth=self._token
+        )
         await client.__aenter__()
         self._client = client
         return self

@@ -48,6 +48,8 @@ from .events import (
     start_background_tasks,
     stop_background_tasks,
 )
+from .funnel import FunnelStore, wire_funnel_tracking
+from .funnel_api import build_funnel_router
 from .gateway import DynamicGateway, GatewayASGI, VaultService
 from .gateway.api import build_gateway_profiles_router
 from .gateway.apps.hub_status_app import HubStatusDeps, build_hub_status_server
@@ -549,6 +551,15 @@ def create_app(
     app.state.start_time = start_time
     app.state.event_bus = event_bus
     hub_home = home or palaia_home()
+
+    # SPEC-504: local-only first-run funnel instrumentation (MASTERPLAN
+    # §13's time-to-first-memory metric, §10's "no data leaves the host"
+    # principle — see palaia_hub.funnel's module docstring for the privacy
+    # contract). Always wired, the same "every hub has one" posture as
+    # ModeAuditLog below: a plain in-process bus consumer, nothing about
+    # the bus or the events it reacts to knows the funnel exists.
+    funnel_store = FunnelStore(hub_home)
+    wire_funnel_tracking(event_bus, funnel_store)
     # Middleware order matters here and is the whole point of this block.
     # Starlette builds the stack so that the LAST `add_middleware` call is
     # the OUTERMOST layer, so these three are added innermost-first:
@@ -725,8 +736,13 @@ def create_app(
         )
     )
 
+    # SPEC-504: always mounted, same posture as the modes router above — a
+    # hub has a funnel store from its first boot, whether or not a vault
+    # exists yet.
+    app.include_router(build_funnel_router(funnel_store))
+
     if token_store is not None:
-        app.include_router(build_auth_router(token_store))
+        app.include_router(build_auth_router(token_store, dynamic_gateway=dynamic_gateway))
 
     # SPEC-203: the OAuth surface goes at the app root (RFC 8414/9728 fix the
     # `.well-known` paths there) and before the dashboard mount, which claims
@@ -764,6 +780,7 @@ def create_app(
                 indexes=indexes,
                 dynamic_gateway=dynamic_gateway,
                 curator=curator_wiring,
+                event_bus=event_bus,
             )
         )
 

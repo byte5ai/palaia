@@ -47,6 +47,7 @@ from pydantic import BaseModel, ConfigDict
 
 from .curator.profile import CURATOR_PROFILE_PATH
 from .curator.wiring import CuratorWiring
+from .events.bus import EventBus, publish_event
 from .gateway.config import DEFAULT_GATEWAY_PROFILE, VaultMountConfig
 from .gateway.dynamic import DynamicGateway
 from .gateway.vault_protocol import (
@@ -252,11 +253,17 @@ def build_dashboard_router(
     indexes: dict[str, VaultIndex] | None = None,
     dynamic_gateway: DynamicGateway | None = None,
     curator: CuratorWiring | None = None,
+    event_bus: EventBus | None = None,
 ) -> APIRouter:
     """Build the wizard + explorer router, bound to ``registry``.
 
     Args:
         registry: as before this SPEC.
+        event_bus: given, a successful ``POST /api/vaults`` also publishes
+            ``memory.vault.created`` (SPEC-504) — the wizard-step timestamp
+            the local-only funnel store (:mod:`palaia_hub.funnel`) keys its
+            "time to first vault" off of. Omitted, vault creation behaves
+            exactly as before this parameter existed.
         indexes: the hub's ``{vault_key: VaultIndex}`` mapping (SPEC-210).
             Given, a vault created here also gets a real
             :class:`~palaia_hub.index.VaultIndex` opened and added to this
@@ -317,6 +324,15 @@ def build_dashboard_router(
             if curator is not None:
                 profile_paths.append(CURATOR_PROFILE_PATH)
             await dynamic_gateway.add_vault(mount, service, profile_paths=profile_paths)
+
+        if event_bus is not None:
+            publish_event(
+                event_bus,
+                "memory.vault.created",
+                origin="dashboard",
+                vault=body.key,
+                data={"key": body.key, "purpose": body.purpose},
+            )
 
         return _vault_out(body.key, engine.info())
 

@@ -85,7 +85,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 
@@ -161,6 +161,23 @@ class DynamicGateway:
             ``config.yaml`` at startup does.
         token_verifiers: optional per-profile-path verifier, same contract
             as :func:`~.build.build_gateway`.
+        auth_provider_factory: SPEC-504 first-run funnel audit fix. Given,
+            :meth:`add_vault` calls it for any profile path it is about to
+            mount for the first time and no verifier already covers (a
+            brand-new path — the common "hub had zero vaults, wizard just
+            created the first one" case ``token_verifiers`` above cannot
+            cover, because that path did not exist yet when this gateway
+            was constructed). Its result, when not ``None``, is cached into
+            ``self._token_verifiers`` exactly like an entry that had been
+            in the constructor's own ``token_verifiers`` all along — every
+            later rebuild of that path reuses the same verifier, never
+            calls the factory again. Omitted, a genuinely new path mounts
+            with whatever ``token_verifiers`` already had for it (``None``
+            if nothing did) — the pre-SPEC-504 behavior, which is how a
+            hub with no auth configured at all (``auth_enabled: false``)
+            is meant to keep working: the factory itself is what decides
+            "nothing to verify with" versus "a verifier exists", not this
+            class.
         profile_middleware: optional per-profile-path fastmcp middleware,
             same contract as :func:`~.build.build_gateway` — re-applied on
             every rebuild of that profile (SPEC-206: the curator profile's
@@ -196,6 +213,7 @@ class DynamicGateway:
         *,
         mode: str = "locked",
         token_verifiers: Mapping[str, TokenVerifier] | None = None,
+        auth_provider_factory: Callable[[str], TokenVerifier | None] | None = None,
         profile_middleware: Mapping[str, Sequence[Middleware]] | None = None,
         stash_service: StashService | None = None,
         upstream_service: UpstreamService | None = None,
@@ -208,6 +226,7 @@ class DynamicGateway:
         self._vault_servers: dict[str, FastMCP] = _build_vault_servers(config, self._vault_services)
         self._mode = mode
         self._token_verifiers: dict[str, TokenVerifier] = dict(token_verifiers or {})
+        self._auth_provider_factory = auth_provider_factory
         self._profile_middleware: dict[str, Sequence[Middleware]] = dict(
             profile_middleware or {}
         )
@@ -301,6 +320,26 @@ class DynamicGateway:
             self._config = self._config.model_copy(
                 update={"profiles": list(profiles_by_path.values())}
             )
+
+            # SPEC-504 first-run funnel audit fix: a profile path that has
+            # never been mounted before (the overwhelmingly common case for
+            # the very first vault a fresh install's wizard creates — see
+            # this class's docstring on `auth_provider_factory`) has no
+            # entry in `self._token_verifiers` yet, because it did not
+            # exist when this gateway — or the last config-driven rebuild
+            # that repopulated `token_verifiers` — was built. Left
+            # unfilled, `_request_mount` below would mount it with no
+            # verifier at all, silently serving it unauthenticated even on
+            # a hub with `auth_enabled: true` (the default in every mode,
+            # not only cloud/open). Ask the factory once per path; cache
+            # whatever it returns so every later rebuild of this same path
+            # reuses it without calling the factory again.
+            if self._auth_provider_factory is not None:
+                for path in profile_paths:
+                    if path not in self._token_verifiers:
+                        verifier = self._auth_provider_factory(path)
+                        if verifier is not None:
+                            self._token_verifiers[path] = verifier
 
             for path in profile_paths:
                 await self._request_mount(profiles_by_path[path])
