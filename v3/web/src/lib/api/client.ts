@@ -148,6 +148,19 @@ export interface InboxStatus {
   last_captured_at: string | null;
 }
 
+/** SPEC-504 deliverable #3: the local-only first-run funnel's read side.
+ * Every `*_at` field is a Unix timestamp (seconds) or `null` until that
+ * step happens on this hub — see `palaia_hub.funnel`'s module docstring
+ * for why this is never transmitted anywhere beyond this one hub. */
+export interface FunnelStatus {
+  hub_started_at: number | null;
+  vault_created_at: number | null;
+  client_connected_at: number | null;
+  first_memory_at: number | null;
+  time_to_first_memory_seconds: number | null;
+  time_to_first_memory_display: string | null;
+}
+
 /** SPEC-210 deliverable #3: one vault's index status, as
  * `palaia_hub.dashboard_api.IndexStatusOut` returns it. */
 export interface EmbedStatus {
@@ -748,6 +761,9 @@ export const api = {
     getJson<InboxStatus>(`/api/vaults/${vaultKey}/inbox_status`),
   indexStatus: (vaultKey: string) =>
     getJson<IndexStatus>(`/api/vaults/${vaultKey}/index_status`),
+
+  // ---- SPEC-504: the local-only first-run funnel ----
+  funnelStatus: () => getJson<FunnelStatus>("/api/funnel/status"),
 
   // ---- SPEC-305: the tool-profile editor ----
   listGatewayProfiles: () => getJson<GatewayProfile[]>("/api/gateway/profiles"),

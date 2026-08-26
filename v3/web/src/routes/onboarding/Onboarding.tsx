@@ -26,14 +26,23 @@
  *   they replace.
  */
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { ConnectPanel } from "../../components/ConnectPanel";
 import { Field, Input } from "../../components/Field";
-import { api, ApiError } from "../../lib/api/client";
+import { api } from "../../lib/api/client";
 import type { HubMode } from "../../lib/clients";
 import { guidedClients } from "../../lib/clients";
-import { ArrowRightIcon, CheckIcon, WarningIcon } from "../../shell/icons";
+import { docsUrl } from "../../lib/docs";
+import { describeApiError } from "../../lib/errors";
+import {
+  ArrowRightIcon,
+  CheckIcon,
+  ClientsIcon,
+  LinkIcon,
+  MarketplaceIcon,
+  WarningIcon,
+} from "../../shell/icons";
 
 const STEP_NAMES = [
   { name: "Owner account", hint: "who administers this hub" },
@@ -130,11 +139,7 @@ export function Onboarding() {
       });
       setStep(4);
     } catch (err) {
-      setCreateError(
-        err instanceof ApiError && (err.body as { detail?: string } | undefined)?.detail
-          ? String((err.body as { detail?: string }).detail)
-          : "Could not create the vault — check the hub's own logs.",
-      );
+      setCreateError(describeApiError(err));
     } finally {
       setCreating(false);
     }
@@ -390,6 +395,35 @@ export function Onboarding() {
                 client={selectedClient}
                 defaultProfile="default"
               />
+              <div className="card" style={{ marginTop: "var(--space-4)" }}>
+                <div className="card__body stack stack--3">
+                  <p className="t-over">What's next</p>
+                  <div className="row row--wrap" style={{ gap: 8 }}>
+                    <Link className="btn" to="/clients">
+                      <ClientsIcon className="icon--sm" />
+                      Connect a second AI
+                    </Link>
+                    <Link className="btn" to="/marketplace">
+                      <MarketplaceIcon className="icon--sm" />
+                      Install a tool
+                    </Link>
+                    <a
+                      className="btn"
+                      href={docsUrl("/first-shared-memory/")}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <LinkIcon className="icon--sm" />
+                      Read the docs
+                    </a>
+                  </div>
+                  <p className="t-xs t-muted">
+                    A second AI is the whole point — one memory both of them read from and write
+                    to. All three are here whenever you're ready; nothing above is required to
+                    finish.
+                  </p>
+                </div>
+              </div>
               <div className="wiz__foot">
                 <button type="button" className="btn" onClick={() => setStep(3)}>
                   Back
