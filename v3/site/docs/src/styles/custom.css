@@ -1,0 +1,65 @@
+/* =============================================================
+   palaia docs site — Lume-derived theme tokens (SPEC-503 #3)
+   =============================================================
+   This site is a separate deployable (its own npm project, no build
+   dependency on v3/web) so it cannot bind Starlight's `--sl-color-*`
+   scale directly to v3/web/src/styles/tokens.css the way the dashboard
+   does. Instead the values below are hand-derived from that file's
+   light/dark Atelier-accent palette (v3/docs/design/lume/colors_and_type.css
+   is the ultimate source) — same hues, same light/dark pairing, mapped onto
+   Starlight's own token names rather than copied byte-for-byte. Starlight's
+   own `data-theme` script already implements "system default, manual
+   override" (the dashboard's rule 2, README.md decision 2) — nothing extra
+   is needed here for that.
+
+   Font stack: same family names and fallback chain as the dashboard's
+   `--font-sans` / `--font-mono` (styles/fonts.css there), but not
+   self-hosted here — a reader without Geist installed gets the same
+   system-ui fallback the dashboard itself falls back to before its
+   webfont loads. Bundling the font files is left for a follow-up; the
+   fallback chain alone keeps this honest rather than silently different.
+   ============================================================= */
+
+@layer starlight.base {
+  :root {
+    --sl-font: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --sl-font-mono: 'Geist Mono Variable', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+    /* Dark mode (bare :root is Starlight's dark scope) */
+    --sl-color-white: #eeeff3;
+    --sl-color-gray-1: #c9ccd3;
+    --sl-color-gray-2: #b6b9c3;
+    --sl-color-gray-3: #888b95;
+    --sl-color-gray-4: #5a5e6b;
+    --sl-color-gray-5: #3a3d48;
+    --sl-color-gray-6: #2a2d38;
+    --sl-color-black: #1b1d24;
+
+    --sl-color-accent-low: #3b2a1c;
+    --sl-color-accent: #e0a26b;
+    --sl-color-accent-high: #f0c9a0;
+  }
+
+  :root[data-theme='light'] {
+    --sl-color-white: #1a1d20;
+    --sl-color-gray-1: #2a2d33;
+    --sl-color-gray-2: #5a6068;
+    --sl-color-gray-3: #8a9098;
+    --sl-color-gray-4: #c9cdd1;
+    --sl-color-gray-5: #d9dcdf;
+    --sl-color-gray-6: #eef0f2;
+    --sl-color-gray-7: #f8f9fa;
+    --sl-color-black: #ffffff;
+
+    --sl-color-accent-low: #f3e4d3;
+    --sl-color-accent: #b36b2e;
+    --sl-color-accent-high: #8a4e1f;
+  }
+}
+
+/* Prose measure closer to the dashboard's --type-prose-lh rhythm than
+   Starlight's default; the content itself is written for a reader, not a
+   terminal, so the wider default is trimmed slightly for line length. */
+.sl-markdown-content {
+  --sl-line-height: 1.7;
+}

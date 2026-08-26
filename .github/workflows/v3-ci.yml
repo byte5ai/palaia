@@ -184,3 +184,52 @@ jobs:
 
       - name: build
         run: npm run build
+
+  docs-site:
+    # SPEC-503: the user docs site, in the same web lane as the dashboard
+    # build above — a separate job (its own npm project/lockfile, no
+    # shared build tooling with v3/web) rather than a step, so a docs-site
+    # failure is attributed clearly and the two builds run in parallel.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: v3/site/docs
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: v3/site/docs/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: eslint
+        run: npm run lint
+
+      - name: typecheck
+        run: npm run typecheck
+
+      # The drift test: clients.ts/skills.ts changed without regenerating
+      # the "Connect your AI" pages fails right here, before the build
+      # step below would otherwise mask it by using the stale committed
+      # pages successfully.
+      - name: connect-page drift check
+        run: npm run check:generated
+
+      - name: vitest
+        run: npm test
+
+      # astro build, then the broken-internal-link checker over its own
+      # output (SPEC-503 deliverable #4).
+      - name: build (site + internal link check)
+        run: npm run build
+
+      # The jargon lint (shared blocklist, "prose only" — SPEC-503
+      # deliverable #3) scans the committed Markdown directly, not the
+      # build output, so it needs no Node/Astro step at all — it already
+      # runs in the `python` job above, via that job's ordinary
+      # `uv run pytest` over server/tests/docs_site/.
