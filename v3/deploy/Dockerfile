@@ -27,6 +27,11 @@ WORKDIR /web
 COPY v3/web/package.json v3/web/package-lock.json v3/web/.npmrc ./
 RUN npm ci
 COPY v3/web/ ./
+# src/lib/skills.ts inlines the client skill sources from ../../../clients/
+# (v3/clients/skills/*/SKILL.md, via vite's ?raw imports) — from /web that
+# resolves to /clients, so the skills must ride along or the build fails
+# with UNRESOLVED_IMPORT.
+COPY v3/clients/ /clients/
 RUN npm run build
 # Result: /web/dist — copied into the runtime stage below. If a future SPEC
 # changes the web app's build output directory, only this COPY needs to
