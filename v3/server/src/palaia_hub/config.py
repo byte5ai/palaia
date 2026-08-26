@@ -61,6 +61,8 @@ _ENV_KEYS = (
     "log_format",
     "graceful_shutdown_timeout",
     "auth_enabled",
+    "channel",
+    "deployment",
 )
 
 DEFAULT_CONFIG_TEMPLATE = """\
@@ -311,6 +313,20 @@ curator:
 # hub trust a different signer. null uses the built-in default URL.
 market:
   index_url: null
+
+# SPEC-501: which release stream this hub tracks, and where it is running.
+# Neither is meant to be hand-edited on a normal install — the container
+# image bakes `channel` in at build time (baked from the image tag: `stable`
+# for a release, `beta` for a pre-release, `edge` for every `main` build),
+# and each app-store package sets `deployment` to its own platform. They
+# only decide what `GET /api/update/check` compares against and what the
+# dashboard's "Update available" banner tells you to do next — neither
+# changes how the hub itself runs.
+#   channel: edge | beta | stable
+#   deployment: compose | umbrel | casaos | runtipi | truenas |
+#               home_assistant | unknown
+channel: edge
+deployment: unknown
 """
 
 
@@ -769,6 +785,23 @@ class HubConfig(BaseModel):
     log_format: Literal["human", "json"] = "human"
     graceful_shutdown_timeout: float = 30.0
     auth_enabled: bool = True
+    #: Which release stream this hub tracks (SPEC-501). Baked into the
+    #: container image at build time (``PALAIA_CHANNEL``) from the GHCR tag
+    #: the image was published under — a release tag becomes ``stable`` (or
+    #: ``beta`` for a pre-release), a plain ``main`` build stays ``edge``.
+    #: ``GET /api/update/check`` compares this hub's own version against
+    #: this channel's latest published version, never a different one.
+    channel: Literal["edge", "beta", "stable"] = "edge"
+    #: Where this hub is running (SPEC-501) — purely descriptive, like
+    #: ``exposure`` above. Set by each app-store package's own manifest
+    #: (``PALAIA_DEPLOYMENT``); ``compose`` in the shipped
+    #: ``docker-compose.yml``. Only changes which update instructions the
+    #: dashboard's "Update available" banner shows — a store deployment
+    #: points at that store's own update mechanism by name instead of
+    #: pretending the container can update itself.
+    deployment: Literal[
+        "compose", "umbrel", "casaos", "runtipi", "truenas", "home_assistant", "unknown"
+    ] = "unknown"
     recall: RecallSettings = Field(default_factory=RecallSettings)
     oauth: OAuthSettings = Field(default_factory=OAuthSettings)
     curator: CuratorSettings = Field(default_factory=CuratorSettings)

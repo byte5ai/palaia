@@ -20,6 +20,7 @@ import uvicorn
 
 from .auth import TokenError, TokenStore
 from .auth.scopes import vault_scope
+from .compose_update import rewrite_compose_channel
 from .config import ConfigError, HubConfig, load_config, palaia_home
 from .curator import CURATOR_PROFILE_PATH, ApplyReport, CuratorRunReport, ProposalApplier
 from .curator.wiring import TOKEN_ENV, CuratorWiring, build_curator
@@ -71,6 +72,22 @@ def _build_parser() -> argparse.ArgumentParser:
 
     _add_oauth_parser(subparsers)
     _add_curator_parser(subparsers)
+
+    update_parser = subparsers.add_parser(
+        "update",
+        help="Switch a compose deployment's release channel and print the recreate commands",
+    )
+    update_parser.add_argument(
+        "--channel",
+        choices=["stable", "beta"],
+        default=None,
+        help="Switch to this release channel (leaves the current one alone if omitted)",
+    )
+    update_parser.add_argument(
+        "--file",
+        default="docker-compose.yml",
+        help="Path to your compose file (default: ./docker-compose.yml)",
+    )
 
     import_parser = subparsers.add_parser("import", help="Import notes from another store")
     import_subparsers = import_parser.add_subparsers(dest="import_source", required=True)
@@ -589,6 +606,33 @@ def _import_basic_memory(args: argparse.Namespace) -> None:
     _print_report(report, index_status_line, as_json=args.json)
 
 
+def _update_compose(channel: str | None, file_path: str) -> None:
+    """``palaia-hub update`` (SPEC-501 deliverable #4). Never runs the
+    recreate itself — a container cannot portably do that to itself, and
+    this command may well be run from inside one. It only edits the
+    compose file's pinned tag (when ``--channel`` is given) and prints the
+    two commands the operator runs next.
+    """
+    path = Path(file_path)
+    if not path.exists():
+        print(
+            f"palaia-hub: no compose file at {path} — pass --file to point at yours.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    if channel is not None:
+        text = path.read_text(encoding="utf-8")
+        new_text, changed = rewrite_compose_channel(text, channel)
+        if changed:
+            path.write_text(new_text, encoding="utf-8")
+            print(f"Set the image channel to {channel!r} in {path}.")
+        else:
+            print(f"{path} is already on the {channel!r} channel.")
+    print("Now pull the new image and recreate the container:")
+    print("  docker compose pull")
+    print("  docker compose up -d")
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -622,6 +666,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             _import_v2(args)
         elif args.import_source == "basic-memory":
             _import_basic_memory(args)
+    elif args.command == "update":
+        _update_compose(args.channel, args.file)
 
 
 if __name__ == "__main__":

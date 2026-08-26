@@ -1,0 +1,12 @@
+# Docker image + constants the compose template below reads. Pinned to the
+# `stable` channel tag (SPEC-501) — bump on release, same as every other
+# store package here.
+image:
+  repository: ghcr.io/byte5ai/palaia-hub
+  tag: stable
+  pullPolicy: IfNotPresent
+
+palaia:
+  webPort: 8420
+  mode: locked
+  deployment: truenas

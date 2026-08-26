@@ -1,0 +1,46 @@
+# TrueNAS SCALE Apps UI form definition — what the operator is asked at
+# install/edit time. Kept intentionally small: palaia's own first-run
+# wizard (in the browser, after install) does the rest, matching the
+# masterplan's "not the path: multi-step terminal installs" rule.
+#
+# NOT independently validated against TrueNAS's own schema in this
+# environment (no TrueNAS instance, no docker daemon available here) —
+# see this package's SUBMIT.md before opening a PR.
+groups:
+  - name: "Network"
+    description: "Reach palaia's dashboard and AI assistant connection."
+  - name: "Storage"
+    description: "Where palaia keeps its notes, search index, and settings."
+
+questions:
+  - variable: web_port
+    group: "Network"
+    label: "Dashboard port"
+    schema:
+      type: int
+      default: 8420
+      required: true
+      $ref:
+        - "definitions/port"
+
+  - variable: mode
+    group: "Network"
+    label: "Access mode"
+    description: "locked (this network only) is the safe default — change it later from palaia's own dashboard, not here."
+    schema:
+      type: string
+      default: "locked"
+      enum:
+        - value: "locked"
+          description: "Reachable only on your own network"
+        - value: "cloud"
+          description: "Reachable from outside, dashboard stays private"
+        - value: "open"
+          description: "Reachable from outside, including the dashboard"
+
+  - variable: data_dataset
+    group: "Storage"
+    label: "Storage location"
+    schema:
+      type: dataset
+      required: true

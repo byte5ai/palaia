@@ -49,6 +49,28 @@ export interface SignInInfo {
   sign_in_url?: string | null;
 }
 
+/**
+ * `GET /api/update/check` (SPEC-501). Hand-written for the same reason as
+ * `SignInInfo` above: the route returns `dict[str, Any]` (no Pydantic
+ * response model — see `palaia_hub.app`'s `update_check` handler), so the
+ * generator types it as `{[key: string]: unknown}`.
+ */
+export interface UpdateGuidance {
+  kind: "store" | "command" | "manual";
+  message: string;
+  commands: string[];
+}
+export interface UpdateCheckResponse {
+  state: "up_to_date" | "update_available" | "cannot_check";
+  channel: "edge" | "beta" | "stable";
+  current_version: string;
+  latest_version: string | null;
+  checked_at: number;
+  deployment: string;
+  reason: string | null;
+  guidance: UpdateGuidance;
+}
+
 /** `GET /api/session` (SPEC-401 deliverable #6) — mirrors the route in
  * `palaia_hub.app`. */
 export interface SessionState {
@@ -664,6 +686,9 @@ function queryString(
 export const api = {
   health: () => getJson<HealthResponse>("/api/health"),
   info: () => getJson<InfoResponse>("/api/info"),
+  /** SPEC-501: "up to date" / "update available" / "could not check", plus
+   * per-deployment guidance for the dashboard's update banner. */
+  updateCheck: () => getJson<UpdateCheckResponse>("/api/update/check"),
 
   // ---- SPEC-401: the admin session ----
   /** Who is signed in on this browser, and whether this hub requires it.

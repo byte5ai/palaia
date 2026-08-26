@@ -78,6 +78,7 @@ from .security import SecurityHeadersMiddleware
 from .stash.service import StashService
 from .stash_api import build_stash_router
 from .static import mount_dashboard
+from .update import UpdateCheckResult, check_for_update
 from .upstream.api import (
     build_secret_change_hook,
     build_secrets_router,
@@ -652,8 +653,38 @@ def create_app(
         return {
             "version": __version__,
             "mode": config.mode,
+            "channel": config.channel,
             "uptime_seconds": round(time.monotonic() - start_time, 3),
             "sign_in": sign_in,
+        }
+
+    # SPEC-501 deliverable #3/#5: mounted unconditionally, like /api/health
+    # and /api/info above — every hub has a channel and a deployment, even
+    # a fresh checkout that has never touched config.yaml.
+    @app.get("/api/update/check")
+    async def update_check() -> dict[str, Any]:
+        """"Up to date" / "Update available" / "could not check" — never an
+        error page (this hub might simply be offline). See
+        :func:`palaia_hub.update.check_for_update` for what each state
+        means and how the remote version is read."""
+        result: UpdateCheckResult = await check_for_update(
+            channel=config.channel,
+            current_version=__version__,
+            deployment=config.deployment,
+        )
+        return {
+            "state": result.state,
+            "channel": result.channel,
+            "current_version": result.current_version,
+            "latest_version": result.latest_version,
+            "checked_at": result.checked_at,
+            "deployment": result.deployment,
+            "reason": result.reason,
+            "guidance": {
+                "kind": result.guidance.kind,
+                "message": result.guidance.message,
+                "commands": list(result.guidance.commands),
+            },
         }
 
     # SPEC-107: inbox visibility outside the MCP surface (deliverable #3).

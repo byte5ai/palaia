@@ -84,11 +84,29 @@ RUN chmod +x /opt/palaia/entrypoint.sh \
 # a permission error on a freshly created bind mount / named volume.
 RUN mkdir -p /data && chown palaia:palaia /data
 
+# SPEC-501: which release stream this exact image belongs to. Baked at
+# build time by the release workflow (v3-release.yml passes
+# `--build-arg PALAIA_CHANNEL=<stable|beta|edge>`, matching the GHCR tag(s)
+# that build is pushed under) — never guessed at runtime, since a tag alone
+# doesn't tell a running container which tag it was pulled by. A local
+# `docker build` with no --build-arg stays "edge", same as config.py's own
+# default for an un-imaged dev run.
+ARG PALAIA_CHANNEL=edge
+
 ENV PALAIA_HOME=/data \
     PALAIA_HOST=127.0.0.1 \
     PALAIA_PORT=8421 \
     PUBLIC_PORT=8420 \
-    PALAIA_MDNS_ENABLED=1
+    PALAIA_MDNS_ENABLED=1 \
+    PALAIA_CHANNEL=${PALAIA_CHANNEL}
+
+# Documented Watchtower-compatible opt-in label (SPEC-501 deliverable #4):
+# https://containrrr.dev/watchtower/container-selection/ — an operator
+# running Watchtower with `--label-enable` gets palaia included without any
+# palaia-specific Watchtower configuration. palaia itself never runs
+# Watchtower, and the dashboard never assumes it is running — this label
+# only makes the *option* discoverable for operators who already use it.
+LABEL com.centurylinklabs.watchtower.enable="true"
 
 EXPOSE 8420
 VOLUME ["/data"]

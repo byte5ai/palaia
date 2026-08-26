@@ -1,0 +1,27 @@
+manifestVersion: 1
+id: palaia
+category: ai
+name: palaia
+version: "0.1.0"
+tagline: Shared memory for every AI assistant you use
+description: >-
+  palaia gives every AI assistant on your devices — Claude, ChatGPT, Codex,
+  and more — access to the same notes. Write something down once from any
+  of them and the others can bring it back up later. Everything runs on
+  your own Umbrel; nothing leaves your network unless you turn on remote
+  access yourself.
+
+  Getting started takes one setup wizard in the browser — no command line.
+developer: byte5
+website: https://github.com/byte5ai/palaia
+dependencies: []
+repo: https://github.com/byte5ai/palaia
+support: https://github.com/byte5ai/palaia/issues
+port: 8420
+gallery: []
+path: ""
+defaultPassword: ""
+releaseNotes: >-
+  First Umbrel App Store listing for palaia v3.
+submitter: byte5ai
+submission: https://github.com/getumbrel/umbrel-apps/pull/REPLACE_ME

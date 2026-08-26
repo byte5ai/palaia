@@ -47,6 +47,27 @@
         }
       }
     },
+    "/api/update/check": {
+      "get": {
+        "summary": "Update Check",
+        "description": "\"Up to date\" / \"Update available\" / \"could not check\" \u2014 never an\nerror page (this hub might simply be offline). See\n:func:`palaia_hub.update.check_for_update` for what each state\nmeans and how the remote version is read.",
+        "operationId": "update_check_api_update_check_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Update Check Api Update Check Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/vaults/{vault_key}/inbox_status": {
       "get": {
         "summary": "Inbox Status",

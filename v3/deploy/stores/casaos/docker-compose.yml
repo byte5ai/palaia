@@ -1,0 +1,69 @@
+name: palaia
+
+services:
+  hub:
+    environment:
+      PALAIA_MODE: locked
+      PALAIA_DEPLOYMENT: casaos
+    image: ghcr.io/byte5ai/palaia-hub:stable
+    network_mode: bridge
+    ports:
+      - target: 8420
+        published: "8420"
+        protocol: tcp
+    restart: unless-stopped
+    volumes:
+      - type: bind
+        source: /DATA/AppData/$AppID/data
+        target: /data
+    x-casaos:
+      envs:
+        - container: PALAIA_MODE
+          description:
+            en_US: Access mode - locked (home network only), cloud, or open.
+        - container: PALAIA_DEPLOYMENT
+          description:
+            en_US: Where palaia is running - lets its dashboard point at the right update button. Leave as-is.
+      ports:
+        - container: "8420"
+          description:
+            en_US: Dashboard and assistant connection port.
+      volumes:
+        - container: /data
+          description:
+            en_US: palaia's notes, search index, and settings.
+    container_name: palaia-hub
+
+x-casaos:
+  id: ai.byte5.palaia
+  architectures:
+    - amd64
+    - arm64
+  main: hub
+  author: byte5
+  category: Productivity
+  description:
+    en_US: >
+      palaia gives every AI assistant on your devices — Claude, ChatGPT,
+      Codex, and more — access to the same notes. Write something down
+      once from any of them and the others can bring it back up later.
+      Everything runs on your own CasaOS device; nothing leaves your
+      network unless you turn on remote access yourself.
+
+
+      Getting started takes one setup wizard in the browser — no command
+      line.
+  developer: byte5
+  icon: https://raw.githubusercontent.com/byte5ai/palaia/main/v3/deploy/stores/casaos/icon.png
+  tagline:
+    en_US: Shared memory for every AI assistant you use
+  thumbnail: https://raw.githubusercontent.com/byte5ai/palaia/main/v3/deploy/stores/casaos/icon.png
+  title:
+    en_US: palaia
+  index: /
+  port_map: "8420"
+  version: "0.1.0"
+  update_at: "2026-08-25"
+  website: "https://github.com/byte5ai/palaia"
+  repo: "https://github.com/byte5ai/palaia"
+  support: "https://github.com/byte5ai/palaia/issues"

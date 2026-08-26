@@ -1,0 +1,17 @@
+version: "3.7"
+
+services:
+  app_proxy:
+    environment:
+      APP_HOST: palaia_hub_1
+      APP_PORT: 8420
+
+  hub:
+    image: ghcr.io/byte5ai/palaia-hub:stable
+    restart: on-failure
+    stop_grace_period: 1m
+    environment:
+      PALAIA_MODE: locked
+      PALAIA_DEPLOYMENT: umbrel
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
