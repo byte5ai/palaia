@@ -306,7 +306,7 @@ protocol).
   of those. **This paragraph is a draft: the architect holds the gate** —
   it records what was run and observed, not a verdict on whether Phase 4's
   exit criterion is met or what Phase 5 should be.
-- **Gate P5 (3.0 release candidate; DRAFT, 2026-08-26):** every Phase-5
+- **Gate P5 (3.0 release candidate; held 2026-08-26):** every Phase-5
   ship merged and integrated (SPECs 501–505: app-store distribution +
   channels + self-update, a hardening pass + external-review brief, the
   docs site + onboarding page, v2 sunset messaging), full suite green.
@@ -353,7 +353,18 @@ protocol).
   final, non-candidate `3.0.0` tag, with every owner-only step (the
   external security review, the real usability session, store
   submissions, DNS/hosting, the migration guide's `[DECISION:]` dates)
-  marked as such. **This paragraph is a draft: the architect holds the
-  gate** — it records what was run and observed, not a verdict on
-  whether the Phase-5 exit criterion is met or that `3.0.0-rc1` is ready
-  to become `3.0.0`.
+  marked as such. **Architect's verdict (2026-08-26): gate held,
+  conditionally.** The scriptable half of the exit criterion is met: the
+  funnel e2e was independently re-run during integration (green, docker
+  smoke env-skipped with the same fallback evidence), the full suite was
+  independently green on every Phase-5 PR before merge (2210–2215 passed
+  depending on env-gated skips; identical collected totals), and the
+  release plumbing (VERSION, drift test, changelog, dry-run, RELEASING.md)
+  is in place and verified. `3.0.0-rc1` stands as the release candidate.
+  The gate's two open conditions are exactly `v3/RELEASING.md` §1: the
+  real non-developer usability session (protocol shipped, owner runs it)
+  and the external security review (brief shipped, owner procures it).
+  Neither is waived — `3.0.0` final must not be tagged until both are
+  done; RELEASING.md sequences this and no automation in this repository
+  can bypass it. Phase 5 is thereby complete as a development phase; what
+  remains on the road to `3.0.0` is owner work, not engineering scope.
