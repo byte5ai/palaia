@@ -26,7 +26,11 @@ export default defineConfig({
           label: "Start here",
           items: [
             { label: "What is palaia?", slug: "index" },
-            { label: "Install it", slug: "install" },
+            // SPEC-504: the onboarding page — not a content-collection
+            // entry (see src/pages/onboarding.astro's own docstring), so
+            // it is linked by its literal route here rather than `slug`.
+            { label: "Get palaia running", link: "/onboarding/" },
+            { label: "Install it (the full version)", slug: "install" },
             { label: "Your first shared memory", slug: "first-shared-memory" },
           ],
         },
