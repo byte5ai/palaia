@@ -147,6 +147,7 @@ See [§8](#8-accepted-risks-and-open-gaps).
 | `/api/automations` | event-triggered actions | |
 | `/api/notifications` | the dashboard notification centre | |
 | `/api/connect` | the connect page's client bundles (MCPB) | |
+| `/api/update` | release-channel update check against GHCR (SPEC-501) — read-only, outbound fetch is size/time-capped, "cannot check" is a state not an error | makes one outbound registry request |
 | `/api/_test` | a deliberately slow endpoint for shutdown testing | **only exists when `PALAIA_TEST_SLOW_ENDPOINT_SECONDS` is set**; never in a shipped hub |
 
 | Threat | Mitigation as built | Where |
