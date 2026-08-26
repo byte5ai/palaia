@@ -76,6 +76,16 @@ jobs:
             tags="${tags},${IMAGE}:edge"
           elif [[ "${GITHUB_REF}" == refs/tags/v3.* ]]; then
             version="${GITHUB_REF#refs/tags/v3.}"
+            # SPEC-506: the tag must agree with v3/VERSION, the single
+            # source of truth server_tests/test_version_drift.py already
+            # checks every other artifact against — this is the last mile,
+            # catching a release cut from the wrong VERSION bump before it
+            # ever reaches GHCR.
+            file_version="$(cat v3/VERSION)"
+            if [[ "${version}" != "${file_version}" ]]; then
+              echo "Tag-derived version (${version}) does not match v3/VERSION (${file_version}) — bump v3/VERSION and re-tag." >&2
+              exit 1
+            fi
             tags="${tags},${IMAGE}:v3.${version}"
             annotation_version="${version}"
             if [[ "${version}" == *beta* || "${version}" == *rc* ]]; then

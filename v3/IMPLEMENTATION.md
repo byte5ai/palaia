@@ -306,3 +306,54 @@ protocol).
   of those. **This paragraph is a draft: the architect holds the gate** —
   it records what was run and observed, not a verdict on whether Phase 4's
   exit criterion is met or what Phase 5 should be.
+- **Gate P5 (3.0 release candidate; DRAFT, 2026-08-26):** every Phase-5
+  ship merged and integrated (SPECs 501–505: app-store distribution +
+  channels + self-update, a hardening pass + external-review brief, the
+  docs site + onboarding page, v2 sunset messaging), full suite green.
+  Exit criterion *"a non-developer completes install → first shared
+  memory unaided"* has two halves: the scriptable half, demonstrated by
+  SPEC-506's evidence (`v3/docs/client-matrix-results.md` §9), and the
+  literal, real-person half, which this environment cannot supply and
+  which SPEC-506 explicitly names as an owner action
+  (`v3/docs/usability-test-protocol.md`, ready to hand to a tester).
+  Release engineering: one version, `3.0.0-rc1`, in `v3/VERSION`, checked
+  against every artifact that carries a literal version string (server,
+  web, sdk) by `server/tests/test_version_drift.py`, plus a real
+  `npm run build` transcript proving the mcpb bundle picks the same
+  version up with zero explicit configuration (this PR's description has
+  the output); `v3/CHANGELOG.md` generated from all 69 merged PRs against
+  `claude/palaia-major-rewrite-lj5v9x` (#203–#271) and hand-curated by
+  capability, not SPEC number; a scripted release dry-run
+  (`v3/tools/release-dry-run.sh`) that actually runs the drift test, packs
+  and signs a real mcpb bundle, and reports what the release workflow
+  would tag/push for this version, all without touching a remote. Gate
+  evidence: the funnel e2e (fresh home → wizard → vault → a real `claude`
+  CLI over a real OAuth 2.1 default path → first memory → a `plt_`-token
+  second client → recall) run twice, green both times, well inside
+  MASTERPLAN §13's <5 minute machine-time target both times (12.25s/8.53s
+  hub-side, then 10.57s/7.15s hub-side — `client-matrix-results.md` §9.1
+  has both full transcripts); the Docker one-liner smoke, honestly
+  env-skipped in this sandbox (no reachable docker daemon), resting on
+  SPEC-112's own standing evidence plus the release workflow's own arm64
+  QEMU health-check step named in §9.4. Two real, honest product gaps
+  were found while building the funnel test and filed rather than fixed
+  ([#272](https://github.com/byte5ai/palaia/issues/272): OAuth-
+  authenticated clients never fire the funnel's `client_connected_at`;
+  [#273](https://github.com/byte5ai/palaia/issues/273): an operator
+  cannot pre-declare OAuth scopes for a vault the wizard hasn't created
+  yet through `config.yaml`) — neither blocks any of this SPEC's
+  acceptance criteria. What this evidence does **not** cover, honestly:
+  the literal non-developer session (the whole point of shipping the
+  protocol as an owner action instead of asserting it), a real rc Docker
+  image smoke-tested end to end, and every standing gap §2/§6/§7.4/§8.5
+  above already carry (a real phone/claude.ai account, a real `codex`
+  binary, a real public tunnel, the dashboard's own click-through UI,
+  Claude Desktop's MCPB install dialog) — this SPEC adds nothing new to
+  any of those. `v3/RELEASING.md` is the ordered checklist from here to a
+  final, non-candidate `3.0.0` tag, with every owner-only step (the
+  external security review, the real usability session, store
+  submissions, DNS/hosting, the migration guide's `[DECISION:]` dates)
+  marked as such. **This paragraph is a draft: the architect holds the
+  gate** — it records what was run and observed, not a verdict on
+  whether the Phase-5 exit criterion is met or that `3.0.0-rc1` is ready
+  to become `3.0.0`.

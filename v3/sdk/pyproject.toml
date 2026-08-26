@@ -1,6 +1,6 @@
 [project]
 name = "palaia-addon-sdk"
-version = "0.1.0"
+version = "3.0.0-rc1"
 description = "Author, validate and locally test palaia marketplace add-ons"
 requires-python = ">=3.12"
 readme = "README.md"

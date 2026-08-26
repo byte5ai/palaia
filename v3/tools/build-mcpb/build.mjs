@@ -7,8 +7,9 @@
  * hand-rolled zip/signature — see `SIGNING.md` for why that matters here):
  *
  *   1. Stage `manifest.template.json` (renamed to `manifest.json`, with
- *      its `version` field set from this package's own `--set-version`
- *      argument or the `PALAIA_VERSION` env var) alongside `proxy/` and
+ *      its `version` field set from an explicit `version` argument, the
+ *      `PALAIA_VERSION` env var, or — SPEC-506 — `v3/VERSION` itself, the
+ *      repository's single source of truth) alongside `proxy/` and
  *      `icon.png` in a throwaway directory — never in this directory
  *      itself, so a build never leaves a stray `manifest.json` next to
  *      the template that generates it.
@@ -32,7 +33,7 @@
  * that module's docstring.
  */
 import { execFile } from "node:child_process";
-import { promises as fs } from "node:fs";
+import { promises as fs, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -40,6 +41,23 @@ import { promisify } from "node:util";
 
 const run = promisify(execFile);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * SPEC-506: `v3/VERSION` is the repository's single version source of
+ * truth (`server/tests/test_version_drift.py` enforces every other
+ * artifact against it). Falls back to `"0.0.0-dev"` only when the file is
+ * missing entirely — e.g. this directory copied out of the repo layout it
+ * normally ships in — so a bare `node build.mjs` still produces something
+ * rather than throwing.
+ */
+function readRepoVersion() {
+  const versionPath = path.join(HERE, "..", "..", "VERSION");
+  try {
+    return readFileSync(versionPath, "utf8").trim();
+  } catch {
+    return "0.0.0-dev";
+  }
+}
 
 function mcpbBin() {
   // Prefer a locally-installed devDependency (`npm ci` in this directory);
@@ -77,7 +95,7 @@ async function stageBundle(version) {
 }
 
 export async function buildBundle({ version, outFile, sign = true } = {}) {
-  const stagingDir = await stageBundle(version || process.env.PALAIA_VERSION || "0.0.0-dev");
+  const stagingDir = await stageBundle(version || process.env.PALAIA_VERSION || readRepoVersion());
   try {
     await mcpb(["validate", path.join(stagingDir, "manifest.json")]);
     const dist = path.dirname(outFile);
