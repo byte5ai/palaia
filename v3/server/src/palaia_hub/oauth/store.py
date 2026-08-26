@@ -48,8 +48,9 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 
+from ..security.files import harden_sqlite_database
 from .errors import OAuthError
-from .keys import FILE_MODE, enforce_private_mode, oauth_dir
+from .keys import oauth_dir
 from .models import (
     ClientRow,
     ClientSource,
@@ -225,10 +226,7 @@ class OAuthStore:
         self._enforce_modes()
 
     def _enforce_modes(self) -> None:
-        for suffix in ("", "-wal", "-shm"):
-            sibling = self.path.with_name(self.path.name + suffix)
-            if sibling.exists():
-                enforce_private_mode(sibling, FILE_MODE)
+        harden_sqlite_database(self.path, with_parent=True)
 
     @property
     def _db(self) -> sqlite3.Connection:

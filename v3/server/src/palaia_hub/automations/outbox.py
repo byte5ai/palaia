@@ -28,6 +28,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from ..security.files import harden_sqlite_database
+
 OUTBOX_RELATIVE_PATH = "automations_outbox.sqlite3"
 
 _SCHEMA_SQL = """
@@ -104,10 +106,14 @@ class AutomationOutbox:
         self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.executescript(_SCHEMA_SQL)
         self._conn.commit()
+        # SPEC-502: same reasoning as the hooks outbox — queued rows hold
+        # rendered action payloads. Owner-only, siblings included.
+        harden_sqlite_database(self.path)
 
     def close(self) -> None:
         with self._lock:
             self._conn.close()
+        harden_sqlite_database(self.path)
 
     # ------------------------------------------------------------- mutations
 

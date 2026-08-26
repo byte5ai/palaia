@@ -47,6 +47,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import cast
 
+from ..security.files import harden_sqlite_database
 from .models import (
     DEFAULT_TTL_SECONDS,
     DeliveryState,
@@ -146,10 +147,15 @@ class MessengerStore:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.executescript(_SCHEMA_SQL)
         self._conn.commit()
+        # SPEC-502: envelope bodies are whatever one agent said to another —
+        # the most sensitive plaintext the hub stores outside a vault. The
+        # database and its write-ahead siblings stay owner-only.
+        harden_sqlite_database(self.path)
 
     def close(self) -> None:
         with self._lock:
             self._conn.close()
+        harden_sqlite_database(self.path)
 
     # -- helpers ---------------------------------------------------------
 

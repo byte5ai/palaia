@@ -34,7 +34,16 @@ http {
         # Kept as one generic prefix rather than an enumerated list so later
         # SPECs adding routes under /api or /mcp don't need a packaging
         # change.
-        location ~ ^/(api|mcp)(/|$) {
+        #
+        # SPEC-502 finding: `/oauth` and `/.well-known` were missing from
+        # this list, which predates the authorization server (SPEC-203).
+        # In the packaged image that meant the sign-in page, the OAuth
+        # endpoints and the discovery documents all fell through to the
+        # static dashboard below and answered with the SPA shell — so no
+        # MCP client could complete an OAuth flow against the image, and in
+        # `open` mode (where signing in is mandatory) the operator could
+        # not reach the one door into their own hub.
+        location ~ ^/(api|mcp|oauth|\.well-known)(/|$) {
             proxy_pass http://${PALAIA_HOST}:${PALAIA_PORT};
             proxy_http_version 1.1;
             proxy_set_header Host $host;
@@ -51,8 +60,30 @@ http {
         # serves the current build's asset references.
         root /opt/palaia/dashboard;
 
+        # SPEC-502: the same browser-hardening headers the hub sets on the
+        # responses it serves itself (palaia_hub.security.headers). nginx
+        # serves the dashboard's static files without ever reaching the hub
+        # process, so without these lines the one surface a browser actually
+        # renders in the packaged image would be the only one with no
+        # policy on it. Kept byte-identical to DASHBOARD_CSP in that module.
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Cross-Origin-Opener-Policy "same-origin" always;
+        add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+
         location = /index.html {
+            # `add_header` does not inherit into a block that declares one
+            # of its own, so the set above is repeated here rather than
+            # silently dropped for the one file every visit fetches.
             add_header Cache-Control "no-cache";
+            add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" always;
+            add_header X-Content-Type-Options "nosniff" always;
+            add_header Referrer-Policy "no-referrer" always;
+            add_header X-Frame-Options "DENY" always;
+            add_header Cross-Origin-Opener-Policy "same-origin" always;
+            add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
         }
 
         location / {

@@ -18,6 +18,10 @@ import yaml
 from platformdirs import user_data_dir
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+# SPEC-502: the hub's one on-disk posture rule, applied to `config.yaml`
+# below. Stdlib only, so it is safe to import this early.
+from .security.files import harden_directory, harden_file
+
 # SPEC-302: the external-server schema, imported rather than duplicated.
 # `palaia_hub.upstream.models` (and its package `__init__`) import nothing
 # from the rest of `palaia_hub` and nothing from fastmcp, precisely so this
@@ -892,12 +896,29 @@ def config_file_path(home: Path | None = None) -> Path:
     return (home or palaia_home()) / "config.yaml"
 
 
+def harden_config_file(path: Path) -> None:
+    """Narrow ``config.yaml`` and the hub home that holds it (SPEC-502).
+
+    ``config.yaml`` is documentation-shaped and mostly boring — but it is
+    also where an identity provider's ``client_secret`` is configured
+    (:class:`IdpSettings`), and where the issuer, bind address and exposure
+    URL of the hub are written down. Before this SPEC it was created with
+    the process umask (usually ``0644``) inside a ``0755`` home, so on a
+    shared machine any other account could read the provider secret. It now
+    gets the same owner-only posture as every other file the hub writes.
+    """
+    harden_directory(path.parent)
+    harden_file(path)
+
+
 def ensure_default_config(path: Path) -> None:
     """Write a commented default config file at ``path`` if none exists."""
     if path.exists():
+        harden_config_file(path)
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(DEFAULT_CONFIG_TEMPLATE, encoding="utf-8")
+    harden_config_file(path)
 
 
 def _read_file_values(path: Path) -> dict[str, Any]:

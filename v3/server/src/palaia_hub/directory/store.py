@@ -55,6 +55,7 @@ from pathlib import Path
 from typing import cast
 
 from ..oauth.secrets_util import hash_secret, new_secret, verify_hash
+from ..security.files import harden_sqlite_database
 from .models import (
     DirectoryError,
     ReportedStatus,
@@ -151,10 +152,15 @@ class DirectoryStore:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.executescript(_SCHEMA_SQL)
         self._conn.commit()
+        # SPEC-502: this database holds every session's hashed secret and
+        # the roster of what each agent is doing. It, and its write-ahead
+        # siblings, stay readable only by the account running the hub.
+        harden_sqlite_database(self.path)
 
     def close(self) -> None:
         with self._lock:
             self._conn.close()
+        harden_sqlite_database(self.path)
 
     # -- helpers ---------------------------------------------------------
 
