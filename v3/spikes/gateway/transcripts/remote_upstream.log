@@ -1,0 +1,62 @@
+
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│                                                                              │
+│                                                                              │
+│                         ▄▀▀ ▄▀█ █▀▀ ▀█▀ █▀▄▀█ █▀▀ █▀█                        │
+│                         █▀  █▀█ ▄▄█  █  █ ▀ █ █▄▄ █▀▀                        │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                FastMCP 3.4.7                                 │
+│                            https://gofastmcp.com                             │
+│                                                                              │
+│                  🖥  Server:      remote-upstream, 3.4.7                      │
+│                  🚀 Deploy free: https://horizon.prefect.io                  │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+
+[08/22/26 13:16:00] INFO     Starting MCP server                transport.py:361
+                             'remote-upstream' with transport                   
+                             'http' on                                          
+                             http://127.0.0.1:8811/mcp                          
+INFO:     Started server process [24756]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8811 (Press CTRL+C to quit)
+INFO:     127.0.0.1:54284 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54290 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:54294 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54298 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54306 - "DELETE /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42606 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42608 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:42612 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42628 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42642 - "DELETE /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42650 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42656 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:42670 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42676 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42686 - "DELETE /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42692 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42698 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:42704 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42718 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42732 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42734 - "DELETE /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42748 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42752 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:42762 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42778 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42788 - "DELETE /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42792 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42804 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:42806 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42818 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42820 - "DELETE /mcp HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [24756]

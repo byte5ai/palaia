@@ -1,0 +1,452 @@
+"""SPEC-304 deliverables #1/#3/#4 over REST, through the real production
+app — mirrors ``tests/upstream/test_api.py``'s own pattern (the exact
+wiring ``palaia-hub serve`` runs), since an install lands in that same
+upstream/gateway machinery.
+"""
+
+from __future__ import annotations
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any
+
+import httpx
+import pytest
+from fastmcp import Client
+
+from palaia_hub.config import load_config
+from palaia_hub.market.docker_runtime import DockerError
+from palaia_hub.registry.client import RegistryOfflineError
+from palaia_hub.registry.models import RegistryServer
+from palaia_hub.serve import ProductionApp, build_production_app
+from palaia_hub.vault import VaultRegistry
+
+from .conftest import HttpUpstream
+
+pytestmark = pytest.mark.anyio
+
+BASE_URL = "https://testserver"
+SECRET = "sk-never-echo-this-back-9931"
+
+
+async def _hub(tmp_path: Path) -> ProductionApp:
+    registry = VaultRegistry(tmp_path)
+    await registry.create("work", tmp_path / "vaults" / "work", purpose="Work vault.")
+    config = load_config(home=tmp_path)
+    return await build_production_app(config, home=tmp_path)
+
+
+@asynccontextmanager
+async def _running(production: ProductionApp) -> AsyncIterator[httpx.AsyncClient]:
+    try:
+        async with production.app.router.lifespan_context(production.app):
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=production.app), base_url=BASE_URL
+            ) as http:
+                yield http
+    finally:
+        await production.dynamic_gateway.aclose()
+        if production.stash_store is not None:
+            production.stash_store.close()
+        for index in production.indexes.values():
+            await index.close()
+
+
+def _manual_remote_entry(
+    entry_id: str, url: str, *, config_schema: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "id": entry_id,
+        "name": "Fixture Remote",
+        "one_liner": "A fixture MCP server for tests.",
+        "kind": "remote",
+        "source": {"type": "url", "value": url},
+        "maintainer": "tests",
+    }
+    if config_schema is not None:
+        body["config_schema"] = config_schema
+    return body
+
+
+async def _create_manual_remote(
+    http: httpx.AsyncClient, entry_id: str, url: str, *, config_schema: dict[str, Any] | None = None
+) -> httpx.Response:
+    return await http.post(
+        "/api/market/manual", json=_manual_remote_entry(entry_id, url, config_schema=config_schema)
+    )
+
+
+async def _consent(http: httpx.AsyncClient, entry_id: str) -> str:
+    response = await http.post(f"/api/market/entry/{entry_id}/consent")
+    assert response.status_code == 200, response.text
+    return str(response.json()["token"])
+
+
+# --------------------------------------------------------- remote install
+
+
+async def test_one_click_install_of_a_remote_entry_is_callable_without_a_restart(
+    tmp_path: Path, http_upstream: HttpUpstream
+) -> None:
+    """SPEC-304 acceptance criterion: "from a curated-index entry,
+    one-click install of a remote fixture upstream -> its tool callable
+    through a profile without restart"."""
+    production = await _hub(tmp_path)
+    async with _running(production) as http:
+        entry_id = "acme.fixture-remote"
+        create = await _create_manual_remote(http, entry_id, http_upstream.url)
+        assert create.status_code == 201
+
+        token = await _consent(http, entry_id)
+        install = await http.post(
+            f"/api/market/entry/{entry_id}/install",
+            json={"consent_token": token, "profiles": ["default"]},
+        )
+        assert install.status_code == 200, install.text
+        body = install.json()
+        assert body["entry_id"] == entry_id
+        assert body["profiles"] == ["default"]
+        assert body["up"] is True
+
+        # No restart: the same running profile server answers immediately.
+        async with Client(production.dynamic_gateway.profile_servers["default"]) as client:
+            names = {tool.name for tool in await client.list_tools()}
+            assert any(name.endswith("_echo") for name in names)
+
+
+async def test_install_without_a_consent_post_is_impossible(
+    tmp_path: Path, http_upstream: HttpUpstream
+) -> None:
+    """SPEC-304 acceptance criterion: install without a consent POST is
+    impossible."""
+    production = await _hub(tmp_path)
+    async with _running(production) as http:
+        entry_id = "acme.no-consent"
+        await _create_manual_remote(http, entry_id, http_upstream.url)
+
+        no_token = await http.post(
+            f"/api/market/entry/{entry_id}/install",
+            json={"consent_token": "made-up-token", "profiles": []},
+        )
+        assert no_token.status_code == 400
+        assert "consent" in no_token.json()["detail"].lower()
+
+        assert (await http.get("/api/market/installed")).json() == []
+
+
+async def test_a_consent_token_is_single_use(tmp_path: Path, http_upstream: HttpUpstream) -> None:
+    production = await _hub(tmp_path)
+    async with _running(production) as http:
+        entry_id = "acme.reuse-token"
+        await _create_manual_remote(http, entry_id, http_upstream.url)
+        token = await _consent(http, entry_id)
+
+        first = await http.post(
+            f"/api/market/entry/{entry_id}/install", json={"consent_token": token, "profiles": []}
+        )
+        assert first.status_code == 200
+
+        second_entry_id = "acme.reuse-token-2"
+        await http.post(
+            "/api/market/manual", json=_manual_remote_entry(second_entry_id, http_upstream.url)
+        )
+        reused = await http.post(
+            f"/api/market/entry/{second_entry_id}/install",
+            json={"consent_token": token, "profiles": []},
+        )
+        assert reused.status_code == 400
+
+
+async def test_a_consent_token_does_not_transfer_to_another_entry(
+    tmp_path: Path, http_upstream: HttpUpstream
+) -> None:
+    production = await _hub(tmp_path)
+    async with _running(production) as http:
+        entry_a = "acme.entry-a"
+        entry_b = "acme.entry-b"
+        await _create_manual_remote(http, entry_a, http_upstream.url)
+        await _create_manual_remote(http, entry_b, http_upstream.url)
+        token = await _consent(http, entry_a)
+
+        wrong_entry = await http.post(
+            f"/api/market/entry/{entry_b}/install", json={"consent_token": token, "profiles": []}
+        )
+        assert wrong_entry.status_code == 400
+
+
+async def test_installing_twice_is_refused(tmp_path: Path, http_upstream: HttpUpstream) -> None:
+    production = await _hub(tmp_path)
+    async with _running(production) as http:
+        entry_id = "acme.twice"
+        await _create_manual_remote(http, entry_id, http_upstream.url)
+        token = await _consent(http, entry_id)
+        first = await http.post(
+            f"/api/market/entry/{entry_id}/install", json={"consent_token": token, "profiles": []}
+        )
+        assert first.status_code == 200
+
+        token2 = await _consent(http, entry_id)
+        second = await http.post(
+            f"/api/market/entry/{entry_id}/install", json={"consent_token": token2, "profiles": []}
+        )
+        assert second.status_code == 400
+        assert "already installed" in second.json()["detail"]
+
+
+async def test_skill_entries_are_refused_with_a_connect_page_hint(tmp_path: Path) -> None:
+    production = await _hub(tmp_path)
+    async with _running(production) as http:
+        entry_id = "acme.a-skill"
+        await http.post(
+            "/api/market/manual",
+            json={
+                "id": entry_id,
+                "name": "A Skill",
+                "one_liner": "A skill, not installable here.",
+                "kind": "skill",
+                "source": {"type": "url", "value": "https://example.com/SKILL.md"},
+                "maintainer": "tests",
+            },
+        )
+        token = await _consent(http, entry_id)
+        response = await http.post(
+            f"/api/market/entry/{entry_id}/install", json={"consent_token": token, "profiles": []}
+        )
+        assert response.status_code == 400
+        assert "connect page" in response.json()["detail"]
+
+
+async def test_uninstall_disconnects_and_persists(
+    tmp_path: Path, http_upstream: HttpUpstream
+) -> None:
+    production = await _hub(tmp_path)
+    async with _running(production) as http:
+        entry_id = "acme.uninstall-me"
+        await _create_manual_remote(http, entry_id, http_upstream.url)
+        token = await _consent(http, entry_id)
+        install = await http.post(
+            f"/api/market/entry/{entry_id}/install",
+            json={"consent_token": token, "profiles": ["default"]},
+        )
+        upstream_key = install.json()["upstream_key"]
+
+        deleted = await http.delete(f"/api/market/installed/{upstream_key}")
+        assert deleted.status_code == 204
+        assert (await http.get("/api/market/installed")).json() == []
+
+        listing = await http.get("/api/gateway/upstreams")
+        assert listing.json() == []
+
+    reloaded = load_config(home=tmp_path, create_if_missing=False)
+    assert reloaded.gateway is not None
+    assert reloaded.gateway.upstreams == []
+
+
+# --------------------------------------------------------- secret round-trip
+
+
+async def test_a_secret_config_field_round_trips_and_never_comes_back(
+    tmp_path: Path, http_upstream: HttpUpstream
+) -> None:
+    """SPEC-304 acceptance criterion: a ``secret`` config field round-trips
+    into the secret store and is never present in any subsequent GET
+    (contract test)."""
+    production = await _hub(tmp_path)
+    async with _running(production) as http:
+        entry_id = "acme.needs-secret"
+        schema = {
+            "type": "object",
+            "properties": {"api_key": {"type": "secret", "title": "API key"}},
+        }
+        await _create_manual_remote(http, entry_id, http_upstream.url, config_schema=schema)
+        token = await _consent(http, entry_id)
+        install = await http.post(
+            f"/api/market/entry/{entry_id}/install",
+            json={"consent_token": token, "config": {"api_key": SECRET}, "profiles": []},
+        )
+        assert install.status_code == 200, install.text
+        assert SECRET not in install.text
+
+        for path in (
+            "/api/market/installed",
+            "/api/gateway/upstreams",
+            "/api/secrets",
+        ):
+            response = await http.get(path)
+            assert SECRET not in response.text, f"leaked at {path}"
+
+        secret_names = [s["name"] for s in (await http.get("/api/secrets")).json()]
+        assert any(name.endswith(".api_key") for name in secret_names)
+
+    assert SECRET not in (tmp_path / "config.yaml").read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------- registry_ref -> stdio
+
+
+class _FakeRegistryDetail:
+    """Stands in for :class:`RegistryClient` for exactly one ``detail``
+    lookup — deliverable #1's "stdio command entries" resolution needs a
+    registry ``server.json`` shaped payload, which the merged
+    :class:`~palaia_hub.market.models.MarketEntry` a manual/curated entry
+    carries never has (see :mod:`palaia_hub.market.install`'s docstring)."""
+
+    def __init__(self, server: RegistryServer | None) -> None:
+        self._server = server
+
+    async def detail(self, server_id: str) -> RegistryServer | None:
+        return self._server
+
+
+async def test_registry_ref_resolves_a_stdio_command_from_an_npm_package(
+    tmp_path: Path,
+) -> None:
+    production = await _hub(tmp_path)
+    async with _running(production) as http:
+        entry_id = "acme.npm-tool"
+        await http.post(
+            "/api/market/manual",
+            json={
+                "id": entry_id,
+                "name": "NPM Tool",
+                "one_liner": "An npm-packaged MCP server.",
+                "kind": "remote",
+                "source": {"type": "registry_ref", "value": "io.example/npm-tool"},
+                "maintainer": "tests",
+            },
+        )
+        assert production.install_service is not None
+        production.install_service.market_service.registry_client = _FakeRegistryDetail(  # type: ignore[assignment]
+            RegistryServer(
+                id="io.example/npm-tool",
+                name="npm-tool",
+                description="An npm tool.",
+                version="1.2.0",
+                raw={
+                    "server": {
+                        "packages": [
+                            {
+                                "registry_type": "npm",
+                                "identifier": "@acme/npm-tool",
+                                "version": "1.2.0",
+                                "package_arguments": [{"value": "--quiet"}],
+                            }
+                        ]
+                    }
+                },
+            )
+        )
+
+        token = await _consent(http, entry_id)
+        install = await http.post(
+            f"/api/market/entry/{entry_id}/install", json={"consent_token": token, "profiles": []}
+        )
+        assert install.status_code == 200, install.text
+
+    upstream = production.dynamic_gateway.config.upstreams[0]
+    assert upstream.kind == "stdio"
+    assert upstream.command == "npx"
+    assert upstream.args == ["-y", "@acme/npm-tool@1.2.0", "--quiet"]
+
+
+async def test_an_unsupported_package_kind_is_refused_plainly(tmp_path: Path) -> None:
+    production = await _hub(tmp_path)
+    async with _running(production) as http:
+        entry_id = "acme.mystery-package"
+        await http.post(
+            "/api/market/manual",
+            json={
+                "id": entry_id,
+                "name": "Mystery",
+                "one_liner": "A package palaia cannot run.",
+                "kind": "remote",
+                "source": {"type": "registry_ref", "value": "io.example/mystery"},
+                "maintainer": "tests",
+            },
+        )
+        assert production.install_service is not None
+        production.install_service.market_service.registry_client = _FakeRegistryDetail(  # type: ignore[assignment]
+            RegistryServer(
+                id="io.example/mystery",
+                name="mystery",
+                description="",
+                version=None,
+                raw={"server": {"packages": [{"registry_type": "cargo", "identifier": "mystery"}]}},
+            )
+        )
+
+        token = await _consent(http, entry_id)
+        response = await http.post(
+            f"/api/market/entry/{entry_id}/install", json={"consent_token": token, "profiles": []}
+        )
+        assert response.status_code == 400
+        assert "does not know how to run" in response.json()["detail"]
+
+
+async def test_registry_offline_during_resolution_is_a_plain_400(tmp_path: Path) -> None:
+    class _OfflineRegistry:
+        async def detail(self, server_id: str) -> RegistryServer | None:
+            raise RegistryOfflineError("no network in this test")
+
+    production = await _hub(tmp_path)
+    async with _running(production) as http:
+        entry_id = "acme.offline-registry"
+        await http.post(
+            "/api/market/manual",
+            json={
+                "id": entry_id,
+                "name": "Offline",
+                "one_liner": "x",
+                "kind": "remote",
+                "source": {"type": "registry_ref", "value": "io.example/offline"},
+                "maintainer": "tests",
+            },
+        )
+        assert production.install_service is not None
+        production.install_service.market_service.registry_client = _OfflineRegistry()  # type: ignore[assignment]
+
+        token = await _consent(http, entry_id)
+        response = await http.post(
+            f"/api/market/entry/{entry_id}/install", json={"consent_token": token, "profiles": []}
+        )
+        assert response.status_code == 400
+        assert "registry" in response.json()["detail"].lower()
+
+
+# ---------------------------------------------------------- container path
+
+
+async def test_container_install_surfaces_a_pull_failure_plainly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The install path for ``container`` entries (docker daemon interaction
+    itself is exercised, docker-gated, in ``test_install_container.py``) —
+    here only the "pull fails" branch, which needs no real daemon."""
+    from palaia_hub.market import install as install_module
+
+    async def _fail_pull(image: str, *, timeout: float = 300.0) -> None:
+        raise DockerError(f"docker pull {image!r} failed: no such image")
+
+    monkeypatch.setattr(install_module.docker_runtime, "pull_image", _fail_pull)
+
+    production = await _hub(tmp_path)
+    async with _running(production) as http:
+        entry_id = "acme.container-tool"
+        await http.post(
+            "/api/market/manual",
+            json={
+                "id": entry_id,
+                "name": "Container Tool",
+                "one_liner": "x",
+                "kind": "container",
+                "source": {"type": "image", "value": "ghcr.io/acme/does-not-exist:1.0.0"},
+                "maintainer": "tests",
+            },
+        )
+        token = await _consent(http, entry_id)
+        response = await http.post(
+            f"/api/market/entry/{entry_id}/install", json={"consent_token": token, "profiles": []}
+        )
+        assert response.status_code == 400
+        assert "no such image" in response.json()["detail"]

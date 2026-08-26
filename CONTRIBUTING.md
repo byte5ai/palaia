@@ -50,15 +50,30 @@ Open a [GitHub Issue](https://github.com/byte5ai/palaia/issues). Include:
 
 ## Branch Policy
 
-**`main` is protected.** Direct pushes are not allowed. All changes go through pull requests.
+**`main` and `v2-maintenance` are protected.** Direct pushes are not allowed. All changes go through pull requests.
 
 | Rule | Setting |
 |------|---------|
-| Direct push to main | Blocked |
+| Direct push to main / v2-maintenance | Blocked |
 | Pull request required | Yes |
 | CI must pass | Yes (test 3.11) |
 | Force push | Blocked |
 | Owner bypass | Yes (emergencies only) |
+
+### Two development tracks
+
+| Track | Where | Base branch for PRs | What belongs there |
+|-------|-------|---------------------|--------------------|
+| **v2** (maintenance) | repo root (`palaia/`, `tests/`, `packages/`) | `v2-maintenance` | Critical hotfixes only (security, data loss, broken release) |
+| **v3** (active) | `v3/` | `main` | Everything new — planning docs now, code later |
+
+v2 and v3 are strictly separated: no imports, no shared tooling, one track per PR.
+See `AGENTS.md` ("Two Development Tracks") for the full rules and `v3/MASTERPLAN.md`
+for the v3 scope.
+
+**v2 hotfix release:** branch from `v2-maintenance`, PR back into `v2-maintenance`,
+bump the version files listed below, then tag (`v2.8.1`) from `v2-maintenance`.
+`publish.yml` builds from the tag — the root packaging on `main` is not involved.
 
 **Workflow:**
 1. Create a feature branch: `git checkout -b feat/my-feature`

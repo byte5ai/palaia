@@ -1,0 +1,23 @@
+{
+  "title": "05-malformed-yaml",
+  "type": "note",
+  "observations": [],
+  "relations": [
+    {
+      "type": "links_to",
+      "target": "A Link",
+      "implicit": true
+    }
+  ],
+  "warnings": [
+    {
+      "code": "frontmatter-malformed"
+    },
+    {
+      "code": "permalink-missing"
+    },
+    {
+      "code": "title-defaulted"
+    }
+  ]
+}

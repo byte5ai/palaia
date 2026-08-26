@@ -1,0 +1,6 @@
+{
+  "title": "Release Notes", "permalink": "releases/2026-08-22", "type": "note",
+  "warnings": [
+    {"code": "volatile-name", "line": 3}
+  ]
+}

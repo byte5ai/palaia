@@ -1,0 +1,21 @@
+{
+  "id": "palaia",
+  "name": "palaia",
+  "available": true,
+  "exposable": true,
+  "dynamic_config": false,
+  "port": 8420,
+  "version": "0.1.0",
+  "tipi_version": 1,
+  "min_tipi_version": null,
+  "categories": ["ai", "utilities"],
+  "description": "palaia gives every AI assistant on your devices — Claude, ChatGPT, Codex, and more — access to the same notes. Write something down once from any of them and the others can bring it back up later. Everything runs on your own Runtipi server; nothing leaves your network unless you turn on remote access yourself.",
+  "short_desc": "Shared memory for every AI assistant you use",
+  "author": "byte5",
+  "source": "https://github.com/byte5ai/palaia",
+  "website": "https://github.com/byte5ai/palaia",
+  "supported_architectures": ["arm64", "amd64"],
+  "created_at": 1756000000000,
+  "updated_at": 1756000000000,
+  "form_fields": []
+}

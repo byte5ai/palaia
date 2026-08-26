@@ -1,0 +1,9 @@
+{
+  "title": "Embeds Bare Heading Block", "permalink": "notes/embeds-bare-heading-block", "type": "note",
+  "embeds": [
+    {"target": "Notebook", "anchor": null, "line": 6},
+    {"target": "Notebook", "anchor": "Setup", "line": 8},
+    {"target": "Notebook", "anchor": "^step-2", "line": 10}
+  ],
+  "warnings": []
+}

@@ -1,0 +1,47 @@
+[project]
+name = "palaia-addon-sdk"
+version = "3.0.0-rc1"
+description = "Author, validate and locally test palaia marketplace add-ons"
+requires-python = ">=3.12"
+readme = "README.md"
+license = "MIT"
+# Deliberately small (SPEC-406 deliverable #1: "stdlib+pydantic only") — a
+# third-party author installs this alone, with none of the hub's own
+# dependencies (fastmcp, fastapi, ...) dragged in. The `test` command talks
+# to a running add-on over stdio with a hand-rolled JSON-RPC client for the
+# same reason: no `mcp`/`fastmcp` package needed just to drive the SDK.
+dependencies = [
+    "pydantic>=2.7",
+]
+
+[project.scripts]
+palaia-addon = "palaia_addon_sdk.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/palaia_addon_sdk"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

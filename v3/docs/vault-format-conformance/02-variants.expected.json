@@ -1,0 +1,10 @@
+{
+  "title": "Commit Style", "permalink": "rules/commit-style", "type": "rule",
+  "observations": [
+    {"category": "how-to-apply", "scope": null, "text": "Prefer the compact rule form.", "line": 7},
+    {"category": "how-to-apply", "scope": "anthropic/opus-5", "text": "Use the extended form with rationale.", "line": 8},
+    {"category": "how-to-apply", "scope": "openai", "text": "Use imperative phrasing.", "line": 9},
+    {"category": "tone", "scope": "google", "text": "Terse.", "line": 10}
+  ],
+  "warnings": [{"code": "variant-no-base", "line": 10}]
+}

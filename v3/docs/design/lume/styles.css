@@ -1,0 +1,15 @@
+/* =============================================================
+   Lume — design system entry stylesheet
+   =============================================================
+   The single stylesheet a consumer should link. It pulls in every
+   other stylesheet the system ships, so one <link> is enough:
+
+     <link rel="stylesheet" href="styles.css">
+
+   Token source of truth is colors_and_type.css. The other stylesheets
+   in this repo (preview/_card.css, ui_kits/**/kit.css) carry
+   preview/kit-scoped layout rules and are intentionally NOT imported
+   here — link them only where you need that specific chrome.
+   ============================================================= */
+
+@import url('./colors_and_type.css');

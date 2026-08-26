@@ -1,0 +1,6 @@
+{
+  "title": "Migration v2.3", "permalink": "notes/migration-v2-3", "type": "note",
+  "warnings": [
+    {"code": "volatile-name", "line": 2}
+  ]
+}

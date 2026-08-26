@@ -1,0 +1,6 @@
+{
+  "title": "2026-08-22", "permalink": "notes/native-date-title", "type": "note",
+  "warnings": [
+    {"code": "volatile-name", "line": 2}
+  ]
+}

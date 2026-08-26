@@ -1,0 +1,4 @@
+===== q1_q2_memory_only_tool_list =====
+--- connecting to http://127.0.0.1:8900/mcp/memory-only/
+--- initialized: server=palaia-gateway-memory-only protocol=2025-11-25
+--- tool surface for profile 'memory-only' (2): ['local_memory_search', 'local_memory_write']

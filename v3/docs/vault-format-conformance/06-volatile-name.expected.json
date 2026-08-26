@@ -1,0 +1,5 @@
+{
+  "title": "OpenClaw 2026.5.7", "permalink": "tools/openclaw-2026-5-7", "type": "note",
+  "observations": [{"category": "note", "scope": null, "text": "Version-in-title violates the stable-identity rule.", "line": 6}],
+  "warnings": [{"code": "volatile-name", "line": 2}]
+}

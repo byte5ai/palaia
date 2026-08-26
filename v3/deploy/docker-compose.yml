@@ -1,0 +1,68 @@
+# palaia v3 hub — compose deployment.
+#
+# Usage:
+#   cd v3/deploy && docker compose up -d
+#   docker compose logs -f      # prints the reachable URL on startup
+#
+# Data (vault, index, config) lives in the `palaia_home` named volume, so it
+# survives `docker compose down` / container recreation — only
+# `docker compose down -v` discards it.
+services:
+  hub:
+    image: ghcr.io/byte5ai/palaia-hub:stable
+    container_name: palaia-hub
+    ports:
+      - "8420:8420"
+    volumes:
+      - palaia_home:/data
+    environment:
+      PALAIA_MODE: locked
+      # SPEC-501: tells the dashboard's "Update available" banner which
+      # instructions to show — this file, so "run `palaia-hub update`,
+      # then `docker compose pull && docker compose up -d`" rather than a
+      # store's own update button. Leave this as-is; it describes this
+      # file, not a preference to change.
+      PALAIA_DEPLOYMENT: compose
+    restart: unless-stopped
+    # SPEC-502 container posture. The image already runs as a non-root user
+    # (see Dockerfile: `USER palaia`); this block closes what is left.
+    #
+    # - `no-new-privileges` stops any setuid binary inside the image from
+    #   regaining root — nothing in the image needs to, and an add-on
+    #   someone installs later must not be able to.
+    # - Every Linux capability is dropped. The hub binds 8421 and nginx
+    #   binds 8420, both above 1024, so NET_BIND_SERVICE is not needed
+    #   either; nothing here wants a capability.
+    # - The root filesystem is read-only. Everything the container writes
+    #   at runtime goes to one of the two tmpfs mounts below or to the
+    #   `palaia_home` volume: nginx renders its config and keeps its temp
+    #   paths under /tmp/nginx (see entrypoint.sh and nginx.conf.template),
+    #   and /run is there for anything expecting a runtime directory.
+    #   If you add a service that needs to write elsewhere in the image,
+    #   give it a tmpfs rather than turning this off.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8420/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    # mDNS (advertising http://palaia.local) needs multicast to reach the
+    # LAN, which Docker's default bridge network does not forward. On a
+    # Linux host, uncomment the line below to put the container directly on
+    # the host's network stack so palaia.local resolves for other devices
+    # on the LAN. Not supported this way on Docker Desktop (macOS/Windows);
+    # the printed URL in `docker compose logs` always works there instead.
+    # When enabled, also remove the `ports:` mapping above — host
+    # networking exposes PALAIA_PORT directly.
+    # network_mode: host
+
+volumes:
+  palaia_home:

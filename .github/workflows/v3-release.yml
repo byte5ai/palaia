@@ -1,0 +1,170 @@
+name: v3 hub image
+
+# SPEC-112: builds/pushes the palaia-hub image to GHCR.
+#   - `edge`                    on every push to main touching v3/**
+#   - `v3.<version>` + `stable` on a `v3.*` tag (release)
+#   - `beta`                    on a `v3.*-beta*` / `v3.*-rc*` tag
+# Independent of the v2 root `publish.yml` (PyPI/npm) — this workflow never
+# touches v2 code or v2 release tags.
+on:
+  push:
+    branches: [main]
+    tags: ['v3.*']
+    # No `paths` filter here on purpose: GitHub ANDs `paths` with
+    # `branches`/`tags` on a single `push` trigger, and a tag push's diff
+    # against its predecessor is not a reliable predictor of "does this
+    # release actually contain v3 changes" — filtering by path risks
+    # silently skipping a real release build. Layer caching (below) keeps
+    # the cost of a v3-free `main` push (e.g. a v2 hotfix) low.
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: >-
+          Also publish this build under this channel tag (in addition to
+          whatever the triggering ref already produces below) — e.g.
+          re-promoting an existing commit to `stable`/`beta` without
+          cutting a new tag. Leave as 'none' for a plain manual rebuild.
+        type: choice
+        options: [none, stable, beta]
+        default: none
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/palaia-hub
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU (arm64 emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: tags
+        # `channel` (SPEC-501) is baked into the image as PALAIA_CHANNEL —
+        # the running hub's own answer to "which release stream am I on",
+        # read back by `GET /api/update/check`. `annotation_version` is
+        # the value the OCI `org.opencontainers.image.version` annotation
+        # on the manifest gets (set below, in the build step): what that
+        # same check compares a channel's *latest* against. edge builds
+        # get an informational version only — the edge channel is never
+        # version-compared (palaia_hub.update.check_for_update).
+        run: |
+          short_sha="${GITHUB_SHA:0:12}"
+          echo "short_sha=${short_sha}" >> "$GITHUB_OUTPUT"
+          tags="${IMAGE}:edge-${short_sha}"
+          channel="edge"
+          annotation_version="0.0.0+edge.${short_sha}"
+          if [[ "${GITHUB_REF}" == refs/heads/main ]]; then
+            tags="${tags},${IMAGE}:edge"
+          elif [[ "${GITHUB_REF}" == refs/tags/v3.* ]]; then
+            version="${GITHUB_REF#refs/tags/v3.}"
+            # SPEC-506: the tag must agree with v3/VERSION, the single
+            # source of truth server_tests/test_version_drift.py already
+            # checks every other artifact against — this is the last mile,
+            # catching a release cut from the wrong VERSION bump before it
+            # ever reaches GHCR.
+            file_version="$(cat v3/VERSION)"
+            if [[ "${version}" != "${file_version}" ]]; then
+              echo "Tag-derived version (${version}) does not match v3/VERSION (${file_version}) — bump v3/VERSION and re-tag." >&2
+              exit 1
+            fi
+            tags="${tags},${IMAGE}:v3.${version}"
+            annotation_version="${version}"
+            if [[ "${version}" == *beta* || "${version}" == *rc* ]]; then
+              tags="${tags},${IMAGE}:beta"
+              channel="beta"
+            else
+              tags="${tags},${IMAGE}:stable"
+              channel="stable"
+            fi
+          fi
+          manual_channel="${{ github.event.inputs.channel }}"
+          if [[ -n "${manual_channel}" && "${manual_channel}" != "none" ]]; then
+            tags="${tags},${IMAGE}:${manual_channel}"
+            channel="${manual_channel}"
+          fi
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+          echo "channel=${channel}" >> "$GITHUB_OUTPUT"
+          echo "annotation_version=${annotation_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push (amd64 + arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: v3/deploy/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            PALAIA_CHANNEL=${{ steps.tags.outputs.channel }}
+          # SPEC-501: the annotation `palaia_hub.update.check_for_update`
+          # reads back from the channel tag's manifest. `docker/build-
+          # push-action` >= v6 forwards this to `buildx build --annotation`
+          # (OCI Distribution Spec annotations, index- and manifest-level).
+          annotations: |
+            org.opencontainers.image.version=${{ steps.tags.outputs.annotation_version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Pull built amd64 image for local checks
+        run: docker pull "${IMAGE}:edge-${{ steps.tags.outputs.short_sha }}" || true
+
+      - name: arm64 smoke test (QEMU) — starts and answers /api/health
+        run: |
+          docker run -d --name palaia-hub-arm64 --platform linux/arm64 \
+            -p 18420:8420 "${IMAGE}:edge-${{ steps.tags.outputs.short_sha }}"
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:18420/api/health; then
+              echo "arm64 image healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "arm64 image never became healthy" >&2
+          docker logs palaia-hub-arm64 >&2 || true
+          exit 1
+
+      - name: Image size check (< 400MB compressed, per SPEC-112)
+        run: |
+          docker manifest inspect "${IMAGE}:edge-${{ steps.tags.outputs.short_sha }}" > manifest.json || true
+          # Fallback for registries/tooling where `manifest inspect` needs
+          # experimental CLI features disabled: measure the locally pulled
+          # amd64 layer's compressed size via `docker save | gzip` as a
+          # reasonable proxy when the manifest route is unavailable.
+          size_bytes=$(docker save "${IMAGE}:edge-${{ steps.tags.outputs.short_sha }}" | gzip -9 | wc -c)
+          size_mb=$(( size_bytes / 1024 / 1024 ))
+          echo "Compressed image size: ${size_mb} MB"
+          if [ "${size_mb}" -ge 400 ]; then
+            echo "Image exceeds the 400MB compressed budget (SPEC-112)." >&2
+            exit 1
+          fi
+
+      - name: Scan image for secrets
+        uses: aquasecurity/trivy-action@0.32.0
+        with:
+          image-ref: ${{ env.IMAGE }}:edge-${{ steps.tags.outputs.short_sha }}
+          scanners: secret
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Clean up smoke-test container
+        if: always()
+        run: docker rm -f palaia-hub-arm64 || true

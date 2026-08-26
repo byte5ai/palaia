@@ -1,0 +1,21 @@
+# Applies to v3/deploy/Dockerfile regardless of build context root (BuildKit
+# convention: `<dockerfile-path>.dockerignore`, relative to the context
+# root). Keeps the build context small and v2 code (repo root, outside
+# `v3/`) out of it entirely, even when the context passed to `docker build`
+# is the repo root.
+*
+!v3
+!v3/pyproject.toml
+!v3/uv.lock
+!v3/server
+!v3/web
+
+v3/server/.venv
+v3/server/**/__pycache__
+v3/server/**/*.pyc
+v3/server/.pytest_cache
+v3/server/.mypy_cache
+v3/server/.ruff_cache
+v3/web/node_modules
+v3/web/dist
+.git

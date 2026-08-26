@@ -1,0 +1,475 @@
+{
+  "build_context": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nAssemble the context around a starting point: resolve it, walk its relations to `depth` hops, and return one deduplicated, token-budgeted package. This is the 'continue where we left off' tool \u2014 it follows the links the notes actually declare instead of re-searching. Notes that do not fit `max_tokens` are shortened to their title plus key facts, never cut mid-note. `depth` is capped at 5; `timeframe` ('30d', '2w', or an ISO date) keeps the walk to what is still current.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "depth": {
+          "default": 2,
+          "description": "Relation hops to walk from the starting point, 0-5. 1 is 'this note and what it names'.",
+          "type": "integer"
+        },
+        "max_tokens": {
+          "default": 4000,
+          "description": "Token budget for the whole package. Notes that do not fit are summarized, then named \u2014 never cut mid-note.",
+          "type": "integer"
+        },
+        "model": {
+          "default": "",
+          "description": "The calling model, as 'provider/model' (e.g. 'anthropic/opus-5') or just 'provider'. Selects per-model observation variants; omitting it serves the default phrasing.",
+          "type": "string"
+        },
+        "query": {
+          "default": "",
+          "description": "What you are looking for, in your own words.",
+          "type": "string"
+        },
+        "ref": {
+          "default": "",
+          "description": "A memory:// reference to start from: a permalink, alias, title, path, memory:// URL, or a glob like 'projects/api-*'.",
+          "type": "string"
+        },
+        "timeframe": {
+          "default": "",
+          "description": "Only include notes at least this recent: '30d', '2w', '12h', or an ISO date. Empty means no time limit.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "capture": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nTHE way to save something you (the assistant) learned this session: a decision, a preference, a correction, a fact worth keeping. Call it the moment the knowledge appears \u2014 before answering, without searching first, without deciding placement, dedup or structure; the curator files it into the vault. Writes an inbox/ note (format spec \u00a77). Reserve write/edit for notes the user explicitly asked for.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "what_it_concerns": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "why_keep": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object"
+    }
+  },
+  "delete": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": false,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nDelete a note by permalink. Irreversible outside git history.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "permalink": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "permalink"
+      ],
+      "type": "object"
+    }
+  },
+  "edit": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nUpdate an existing note's body and/or tags.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "append": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "permalink": {
+          "type": "string"
+        },
+        "tags": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "permalink"
+      ],
+      "type": "object"
+    }
+  },
+  "inbox_status": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nInbox health: how many uncurated captures are waiting, the oldest entry's age, and the most recent capture.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    }
+  },
+  "list": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nList notes in this vault, optionally scoped to a folder.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "folder": {
+          "default": "",
+          "description": "Folder to scope to. Empty means the whole vault.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "move": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": false,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nMove a note to a different folder. Its permalink never changes.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "folder": {
+          "default": "",
+          "description": "Folder to scope to. Empty means the whole vault.",
+          "type": "string"
+        },
+        "permalink": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "permalink"
+      ],
+      "type": "object"
+    }
+  },
+  "read": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nRead one note in full by its permalink.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "permalink": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "permalink"
+      ],
+      "type": "object"
+    }
+  },
+  "recall": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nRecall what matters about a topic or a specific note. Prefer this over search when you want to *use* what the vault knows: results are ranked by relevance plus recency, how often they are used, and how load-bearing they are; shared values are resolved to their current source; and rules phrased per model family arrive already narrowed to yours. Pass a query, or a ref (permalink/title/memory:// URL/glob) when you know the address.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 5,
+          "description": "How many results to return, best first.",
+          "type": "integer"
+        },
+        "model": {
+          "default": "",
+          "description": "The calling model, as 'provider/model' (e.g. 'anthropic/opus-5') or just 'provider'. Selects per-model observation variants; omitting it serves the default phrasing.",
+          "type": "string"
+        },
+        "query": {
+          "default": "",
+          "description": "What you are looking for, in your own words.",
+          "type": "string"
+        },
+        "ref": {
+          "default": "",
+          "description": "A memory:// reference to start from: a permalink, alias, title, path, memory:// URL, or a glob like 'projects/api-*'.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "recall_pick": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nApp-only helper for the recall-explorer UI: fetch the full content of one or more search/recall results the user selected, so only those enter the model's context \u2014 SPEC-208's selective-context mechanism, not a general-purpose batch-read tool.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "refs"
+      ],
+      "type": "object"
+    }
+  },
+  "recent_activity": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nThe most recently modified notes, most recent first.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 10,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "review_decide": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nApp-only action for the review-queue UI: approve or reject one curator proposal, flipping its frontmatter `status` (format spec \u00a78) \u2014 the exact same effect as doing so in the dashboard or by editing the note directly. Only valid on a proposal whose status is currently 'proposed'.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "enum": [
+            "approved",
+            "rejected"
+          ],
+          "type": "string"
+        },
+        "permalink": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "permalink",
+        "decision"
+      ],
+      "type": "object"
+    }
+  },
+  "review_queue": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nList every curator maintenance proposal awaiting review (format spec \u00a78) \u2014 the review-queue app's data source. Each proposal is a card: title, status, and its full body (a human-readable explanation, sometimes with a diff/plan).",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    }
+  },
+  "search": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nSearch this vault's notes. Returns best matches first.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 10,
+          "type": "integer"
+        },
+        "query": {
+          "description": "Search text.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    }
+  },
+  "write": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false,
+      "title": null
+    },
+    "description": "A palaia memory vault.\n\nCreate a new note in this vault.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "type": "string"
+        },
+        "folder": {
+          "default": "",
+          "description": "Folder to scope to. Empty means the whole vault.",
+          "type": "string"
+        },
+        "tags": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "title": {
+          "type": "string"
+        },
+        "type": {
+          "default": "note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "body"
+      ],
+      "type": "object"
+    }
+  }
+}

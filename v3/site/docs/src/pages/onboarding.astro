@@ -1,0 +1,285 @@
+---
+// SPEC-504 deliverable #1: the onboarding page — pick your platform, paste
+// one thing, then open the dashboard and let the wizard take over. Same
+// toolchain and theme as the rest of this site (Astro + Starlight, this
+// project's `custom.css` tokens); this SPEC's own text asked for it either
+// as its own `v3/site/onboarding/` tree, or as a page of this docs-site
+// toolchain when that is the cleaner call — it is, here: a second Astro/
+// Starlight project would mean a second `package.json`, a second CI job
+// and a second copy of `custom.css`'s tokens for one page's worth of
+// content, and this project's own `AGENTS.md` rule ("no shared build
+// tooling... between the tracks") is about the v2/v3 boundary, not about
+// two pages inside the same v3 site sharing one Astro project. The PR body
+// says so too.
+//
+// `StarlightPage` (not a `src/content/docs/*.md` entry) because this page
+// needs a platform-picker with copy buttons and tabbed panels — real
+// interactivity a Markdown page's fixed sidebar layout does not fit — while
+// still getting Starlight's own header, theme toggle and search for free.
+// `template: "splash"` drops the sidebar (`StarlightPage`'s own default:
+// `hasSidebar: entry.data.template !== "splash"`), which is what makes this
+// read as a landing page rather than another doc.
+//
+// Every command below is read out of `v3/deploy`'s real files at build
+// time (`scripts/lib/deploy-snippets.mjs`) — never retyped — which is what
+// makes "snippets match the real compose/one-liner" true by construction
+// rather than by discipline. `tests/onboarding.test.ts` is the drift test
+// the acceptance criterion asks for: it independently re-reads the same
+// v3/deploy source files and asserts the extracted snippets are exactly
+// what they say.
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import { loadDeploySnippets } from "../../scripts/lib/deploy-snippets.mjs";
+
+const snippets = loadDeploySnippets();
+
+const STORES = [
+  { name: "Umbrel", dir: "umbrel" },
+  { name: "CasaOS", dir: "casaos" },
+  { name: "Runtipi", dir: "runtipi" },
+  { name: "TrueNAS SCALE", dir: "truenas" },
+] as const;
+
+const REPO = "https://github.com/byte5ai/palaia";
+---
+
+<StarlightPage frontmatter={{
+  title: "Get palaia running",
+  description: "Pick your platform, paste one thing, then let the setup wizard take over.",
+  template: "splash",
+}}>
+  <div class="op">
+    <p class="op-lede">
+      One command, or one file, depending on how you already run things. Either way: paste it,
+      then open your hub's address in a browser — a short setup wizard does the rest.
+    </p>
+
+    <div class="op-tabs" role="tablist">
+      <input type="radio" name="op-platform" id="op-tab-docker" checked />
+      <input type="radio" name="op-platform" id="op-tab-compose" />
+      <input type="radio" name="op-platform" id="op-tab-stores" />
+
+      <div class="op-tabbar">
+        <label for="op-tab-docker">Docker</label>
+        <label for="op-tab-compose">Compose file</label>
+        <label for="op-tab-stores">Self-hosting app stores</label>
+      </div>
+
+      <section class="op-panel" id="op-panel-docker">
+        <h2>One command</h2>
+        <p>
+          Already have Docker (Docker Desktop on macOS/Windows, or Docker Engine on Linux)?
+          This is the whole install.
+        </p>
+        <div class="op-snippet">
+          <pre><code>{snippets.dockerRun}</code></pre>
+          <button type="button" class="op-copy" data-copy-target="op-code-docker">Copy</button>
+        </div>
+        <code id="op-code-docker" class="op-copy-source" hidden>{snippets.dockerRun}</code>
+
+        <p class="op-fine">
+          Prefer a script that checks Docker is actually installed and running first, then prints
+          the address to open at the end?
+        </p>
+        <div class="op-snippet">
+          <pre><code>{snippets.curlInstall}</code></pre>
+          <button type="button" class="op-copy" data-copy-target="op-code-curl">Copy</button>
+        </div>
+        <code id="op-code-curl" class="op-copy-source" hidden>{snippets.curlInstall}</code>
+      </section>
+
+      <section class="op-panel" id="op-panel-compose">
+        <h2>A file you keep</h2>
+        <p>
+          Prefer a config file you can edit and check in, or already run other containers this
+          way? Clone the repository and start it with Compose:
+        </p>
+        <div class="op-snippet">
+          <pre><code>git clone {REPO}.git
+{snippets.compose}</code></pre>
+          <button type="button" class="op-copy" data-copy-target="op-code-compose">Copy</button>
+        </div>
+        <code id="op-code-compose" class="op-copy-source" hidden>git clone {REPO}.git
+{snippets.compose}</code>
+        <p class="op-fine">
+          A ready-to-use <code>docker-compose.yml</code> ships in that repository at{" "}
+          <code>v3/deploy/</code> — nothing to write yourself.
+        </p>
+      </section>
+
+      <section class="op-panel" id="op-panel-stores">
+        <h2>Self-hosting app stores</h2>
+        <p>
+          Packages for these platforms are built and kept current in the repository, but none of
+          them is listed in an official app catalog yet — that is a submission step still to
+          happen, tracked in the open. Until a listing goes live, Docker or Compose above install
+          the same image on any of these platforms, since they all run containers underneath.
+        </p>
+        <ul class="op-stores">
+          {STORES.map((store) => (
+            <li>
+              <span class="op-stores-name">{store.name}</span>
+              <span class="op-stores-status">not yet listed</span>
+              <a href={`${REPO}/tree/main/v3/deploy/stores/${store.dir}`}>package source</a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </div>
+
+    <h2>Then open your hub</h2>
+    <p>
+      Once it is running, open <code>http://palaia.local</code> in a browser on the same network
+      — or, if that address does not resolve yet (some setups need one network flag; see{" "}
+      <a href="/install/#finding-it-on-your-network-palaialocal">Install it</a> for the one-line
+      fix), the address printed to the container's own log, which always works:{" "}
+      <code>http://&lt;host&gt;:8420</code>.
+    </p>
+
+    <h2>The wizard takes over</h2>
+    <p>
+      From there, a short setup wizard runs in the browser: an administrator sign-in, your first
+      memory, and connecting the first AI tool you use — no file editing, no extra commands. See{" "}
+      <a href="/first-shared-memory/">Your first shared memory</a> for what that looks like end
+      to end, or <a href="/install/">Install it</a> for the longer version of everything on this
+      page.
+    </p>
+  </div>
+
+  <script>
+    // Progressive enhancement only: the commands above are plain, selectable
+    // text without this script — copy buttons are a convenience, not a
+    // requirement to finish setup.
+    for (const button of document.querySelectorAll<HTMLButtonElement>("[data-copy-target]")) {
+      button.addEventListener("click", async () => {
+        const source = document.getElementById(button.dataset.copyTarget ?? "");
+        if (!source?.textContent) return;
+        try {
+          await navigator.clipboard.writeText(source.textContent);
+          const original = button.textContent;
+          button.textContent = "Copied";
+          setTimeout(() => {
+            button.textContent = original;
+          }, 1500);
+        } catch {
+          // clipboard access can be refused (older browser, insecure
+          // context) — the text is still right there, selectable by hand.
+        }
+      });
+    }
+  </script>
+</StarlightPage>
+
+<style>
+  /* Phone-friendly by construction: nothing here sets a fixed pixel width,
+     every code block scrolls inside its own box (never the page), and the
+     tab bar wraps instead of forcing a wider viewport — SPEC-504
+     deliverable #1's "no horizontal scroll on phones". */
+  .op {
+    max-width: 46rem;
+  }
+  .op-lede {
+    font-size: var(--sl-text-lg);
+    color: var(--sl-color-gray-2);
+  }
+
+  .op-tabs {
+    margin-block: 2rem;
+  }
+  .op-tabs input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .op-tabbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    border-bottom: 1px solid var(--sl-color-hairline);
+    margin-bottom: 1.5rem;
+  }
+  .op-tabbar label {
+    cursor: pointer;
+    padding: 0.5rem 0.9rem;
+    border-radius: 0.4rem 0.4rem 0 0;
+    color: var(--sl-color-gray-2);
+    font-size: var(--sl-text-sm);
+    user-select: none;
+  }
+  .op-tabbar label:hover {
+    color: var(--sl-color-white);
+  }
+  .op-panel {
+    display: none;
+  }
+  #op-tab-docker:checked ~ .op-tabbar label[for="op-tab-docker"],
+  #op-tab-compose:checked ~ .op-tabbar label[for="op-tab-compose"],
+  #op-tab-stores:checked ~ .op-tabbar label[for="op-tab-stores"] {
+    color: var(--sl-color-accent-high);
+    border-bottom: 2px solid var(--sl-color-accent);
+  }
+  #op-tab-docker:checked ~ #op-panel-docker,
+  #op-tab-compose:checked ~ #op-panel-compose,
+  #op-tab-stores:checked ~ #op-panel-stores {
+    display: block;
+  }
+
+  .op-snippet {
+    position: relative;
+    max-width: 100%;
+    overflow-x: auto;
+    background: var(--sl-color-black);
+    border: 1px solid var(--sl-color-hairline);
+    border-radius: 0.5rem;
+    padding: 1rem 5.5rem 1rem 1rem;
+  }
+  .op-snippet pre {
+    margin: 0;
+    white-space: pre;
+  }
+  .op-copy {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    font-size: var(--sl-text-xs);
+    padding: 0.3rem 0.6rem;
+    border-radius: 0.3rem;
+    border: 1px solid var(--sl-color-hairline);
+    background: var(--sl-color-gray-6);
+    color: var(--sl-color-white);
+    cursor: pointer;
+  }
+  .op-copy:hover {
+    background: var(--sl-color-gray-5);
+  }
+  .op-copy-source {
+    display: none;
+  }
+  .op-fine {
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-3);
+  }
+
+  .op-stores {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: 0.6rem;
+  }
+  .op-stores li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.6rem;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--sl-color-hairline);
+    border-radius: 0.4rem;
+  }
+  .op-stores-name {
+    font-weight: 600;
+    min-width: 8rem;
+  }
+  .op-stores-status {
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-3);
+  }
+</style>

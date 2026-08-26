@@ -1,0 +1,10 @@
+{
+  "title": "CRLF Note", "permalink": "notes/crlf-note", "type": "note",
+  "observations": [
+    {"category": "note", "scope": null, "text": "A fact recorded in a CRLF-terminated file.", "line": 6}
+  ],
+  "relations": [
+    {"type": "relates_to", "target": "CRLF Target", "implicit": false, "line": 7}
+  ],
+  "warnings": []
+}

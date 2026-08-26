@@ -1,0 +1,92 @@
+[project]
+name = "palaia-hub"
+dynamic = ["version"]
+description = "palaia v3 hub daemon (Python core)"
+requires-python = ">=3.12"
+readme = "README.md"
+license = "MIT"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "platformdirs>=4.2",
+    "fastmcp==3.4.7",
+    "watchfiles>=0.22",
+    "argon2-cffi>=23.1",
+    "sqlite-vec>=0.1.6",
+    # SPEC-203: JOSE for signing access tokens, and the ECDSA primitives
+    # behind the signing key. Both already arrive with fastmcp (its own
+    # JWTVerifier verifies with joserfc), and they are declared here because
+    # palaia_hub.oauth imports them directly — a transitive dependency is not
+    # a contract.
+    "joserfc>=1.0",
+    "cryptography>=42",
+    # SPEC-201: outbound webhook delivery (palaia_hub.hooks.delivery).
+    "httpx>=0.27",
+]
+
+[project.scripts]
+palaia-hub = "palaia_hub.cli:main"
+
+[project.optional-dependencies]
+# Local embeddings for the SPEC-104 vector/hybrid lane. Kept an extra rather
+# than a core dependency: fastembed pulls onnxruntime plus a ~130 MB model
+# download, and the index degrades cleanly to FTS-only without it (SPEC-104
+# acceptance: "queries degrade to FTS cleanly while vectors are pending").
+embeddings = [
+    "fastembed>=0.4",
+]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "types-PyYAML>=6.0",
+    "anyio>=4",
+    # SPEC-502: property-based fuzzing of the vault-format parser
+    # (server/tests/security/test_parser_fuzz.py), seeded from the
+    # conformance corpus and bounded by an explicit hypothesis profile.
+    "hypothesis>=6.100",
+    # SPEC-406: the skill format lint (server/tests/clients/skill_lint.py)
+    # and the marketplace schema-parity test import the add-on SDK's
+    # jargon blocklist and manifest model — see those modules' docstrings
+    # for why the shared copy lives in v3/sdk rather than here.
+    "palaia-addon-sdk",
+]
+
+[tool.uv.sources]
+# A sibling package, not a workspace member on purpose (SPEC-406: the SDK
+# must stay independently `uv run --project v3/sdk`-able, with no
+# dependency in the other direction ever creeping in via workspace glue).
+palaia-addon-sdk = { path = "../sdk" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/palaia_hub/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/palaia_hub"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
+# fastembed and sqlite-vec ship no py.typed marker (SPEC-104's optional
+# embedding backend and the KNN extension loader). Their surfaces are used
+# behind our own typed wrappers in palaia_hub.index.
+[[tool.mypy.overrides]]
+module = ["sqlite_vec.*", "fastembed.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

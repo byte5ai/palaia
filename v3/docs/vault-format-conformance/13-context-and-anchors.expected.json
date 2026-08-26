@@ -1,0 +1,11 @@
+{
+  "title": "Context And Anchors", "permalink": "notes/context-and-anchors", "type": "note",
+  "observations": [
+    {"category": "note", "context": null, "block_id": "anchor-a", "line": 6},
+    {"category": "other", "context": null, "block_id": "anchor-a", "line": 7},
+    {"category": "third", "context": null, "block_id": "anchor-b", "line": 8}
+  ],
+  "warnings": [
+    {"code": "anchor-duplicate", "line": 7}
+  ]
+}

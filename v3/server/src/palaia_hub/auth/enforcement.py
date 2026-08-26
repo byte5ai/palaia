@@ -1,0 +1,143 @@
+"""Per-tool scope enforcement — the gateway's fine-grained half of auth.
+
+fastmcp's ``RequireAuthMiddleware`` (wired in via ``FastMCP(auth=...)``,
+see :mod:`palaia_hub.auth.verifier`) is coarse: it gates an entire mounted
+profile on "is there any valid token at all", because a profile can host
+several vaults with different read/write grants on the *same* token. This
+module is the other half: called from inside a memory tool
+(:mod:`palaia_hub.gateway.memory_tools`), after the transport layer has
+already authenticated the call, to check whether *this* token's scopes
+cover *this* specific action on *this* specific vault.
+
+The result is deliberately a plain string, not an exception:
+:mod:`palaia_hub.gateway.memory_tools` turns it into
+``ToolResult(is_error=True, ...)`` — an MCP-level tool error the calling
+model sees and can react to, not an HTTP failure or a crash (SPEC-108
+acceptance criterion: "read-scoped token calling a write tool -> MCP error
+naming the missing scope").
+"""
+
+from __future__ import annotations
+
+from fastmcp.server.dependencies import get_access_token
+
+from .scopes import (
+    readable_vault_keys,
+    required_scope_for_action,
+    required_scope_for_directory_action,
+    required_scope_for_messenger_action,
+    required_scope_for_stash_action,
+)
+
+
+def missing_scope_error(vault_key: str, action: str) -> str | None:
+    """``None`` if the current call may proceed; else the error to return.
+
+    ``get_access_token()`` returns ``None`` when no ``TokenVerifier`` is
+    attached to the profile currently serving this request — i.e. auth was
+    never required for this mount (locked mode's default-optional
+    posture). That is a transport-layer decision already made before any
+    tool code runs (see :mod:`palaia_hub.auth.policy` /
+    :mod:`palaia_hub.gateway.build`): a profile *with* a verifier attached
+    already refused an unauthenticated call with a 401 via
+    ``RequireAuthMiddleware`` before reaching here, so a token-less call
+    that does reach a tool body can only mean this mount never required
+    one — every action is allowed in that case, same as before this SPEC.
+    """
+    access_token = get_access_token()
+    if access_token is None:
+        return None
+    needed = required_scope_for_action(vault_key, action)
+    if needed in access_token.scopes:
+        return None
+    return (
+        f"this token is missing scope {needed!r} "
+        f"(it has: {sorted(access_token.scopes)!r}). Fix: create or use a token "
+        f"that includes {needed!r} for this vault."
+    )
+
+
+def missing_stash_scope_error(action: str) -> str | None:
+    """Same contract as :func:`missing_scope_error`, for the stash tool
+    family (SPEC-202) — hub-level ``stash:read``/``stash:write`` scopes
+    rather than a per-vault one.
+    """
+    access_token = get_access_token()
+    if access_token is None:
+        return None
+    needed = required_scope_for_stash_action(action)
+    if needed in access_token.scopes:
+        return None
+    return (
+        f"this token is missing scope {needed!r} "
+        f"(it has: {sorted(access_token.scopes)!r}). Fix: create or use a token "
+        f"that includes {needed!r} for stash."
+    )
+
+
+def missing_directory_scope_error(action: str) -> str | None:
+    """Same contract as :func:`missing_scope_error`, for the session
+    directory tool family (SPEC-402) — hub-level ``directory:read``/
+    ``directory:write`` scopes rather than a per-vault one.
+    """
+    access_token = get_access_token()
+    if access_token is None:
+        return None
+    needed = required_scope_for_directory_action(action)
+    if needed in access_token.scopes:
+        return None
+    return (
+        f"this token is missing scope {needed!r} "
+        f"(it has: {sorted(access_token.scopes)!r}). Fix: create or use a token "
+        f"that includes {needed!r} for the session directory."
+    )
+
+
+def missing_messenger_scope_error(action: str) -> str | None:
+    """Same contract as :func:`missing_scope_error`, for the messenger tool
+    family (SPEC-403) — hub-level ``messenger:read``/``messenger:send``.
+
+    This is only half of the messenger's authorization: passing this check
+    says the *client* may use the messenger, not that it is the session it
+    claims to be. That second half is the SPEC-402 session secret, checked
+    in :class:`palaia_hub.messenger.service.MessengerService` on every call
+    (SPEC-403 deliverable #4: "a scope alone must not read another
+    session's inbox").
+    """
+    access_token = get_access_token()
+    if access_token is None:
+        return None
+    needed = required_scope_for_messenger_action(action)
+    if needed in access_token.scopes:
+        return None
+    return (
+        f"this token is missing scope {needed!r} "
+        f"(it has: {sorted(access_token.scopes)!r}). Fix: create or use a token "
+        f"that includes {needed!r} for the messenger."
+    )
+
+
+def readable_vaults_for_call() -> frozenset[str] | None:
+    """Which vaults the *current* call's token may read, or ``None``.
+
+    ``None`` means no token verifier is attached to this mount at all (the
+    same locked-mode posture :func:`missing_scope_error`'s docstring
+    describes), and the caller should treat every vault it knows as
+    readable. Used by the messenger to bound its ``refs`` validation to
+    vaults the sender can actually read (SPEC-403 deliverable #1), so a
+    refused ref never doubles as an oracle for "that note exists somewhere
+    you cannot see".
+    """
+    access_token = get_access_token()
+    if access_token is None:
+        return None
+    return readable_vault_keys(access_token.scopes)
+
+
+__all__ = [
+    "missing_directory_scope_error",
+    "missing_messenger_scope_error",
+    "missing_scope_error",
+    "missing_stash_scope_error",
+    "readable_vaults_for_call",
+]

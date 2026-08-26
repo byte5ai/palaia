@@ -1,0 +1,32 @@
+name: palaia
+title: palaia
+train: community
+description: Shared memory for every AI assistant you use
+home: https://github.com/byte5ai/palaia
+icon: https://raw.githubusercontent.com/byte5ai/palaia/main/v3/deploy/stores/truenas/community/palaia/icon.png
+categories:
+  - productivity
+  - ai
+keywords:
+  - ai
+  - memory
+  - assistant
+sources:
+  - https://github.com/byte5ai/palaia
+  - https://github.com/byte5ai/palaia/pkgs/container/palaia-hub
+maintainers:
+  - name: byte5
+    email: hello@byte5.ai
+app_version: "0.1.0"
+version: "1"
+human_version: "0.1.0_1"
+capabilities: []
+# The image creates its own non-root `palaia` user (`useradd --system`,
+# v3/deploy/Dockerfile) rather than running as a fixed uid/gid — see this
+# package's SUBMIT.md for how to read the real uid back before filling
+# this in.
+run_as_context: []
+host_mounts: []
+annotations:
+  min_scale_version: "24.04.0"
+changelog_url: https://github.com/byte5ai/palaia/releases

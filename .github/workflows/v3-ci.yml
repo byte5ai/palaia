@@ -1,0 +1,295 @@
+name: v3 CI
+
+on:
+  push:
+    branches: [main]
+    paths: ['v3/**']
+  pull_request:
+    branches: [main]
+    paths: ['v3/**']
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: v3
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.8.x"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: uv sync
+        run: uv sync --all-packages
+
+      # SPEC-306: server/tests/mcpb's real-pack tests need the `mcpb` CLI
+      # on PATH (via a local devDependency install) — without this they
+      # skip cleanly rather than fail, but skipping in CI would silently
+      # stop proving the acceptance criterion, so it is installed here.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: v3/tools/build-mcpb/package-lock.json
+
+      - name: npm ci (mcpb build tooling)
+        working-directory: v3/tools/build-mcpb
+        run: npm ci
+
+      - name: ruff check
+        run: uv run ruff check .
+
+      - name: mypy
+        run: uv run mypy server/src
+
+      - name: pytest
+        # SPEC-113's e2e scenario suite gets its own job below (dedicated
+        # timeout + failure-artifact capture), so it is excluded here to
+        # avoid running it twice on every push/PR.
+        run: uv run pytest --ignore=server/tests/e2e
+
+  e2e:
+    # SPEC-113: the Phase-1 exit-criterion harness (S1-S5) — real hub
+    # subprocesses over the golden vault fixture, real streamable HTTP,
+    # amd64 (this runner's arch).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: v3
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.8.x"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: uv sync
+        run: uv sync --all-packages
+
+      # SPEC-306: test_mcpb_proxy.py spawns the real palaia-proxy.mjs as a
+      # Node subprocess. No `npm ci` needed here — the proxy is a
+      # self-contained script (Node builtins only).
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: e2e scenario suite
+        # --basetemp puts every scenario's tmp_path (hub subprocess logs,
+        # the golden-vault copy each scenario mutates, progress logs) under
+        # a directory this job controls, so a failure's reproducible bundle
+        # (SPEC-113 acceptance: "logs + vault + config") is exactly what
+        # gets uploaded below, pass or fail.
+        run: uv run pytest server/tests/e2e -v --basetemp=e2e-artifacts
+
+      - name: upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-bundle
+          path: v3/e2e-artifacts
+          retention-days: 14
+
+  mcpb:
+    # SPEC-306 deliverable #2: the packed bundle validates against the
+    # MCPB manifest schema, and the build is reproducible in CI — proven
+    # by actually running it here, not by running `build.mjs` only on a
+    # developer's machine.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: v3/tools/build-mcpb
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: v3/tools/build-mcpb/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: proxy unit tests
+        run: npm test
+
+      - name: build (validate + pack + sign)
+        run: npm run build
+
+      - name: verify the packed bundle unpacks to a valid manifest + a real signature block
+        run: |
+          rm -rf /tmp/mcpb-unpacked
+          node_modules/.bin/mcpb unpack dist/palaia.mcpb /tmp/mcpb-unpacked
+          node_modules/.bin/mcpb validate /tmp/mcpb-unpacked/manifest.json
+          node -e "
+            const data = require('fs').readFileSync('dist/palaia.mcpb');
+            if (!data.includes('MCPB_SIG_V1') || !data.includes('MCPB_SIG_END')) {
+              console.error('no PKCS#7 signature block found in the packed bundle');
+              process.exit(1);
+            }
+            console.log('signature block present (' + data.length + ' bytes total)');
+          "
+
+      - name: upload the built bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: palaia-mcpb
+          path: v3/tools/build-mcpb/dist/palaia.mcpb
+          retention-days: 14
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: v3/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: v3/web/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: eslint
+        run: npm run lint
+
+      - name: tsc
+        run: npm run typecheck
+
+      - name: vitest
+        run: npm test
+
+      - name: build
+        run: npm run build
+
+  dependency-audit:
+    # SPEC-502 deliverable #2, the dependency half. Reports without gating,
+    # on purpose: a third party publishing an advisory overnight must not
+    # turn every branch red until someone wakes up, because a build that is
+    # red for reasons outside the change trains people to ignore it. What
+    # gates instead is the policy in v3/docs/security/dependencies.md — a
+    # high/critical advisory in something a user actually runs blocks the
+    # next release, checked at release time with a human present.
+    #
+    # `uv lock --check` is the exception and DOES gate: a manifest edited
+    # without re-locking is this repository's own mistake, not the world's.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.8.x"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: the lockfile matches the manifests
+        working-directory: v3
+        run: uv lock --check
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: python advisories (runtime dependencies)
+        working-directory: v3
+        continue-on-error: true
+        run: |
+          uv export --no-hashes --no-dev -o /tmp/runtime-reqs.txt
+          uv run --with pip-audit pip-audit --no-deps --disable-pip -r /tmp/runtime-reqs.txt
+
+      - name: python advisories (including development dependencies)
+        working-directory: v3
+        continue-on-error: true
+        run: |
+          uv export --no-hashes -o /tmp/all-reqs.txt
+          uv run --with pip-audit pip-audit --no-deps --disable-pip -r /tmp/all-reqs.txt
+
+      - name: node advisories (dashboard)
+        working-directory: v3/web
+        continue-on-error: true
+        run: |
+          npm ci
+          npm audit
+
+      - name: node advisories (bundle build tooling)
+        working-directory: v3/tools/build-mcpb
+        continue-on-error: true
+        run: |
+          npm ci
+          npm audit
+
+  docs-site:
+    # SPEC-503: the user docs site, in the same web lane as the dashboard
+    # build above — a separate job (its own npm project/lockfile, no
+    # shared build tooling with v3/web) rather than a step, so a docs-site
+    # failure is attributed clearly and the two builds run in parallel.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: v3/site/docs
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: v3/site/docs/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: eslint
+        run: npm run lint
+
+      - name: typecheck
+        run: npm run typecheck
+
+      # The drift test: clients.ts/skills.ts changed without regenerating
+      # the "Connect your AI" pages fails right here, before the build
+      # step below would otherwise mask it by using the stale committed
+      # pages successfully.
+      - name: connect-page drift check
+        run: npm run check:generated
+
+      - name: vitest
+        run: npm test
+
+      # astro build, then the broken-internal-link checker over its own
+      # output (SPEC-503 deliverable #4).
+      - name: build (site + internal link check)
+        run: npm run build
+
+      # The jargon lint (shared blocklist, "prose only" — SPEC-503
+      # deliverable #3) scans the committed Markdown directly, not the
+      # build output, so it needs no Node/Astro step at all — it already
+      # runs in the `python` job above, via that job's ordinary
+      # `uv run pytest` over server/tests/docs_site/.

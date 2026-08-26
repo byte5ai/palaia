@@ -1,0 +1,10 @@
+{
+  "title": "Observation Wikilink Text", "permalink": "notes/observation-wikilink-text", "type": "note",
+  "observations": [
+    {"category": "see-also", "scope": null, "text": "[[Related Entity]]", "tags": [], "line": 6}
+  ],
+  "relations": [
+    {"type": "links_to", "target": "Related Entity", "implicit": true, "line": 6}
+  ],
+  "warnings": []
+}

@@ -1,0 +1,8 @@
+{
+  "title": "Footnote Named", "permalink": "notes/footnote-named", "type": "note",
+  "observations": [
+    {"category": "real", "scope": null, "text": "genuine observation", "line": 8}
+  ],
+  "relations": [],
+  "warnings": []
+}

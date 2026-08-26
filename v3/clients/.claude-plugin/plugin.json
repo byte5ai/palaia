@@ -1,0 +1,13 @@
+{
+  "name": "palaia-memory",
+  "description": "Makes an agent use palaia's shared memory without being told, and work alongside other agent sessions: when to recall, how to resume work, what deserves capturing, and when to register, check in and reply.",
+  "version": "0.1.0",
+  "author": {
+    "name": "byte5",
+    "url": "https://github.com/byte5ai/palaia"
+  },
+  "homepage": "https://github.com/byte5ai/palaia/tree/main/v3/clients",
+  "repository": "https://github.com/byte5ai/palaia",
+  "license": "MIT",
+  "keywords": ["memory", "mcp", "recall", "capture", "messaging", "palaia"]
+}

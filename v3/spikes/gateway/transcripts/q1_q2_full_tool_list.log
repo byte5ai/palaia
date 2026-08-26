@@ -1,0 +1,4 @@
+===== q1_q2_full_tool_list =====
+--- connecting to http://127.0.0.1:8900/mcp/full/
+--- initialized: server=palaia-gateway-full protocol=2025-11-25
+--- tool surface for profile 'full' (4): ['local_memory_search', 'local_memory_write', 'remote_say', 'remote_weather']

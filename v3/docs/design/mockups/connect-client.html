@@ -1,0 +1,1265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>palaia &middot; Connect a client (mockup)</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap');
+/* ================================================================
+   palaia design tokens v2 — Lume
+   Source of truth: v3/docs/design/lume/colors_and_type.css (never invent
+   a value; everything below is copied or mechanically derived from it).
+   The --p-* names are kept as the mockups' working vocabulary so every
+   component rule below stays readable; each one is now an alias onto a
+   real Lume token. Change values in colors_and_type.css first, then
+   mirror here and in v3/docs/design/system.md — every mockup carries the
+   same block, byte-identical except this comment header and the <title>.
+   ================================================================ */
+:root{
+  color-scheme: light dark;
+
+  /* ---- Lume primitives: spacing, radius, motion, type (colors_and_type.css §1) ---- */
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-5:20px;
+  --space-6:24px; --space-8:32px; --space-10:40px; --space-12:48px; --space-16:64px;
+  --radius-editor:0; --radius-sm:6px; --radius-md:8px; --radius-lg:10px; --radius-xl:12px; --radius-pill:999px;
+  --duration-instant:0ms; --duration-quick:100ms; --duration-smooth:200ms; --duration-condense:300ms;
+  --easing-standard:cubic-bezier(.2,0,0,1); --easing-emphasis:cubic-bezier(.4,0,.2,1);
+
+  /* Three registers, loaded via the Google Fonts @import above so these
+     static mockups render in the real Lume typefaces for human review
+     (SPEC-005 redo, 2026-08-23) -- lume/README.md decision 3 still governs
+     shipped product code: the dashboard build self-hosts the variable
+     files and MCP Apps bundle them; only this preview HTML uses the CDN.
+     Fallback stacks below still carry rendering if the network is blocked. */
+  --font-sans:  'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:  'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --font-serif: 'Source Serif 4', Charter, 'Iowan Old Style', Georgia, serif;
+  --type-display-size:32px; --type-display-lh:40px; --type-display-weight:600;
+  --type-h1-size:24px;      --type-h1-lh:32px;      --type-h1-weight:600;
+  --type-h2-size:20px;      --type-h2-lh:28px;      --type-h2-weight:600;
+  --type-h3-size:16px;      --type-h3-lh:24px;      --type-h3-weight:600;
+  --type-body-size:14px;    --type-body-lh:22px;    --type-body-weight:400;
+  --type-body-sm-size:13px; --type-body-sm-lh:20px; --type-body-sm-weight:400;
+  --type-caption-size:12px; --type-caption-lh:18px; --type-caption-weight:400;
+  --type-prose-size:16px;   --type-prose-lh:26px;   --type-prose-weight:400;
+  --type-mono-size:13px;    --type-mono-lh:20px;    --type-mono-weight:450;
+  --type-mono-sm-size:12px; --type-mono-sm-lh:18px; --type-mono-sm-weight:450;
+
+  /* ---- palaia's working aliases onto the Lume primitives above ---- */
+  --p-font-sans:var(--font-sans); --p-font-serif:var(--font-serif); --p-font-mono:var(--font-mono);
+  /* Type scale collapses onto Lume's actual steps (display/h1/h2/h3/body/body-sm/caption) —
+     Lume ships fewer, larger-jump sizes than the old bespoke scale; nearest-step mapping, not invention.
+     2xs/xs both land on caption (12px, Lume's floor); display and 3xl both land on Lume's display (32px,
+     Lume's ceiling — the old 42px onboarding step has no Lume equivalent and is retired). */
+  --p-size-2xs:var(--type-caption-size);   /* 12px — overlines (was 11px) */
+  --p-size-xs:var(--type-caption-size);    /* 12px — meta, chips */
+  --p-size-sm:var(--type-body-sm-size);    /* 13px — dense UI, table cells */
+  --p-size-md:var(--type-body-size);       /* 14px — body, the default (was 15px) */
+  --p-size-lg:var(--type-h3-size);         /* 16px — lead paragraph, card titles */
+  --p-size-xl:var(--type-h2-size);         /* 20px — section heads (was 21px) */
+  --p-size-2xl:var(--type-h1-size);        /* 24px — page titles, metrics (was 26px) */
+  --p-size-3xl:var(--type-display-size);   /* 32px — the one-glance verdict (was 33px) */
+  --p-size-display:var(--type-display-size); /* 32px — onboarding (was 42px; Lume tops out here) */
+  /* Two sub-caption steps for the mono METADATA register. Not invention: the Lume
+     reference application sets its micro-labels and system strings at 9.5–11px
+     (see the KPI tile labels, LAYERS/SOURCES rail labels and `rev 4 · 14:08`
+     meta strings in the Lume mockups). 10px/11px are those two sizes, rounded
+     onto whole pixels; both are mono-only and never carry sentence text. */
+  --p-size-micro:10px;                     /* uppercase mono micro-label */
+  --p-size-meta:11px;                      /* mono system string / card meta */
+  /* Leading ratios mirror the size/lh pairs above (display 32/40, h1 24/32, body 14/22, prose 16/26) */
+  --p-leading-tight:1.2; --p-leading-snug:1.4; --p-leading-normal:1.571; --p-leading-loose:1.625;
+  --p-track-tight:-.01em;  /* Lume .lume-display letter-spacing */
+  --p-track-label:.02em;   /* Lume type.caption.strong — quiet sans eyebrow */
+  --p-track-micro:.08em;   /* uppercase mono micro-label tracking (Lume reference app) */
+
+  /* Space / radius / motion aliases (Lume's 4pt grid already matches palaia's 1:1 except space-10) */
+  --p-space-1:var(--space-1);  --p-space-2:var(--space-2);  --p-space-3:var(--space-3); --p-space-4:var(--space-4);
+  --p-space-5:var(--space-5);  --p-space-6:var(--space-6);  --p-space-8:var(--space-8);
+  --p-space-10:calc(var(--space-8) + var(--space-2)); --p-space-12:var(--space-12); --p-space-16:var(--space-16);
+  --p-radius-sm:var(--radius-sm); --p-radius-md:var(--radius-md); --p-radius-lg:var(--radius-lg);
+  --p-radius-xl:var(--radius-xl); --p-radius-pill:var(--radius-pill);
+  --p-ease:var(--easing-standard);
+  --p-dur-1:var(--duration-quick); --p-dur-2:var(--duration-smooth); --p-dur-3:var(--duration-condense);
+
+  /* Layout — app-shell constants, outside Lume's token scope */
+  --p-nav-w:236px; --p-rail-w:60px; --p-topbar-h:60px; --p-content-max:1180px;
+}
+
+/* ================================================================
+   Surface / border / text tokens — colors_and_type.css §2, light mode.
+   [data-mode="light"] matches Lume's own selector grouping.
+   ================================================================ */
+:root, [data-mode="light"]{
+  --bg-canvas-top:#F8F9FA;         --bg-canvas-btm:#F4F5F7;
+  --bg-surface-top:#FFFFFF;        --bg-surface-btm:#FAFBFC;
+  --bg-surface-raised-top:#FFFFFF; --bg-surface-raised-btm:#F7F9FB;
+  --bg-surface-sunken-top:#F4F5F7; --bg-surface-sunken-btm:#EEF0F2;
+  --bg-modal-surface-top:#FFFFFF;  --bg-modal-surface-btm:#FBFBFE;
+  --bg-modal-overlay:rgba(20,30,50,.40);
+
+  --border-subtle-top:#E6E8EB; --border-subtle-btm:#D9DCDF;
+  --border-strong-top:#CFD3D7; --border-strong-btm:#BFC4C8;
+
+  --text-primary:#1A1D20; --text-secondary:#5A6068; --text-tertiary:#8A9098;
+  --text-disabled:#B8BDC2; --text-on-accent:#FFFFFF;
+  --top-edge-highlight:rgba(255,255,255,.60);
+
+  --state-error-fg:#A8443B;   --state-error-edge:#C45A50;
+  --state-success-fg:#3F7A55; --state-warning-fg:#8C6A1F;
+  --skeleton-base:#ECEEF0;    --skeleton-hi:#F4F5F7;
+
+  --shadow-flat:none;
+  --shadow-raised:0 1px 2px rgba(20,25,30,.04), 0 0 0 1px rgba(20,25,30,.02);
+  --shadow-popover:0 1px 2px rgba(20,25,30,.04), 0 8px 24px rgba(20,25,30,.06);
+  --shadow-modal:0 4px 16px rgba(20,25,30,.06), 0 24px 48px rgba(20,25,30,.12),
+                 0 0 32px var(--accent-glow), 0 0 64px var(--accent-glow-strong);
+  --shadow-drag:0 8px 24px rgba(20,25,30,.16);
+
+  /* ---- palaia aliases: surfaces become gradient PAIRS by holding the whole
+     gradient() in the variable — every rule below that already wrote
+     background:var(--p-surface) etc. now renders the Lume surface-luminosity
+     recipe (§3.1) with zero per-rule edits. ---- */
+  --p-canvas:linear-gradient(180deg, var(--bg-canvas-top) 0%, var(--bg-canvas-btm) 100%);
+  --p-surface:linear-gradient(180deg, var(--bg-surface-top) 0%, var(--bg-surface-btm) 100%);
+  --p-surface-2:linear-gradient(180deg, var(--bg-surface-sunken-top) 0%, var(--bg-surface-sunken-btm) 100%);
+  --p-sunken:linear-gradient(180deg, var(--bg-surface-sunken-top) 0%, var(--bg-surface-sunken-btm) 100%);
+  --p-surface-raised:linear-gradient(180deg, var(--bg-surface-raised-top) 0%, var(--bg-surface-raised-btm) 100%);
+  --p-line:var(--border-subtle-btm);
+  --p-line-strong:var(--border-strong-btm);
+  --p-ink:var(--text-primary); --p-ink-muted:var(--text-secondary); --p-ink-subtle:var(--text-tertiary);
+  --p-shadow-1:var(--shadow-raised); --p-shadow-2:var(--shadow-popover); --p-shadow-3:var(--shadow-modal);
+  /* hairline rule for ink underlines — links stay INK, the accent is hover-only */
+  --p-underline:color-mix(in srgb, var(--text-primary) 26%, transparent);
+
+  --p-ok:var(--state-success-fg);       --p-ok-soft:color-mix(in srgb, var(--state-success-fg) 12%, transparent);
+  --p-ok-line:color-mix(in srgb, var(--state-success-fg) 40%, transparent);
+  --p-warn:var(--state-warning-fg);     --p-warn-soft:color-mix(in srgb, var(--state-warning-fg) 12%, transparent);
+  --p-warn-line:color-mix(in srgb, var(--state-warning-fg) 40%, transparent);
+  --p-risk:var(--state-error-fg);       --p-risk-soft:color-mix(in srgb, var(--state-error-fg) 12%, transparent);
+  --p-risk-line:var(--state-error-edge); /* the one semantic state with a real Lume border token */
+  /* Lume ships no "info" hue among its semantic tokens (only error/success/warning) — info
+     is rendered as quieter neutral text + a neutral icon rather than an invented tint. */
+  --p-info:var(--text-secondary);       --p-info-soft:transparent; --p-info-line:var(--border-subtle-btm);
+}
+
+/* ================================================================
+   Dark mode — system default via prefers-color-scheme, explicit
+   override via [data-mode="dark"] (palaia decision, lume/README.md #2).
+   ================================================================ */
+@media (prefers-color-scheme:dark){:root:not([data-mode="light"]){
+  --bg-canvas-top:#232631;         --bg-canvas-btm:#1B1D24;
+  --bg-surface-top:#2A2D38;        --bg-surface-btm:#23262F;
+  --bg-surface-raised-top:#303440; --bg-surface-raised-btm:#292C37;
+  --bg-surface-sunken-top:#1D1F26; --bg-surface-sunken-btm:#16181E;
+  --bg-modal-surface-top:#303440;  --bg-modal-surface-btm:#292C37;
+  --bg-modal-overlay:rgba(0,0,0,.60);
+
+  --border-subtle-top:rgba(255,255,255,.06); --border-subtle-btm:rgba(0,0,0,.40);
+  --border-strong-top:rgba(255,255,255,.18); --border-strong-btm:rgba(0,0,0,.60);
+
+  --text-primary:#EEEFF3; --text-secondary:#B6B9C3; --text-tertiary:#888B95;
+  --text-disabled:#525561; --text-on-accent:#1F2127;
+  --top-edge-highlight:rgba(255,255,255,.08);
+
+  --state-error-fg:#E08577;   --state-error-edge:#C5685A;
+  --state-success-fg:#88C499; --state-warning-fg:#D6B468;
+  --skeleton-base:#3E414C;    --skeleton-hi:#525561;
+
+  --shadow-flat:none;
+  --shadow-raised:0 1px 2px rgba(0,0,0,.30), 0 0 0 1px rgba(0,0,0,.20);
+  --shadow-popover:0 1px 2px rgba(0,0,0,.40), 0 8px 24px rgba(0,0,0,.45);
+  --shadow-modal:0 4px 16px rgba(0,0,0,.55), 0 24px 48px rgba(0,0,0,.65),
+                 0 0 32px var(--accent-glow), 0 0 64px var(--accent-glow-strong);
+  --shadow-drag:0 8px 24px rgba(0,0,0,.55);
+
+  --p-canvas:linear-gradient(180deg, var(--bg-canvas-top) 0%, var(--bg-canvas-btm) 100%);
+  --p-surface:linear-gradient(180deg, var(--bg-surface-top) 0%, var(--bg-surface-btm) 100%);
+  --p-surface-2:linear-gradient(180deg, var(--bg-surface-sunken-top) 0%, var(--bg-surface-sunken-btm) 100%);
+  --p-sunken:linear-gradient(180deg, var(--bg-surface-sunken-top) 0%, var(--bg-surface-sunken-btm) 100%);
+  --p-surface-raised:linear-gradient(180deg, var(--bg-surface-raised-top) 0%, var(--bg-surface-raised-btm) 100%);
+  --p-line:var(--border-subtle-btm); --p-line-strong:var(--border-strong-btm);
+  --p-ink:var(--text-primary); --p-ink-muted:var(--text-secondary); --p-ink-subtle:var(--text-tertiary);
+  --p-shadow-1:var(--shadow-raised); --p-shadow-2:var(--shadow-popover); --p-shadow-3:var(--shadow-modal);
+  --p-underline:color-mix(in srgb, var(--text-primary) 30%, transparent);
+
+  --p-ok:var(--state-success-fg);   --p-ok-soft:color-mix(in srgb, var(--state-success-fg) 16%, transparent);
+  --p-ok-line:color-mix(in srgb, var(--state-success-fg) 40%, transparent);
+  --p-warn:var(--state-warning-fg); --p-warn-soft:color-mix(in srgb, var(--state-warning-fg) 16%, transparent);
+  --p-warn-line:color-mix(in srgb, var(--state-warning-fg) 40%, transparent);
+  --p-risk:var(--state-error-fg);   --p-risk-soft:color-mix(in srgb, var(--state-error-fg) 16%, transparent);
+  --p-risk-line:var(--state-error-edge);
+  --p-info:var(--text-secondary);   --p-info-soft:transparent; --p-info-line:var(--border-subtle-btm);
+}}
+:root[data-mode="dark"]{
+  --bg-canvas-top:#232631;         --bg-canvas-btm:#1B1D24;
+  --bg-surface-top:#2A2D38;        --bg-surface-btm:#23262F;
+  --bg-surface-raised-top:#303440; --bg-surface-raised-btm:#292C37;
+  --bg-surface-sunken-top:#1D1F26; --bg-surface-sunken-btm:#16181E;
+  --bg-modal-surface-top:#303440;  --bg-modal-surface-btm:#292C37;
+  --bg-modal-overlay:rgba(0,0,0,.60);
+
+  --border-subtle-top:rgba(255,255,255,.06); --border-subtle-btm:rgba(0,0,0,.40);
+  --border-strong-top:rgba(255,255,255,.18); --border-strong-btm:rgba(0,0,0,.60);
+
+  --text-primary:#EEEFF3; --text-secondary:#B6B9C3; --text-tertiary:#888B95;
+  --text-disabled:#525561; --text-on-accent:#1F2127;
+  --top-edge-highlight:rgba(255,255,255,.08);
+
+  --state-error-fg:#E08577;   --state-error-edge:#C5685A;
+  --state-success-fg:#88C499; --state-warning-fg:#D6B468;
+  --skeleton-base:#3E414C;    --skeleton-hi:#525561;
+
+  --shadow-flat:none;
+  --shadow-raised:0 1px 2px rgba(0,0,0,.30), 0 0 0 1px rgba(0,0,0,.20);
+  --shadow-popover:0 1px 2px rgba(0,0,0,.40), 0 8px 24px rgba(0,0,0,.45);
+  --shadow-modal:0 4px 16px rgba(0,0,0,.55), 0 24px 48px rgba(0,0,0,.65),
+                 0 0 32px var(--accent-glow), 0 0 64px var(--accent-glow-strong);
+  --shadow-drag:0 8px 24px rgba(0,0,0,.55);
+
+  --p-canvas:linear-gradient(180deg, var(--bg-canvas-top) 0%, var(--bg-canvas-btm) 100%);
+  --p-surface:linear-gradient(180deg, var(--bg-surface-top) 0%, var(--bg-surface-btm) 100%);
+  --p-surface-2:linear-gradient(180deg, var(--bg-surface-sunken-top) 0%, var(--bg-surface-sunken-btm) 100%);
+  --p-sunken:linear-gradient(180deg, var(--bg-surface-sunken-top) 0%, var(--bg-surface-sunken-btm) 100%);
+  --p-surface-raised:linear-gradient(180deg, var(--bg-surface-raised-top) 0%, var(--bg-surface-raised-btm) 100%);
+  --p-line:var(--border-subtle-btm); --p-line-strong:var(--border-strong-btm);
+  --p-ink:var(--text-primary); --p-ink-muted:var(--text-secondary); --p-ink-subtle:var(--text-tertiary);
+  --p-shadow-1:var(--shadow-raised); --p-shadow-2:var(--shadow-popover); --p-shadow-3:var(--shadow-modal);
+  --p-underline:color-mix(in srgb, var(--text-primary) 30%, transparent);
+
+  --p-ok:var(--state-success-fg);   --p-ok-soft:color-mix(in srgb, var(--state-success-fg) 16%, transparent);
+  --p-ok-line:color-mix(in srgb, var(--state-success-fg) 40%, transparent);
+  --p-warn:var(--state-warning-fg); --p-warn-soft:color-mix(in srgb, var(--state-warning-fg) 16%, transparent);
+  --p-warn-line:color-mix(in srgb, var(--state-warning-fg) 40%, transparent);
+  --p-risk:var(--state-error-fg);   --p-risk-soft:color-mix(in srgb, var(--state-error-fg) 16%, transparent);
+  --p-risk-line:var(--state-error-edge);
+  --p-info:var(--text-secondary);   --p-info-soft:transparent; --p-info-line:var(--border-subtle-btm);
+}
+
+/* ================================================================
+   Accent palettes — colors_and_type.css §4. palaia default is ATELIER
+   (lume/README.md decision 1), which is why atelier — not Lume's own
+   bare-:root default of lagoon — is bound to the un-attributed :root
+   here. Lagoon and Petrol are fully present and correct, just gated
+   behind [data-accent], so the accent-switch story stays visible and
+   swappable in code: set data-accent="lagoon" or "petrol" on <html> to
+   preview them.
+   ================================================================ */
+:root, [data-accent="atelier"]{
+  --accent-fill:#B36B2E; --accent-fill-hover:#9F5C26; --accent-fill-active:#8A4E1F;
+  --accent-subtle:rgba(179,107,46,.10); --accent-glow:rgba(179,107,46,.24);
+  --accent-glow-strong:rgba(179,107,46,.38); --accent-glow-core:rgba(245,215,175,.55);
+}
+[data-mode="dark"][data-accent="atelier"], [data-mode="dark"]:root{
+  --accent-fill:#E0A26B; --accent-fill-hover:#E5B080; --accent-fill-active:#EBBE93;
+  --accent-subtle:rgba(224,162,107,.18); --accent-glow:rgba(224,162,107,.30);
+  --accent-glow-strong:rgba(224,162,107,.46); --accent-glow-core:rgba(250,228,200,.45);
+}
+
+/* Lagoon — present, inactive unless data-accent="lagoon" (Lume's own default) */
+[data-accent="lagoon"]{
+  --accent-fill:#1F8FA3; --accent-fill-hover:#197D90; --accent-fill-active:#146B7C;
+  --accent-subtle:rgba(31,143,163,.12); --accent-glow:rgba(60,175,195,.32);
+  --accent-glow-strong:rgba(60,175,195,.48); --accent-glow-core:rgba(180,238,248,.60);
+}
+[data-mode="dark"][data-accent="lagoon"]{
+  --accent-fill:#6FC8D6; --accent-fill-hover:#88D2DE; --accent-fill-active:#A1DCE6;
+  --accent-subtle:rgba(111,200,214,.20); --accent-glow:rgba(111,200,214,.32);
+  --accent-glow-strong:rgba(111,200,214,.48); --accent-glow-core:rgba(210,245,250,.50);
+}
+/* Petrol — present, inactive unless data-accent="petrol" */
+[data-accent="petrol"]{
+  --accent-fill:#0F7AB8; --accent-fill-hover:#0C6CA8; --accent-fill-active:#0A5E94;
+  --accent-subtle:rgba(15,122,184,.10); --accent-glow:rgba(15,122,184,.22);
+  --accent-glow-strong:rgba(15,122,184,.36); --accent-glow-core:rgba(165,215,240,.55);
+}
+[data-mode="dark"][data-accent="petrol"]{
+  --accent-fill:#52B0E2; --accent-fill-hover:#74C0E8; --accent-fill-active:#90CFEE;
+  --accent-subtle:rgba(82,176,226,.16); --accent-glow:rgba(82,176,226,.28);
+  --accent-glow-strong:rgba(82,176,226,.44); --accent-glow-core:rgba(197,229,245,.45);
+}
+
+/* Signal — the loud, palette-independent accent (colors_and_type.css §4b).
+   NOT bound to the accent slot; does not change with data-accent. At most
+   one signal element per view, documented at the element (visual-spec §2.5.5). */
+:root{
+  --signal-fill:#D6177A; --signal-fill-hover:#C2126D; --signal-fill-active:#AD0E60;
+  --signal-subtle:rgba(214,23,122,.10); --signal-glow:rgba(214,23,122,.24);
+  --signal-glow-strong:rgba(214,23,122,.42); --signal-glow-core:rgba(255,200,230,.55);
+}
+[data-mode="dark"]{
+  --signal-fill:#FF5FA8; --signal-fill-hover:#FF77B6; --signal-fill-active:#FF90C4;
+  --signal-subtle:rgba(255,95,168,.18); --signal-glow:rgba(255,95,168,.30);
+  --signal-glow-strong:rgba(255,95,168,.46); --signal-glow-core:rgba(255,215,235,.50);
+}
+
+/* palaia aliases onto the active accent slot */
+:root{
+  --p-accent:var(--accent-fill); --p-accent-hover:var(--accent-fill-hover);
+  --p-accent-ink:var(--accent-fill); /* Lume's text.accent — reserved for hover/selection, not metadata */
+  --p-accent-soft:var(--accent-subtle);
+  --p-accent-line:color-mix(in srgb, var(--accent-fill) 45%, transparent);
+  --p-on-accent:var(--text-on-accent);
+  /* The QUIET selection wash: a left-anchored breath of accent-subtle that
+     dies out before the middle of the row. Paired with a 2px accent edge bar
+     it is the whole of the "selected" signal in app chrome — no tinted pill,
+     no accent text. Data rows (tree, table, queue) may additionally carry
+     Lume's two-stop glow via .lume-selected. */
+  --p-sel-wash:linear-gradient(90deg, var(--accent-subtle) 0%,
+               color-mix(in srgb, var(--accent-subtle) 34%, transparent) 46%, transparent 78%);
+}
+
+/* ================ primitives & components ================
+   VOICE (SPEC-005 redo, 2026-08-23) — three rules govern everything below:
+   1. ACCENT RESTRAINT. Atelier appears only as selection edges, small dots
+      and glows, the single primary per screen, and tiny highlights. Target
+      ~3–6 accent-coloured elements per screen, matching the Lume reference
+      application. Surfaces stay cool grey/white.
+   2. METADATA IS NEUTRAL. Micro-labels, counters, timestamps, ids and
+      system strings are Geist Mono in text-tertiary/secondary with
+      letterspacing when uppercased. Never accent-coloured.
+   3. CONTROLS ARE QUIET. Small compact heights; the raised-surface
+      secondary is the default button. One accent-gradient primary per
+      screen; Signal stays capped at one element across the whole wizard.
+   ======================================================== */
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--p-canvas);color:var(--p-ink);
+  font-family:var(--p-font-sans);font-size:var(--p-size-md);line-height:var(--p-leading-normal);
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  font-feature-settings:'cv11','ss01';
+}
+h1,h2,h3,h4,p{margin:0}
+ul{margin:0;padding:0;list-style:none}
+/* Links are INK on a hairline underline. The accent arrives on hover or in a
+   selected row — it is never the resting colour of a link (voice rule 2). */
+a{color:inherit;text-decoration:underline;text-decoration-thickness:1px;
+  text-underline-offset:2px;text-decoration-color:var(--p-underline)}
+a:hover{text-decoration-color:var(--accent-fill)}
+button{font:inherit;color:inherit}
+/* Lume focus ring: outer corona + inner highlight (lume-focus-ring), not a flat outline */
+:focus-visible{outline:none;border-radius:var(--p-radius-sm);
+  box-shadow:0 0 0 1px var(--accent-fill), 0 0 0 4px var(--accent-glow), 0 0 12px var(--accent-glow-core)}
+svg{display:block}
+.i{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.i--sm{width:15px;height:15px;stroke-width:1.6}
+.i--lg{width:26px;height:26px;stroke-width:1.25}
+
+/* ---------- text primitives ----------
+   .t-over  uppercase mono micro-label  — the metadata voice, always tertiary
+   .t-meta  mono system string          — revisions, ids, timestamps
+   .t-count mono tabular counter        — never a pill, never accent
+   .prose   the prose register          — a reading passage, and only that  */
+.t-over{font-family:var(--p-font-mono);font-size:var(--p-size-micro);line-height:14px;font-weight:500;
+  letter-spacing:var(--p-track-micro);text-transform:uppercase;color:var(--p-ink-subtle);
+  font-feature-settings:'tnum'}
+.t-meta{font-family:var(--p-font-mono);font-size:var(--p-size-meta);line-height:16px;
+  color:var(--p-ink-subtle);font-feature-settings:'tnum';white-space:nowrap}
+.t-count{font-family:var(--p-font-mono);font-size:var(--p-size-xs);line-height:16px;
+  color:var(--p-ink-muted);font-feature-settings:'tnum'}
+/* THE SERIF RULE (visual-spec §2.7, binding).
+   Source Serif is the PROSE register: agent narration, analysis, summary,
+   long-form explanation — a passage the user reads. The spec's own sentence is
+   "Headings always stay structural", so serif never sets a page title, a card
+   head, an empty-state title, a wizard question, a note title, a brand mark,
+   a button, a label or any other lone line of chrome. Two tests before you
+   reach for it: does it run to more than one sentence, and is it the content
+   rather than the frame around the content? Both yes, or it is Geist. */
+.prose{font-family:var(--p-font-serif);font-size:var(--p-size-md);font-weight:400;
+  line-height:26px;font-optical-sizing:auto;color:var(--p-ink)}
+.prose--lg{font-size:var(--p-size-lg);line-height:28px}
+.prose--compact{font-size:var(--p-size-sm);line-height:22px}
+.prose strong{font-weight:600}
+.prose p + p{margin-top:var(--p-space-4)}
+.t-mono{font-family:var(--p-font-mono);font-size:var(--p-size-sm);font-feature-settings:'tnum'}
+.t-num{font-variant-numeric:tabular-nums}
+.t-muted{color:var(--p-ink-muted)}
+.t-subtle{color:var(--p-ink-subtle)}
+.t-sm{font-size:var(--p-size-sm)}
+.t-xs{font-size:var(--p-size-xs)}
+/* Lead paragraph: the one or two lines that explain a title. Structural — a
+   sentence of instruction is not a reading passage (see the serif rule). */
+.t-lead{font-size:var(--p-size-lg);line-height:26px;color:var(--p-ink-muted)}
+
+/* ---------- layout helpers ---------- */
+.row{display:flex;align-items:center;gap:var(--p-space-3)}
+.row--wrap{flex-wrap:wrap}
+.row--between{display:flex;align-items:center;justify-content:space-between;gap:var(--p-space-4)}
+.stack{display:flex;flex-direction:column;gap:var(--p-space-5)}
+.stack--2{gap:var(--p-space-2)}
+.stack--3{gap:var(--p-space-3)}
+.stack--6{gap:var(--p-space-6)}
+.grow{flex:1;min-width:0}
+.scrollpane{overflow:auto;min-height:0;scrollbar-width:thin;scrollbar-color:var(--p-line-strong) transparent}
+.scrollpane::-webkit-scrollbar{width:10px;height:10px}
+.scrollpane::-webkit-scrollbar-thumb{background:var(--p-line-strong);border-radius:var(--p-radius-pill);border:3px solid transparent;background-clip:content-box}
+.scrollpane::-webkit-scrollbar-track{background:transparent}
+.sep{height:1px;background:var(--p-line);border:0;margin:0}
+
+/* ---------- Lume material utilities (colors_and_type.css §7) ---------- */
+.lume-glow{box-shadow:0 0 4px var(--accent-glow-core), 0 4px 12px var(--accent-glow)}
+.lume-glow-strong{box-shadow:0 0 6px var(--accent-glow-core), 0 6px 18px var(--accent-glow-strong)}
+.lume-focus-ring{outline:none;box-shadow:0 0 0 1px var(--accent-fill), 0 0 0 4px var(--accent-glow), 0 0 12px var(--accent-glow-core)}
+/* Full Lume two-stop selection halo — for DATA rows (tree, table, queue) */
+.lume-selected{position:relative;
+  background:radial-gradient(ellipse at 20% 50%, var(--accent-glow-core) 0%, var(--accent-glow) 22%, transparent 70%),
+             linear-gradient(180deg, var(--accent-subtle), transparent);
+  box-shadow:0 0 12px -2px var(--accent-glow-core), 0 0 24px -6px var(--accent-glow-strong)}
+.lume-selected::before{content:'';position:absolute;left:0;top:4px;bottom:4px;width:2px;border-radius:2px;
+  background:var(--accent-fill);box-shadow:0 0 6px var(--accent-glow-strong)}
+/* Quiet selection — for app CHROME (nav, steps, tabs): near-invisible wash
+   plus the 2px accent edge. Text stays ink. */
+.lume-selected-quiet{position:relative;background:var(--p-sel-wash)}
+.lume-selected-quiet::before{content:'';position:absolute;left:0;top:5px;bottom:5px;width:2px;border-radius:2px;
+  background:var(--accent-fill)}
+@keyframes lume-skeleton-pulse{0%{background-position:-200% 0}100%{background-position:200% 0}}
+.lume-skeleton{background:linear-gradient(90deg, var(--skeleton-base) 25%, var(--skeleton-hi) 50%, var(--skeleton-base) 75%);
+  background-size:200% 100%;animation:lume-skeleton-pulse 1400ms linear infinite;border-radius:var(--p-radius-sm)}
+
+/* ---------- buttons ----------
+   Compact and quiet by default: 30px tall, raised surface, hairline subtle
+   border, inset top-edge highlight. .btn--primary is the accent-gradient
+   exception and is capped at ONE per screen. */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:30px;padding:0 var(--p-space-3);border-radius:var(--p-radius-md);
+  border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
+  background:var(--p-surface-raised);color:var(--p-ink);
+  font-size:var(--p-size-sm);font-weight:500;cursor:pointer;white-space:nowrap;
+  text-decoration:none;
+  box-shadow:0 1px 0 var(--top-edge-highlight) inset;
+  transition:background var(--p-dur-1) var(--p-ease),border-color var(--p-dur-1) var(--p-ease),
+             box-shadow var(--p-dur-1) var(--p-ease);
+}
+.btn:hover{background:linear-gradient(180deg, var(--accent-subtle), var(--accent-subtle)), var(--p-surface-raised);
+  text-decoration:none}
+.btn:active{box-shadow:none}
+.btn--primary{
+  background:linear-gradient(180deg, var(--accent-fill) 0%, var(--accent-fill-hover) 100%);
+  border-color:var(--accent-fill-hover);border-top-color:rgba(255,255,255,.22);color:var(--p-on-accent);
+  box-shadow:0 0 4px var(--accent-glow-core), 0 4px 12px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,.18);
+}
+.btn--primary:hover{
+  background:linear-gradient(180deg, var(--accent-fill-hover) 0%, var(--accent-fill-active) 100%);
+  border-color:var(--accent-fill-active);
+  box-shadow:0 0 6px var(--accent-glow-core), 0 6px 18px var(--accent-glow-strong), inset 0 1px 0 rgba(255,255,255,.18);
+}
+/* Signal — the single loud CTA, capped at one per view (see the element that uses it) */
+.btn--signal{
+  background:linear-gradient(180deg, var(--signal-fill) 0%, var(--signal-fill-hover) 100%);
+  border-color:var(--signal-fill-hover);border-top-color:rgba(255,255,255,.28);color:#fff;
+  box-shadow:0 0 4px var(--signal-glow-core), 0 4px 12px var(--signal-glow), inset 0 1px 0 rgba(255,255,255,.22);
+}
+.btn--signal:hover{
+  background:linear-gradient(180deg, var(--signal-fill-hover) 0%, var(--signal-fill-active) 100%);
+  border-color:var(--signal-fill-active);
+  box-shadow:0 0 6px var(--signal-glow-core), 0 6px 18px var(--signal-glow-strong), inset 0 1px 0 rgba(255,255,255,.22);
+}
+.btn--ghost{background:none;border-color:transparent;border-top-color:transparent;color:var(--p-ink-muted);box-shadow:none}
+.btn--ghost:hover{background:var(--p-sunken);color:var(--p-ink);border-color:transparent}
+.btn--quiet{background:none;border-color:var(--p-line);border-top-color:var(--border-subtle-top);color:var(--p-ink-muted);box-shadow:none}
+.btn--quiet:hover{color:var(--p-ink);background:var(--p-sunken)}
+.btn--risk{background:none;border-color:var(--p-risk-line);border-top-color:var(--p-risk-line);color:var(--p-risk);box-shadow:none}
+.btn--risk:hover{background:var(--p-risk-soft);border-color:var(--p-risk-line)}
+.btn--sm{height:25px;padding:0 9px;font-size:var(--p-size-xs);border-radius:var(--p-radius-sm);gap:5px}
+.btn--lg{height:34px;padding:0 var(--p-space-4);font-size:var(--p-size-sm)}
+.btn--block{width:100%}
+.btn[aria-disabled="true"]{background:var(--p-sunken);color:var(--text-disabled);box-shadow:none;cursor:not-allowed}
+.iconbtn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:var(--p-radius-sm);border:1px solid transparent;background:none;color:var(--p-ink-subtle);cursor:pointer}
+.iconbtn:hover{background:var(--p-sunken);color:var(--p-ink)}
+/* ---------- keyboard affordance ----------
+   A shortcut is permanent UI, not a tooltip. The cap rides inside the button
+   that owns the action, so the hand learns the key while the eye reads the
+   verb; a screen that is meant to be worked by keyboard also carries a legend
+   (.keys) where a footer would otherwise be empty. Caps stay neutral — a
+   keycap is metadata, so it never borrows the accent, except by inheriting
+   the contrast of the one primary button it sits in. */
+.kbd{
+  display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 4px;
+  border:1px solid var(--p-line);border-radius:4px;
+  background:var(--p-surface);font-family:var(--p-font-mono);font-size:var(--p-size-micro);color:var(--p-ink-subtle)
+}
+.btn .kbd{margin-left:3px}
+.btn--primary .kbd{border-color:rgba(255,255,255,.36);background:rgba(255,255,255,.15);color:var(--p-on-accent)}
+.btn--risk .kbd{border-color:var(--p-risk-line)}
+.keys{display:flex;align-items:center;gap:var(--p-space-4);flex-wrap:wrap;
+  font-family:var(--p-font-mono);font-size:var(--p-size-meta);color:var(--p-ink-subtle)}
+.keys__pair{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+
+/* ---------- queue meter ----------
+   For work you draw DOWN rather than fill up, which is a different component
+   from the `.meter` progress bar in Status (that one fills; this one empties —
+   hence the separate name, and do not merge them). The count that leads is what
+   is LEFT, not what is done: Superhuman's inbox counter shrinks toward zero,
+   and the goal-gradient effect is the reason it works. One hairline cell per
+   remaining item makes the draw-down countable at a glance. Cells are neutral
+   ink; only the cell you are standing on is lit, which spends exactly one
+   accent element, never a coloured bar. */
+.qmeter{display:flex;align-items:center;gap:var(--p-space-4)}
+.qmeter__cells{display:flex;gap:3px;flex:1;min-width:60px}
+.qmeter__cell{height:4px;flex:1;min-width:2px;border-radius:2px;background:var(--p-line)}
+.qmeter__cell--done{background:var(--p-ink-subtle)}
+.qmeter__cell--now{background:var(--accent-fill);
+  box-shadow:0 0 4px var(--accent-glow-core), 0 0 9px var(--accent-glow)}
+.qmeter__left{font-family:var(--p-font-mono);font-size:var(--p-size-xs);color:var(--p-ink-muted);
+  font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
+
+/* ---------- surfaces ----------
+   Cards are white floating surfaces on the cool canvas: hairline directional
+   border, the raised inset top edge, and Lume's subtle raised shadow. */
+.card{background:var(--p-surface);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
+  border-radius:var(--p-radius-lg);box-shadow:var(--p-shadow-1), 0 1px 0 var(--top-edge-highlight) inset}
+.card--flat{box-shadow:0 1px 0 var(--top-edge-highlight) inset}
+.card--raised{box-shadow:var(--p-shadow-2), 0 1px 0 var(--top-edge-highlight) inset}
+/* Card chrome is QUIET: the container title is a 12px secondary label, not a
+   heading — the Lume reference application labels every container this way
+   ("prepared briefing", "this week"). Headings inside the body stay ink. */
+.card__head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--p-space-3);
+  padding:var(--p-space-4) var(--p-space-5) var(--p-space-3);border-bottom:1px solid var(--p-line)}
+.card__title{font-size:var(--p-size-xs);line-height:16px;font-weight:500;
+  letter-spacing:var(--p-track-label);color:var(--p-ink-muted)}
+/* When the left slot of a head names a SUBJECT rather than the container
+   ("Claude Code", not "clients"), it is a real heading: 15px/600 ink, the same
+   step the Lume reference gives the title inside a briefing container. */
+.card__subject{font-size:15px;line-height:22px;font-weight:600;letter-spacing:var(--p-track-tight);color:var(--p-ink)}
+.card__body{padding:var(--p-space-5)}
+.card__body--tight{padding:var(--p-space-4) var(--p-space-5)}
+.card__foot{padding:var(--p-space-4) var(--p-space-5);border-top:1px solid var(--p-line);
+  display:flex;align-items:center;gap:var(--p-space-3);flex-wrap:wrap}
+.card__foot .foot-note{flex-basis:100%;order:9}
+
+/* ---------- badges, dots, chips ---------- */
+/* Semantic state is text-only — never a filled pill (colors_and_type.css §2.6 / visual-spec §2.6, §7.6) */
+.badge{display:inline-flex;align-items:center;gap:6px;height:18px;padding:0;color:var(--p-ink-muted);
+  font-size:var(--p-size-xs);font-weight:400;white-space:nowrap}
+.badge .dot{width:5px;height:5px}
+/* Healthy is the resting state: the dot carries it, the words stay neutral —
+   the same reading as "10 connectors live" in the Lume reference application.
+   warn/risk keep coloured text, because those are the states worth shouting. */
+.badge--ok{color:var(--p-ink-muted)}
+.badge--ok .dot{background:var(--p-ok)}
+.badge--warn{color:var(--p-warn)}
+.badge--risk{color:var(--p-risk)}
+.badge--info{color:var(--p-info)}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--p-ink-subtle);flex:none}
+.dot--ok{background:var(--p-ok)}
+.dot--warn{background:var(--p-warn)}
+.dot--risk{background:var(--p-risk)}
+/* the one accent dot pattern Lume itself uses: a live/resolving pulse */
+.dot--live{background:var(--accent-fill);box-shadow:0 0 4px var(--accent-glow-core), 0 0 8px var(--accent-glow);
+  animation:pulse 1.6s var(--p-ease) infinite}
+@keyframes pulse{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:1;transform:scale(1.18)}}
+.chip{display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 7px;border-radius:var(--p-radius-sm);
+  background:var(--p-sunken);color:var(--p-ink-muted);font-size:var(--p-size-xs);white-space:nowrap}
+.chip--mono{font-family:var(--p-font-mono);font-size:var(--p-size-meta);font-feature-settings:'tnum'}
+
+/* ---------- tiles (metrics) ----------
+   Numbers are mono tabular ink, the unit is a small neutral sans word, the
+   label is the mono micro-label. Attention is carried by the dot and the
+   sub-line only — a tile is never fill-tinted (§2.6). */
+.tiles{display:grid;gap:var(--p-space-4);grid-template-columns:repeat(4,minmax(0,1fr))}
+.tile{background:var(--p-surface-raised);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
+  border-radius:var(--p-radius-lg);padding:var(--p-space-4) var(--p-space-5) var(--p-space-5);
+  display:flex;flex-direction:column;gap:var(--p-space-2);
+  box-shadow:var(--p-shadow-1), 0 1px 0 var(--top-edge-highlight) inset;position:relative;overflow:hidden}
+.tile__metric{font-family:var(--p-font-mono);font-size:var(--p-size-2xl);line-height:28px;font-weight:500;
+  letter-spacing:var(--p-track-tight);font-variant-numeric:tabular-nums;color:var(--p-ink)}
+.tile__unit{font-family:var(--p-font-sans);font-size:var(--p-size-xs);font-weight:400;
+  color:var(--p-ink-subtle);letter-spacing:0}
+.tile__sub{font-size:var(--p-size-xs);color:var(--p-ink-muted);line-height:18px}
+/* attention colours the NUMBER, exactly as the Lume reference colours its
+   "Δ vs. last wk  -4.2%" tile -- not the whole sub-line, and never a fill.
+   One short numeral is a fraction of the warm area a coloured sentence is. */
+.tile--attention .tile__metric{color:var(--p-warn)}
+.tile__action{margin-top:var(--p-space-2)}
+
+/* ---------- fact list ----------
+   The three bulleted facts under a piece of prose: 3px neutral bullets, mono
+   figures, sentence remainder in ink — exactly the "Open tickets: 3 · all
+   assigned" list in the Lume reference application's briefing container. Used
+   wherever a passage needs its numbers stated under it rather than inside it. */
+.factline{display:flex;flex-direction:column;gap:5px}
+.factline li{position:relative;padding-left:11px;font-size:var(--p-size-xs);line-height:18px;color:var(--p-ink)}
+.factline .t-mono{font-size:var(--p-size-meta);color:var(--p-ink)}
+.fact-dot{position:absolute;left:0;top:8px;width:3px;height:3px;border-radius:50%;background:var(--p-ink-subtle)}
+
+/* ---------- tool surface ----------
+   What the connected agents can actually call: palaia's built-ins and every
+   server the user has added, read as one list (MASTERPLAN P2 — "configure
+   once, use everywhere" — made visible instead of implied). Home Assistant's
+   add-on store is the reference: small uniform rows, an icon that identifies
+   the source, and one quiet way to get more. Reachability is text and a dot,
+   never a fill; the tool count is mono metadata. */
+/* Column flow, not row flow, and that is the point: palaia's own tools fill
+   the left column and everything the user added fills the right, so the split
+   between "what palaia is" and "what you gave it" is legible without a single
+   extra label — and the rows still read as one uniform list, which is the
+   claim the gateway makes. */
+.tools{display:grid;gap:2px;grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-rows:repeat(3,auto);grid-auto-flow:column}
+.tool{display:flex;align-items:center;gap:9px;padding:5px 8px;border-radius:var(--p-radius-md);
+  min-width:0;color:var(--p-ink);text-decoration:none}
+.tool:hover{background:var(--p-surface-2);text-decoration:none}
+.tool__mark{width:24px;height:24px;border-radius:7px;flex:none;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--p-surface-raised);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
+  color:var(--p-ink-subtle);box-shadow:0 1px 0 var(--top-edge-highlight) inset}
+.tool__name{font-size:var(--p-size-sm);font-weight:500;min-width:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tool__count{font-family:var(--p-font-mono);font-size:var(--p-size-meta);color:var(--p-ink-subtle);
+  font-variant-numeric:tabular-nums;margin-left:auto;flex:none}
+/* a source that is installed but unreachable: the name goes quiet and the
+   count is replaced by the reason — still no colour on the box */
+.tool--off .tool__name{color:var(--p-ink-muted)}
+.tool--off .tool__mark{color:var(--text-disabled)}
+.tool--off .tool__count{color:var(--p-warn)}
+
+/* ---------- banners / callouts ---------- */
+/* Neutral surface; the state colours the icon and the title only, never the box (§2.6) */
+.banner{display:flex;gap:var(--p-space-3);padding:var(--p-space-4);border-radius:var(--p-radius-md);
+  border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
+  background:var(--p-surface);color:var(--p-ink);font-size:var(--p-size-sm)}
+.banner svg{color:var(--p-ink-subtle);margin-top:1px}
+.banner--warn svg{color:var(--p-warn)}
+.banner--warn .banner__title{color:var(--p-warn)}
+.banner--ok svg{color:var(--p-ok)}
+.banner--ok .banner__title{color:var(--p-ok)}
+.banner__title{font-weight:600;margin-bottom:2px}
+
+/* ---------- tables ---------- */
+.table{width:100%;border-collapse:collapse;font-size:var(--p-size-sm)}
+.table th{text-align:left;font-family:var(--p-font-mono);font-size:var(--p-size-micro);line-height:14px;
+  letter-spacing:var(--p-track-micro);text-transform:uppercase;color:var(--p-ink-subtle);font-weight:500;
+  padding:0 var(--p-space-3) var(--p-space-2);border-bottom:1px solid var(--p-line)}
+.table td{padding:11px var(--p-space-3);border-bottom:1px solid var(--p-line);vertical-align:middle}
+.table tr:last-child td{border-bottom:0}
+.table tbody tr:hover{background:var(--p-surface-2)}
+
+/* ---------- lists ---------- */
+.listrow{display:flex;align-items:center;gap:var(--p-space-3);padding:var(--p-space-3) var(--p-space-5);border-bottom:1px solid var(--p-line)}
+.listrow:last-child{border-bottom:0}
+.listrow:hover{background:var(--p-surface-2)}
+.listrow--selected{position:relative;background:var(--p-sel-wash)}
+.listrow--selected::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:2px;border-radius:2px;background:var(--accent-fill)}
+.listrow__title{font-size:var(--p-size-sm);font-weight:500}
+.listrow__meta{font-size:var(--p-size-xs);color:var(--p-ink-subtle)}
+
+/* ---------- empty states ---------- */
+.empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:var(--p-space-3);padding:var(--p-space-10) var(--p-space-6)}
+/* the mark is a neutral raised chip, not an accent badge — an empty screen has
+   nothing selected, so it has nothing to spend accent on */
+.empty__mark{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:var(--p-radius-lg);
+  background:var(--p-surface-raised);color:var(--p-ink-subtle);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);
+  box-shadow:0 1px 0 var(--top-edge-highlight) inset}
+/* An empty-state title is a heading, so it is structural (see the serif rule). */
+.empty__title{font-size:var(--p-size-xl);font-weight:600;line-height:28px;letter-spacing:var(--p-track-tight)}
+.empty__text{max-width:52ch;color:var(--p-ink-muted);font-size:var(--p-size-sm);line-height:20px}
+/* Finishing a queue is an achievement, not an absence. The done variant keeps
+   every restraint — the ring is border-and-icon colour, never a fill — and
+   spends its warmth on the copy and on one drawn mark. */
+.empty--done .empty__mark{border-color:var(--p-ok-line);color:var(--p-ok)}
+.empty--done .empty__title{font-size:var(--p-size-2xl);line-height:32px}
+.empty__recap{display:flex;flex-direction:column;gap:6px;align-items:flex-start;text-align:left;
+  margin-top:var(--p-space-4);padding-top:var(--p-space-4);border-top:1px solid var(--p-line);width:100%;max-width:52ch}
+
+/* ---------- forms ---------- */
+.field{display:flex;flex-direction:column;gap:6px}
+.field__label{font-size:var(--p-size-sm);font-weight:500}
+.field__hint{font-size:var(--p-size-xs);color:var(--p-ink-subtle);line-height:18px}
+.input{height:32px;padding:0 var(--p-space-3);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-md);
+  background:var(--p-surface-raised);color:var(--p-ink);font:inherit;font-size:var(--p-size-sm);width:100%;
+  box-shadow:0 1px 0 var(--top-edge-highlight) inset}
+.input::placeholder{color:var(--p-ink-subtle)}
+.input:focus{outline:none;border-color:var(--accent-fill);
+  box-shadow:0 0 0 1px var(--accent-fill), 0 0 0 4px var(--accent-glow), 0 0 12px var(--accent-glow-core)}
+.input--readonly{background:var(--p-sunken);color:var(--p-ink-muted);font-family:var(--p-font-mono);font-size:var(--p-size-xs);box-shadow:none}
+.switchrow{display:flex;align-items:flex-start;gap:var(--p-space-3);padding:var(--p-space-3) var(--p-space-4);
+  border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-md);background:var(--p-surface)}
+/* A switch is a control, and Lume fills its controls with the accent when on —
+   this is one of the few places the accent is allowed to be a fill. */
+.switch{width:32px;height:18px;border-radius:var(--p-radius-pill);background:var(--p-line-strong);position:relative;flex:none;margin-top:2px}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:var(--p-shadow-1)}
+.switch--on{background:var(--accent-fill);box-shadow:0 0 3px var(--accent-glow-core), 0 0 6px var(--accent-glow)}
+.switch--on::after{left:auto;right:2px}
+.segmented{display:inline-flex;padding:2px;gap:2px;background:var(--p-sunken);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-md)}
+.segmented__item{padding:4px 10px;border-radius:6px;font-size:var(--p-size-xs);font-weight:500;color:var(--p-ink-subtle);cursor:pointer}
+.segmented__item--on{background:var(--p-surface-raised);color:var(--p-ink);box-shadow:var(--p-shadow-1), 0 1px 0 var(--top-edge-highlight) inset}
+
+/* ---------- snippet + copy ---------- */
+.snippet{display:flex;align-items:center;gap:var(--p-space-3);padding:var(--p-space-3) var(--p-space-3) var(--p-space-3) var(--p-space-4);
+  background:var(--p-sunken);border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-md)}
+.snippet code{font-family:var(--p-font-mono);font-size:var(--p-size-xs);color:var(--p-ink);overflow:auto;white-space:pre;scrollbar-width:none;font-feature-settings:'tnum'}
+.snippet code::-webkit-scrollbar{display:none}
+.snippet--block{display:block}
+.snippet--block code{display:block;white-space:pre-wrap;line-height:var(--p-leading-normal)}
+
+/* ---------- steps ---------- */
+.steps{display:flex;flex-direction:column;gap:2px}
+.step{display:flex;gap:var(--p-space-3);align-items:flex-start;padding:var(--p-space-3);border-radius:var(--p-radius-sm);cursor:pointer;position:relative}
+.step__num{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;flex:none;
+  border:1px solid var(--p-line-strong);background:var(--p-surface-raised);color:var(--p-ink-subtle);
+  font-family:var(--p-font-mono);font-size:var(--p-size-meta);font-weight:500;font-variant-numeric:tabular-nums}
+.step__name{font-size:var(--p-size-sm);font-weight:500}
+.step__hint{font-size:var(--p-size-xs);color:var(--p-ink-subtle);line-height:18px}
+/* Done = neutral surface + success text/ring, never a success fill (§2.6) */
+.step--done .step__num{background:var(--p-surface);border-color:var(--p-ok-line);color:var(--p-ok)}
+/* Current step = quiet wash + 2px accent edge; the small numeral disc is the
+   one accent fill (the "you are here" marker), the label stays ink. */
+.step--on{background:var(--p-sel-wash)}
+.step--on::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:2px;border-radius:2px;background:var(--accent-fill)}
+.step--on .step__name{color:var(--p-ink);font-weight:600}
+.step--on .step__num{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--p-on-accent);
+  box-shadow:0 0 4px var(--accent-glow-core), 0 0 8px var(--accent-glow)}
+
+/* ---------- waiting indicator ---------- */
+.waiting{display:inline-flex;align-items:center;gap:7px;font-size:var(--p-size-sm);color:var(--p-ink-muted)}
+.waiting i{width:5px;height:5px;border-radius:50%;background:var(--p-ink-subtle);animation:wait 1.4s var(--p-ease) infinite}
+.waiting i:nth-child(2){animation-delay:.18s}
+.waiting i:nth-child(3){animation-delay:.36s}
+@keyframes wait{0%,100%{opacity:.25;transform:translateY(0)}45%{opacity:1;transform:translateY(-2px)}}
+
+/* ---------- compact widths: nothing may push the page sideways ---------- */
+@media (max-width:767px){
+  .chip{height:auto;min-height:19px;white-space:normal;overflow-wrap:anywhere;padding:2px 7px}
+  .segmented{flex-wrap:wrap}
+  .empty .row{flex-wrap:wrap;justify-content:center}
+  .card__foot,.row{flex-wrap:wrap}
+  .snippet{align-items:flex-start;flex-wrap:wrap}
+  .btn{max-width:100%}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .lume-skeleton{animation:none;opacity:.4}
+  *{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important}
+}
+
+/* ---------- app shell ---------- */
+.app{display:grid;grid-template-columns:var(--p-nav-w) minmax(0,1fr);background:var(--p-canvas)}
+.sidebar{display:flex;flex-direction:column;gap:var(--p-space-6);padding:var(--p-space-5) var(--p-space-3);
+  border-right:1px solid var(--p-line);background:var(--p-surface-2);min-height:0}
+.brand{display:flex;align-items:center;gap:9px;color:var(--p-ink);text-decoration:none;padding:0 var(--p-space-2)}
+.brand:hover{text-decoration:none}
+/* neutral raised chip, not an accent tile — the shell spends no accent on
+   branding, and a single glyph is chrome, so it is Geist (see the serif rule) */
+.brand__mark{width:22px;height:22px;border-radius:7px;background:var(--p-surface-raised);
+  border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);color:var(--p-ink);
+  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex:none;
+  letter-spacing:var(--p-track-tight);box-shadow:0 1px 0 var(--top-edge-highlight) inset}
+.brand__name{font-size:var(--p-size-md);font-weight:600;letter-spacing:var(--p-track-tight)}
+.brand__ver{font-family:var(--p-font-mono);font-size:var(--p-size-micro);color:var(--p-ink-subtle);letter-spacing:.04em}
+.nav{display:flex;flex-direction:column;gap:var(--p-space-5);flex:1;min-height:0;overflow:auto;scrollbar-width:thin}
+.nav__group{display:flex;flex-direction:column;gap:1px}
+.nav__label{padding:0 var(--p-space-3) 6px}
+.nav__item{display:flex;align-items:center;gap:9px;padding:6px var(--p-space-3);border-radius:var(--p-radius-sm);
+  color:var(--p-ink-muted);font-size:var(--p-size-sm);font-weight:400;text-decoration:none;position:relative}
+.nav__item:hover{background:var(--p-sunken);color:var(--p-ink);text-decoration:none}
+/* SELECTED nav item — the quiet treatment: near-invisible wash that dies out
+   before mid-row, a 2px accent edge bar, and ink text. Never an accent pill,
+   never accent-coloured label or icon. */
+.nav__item--on{color:var(--p-ink);font-weight:500;background:var(--p-sel-wash)}
+.nav__item--on::before{content:'';position:absolute;left:0;top:5px;bottom:5px;width:2px;border-radius:2px;
+  background:var(--accent-fill)}
+.nav__item--on svg{color:var(--p-ink-muted)}
+/* counters are mono tabular metadata — no pill, no border, no accent */
+.nav__count{margin-left:auto;font-family:var(--p-font-mono);font-size:var(--p-size-xs);
+  font-variant-numeric:tabular-nums;color:var(--p-ink-muted);background:none;border:0;padding:0}
+.nav__count--warn{color:var(--p-warn)}
+.sidebar__foot{display:flex;flex-direction:column;gap:6px;padding:var(--p-space-3) var(--p-space-3) var(--p-space-1);border-top:1px solid var(--p-line)}
+.main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:var(--p-space-4);
+  padding:var(--p-space-5) var(--p-space-6) var(--p-space-4);border-bottom:1px solid var(--p-line);background:var(--p-canvas)}
+/* Page titles are sans — Source Serif is the PROSE register and is reserved
+   for sentence-length content (visual-spec: three registers, one job each). */
+.page-title{font-size:var(--p-size-xl);line-height:28px;font-weight:600;letter-spacing:-.005em}
+/* A sentence, so it stays in the sans body register. Date/clock strings under a
+   title are metadata and use .t-meta (mono) instead — see home.html. */
+.page-sub{font-size:var(--p-size-sm);line-height:20px;color:var(--p-ink-muted);margin-top:4px;max-width:78ch}
+.cmdk{display:flex;align-items:center;gap:var(--p-space-2);height:30px;padding:0 var(--p-space-3);
+  border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);border-radius:var(--p-radius-md);background:var(--p-surface-raised);
+  color:var(--p-ink-subtle);font-size:var(--p-size-sm);cursor:pointer;min-width:190px;white-space:nowrap;
+  box-shadow:0 1px 0 var(--top-edge-highlight) inset}
+.avatar{width:26px;height:26px;border-radius:50%;background:var(--p-surface-raised);color:var(--p-ink-muted);
+  border:1px solid var(--p-line);border-top-color:var(--border-subtle-top);display:flex;align-items:center;justify-content:center;
+  font-family:var(--p-font-mono);font-size:var(--p-size-micro);font-weight:500;letter-spacing:.02em;
+  box-shadow:0 1px 0 var(--top-edge-highlight) inset}
+.content{padding:var(--p-space-6) var(--p-space-6) var(--p-space-10);display:flex;flex-direction:column;gap:var(--p-space-5)}
+
+@media (min-width:1024px){
+  .app{height:calc(100dvh - var(--mock-h));overflow:hidden}
+  .content{overflow:auto;min-height:0;scrollbar-width:thin;scrollbar-color:var(--p-line-strong) transparent}
+}
+@media (max-width:1023px){
+  .app{grid-template-columns:var(--p-rail-w) minmax(0,1fr)}
+  .sidebar{align-items:center;padding:var(--p-space-4) var(--p-space-2)}
+  .brand__name,.brand__ver,.nav__label,.nav__item span,.sidebar__foot{display:none}
+  .nav__item{justify-content:center;padding:8px}
+  .nav__count{display:none}
+  .content{padding:var(--p-space-5) var(--p-space-4) var(--p-space-8)}
+  .topbar{padding:var(--p-space-4)}
+}
+@media (max-width:767px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .sidebar{flex-direction:row;align-items:center;gap:var(--p-space-2);border-right:0;border-bottom:1px solid var(--p-line);
+    overflow-x:auto;padding:var(--p-space-2) var(--p-space-3);position:sticky;top:0;z-index:5;scrollbar-width:none}
+  .sidebar::-webkit-scrollbar{display:none}
+  .brand{padding:0 var(--p-space-1)}
+  .brand__name{display:block}
+  .nav{flex-direction:row;gap:var(--p-space-2);overflow:visible}
+  .nav__group{flex-direction:row;gap:2px}
+  .nav__item span{display:inline}
+  .nav__item{white-space:nowrap}
+  .topbar{flex-wrap:wrap;gap:var(--p-space-2)}
+  .cmdk{min-width:0;flex:1}
+  .cmdk .kbd{display:none}
+  .tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+/* ---------- mockup scaffolding (not part of the product) ---------- */
+:root{--mock-h:41px}
+.statepick{position:fixed;width:0;height:0;opacity:0;pointer-events:none}
+.mockbar{display:flex;align-items:center;gap:var(--p-space-4);height:var(--mock-h);padding:0 var(--p-space-4);
+  border-bottom:1px dashed var(--p-line-strong);background:var(--p-sunken);
+  font-family:var(--p-font-mono);font-size:var(--p-size-meta);color:var(--p-ink-subtle);overflow-x:auto;scrollbar-width:none}
+.mockbar::-webkit-scrollbar{display:none}
+.mockbar__id{white-space:nowrap}
+.mockbar__states{display:flex;gap:4px;margin-left:auto}
+.mockbar label{padding:3px 9px;border-radius:var(--p-radius-pill);cursor:pointer;white-space:nowrap;border:1px solid transparent}
+.mockbar label:hover{color:var(--p-ink)}
+.mockbar__theme{height:23px;padding:0 9px;border-radius:var(--p-radius-pill);border:1px solid var(--p-line-strong);
+  background:none;color:var(--p-ink-subtle);font:inherit;cursor:pointer;white-space:nowrap}
+.state{display:none}
+
+/* ---------- connect a client ---------- */
+.connect{display:grid;gap:var(--p-space-5);grid-template-columns:288px minmax(0,1fr);align-items:start}
+.clientlist{display:flex;flex-direction:column}
+.clientrow{display:flex;align-items:center;gap:var(--p-space-3);padding:var(--p-space-3) var(--p-space-4) var(--p-space-3) var(--p-space-4);
+  border-bottom:1px solid var(--p-line);cursor:pointer}
+.clientrow:last-child{border-bottom:0}
+.clientrow:hover{background:var(--p-surface-2)}
+/* selected client = the quiet treatment: near-invisible wash, 2px accent edge,
+   and INK text. The row is selected, not decorated. */
+.clientrow--on{position:relative;background:var(--p-sel-wash)}
+.clientrow--on::before{content:'';position:absolute;left:0;top:5px;bottom:5px;width:2px;border-radius:2px;
+  background:var(--accent-fill)}
+.clientrow--on .clientrow__name{color:var(--p-ink)}
+.clientrow__mark{width:26px;height:26px;border-radius:7px;flex:none;display:flex;align-items:center;justify-content:center;
+  background:var(--p-sunken);color:var(--p-ink-subtle)}
+.clientrow--on .clientrow__mark{background:var(--p-surface-raised);color:var(--p-ink-muted);
+  border:1px solid var(--p-line);border-top-color:var(--border-subtle-top)}
+.clientrow__name{font-size:var(--p-size-sm);font-weight:500}
+.clientrow__meta{font-size:var(--p-size-xs);color:var(--p-ink-subtle)}
+.numstep{display:flex;gap:var(--p-space-3);padding:var(--p-space-4) var(--p-space-5) var(--p-space-5);border-bottom:1px solid var(--p-line)}
+.numstep:last-child{border-bottom:0}
+.numstep__num{width:22px;height:22px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;
+  background:var(--p-surface-raised);border:1px solid var(--p-line-strong);color:var(--p-ink-subtle);
+  font-family:var(--p-font-mono);font-size:var(--p-size-meta);font-weight:500;font-variant-numeric:tabular-nums;
+  box-shadow:0 1px 0 var(--top-edge-highlight) inset}
+/* only a step that is genuinely the current one takes the accent fill */
+.numstep__num--on{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--p-on-accent);
+  box-shadow:0 0 4px var(--accent-glow-core), 0 0 8px var(--accent-glow)}
+/* done = neutral surface + success text/ring, never a success fill (§2.6) */
+.numstep__num--done{background:var(--p-surface);color:var(--p-ok);border:1px solid var(--p-ok-line);box-shadow:none}
+.numstep__title{font-size:var(--p-size-sm);font-weight:600;margin-bottom:3px}
+.qr{width:72px;height:72px;flex:none;display:grid;grid-template-columns:repeat(11,1fr);grid-template-rows:repeat(11,1fr);
+  gap:2px;padding:8px;background:var(--p-surface);border:1px solid var(--p-line);border-radius:var(--p-radius-md)}
+.qr i{background:var(--p-ink);border-radius:1px}
+.qr i.o{background:transparent}
+.tabs__panel{display:none}
+.tabbar{display:inline-flex;gap:var(--p-space-1);border-bottom:1px solid var(--p-line);width:100%}
+.tabbar label{padding:8px 12px;font-size:var(--p-size-sm);font-weight:550;color:var(--p-ink-muted);cursor:pointer;
+  border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabbar label:hover{color:var(--p-ink)}
+/* the .tabbar sits inside the card head, so the checked radio reaches it
+   through a descendant step -- the active tab is a 2px accent edge, nothing more */
+#cc-t1:checked ~ * .tabbar label[for="cc-t1"],#cc-t2:checked ~ * .tabbar label[for="cc-t2"],
+#cc-t1:checked ~ .tabbar label[for="cc-t1"],#cc-t2:checked ~ .tabbar label[for="cc-t2"]{color:var(--p-ink);
+  border-bottom-color:var(--accent-fill)}
+#cc-t1:checked ~ .tabs__panel--1,#cc-t2:checked ~ .tabs__panel--2{display:block}
+.kv{display:grid;grid-template-columns:150px minmax(0,1fr);gap:var(--p-space-2) var(--p-space-4);font-size:var(--p-size-sm)}
+.kv dt{font-family:var(--p-font-mono);font-size:var(--p-size-micro);line-height:14px;font-weight:500;
+  letter-spacing:var(--p-track-micro);text-transform:uppercase;color:var(--p-ink-subtle);padding-top:4px}
+.kv dd{margin:0}
+.snippet--wrap code{white-space:pre-wrap;overflow-wrap:anywhere}
+.tablewrap{overflow-x:auto;padding:0 var(--p-space-4) var(--p-space-2);scrollbar-width:thin}
+.tablewrap .table{min-width:400px}
+@media (min-width:1024px){
+  .clientlist{max-height:356px;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--p-line-strong) transparent}
+}
+@media (max-width:1023px){
+  .connect{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:767px){
+  .kv{grid-template-columns:minmax(0,1fr);gap:0 0}
+  .kv dd{margin-bottom:var(--p-space-3)}
+  /* long mono values (endpoints, tokens) break rather than push the row wide */
+  .row--wrap{min-width:0}
+  .row--wrap > *{min-width:0;overflow-wrap:anywhere}
+}
+
+#cn-guided:checked ~ .stage .state--cn-guided{display:block}
+#cn-guided:checked ~ .mockbar label[for="cn-guided"]{background:var(--p-surface);border-color:var(--p-line-strong);color:var(--p-ink)}
+#cn-done:checked ~ .stage .state--cn-done{display:block}
+#cn-done:checked ~ .mockbar label[for="cn-done"]{background:var(--p-surface);border-color:var(--p-line-strong);color:var(--p-ink)}
+#cn-blocked:checked ~ .stage .state--cn-blocked{display:block}
+#cn-blocked:checked ~ .mockbar label[for="cn-blocked"]{background:var(--p-surface);border-color:var(--p-line-strong);color:var(--p-ink)}
+#cn-empty:checked ~ .stage .state--cn-empty{display:block}
+#cn-empty:checked ~ .mockbar label[for="cn-empty"]{background:var(--p-surface);border-color:var(--p-line-strong);color:var(--p-ink)}
+</style>
+</head>
+<body>
+<input class="statepick" type="radio" name="mockstate" id="cn-guided" checked>
+<input class="statepick" type="radio" name="mockstate" id="cn-done">
+<input class="statepick" type="radio" name="mockstate" id="cn-blocked">
+<input class="statepick" type="radio" name="mockstate" id="cn-empty">
+<div class="mockbar">
+  <span class="mockbar__id">palaia v3 mockup &middot; connect-client.html &middot; per-client guided flows</span>
+  <span class="mockbar__id t-subtle">light + dark follow the OS &middot; responsive at 360 / 768 / 1280</span>
+  <span class="mockbar__states"><label for="cn-guided">guided</label>
+<label for="cn-done">connected</label>
+<label for="cn-blocked">blocked by mode</label>
+<label for="cn-empty">first run</label></span>
+  <button class="mockbar__theme" id="themebtn" type="button">theme: system</button>
+</div>
+<div class="stage">
+<div class="state state--cn-guided">
+<div class="app">
+<aside class="sidebar">
+  <a class="brand" href="#"><span class="brand__mark">p</span><span class="brand__name">palaia</span><span class="brand__ver">v3</span></a>
+  <nav class="nav"><div class="nav__group"><span class="nav__label t-over">Overview</span><a class="nav__item" href="#" title="Home"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.6 12 4l9 6.6V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span>Home</span></a></div><div class="nav__group"><span class="nav__label t-over">Memory</span><a class="nav__item" href="#" title="Explorer"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg><span>Explorer</span></a><a class="nav__item" href="#" title="Inbox"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13.5h4l1.2 2.5h5.6l1.2-2.5h4"/><path d="M4 13.5 6.7 5h10.6L20 13.5V20H4z"/></svg><span>Inbox</span><span class="nav__count nav__count--warn">12</span></a><a class="nav__item" href="#" title="Review queue"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2"/><path d="M8.3 12.4l2.7 2.7 4.7-5.2"/></svg><span>Review queue</span><span class="nav__count">3</span></a><a class="nav__item" href="#" title="Vaults"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="4.5" rx="1.2"/><path d="M5.5 9v10.5h13V9"/><path d="M10 13h4"/></svg><span>Vaults</span></a></div><div class="nav__group"><span class="nav__label t-over">Connections</span><a class="nav__item nav__item--on" href="#" title="Clients"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg><span>Clients</span></a><a class="nav__item" href="#" title="Tools &amp; skills"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg><span>Tools &amp; skills</span></a></div><div class="nav__group"><span class="nav__label t-over">System</span><a class="nav__item" href="#" title="Automations"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.2 3 5.5 14h5l-1 7 8.2-11.2h-5.1z"/></svg><span>Automations</span></a><a class="nav__item" href="#" title="Health"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12.5h3.8l2.2-5.5 3.4 11 2.2-5.5H21"/></svg><span>Health</span></a><a class="nav__item" href="#" title="Settings"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2M6.7 6.7l1.4 1.4M15.9 15.9l1.4 1.4M17.3 6.7l-1.4 1.4M8.1 15.9l-1.4 1.4"/></svg><span>Settings</span></a></div></nav>
+  <div class="sidebar__foot">
+    <div class="row t-xs t-muted" style="gap:8px"><span class="dot dot--ok"></span><span><strong style="font-weight:600">Cloud</strong> &middot; via Funnel</span></div>
+    <div class="t-xs t-subtle">2026.9.0 &middot; up to date</div>
+  </div>
+</aside>
+<div class="main">
+<header class="topbar">
+  <div>
+    <h1 class="page-title">Connect a client</h1>
+    <p class="page-sub">One endpoint, one paste. Nothing to edit in a config file.</p>
+  </div>
+  <div class="row">
+    
+    <button class="cmdk" type="button"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.2"/><path d="M15.6 15.6 20 20"/></svg><span>Search or jump to</span><span class="kbd" style="margin-left:auto">&#8984;K</span></button>
+    <span class="badge badge--ok"><span class="dot dot--ok"></span>Healthy</span>
+    <span class="avatar">CW</span>
+  </div>
+</header>
+<div class="content">
+<section class="connect">
+<div class="card">
+  <div class="card__head"><h3 class="card__title">clients</h3><span class="t-meta">4 connected</span></div>
+  <div class="clientlist"><div class="clientrow clientrow--on"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 4.9 4.9 1.9-4.9 1.9L12 17.1l-1.9-4.9-4.9-1.9 4.9-1.9z"/></svg></span><span class="grow"><span class="clientrow__name">Claude Code CLI</span><br><span class="clientrow__meta">connected &middot; 12 s ago</span></span><span class="dot dot--ok"></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg></span><span class="grow"><span class="clientrow__name">Codex</span><br><span class="clientrow__meta">connected &middot; 4 min ago</span></span><span class="dot dot--ok"></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13.8a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2"/><path d="M14 10.2a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2"/></svg></span><span class="grow"><span class="clientrow__name">claude.ai</span><br><span class="clientrow__meta">web, desktop, iPhone &middot; 2 h ago</span></span><span class="dot dot--ok"></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg></span><span class="grow"><span class="clientrow__name">Claude Code (Desktop app)</span><br><span class="clientrow__meta">not connected &middot; one click to install</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13.8a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2"/><path d="M14 10.2a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2"/></svg></span><span class="grow"><span class="clientrow__name">ChatGPT</span><br><span class="clientrow__meta">not connected &middot; depends on your plan</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Antigravity / Gemini CLI</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Grok</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg></span><span class="grow"><span class="clientrow__name">LM Studio</span><br><span class="clientrow__meta">connected &middot; 3 d ago</span></span><span class="dot"></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Any other AI tool</span><br><span class="clientrow__meta">endpoint and token</span></span></div></div>
+  <div class="card__foot"><span class="t-xs t-subtle">Every client gets its own token and its own tool profile. Revoking one never touches the others.</span></div>
+</div>
+<div class="stack">
+
+<div class="card">
+  <div class="card__head">
+    <div>
+      <h3 class="card__subject">Claude Code CLI</h3>
+      <p class="t-xs t-muted" title="Streamable HTTP transport, MCP tool search, and the claude/channel push capability">Connects straight over the web &middot; finds tools as it needs them &middot; gets updates without asking</p>
+    </div>
+    <span class="badge">about 1 minute</span>
+  </div>
+
+  <div class="numstep">
+    <span class="numstep__num">1</span>
+    <div class="grow stack--3" style="display:flex;flex-direction:column">
+      <div><p class="numstep__title">Choose what this client may see</p>
+        <p class="t-sm t-muted">A hundred tools in one conversation ruins an agent. Whatever you pick here is baked into the address, so the client cannot see anything else.</p></div>
+      <div class="row row--wrap">
+        <div class="segmented" role="group">
+          <span class="segmented__item segmented__item--on">Coding &middot; 12</span>
+          <span class="segmented__item">Memory only &middot; 6</span>
+          <span class="segmented__item">Everything &middot; 37</span>
+        </div>
+        <a class="btn btn--ghost btn--sm" href="#">Edit profiles</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="numstep">
+    <span class="numstep__num">2</span>
+    <div class="grow">
+      <p class="numstep__title">Paste one thing</p>
+      <div class="card card--flat" style="margin-top:var(--p-space-3)">
+        <input class="statepick" type="radio" name="cctab" id="cc-t1" checked>
+        <input class="statepick" type="radio" name="cctab" id="cc-t2">
+        <div class="card__head" style="padding:0 var(--p-space-4);border-bottom:0">
+          <div class="tabbar"><label for="cc-t1">Copy the command</label><label for="cc-t2">Or paste a prompt</label></div>
+        </div>
+        <div class="tabs__panel tabs__panel--1"><div class="card__body stack--2" style="display:flex;flex-direction:column">
+          <div class="snippet snippet--wrap"><code>claude mcp add --transport http palaia https://palaia.ts.net/mcp/coding</code>
+            <button class="btn btn--sm" type="button"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="10.5" height="10.5" rx="2"/><path d="M15 9V6.5a2 2 0 0 0-2-2H6.5a2 2 0 0 0-2 2V13a2 2 0 0 0 2 2H9"/></svg>Copy</button></div>
+          <div class="row row--wrap" style="align-items:flex-start;gap:var(--p-space-4)">
+            <div class="stack--2" style="display:flex;flex-direction:column;flex:1;min-width:0">
+              <span class="t-over">Or take it to your phone</span>
+              <div class="row row--wrap" style="gap:6px"><span class="chip chip--mono">https://palaia.ts.net/mcp/coding</span><button class="btn btn--sm btn--quiet" type="button"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="10.5" height="10.5" rx="2"/><path d="M15 9V6.5a2 2 0 0 0-2-2H6.5a2 2 0 0 0-2 2V13a2 2 0 0 0 2 2H9"/></svg>URL</button></div>
+            </div>
+            <div class="qr" aria-hidden="true"><i></i><i></i><i></i><i class="o"></i><i class="o"></i><i></i><i class="o"></i><i></i><i></i><i></i><i></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i></i><i class="o"></i><i class="o"></i><i></i><i class="o"></i><i></i><i></i><i></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i></i><i></i><i class="o"></i><i class="o"></i><i class="o"></i><i class="o"></i><i></i><i class="o"></i><i class="o"></i><i></i><i class="o"></i><i class="o"></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i class="o"></i><i></i><i class="o"></i><i></i><i></i><i class="o"></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i><i></i><i class="o"></i><i class="o"></i><i></i><i></i><i></i><i class="o"></i><i class="o"></i><i class="o"></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i class="o"></i><i class="o"></i><i class="o"></i><i></i><i></i><i></i><i class="o"></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i class="o"></i><i></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i></i></div>
+          </div>
+        </div></div>
+        <div class="tabs__panel tabs__panel--2"><div class="card__body stack--3" style="display:flex;flex-direction:column">
+          <div class="snippet snippet--block"><code>Please connect yourself to my palaia hub as an MCP server:
+https://palaia.ts.net/mcp/coding
+Then search my memory for &ldquo;billing service&rdquo; and tell me what you found.</code></div>
+          <div class="row row--wrap"><button class="btn btn--sm" type="button"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="10.5" height="10.5" rx="2"/><path d="M15 9V6.5a2 2 0 0 0-2-2H6.5a2 2 0 0 0-2 2V13a2 2 0 0 0 2 2H9"/></svg>Copy prompt</button>
+            <span class="t-xs t-muted">The agent configures itself and reports back. Nothing for you to edit in a config file.</span></div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="numstep">
+    <span class="numstep__num">3</span>
+    <div class="grow">
+      <p class="numstep__title">palaia watches for the first call</p>
+      <div class="row row--wrap" style="margin-top:var(--p-space-1)">
+        <span class="waiting"><i></i><i></i><i></i> Waiting for this client to say hello&hellip;</span>
+        <span class="chip">endpoint reachable</span>
+        <span class="t-xs t-subtle">No refresh needed.</span>
+      </div>
+      <p class="t-xs t-muted" style="margin-top:var(--p-space-2)">Nothing to watch here &mdash; go and ask it
+      <em>&ldquo;what do you remember about this project?&rdquo;</em> and this line will change on its own.</p>
+      <!-- Lume: the not-yet-arrived call log line materialises as a skeleton pulse,
+           never a spinner (colors_and_type.css §7 .lume-skeleton, visual-spec §7.2/§7.6) -->
+      <div class="lume-skeleton" style="height:14px;width:78%;margin-top:var(--p-space-2)"></div>
+    </div>
+  </div>
+  <div class="card__foot">
+    <span class="t-xs t-subtle">In-chat panels can render this flow too. Access mode and token changes stay in the dashboard &mdash; not in an embedded frame.</span>
+  </div>
+</div>
+
+</div>
+</section>
+</div>
+</div>
+</div>
+</div><div class="state state--cn-done">
+<div class="app">
+<aside class="sidebar">
+  <a class="brand" href="#"><span class="brand__mark">p</span><span class="brand__name">palaia</span><span class="brand__ver">v3</span></a>
+  <nav class="nav"><div class="nav__group"><span class="nav__label t-over">Overview</span><a class="nav__item" href="#" title="Home"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.6 12 4l9 6.6V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span>Home</span></a></div><div class="nav__group"><span class="nav__label t-over">Memory</span><a class="nav__item" href="#" title="Explorer"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg><span>Explorer</span></a><a class="nav__item" href="#" title="Inbox"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13.5h4l1.2 2.5h5.6l1.2-2.5h4"/><path d="M4 13.5 6.7 5h10.6L20 13.5V20H4z"/></svg><span>Inbox</span><span class="nav__count nav__count--warn">12</span></a><a class="nav__item" href="#" title="Review queue"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2"/><path d="M8.3 12.4l2.7 2.7 4.7-5.2"/></svg><span>Review queue</span><span class="nav__count">3</span></a><a class="nav__item" href="#" title="Vaults"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="4.5" rx="1.2"/><path d="M5.5 9v10.5h13V9"/><path d="M10 13h4"/></svg><span>Vaults</span></a></div><div class="nav__group"><span class="nav__label t-over">Connections</span><a class="nav__item nav__item--on" href="#" title="Clients"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg><span>Clients</span></a><a class="nav__item" href="#" title="Tools &amp; skills"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg><span>Tools &amp; skills</span></a></div><div class="nav__group"><span class="nav__label t-over">System</span><a class="nav__item" href="#" title="Automations"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.2 3 5.5 14h5l-1 7 8.2-11.2h-5.1z"/></svg><span>Automations</span></a><a class="nav__item" href="#" title="Health"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12.5h3.8l2.2-5.5 3.4 11 2.2-5.5H21"/></svg><span>Health</span></a><a class="nav__item" href="#" title="Settings"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2M6.7 6.7l1.4 1.4M15.9 15.9l1.4 1.4M17.3 6.7l-1.4 1.4M8.1 15.9l-1.4 1.4"/></svg><span>Settings</span></a></div></nav>
+  <div class="sidebar__foot">
+    <div class="row t-xs t-muted" style="gap:8px"><span class="dot dot--ok"></span><span><strong style="font-weight:600">Cloud</strong> &middot; via Funnel</span></div>
+    <div class="t-xs t-subtle">2026.9.0 &middot; up to date</div>
+  </div>
+</aside>
+<div class="main">
+<header class="topbar">
+  <div>
+    <h1 class="page-title">Connect a client</h1>
+    <p class="page-sub">One endpoint, one paste. Nothing to edit in a config file.</p>
+  </div>
+  <div class="row">
+    
+    <button class="cmdk" type="button"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.2"/><path d="M15.6 15.6 20 20"/></svg><span>Search or jump to</span><span class="kbd" style="margin-left:auto">&#8984;K</span></button>
+    <span class="badge badge--ok"><span class="dot dot--ok"></span>Healthy</span>
+    <span class="avatar">CW</span>
+  </div>
+</header>
+<div class="content">
+<section class="connect">
+<div class="card">
+  <div class="card__head"><h3 class="card__title">clients</h3><span class="t-meta">4 connected</span></div>
+  <div class="clientlist"><div class="clientrow clientrow--on"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 4.9 4.9 1.9-4.9 1.9L12 17.1l-1.9-4.9-4.9-1.9 4.9-1.9z"/></svg></span><span class="grow"><span class="clientrow__name">Claude Code CLI</span><br><span class="clientrow__meta">connected &middot; 12 s ago</span></span><span class="dot dot--ok"></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg></span><span class="grow"><span class="clientrow__name">Codex</span><br><span class="clientrow__meta">connected &middot; 4 min ago</span></span><span class="dot dot--ok"></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13.8a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2"/><path d="M14 10.2a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2"/></svg></span><span class="grow"><span class="clientrow__name">claude.ai</span><br><span class="clientrow__meta">web, desktop, iPhone &middot; 2 h ago</span></span><span class="dot dot--ok"></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg></span><span class="grow"><span class="clientrow__name">Claude Code (Desktop app)</span><br><span class="clientrow__meta">not connected &middot; one click to install</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13.8a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2"/><path d="M14 10.2a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2"/></svg></span><span class="grow"><span class="clientrow__name">ChatGPT</span><br><span class="clientrow__meta">not connected &middot; depends on your plan</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Antigravity / Gemini CLI</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Grok</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg></span><span class="grow"><span class="clientrow__name">LM Studio</span><br><span class="clientrow__meta">connected &middot; 3 d ago</span></span><span class="dot"></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Any other AI tool</span><br><span class="clientrow__meta">endpoint and token</span></span></div></div>
+  <div class="card__foot"><span class="t-xs t-subtle">Every client gets its own token and its own tool profile. Revoking one never touches the others.</span></div>
+</div>
+<div class="stack">
+
+<div class="card">
+  <div class="card__head">
+    <div class="row" style="gap:10px">
+      <span class="empty__mark" style="width:34px;height:34px;border-radius:10px"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 10 18 19.5 6.5"/></svg></span>
+      <div><h3 class="card__subject">Claude Code CLI is connected</h3><p class="t-xs t-muted">First tool call 4 minutes ago &middot; last seen 12 seconds ago</p></div>
+    </div>
+    <span class="badge badge--ok"><span class="dot dot--live"></span>live</span>
+  </div>
+  <div class="card__body">
+    <p class="prose prose--compact" style="margin-bottom:var(--p-space-5);max-width:64ch">That is the whole
+    setup. From now on it shares one memory with everything else on this list &mdash; whatever it learns here,
+    Codex and your phone can read tomorrow.</p>
+    <dl class="kv">
+      <dt>Endpoint</dt><dd><span class="chip chip--mono">https://palaia.ts.net/mcp/coding</span></dd>
+      <dt>Tool profile</dt><dd>Coding &middot; 12 tools <a href="#">change</a></dd>
+      <dt>Memory scopes</dt><dd>vault <strong style="font-weight:600">Work</strong> &middot; read + write, private notes excluded</dd>
+      <dt>Token</dt><dd class="row" style="gap:8px"><span class="chip chip--mono">pal_c&hellip;9f21</span><span class="t-xs t-subtle">issued today, rotates automatically</span></dd>
+      <dt>First call</dt><dd><span class="chip chip--mono">work_memory_search</span> <span class="t-xs t-subtle">&ldquo;billing service&rdquo; &middot; 4 notes returned</span></dd>
+    </dl>
+  </div>
+  <div class="card__foot">
+    <button class="btn btn--primary btn--sm" type="button">Send a test recall</button>
+    <button class="btn btn--sm" type="button">Rotate token</button>
+    <button class="btn btn--ghost btn--sm" type="button">Rename client</button>
+    <span class="grow"></span>
+    <button class="btn btn--risk btn--sm" type="button">Revoke access</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card__head"><h3 class="card__title">what this client did with your memory</h3><a class="btn btn--ghost btn--sm" href="#">Full log</a></div>
+  <div class="tablewrap"><table class="table">
+    <thead><tr><th>When</th><th>Tool</th><th>Detail</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td class="t-subtle">12 s ago</td><td><span class="chip chip--mono">work_recall</span></td><td>continue: dunning retries</td><td>7 notes &middot; 1,180 tokens</td></tr>
+      <tr><td class="t-subtle">6 min ago</td><td><span class="chip chip--mono">work_memory_write</span></td><td>Billing service &mdash; 3 observations</td><td><span class="badge badge--ok">committed</span></td></tr>
+      <tr><td class="t-subtle">31 min ago</td><td><span class="chip chip--mono">work_inbox_capture</span></td><td>&ldquo;retry budget missing&rdquo;</td><td><span class="badge">queued for curation</span></td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+</div>
+</section>
+</div>
+</div>
+</div>
+</div><div class="state state--cn-blocked">
+<div class="app">
+<aside class="sidebar">
+  <a class="brand" href="#"><span class="brand__mark">p</span><span class="brand__name">palaia</span><span class="brand__ver">v3</span></a>
+  <nav class="nav"><div class="nav__group"><span class="nav__label t-over">Overview</span><a class="nav__item" href="#" title="Home"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.6 12 4l9 6.6V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span>Home</span></a></div><div class="nav__group"><span class="nav__label t-over">Memory</span><a class="nav__item" href="#" title="Explorer"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg><span>Explorer</span></a><a class="nav__item" href="#" title="Inbox"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13.5h4l1.2 2.5h5.6l1.2-2.5h4"/><path d="M4 13.5 6.7 5h10.6L20 13.5V20H4z"/></svg><span>Inbox</span><span class="nav__count nav__count--warn">12</span></a><a class="nav__item" href="#" title="Review queue"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2"/><path d="M8.3 12.4l2.7 2.7 4.7-5.2"/></svg><span>Review queue</span><span class="nav__count">3</span></a><a class="nav__item" href="#" title="Vaults"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="4.5" rx="1.2"/><path d="M5.5 9v10.5h13V9"/><path d="M10 13h4"/></svg><span>Vaults</span></a></div><div class="nav__group"><span class="nav__label t-over">Connections</span><a class="nav__item nav__item--on" href="#" title="Clients"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg><span>Clients</span></a><a class="nav__item" href="#" title="Tools &amp; skills"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg><span>Tools &amp; skills</span></a></div><div class="nav__group"><span class="nav__label t-over">System</span><a class="nav__item" href="#" title="Automations"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.2 3 5.5 14h5l-1 7 8.2-11.2h-5.1z"/></svg><span>Automations</span></a><a class="nav__item" href="#" title="Health"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12.5h3.8l2.2-5.5 3.4 11 2.2-5.5H21"/></svg><span>Health</span></a><a class="nav__item" href="#" title="Settings"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2M6.7 6.7l1.4 1.4M15.9 15.9l1.4 1.4M17.3 6.7l-1.4 1.4M8.1 15.9l-1.4 1.4"/></svg><span>Settings</span></a></div></nav>
+  <div class="sidebar__foot">
+    <div class="row t-xs t-muted" style="gap:8px"><span class="dot dot--ok"></span><span><strong style="font-weight:600">Locked</strong> &middot; your network only</span></div>
+    <div class="t-xs t-subtle">2026.9.0 &middot; up to date</div>
+  </div>
+</aside>
+<div class="main">
+<header class="topbar">
+  <div>
+    <h1 class="page-title">Connect a client</h1>
+    <p class="page-sub">One endpoint, one paste. Nothing to edit in a config file.</p>
+  </div>
+  <div class="row">
+    
+    <button class="cmdk" type="button"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.2"/><path d="M15.6 15.6 20 20"/></svg><span>Search or jump to</span><span class="kbd" style="margin-left:auto">&#8984;K</span></button>
+    <span class="badge badge--warn"><span class="dot dot--warn"></span>1 finding</span>
+    <span class="avatar">CW</span>
+  </div>
+</header>
+<div class="content">
+<section class="connect">
+<div class="card">
+  <div class="card__head"><h3 class="card__title">clients</h3><span class="t-meta">4 connected</span></div>
+  <div class="clientlist"><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 4.9 4.9 1.9-4.9 1.9L12 17.1l-1.9-4.9-4.9-1.9 4.9-1.9z"/></svg></span><span class="grow"><span class="clientrow__name">Claude Code CLI</span><br><span class="clientrow__meta">connected &middot; 12 s ago</span></span><span class="dot dot--ok"></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg></span><span class="grow"><span class="clientrow__name">Codex</span><br><span class="clientrow__meta">connected &middot; 4 min ago</span></span><span class="dot dot--ok"></span></div><div class="clientrow clientrow--on"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13.8a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2"/><path d="M14 10.2a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2"/></svg></span><span class="grow"><span class="clientrow__name">claude.ai</span><br><span class="clientrow__meta">web, desktop, iPhone &middot; 2 h ago</span></span><span class="dot dot--ok"></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg></span><span class="grow"><span class="clientrow__name">Claude Code (Desktop app)</span><br><span class="clientrow__meta">not connected &middot; one click to install</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13.8a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2"/><path d="M14 10.2a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2"/></svg></span><span class="grow"><span class="clientrow__name">ChatGPT</span><br><span class="clientrow__meta">not connected &middot; depends on your plan</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Antigravity / Gemini CLI</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Grok</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg></span><span class="grow"><span class="clientrow__name">LM Studio</span><br><span class="clientrow__meta">connected &middot; 3 d ago</span></span><span class="dot"></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Any other AI tool</span><br><span class="clientrow__meta">endpoint and token</span></span></div></div>
+  <div class="card__foot"><span class="t-xs t-subtle">Every client gets its own token and its own tool profile. Revoking one never touches the others.</span></div>
+</div>
+<div class="stack">
+
+<div class="card">
+  <div class="card__head">
+    <div><h3 class="card__subject">claude.ai</h3><p class="t-xs t-muted">Web, desktop, mobile and Cowork &middot; custom connector on every plan</p></div>
+    <span class="badge badge--warn">blocked by your access mode</span>
+  </div>
+  <div class="card__body stack">
+    <div class="banner banner--warn">
+      <svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.2 21 20H3z"/><path d="M12 10v4.2M12 17.2h.01"/></svg>
+      <div>
+        <p class="banner__title">Locked mode cannot serve this client &mdash; and no URL will change that</p>
+        <p class="t-sm t-muted">claude.ai connects <em>from Anthropic&rsquo;s cloud</em>, not from this device. Your hub answers only inside your own network, so the connector would time out whatever you paste into it.</p>
+      </div>
+    </div>
+    <div class="stack--2" style="display:flex;flex-direction:column">
+      <p class="field__label">Two honest ways forward</p>
+      <div class="switchrow" style="align-items:center">
+        <span class="grow"><span class="field__label">Switch to Cloud mode</span><br>
+          <span class="field__hint">A private tunnel, sign-in required, and this dashboard still reachable only from your own network. About a minute.</span></span>
+        <button class="btn btn--primary btn--sm" type="button">Open exposure wizard</button>
+      </div>
+      <div class="switchrow" style="align-items:center">
+        <span class="grow"><span class="field__label">Stay locked, use a local client</span><br>
+          <span class="field__hint">Claude Code CLI, Codex and LM Studio run on your machines and reach the hub as it is.</span></span>
+        <button class="btn btn--sm" type="button">Connect Claude Code CLI</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card__head"><h3 class="card__title">other limits worth knowing</h3></div>
+  <div>
+    <div class="listrow" style="align-items:flex-start"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2"/><path d="M12 11v5.2M12 7.9h.01"/></svg>
+      <div class="grow"><div class="listrow__title">ChatGPT: writing needs a Business, Enterprise or Edu workspace</div>
+        <div class="listrow__meta">On Plus and Pro, connectors are read-oriented. palaia offers a read-only profile so recall works and writes are not silently dropped.</div></div></div>
+  </div>
+</div>
+
+</div>
+</section>
+</div>
+</div>
+</div>
+</div><div class="state state--cn-empty">
+<div class="app">
+<aside class="sidebar">
+  <a class="brand" href="#"><span class="brand__mark">p</span><span class="brand__name">palaia</span><span class="brand__ver">v3</span></a>
+  <nav class="nav"><div class="nav__group"><span class="nav__label t-over">Overview</span><a class="nav__item" href="#" title="Home"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.6 12 4l9 6.6V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span>Home</span></a></div><div class="nav__group"><span class="nav__label t-over">Memory</span><a class="nav__item" href="#" title="Explorer"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg><span>Explorer</span></a><a class="nav__item" href="#" title="Inbox"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13.5h4l1.2 2.5h5.6l1.2-2.5h4"/><path d="M4 13.5 6.7 5h10.6L20 13.5V20H4z"/></svg><span>Inbox</span></a><a class="nav__item" href="#" title="Review queue"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2"/><path d="M8.3 12.4l2.7 2.7 4.7-5.2"/></svg><span>Review queue</span></a><a class="nav__item" href="#" title="Vaults"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="4.5" rx="1.2"/><path d="M5.5 9v10.5h13V9"/><path d="M10 13h4"/></svg><span>Vaults</span></a></div><div class="nav__group"><span class="nav__label t-over">Connections</span><a class="nav__item nav__item--on" href="#" title="Clients"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg><span>Clients</span></a><a class="nav__item" href="#" title="Tools &amp; skills"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg><span>Tools &amp; skills</span></a></div><div class="nav__group"><span class="nav__label t-over">System</span><a class="nav__item" href="#" title="Automations"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.2 3 5.5 14h5l-1 7 8.2-11.2h-5.1z"/></svg><span>Automations</span></a><a class="nav__item" href="#" title="Health"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12.5h3.8l2.2-5.5 3.4 11 2.2-5.5H21"/></svg><span>Health</span></a><a class="nav__item" href="#" title="Settings"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2M6.7 6.7l1.4 1.4M15.9 15.9l1.4 1.4M17.3 6.7l-1.4 1.4M8.1 15.9l-1.4 1.4"/></svg><span>Settings</span></a></div></nav>
+  <div class="sidebar__foot">
+    <div class="row t-xs t-muted" style="gap:8px"><span class="dot dot--ok"></span><span><strong style="font-weight:600">Locked</strong> &middot; your network only</span></div>
+    <div class="t-xs t-subtle">2026.9.0 &middot; up to date</div>
+  </div>
+</aside>
+<div class="main">
+<header class="topbar">
+  <div>
+    <h1 class="page-title">Connect a client</h1>
+    <p class="page-sub">One endpoint, one paste. Nothing to edit in a config file.</p>
+  </div>
+  <div class="row">
+    
+    <button class="cmdk" type="button"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.2"/><path d="M15.6 15.6 20 20"/></svg><span>Search or jump to</span><span class="kbd" style="margin-left:auto">&#8984;K</span></button>
+    <span class="badge badge--ok"><span class="dot dot--ok"></span>Healthy</span>
+    <span class="avatar">CW</span>
+  </div>
+</header>
+<div class="content">
+<section class="connect">
+<div class="card">
+  <div class="card__head"><h3 class="card__title">clients</h3><span class="t-meta">none connected</span></div>
+  <div class="clientlist"><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 4.9 4.9 1.9-4.9 1.9L12 17.1l-1.9-4.9-4.9-1.9 4.9-1.9z"/></svg></span><span class="grow"><span class="clientrow__name">Claude Code CLI</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg></span><span class="grow"><span class="clientrow__name">Codex</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13.8a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2"/><path d="M14 10.2a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2"/></svg></span><span class="grow"><span class="clientrow__name">claude.ai</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5V20.5H6z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 16h4"/></svg></span><span class="grow"><span class="clientrow__name">Claude Code (Desktop app)</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13.8a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2"/><path d="M14 10.2a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2"/></svg></span><span class="grow"><span class="clientrow__name">ChatGPT</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Antigravity / Gemini CLI</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Grok</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></svg></span><span class="grow"><span class="clientrow__name">LM Studio</span><br><span class="clientrow__meta">not connected</span></span></div><div class="clientrow"><span class="clientrow__mark"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span><span class="grow"><span class="clientrow__name">Any other AI tool</span><br><span class="clientrow__meta">not connected</span></span></div></div>
+  <div class="card__foot"><span class="t-xs t-subtle">Every client gets its own token and its own tool profile. Revoking one never touches the others.</span></div>
+</div>
+<div class="stack">
+
+<div class="card">
+  <div class="card__body">
+    <div class="empty">
+      <span class="empty__mark"><svg class="i i--lg" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.8 7.5h10.4v3.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M12 16v5"/></svg></span>
+      <p class="empty__title">No client has connected yet</p>
+      <p class="empty__text">A client is any AI that should share this memory: an agent in your terminal, a desktop app, a chat on your phone.
+      Pick one on the left &mdash; palaia writes the command, issues the token and tells you when it arrives.</p>
+      <div class="row" style="justify-content:center;margin-top:var(--p-space-2)">
+        <button class="btn btn--primary" type="button"><svg class="i i--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 4.9 4.9 1.9-4.9 1.9L12 17.1l-1.9-4.9-4.9-1.9 4.9-1.9z"/></svg>Start with Claude Code CLI</button>
+        <button class="btn" type="button">I use something else</button>
+      </div>
+      <p class="t-xs t-subtle" style="margin-top:var(--p-space-2)">Typical time: under two minutes. Nothing to edit in a config file.</p>
+    </div>
+  </div>
+</div>
+
+</div>
+</section>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<script>
+/* Mockup-only: cycles the theme so a reviewer can see both without changing OS settings.
+   The product ships the same contract: prefers-color-scheme by default, data-mode to override
+   (Lume's own attribute name — lume/README.md decision 2). */
+(function(){
+  var root=document.documentElement, btn=document.getElementById('themebtn'), modes=['system','light','dark'], i=0;
+  btn.addEventListener('click',function(){
+    i=(i+1)%modes.length; var m=modes[i];
+    if(m==='system'){root.removeAttribute('data-mode');}else{root.setAttribute('data-mode',m);}
+    btn.textContent='theme: '+m;
+  });
+})();
+</script>
+
+</body>
+</html>
