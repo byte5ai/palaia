@@ -17,6 +17,45 @@ from palaia.config import (
 )
 
 
+def check_v2_sunset_notice(args) -> None:
+    """Print a one-line reminder that v2 is maintenance-only, at most once
+    per calendar day (SPEC-505 deliverable 3).
+
+    Skipped entirely in JSON mode, so it never lands in a script's parsed
+    output. The "last shown" marker lives under the home directory (or
+    ``PALAIA_HOME``, the same override :func:`palaia.config.find_palaia_root`
+    honors — this keeps test runs and alternate installs from touching a
+    developer's real home directory) rather than a project's own store, so
+    the once-per-day limit holds across every store on the machine, not
+    per-project — and it still works before a store has been initialized
+    at all.
+    """
+    if getattr(args, "json", False):
+        return
+    try:
+        import datetime
+
+        today = datetime.date.today().isoformat()
+        env_home = os.environ.get("PALAIA_HOME")
+        base = Path(env_home) if env_home else Path.home() / ".palaia"
+        marker = base / ".v2_sunset_notice_shown"
+        if marker.exists() and marker.read_text().strip() == today:
+            return
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(today)
+    except Exception:
+        return
+    from palaia.ui import info_msg
+
+    print(
+        info_msg(
+            "palaia v2 is in maintenance mode. v3 is a ground-up rewrite — "
+            "see the migration guide: https://github.com/byte5ai/palaia/blob/main/v3/docs/migrate-from-v2.md"
+        ),
+        file=sys.stderr,
+    )
+
+
 def json_out(data, args):
     """Print JSON if --json flag is set, return True if printed."""
     if getattr(args, "json", False):

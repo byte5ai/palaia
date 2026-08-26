@@ -829,4 +829,10 @@ If `palaia doctor --fix` cannot resolve an issue, report the full error output t
 
 ---
 
+## Moving to v3
+
+This is palaia v2 — in maintenance mode: it stays fully installable and keeps getting hotfixes, but no new features. A ground-up rewrite, v3, is under active development. See the [migration guide](https://github.com/byte5ai/palaia/blob/main/v3/docs/migrate-from-v2.md) for what carries over, what changes, and how to roll back if you change your mind.
+
+---
+
 (c) 2026 byte5 GmbH -- MIT License
