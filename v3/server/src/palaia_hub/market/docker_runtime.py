@@ -34,8 +34,11 @@ that model). :func:`build_stdio_run_args` only ever receives *names*.
 from __future__ import annotations
 
 import asyncio
+import logging
 import shutil
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_PULL_TIMEOUT_SECONDS = 300.0
 DEFAULT_PROBE_TIMEOUT_SECONDS = 5.0
@@ -156,6 +159,58 @@ async def pull_image(image: str, *, timeout: float = DEFAULT_PULL_TIMEOUT_SECOND
         raise DockerError(f"docker pull {image!r} failed: {' | '.join(tail) or 'no output'}")
 
 
+async def image_present(image: str, *, timeout: float = DEFAULT_PROBE_TIMEOUT_SECONDS) -> bool:
+    """Whether ``image`` already exists in the local image store.
+
+    ``docker image inspect`` exits 0 exactly when the image is present
+    locally; any failure to ask (no CLI, no daemon, timeout) is ``False``.
+    """
+    binary = docker_binary()
+    if binary is None:
+        return False
+    try:
+        process = await asyncio.create_subprocess_exec(
+            binary,
+            "image",
+            "inspect",
+            image,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+    except OSError:
+        return False
+    try:
+        await asyncio.wait_for(process.wait(), timeout=timeout)
+    except TimeoutError:
+        process.kill()
+        await process.wait()
+        return False
+    return process.returncode == 0
+
+
+async def ensure_image(image: str, *, timeout: float = DEFAULT_PULL_TIMEOUT_SECONDS) -> None:
+    """Make ``image`` available locally: pull it, or accept an already-local copy.
+
+    A registry pull is always attempted first, so a published add-on
+    receives updates. When the pull fails but the image already exists in
+    the local store (a locally built image, an air-gapped host, a registry
+    outage), the local copy is used rather than failing the install — the
+    image the operator has is the image they asked for.
+
+    Raises:
+        DockerError: the pull failed and no local copy of ``image`` exists.
+    """
+    try:
+        await pull_image(image, timeout=timeout)
+    except DockerError:
+        if await image_present(image):
+            logger.warning(
+                "pulling %r failed; using the locally present image instead", image
+            )
+            return
+        raise
+
+
 async def remove_container(
     container_name: str, *, timeout: float = DEFAULT_REMOVE_TIMEOUT_SECONDS
 ) -> None:
@@ -195,6 +250,8 @@ __all__ = [
     "build_stdio_run_args",
     "docker_available",
     "docker_binary",
+    "ensure_image",
+    "image_present",
     "pull_image",
     "remove_container",
 ]

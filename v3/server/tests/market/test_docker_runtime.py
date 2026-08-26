@@ -120,3 +120,59 @@ async def test_remove_container_never_raises_when_docker_is_missing(
     monkeypatch.setattr(docker_runtime, "docker_binary", lambda: None)
 
     await docker_runtime.remove_container("palaia-addon-anything")  # must not raise
+
+
+@pytest.mark.anyio
+async def test_ensure_image_pull_success_never_asks_the_local_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    async def fake_pull(image: str, *, timeout: float = 0) -> None:
+        calls.append("pull")
+
+    async def fake_present(image: str, *, timeout: float = 0) -> bool:
+        calls.append("present")
+        return True
+
+    monkeypatch.setattr(docker_runtime, "pull_image", fake_pull)
+    monkeypatch.setattr(docker_runtime, "image_present", fake_present)
+
+    await docker_runtime.ensure_image("ghcr.io/acme/tool:1.0.0")
+
+    assert calls == ["pull"]
+
+
+@pytest.mark.anyio
+async def test_ensure_image_falls_back_to_a_locally_present_image(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_pull(image: str, *, timeout: float = 0) -> None:
+        raise docker_runtime.DockerError("pull access denied")
+
+    async def fake_present(image: str, *, timeout: float = 0) -> bool:
+        return True
+
+    monkeypatch.setattr(docker_runtime, "pull_image", fake_pull)
+    monkeypatch.setattr(docker_runtime, "image_present", fake_present)
+
+    # A locally built image (or an air-gapped host) must install even though
+    # no registry serves the reference — the fallback swallows the pull error.
+    await docker_runtime.ensure_image("palaia-test-fixture-addon:latest")
+
+
+@pytest.mark.anyio
+async def test_ensure_image_raises_when_pull_fails_and_nothing_is_local(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_pull(image: str, *, timeout: float = 0) -> None:
+        raise docker_runtime.DockerError("pull access denied")
+
+    async def fake_present(image: str, *, timeout: float = 0) -> bool:
+        return False
+
+    monkeypatch.setattr(docker_runtime, "pull_image", fake_pull)
+    monkeypatch.setattr(docker_runtime, "image_present", fake_present)
+
+    with pytest.raises(docker_runtime.DockerError, match="pull access denied"):
+        await docker_runtime.ensure_image("ghcr.io/does-not/exist:1.0.0")

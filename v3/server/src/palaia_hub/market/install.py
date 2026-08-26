@@ -328,7 +328,7 @@ async def _resolve_container_plan(
     image = entry.source.value
     if not image:
         raise MarketInstallError(f"{entry.name!r} has no image declared to install.")
-    await docker_runtime.pull_image(image)
+    await docker_runtime.ensure_image(image)
     plain, secret_values, mounts = _split_config(entry.config_schema, config)
     env = {k.upper(): v for k, v in plain.items()}
     env_secrets: dict[str, str] = {}
@@ -651,7 +651,7 @@ class InstallService:
             )
         new_image = entry.source.value
         try:
-            await docker_runtime.pull_image(new_image)
+            await docker_runtime.ensure_image(new_image)
         except docker_runtime.DockerError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
