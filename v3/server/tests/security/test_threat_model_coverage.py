@@ -209,7 +209,12 @@ def test_the_security_policy_exists_and_says_how_to_report() -> None:
     text = SECURITY_POLICY.read_text(encoding="utf-8")
     assert "## Reporting a vulnerability" in text
     assert "## Supported versions" in text
-    assert "@" in text, "no contact address in the security policy"
+    # The one monitored channel (the owner confirmed 2026-08-26 that no
+    # security email inbox exists, so an "@" is exactly what must NOT be
+    # promised here): GitHub's private vulnerability reporting.
+    assert "private vulnerability reporting" in text, (
+        "the security policy no longer names its reporting channel"
+    )
 
 
 def test_the_readme_links_the_security_policy() -> None:

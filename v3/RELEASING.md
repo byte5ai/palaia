@@ -39,10 +39,12 @@ whoever holds it.
       task is not automatically a blocker — judge it the way every other
       gate in this project has: does it undermine the exit criterion, or
       is it a polish item that becomes a filed issue?
-- [ ] **[OWNER]** Confirm `SECURITY.md`'s reporting contact
-      (`security@byte5.de` and the GitHub private-vulnerability-reporting
-      button) is actually monitored before a wider audience sees this
-      release — nothing in this repository can verify an inbox is read.
+- [ ] **[OWNER]** Confirm `SECURITY.md`'s reporting channel (the GitHub
+      private-vulnerability-reporting button — the owner confirmed on
+      2026-08-26 that no security email address exists, so the button is
+      the only channel) actually notifies someone who reads it before a
+      wider audience sees this release. Adding a real, monitored security
+      email later means one edit to `SECURITY.md`.
 
 ## 2. Owner decisions this repository left open on purpose
 
