@@ -244,9 +244,24 @@ def test_oauth_login_reaches_the_hub_not_the_dashboard_shell(running_container: 
     could complete an OAuth flow against the packaged image.
     """
     resp = httpx.get(f"http://127.0.0.1:{HOST_PORT}/oauth/login", timeout=5.0)
-    assert resp.status_code == 200, resp.text
-    # The hub's own login page (server/src/palaia_hub/oauth/routes.py,
-    # `_login_page`) — distinct from the dashboard SPA shell, which has no
-    # such title or form action.
-    assert "Sign in to palaia" in resp.text
-    assert 'action="/oauth/login"' in resp.text
+    # A FRESH container has no sign-in configured yet, so the hub itself
+    # answers 404 here — as FastAPI JSON, which is exactly the proof this
+    # test exists for: the request reached the hub process. Before the
+    # SPEC-502 nginx fix, the SPA catch-all answered instead: HTTP 200
+    # with the dashboard's index.html. So the regression signature is
+    # "200 + HTML shell", and the healthy signatures are either the hub's
+    # real sign-in page (a configured hub) or the hub's own JSON 404 (a
+    # fresh one, like this container).
+    if resp.status_code == 200:
+        # The hub's own login page (server/src/palaia_hub/oauth/routes.py,
+        # `_login_page`) — distinct from the dashboard SPA shell, which
+        # has no such title or form action.
+        assert "Sign in to palaia" in resp.text
+        assert 'action="/oauth/login"' in resp.text
+    else:
+        assert resp.status_code == 404, resp.text
+        assert resp.headers.get("content-type", "").startswith("application/json"), (
+            f"a 404 not in the hub's JSON shape means nginx routed /oauth/login "
+            f"somewhere else entirely: {resp.text[:200]}"
+        )
+        assert "<html" not in resp.text.lower(), resp.text[:200]
