@@ -199,6 +199,12 @@ EOF
 
     rm -f "${rootfs}/usr/sbin/policy-rc.d"
     rm -f "${rootfs}/usr/bin/qemu-aarch64-static"
+    # ldconfig's binary cache embeds mtimes/inodes, so it differs between
+    # two otherwise-identical runs (the ONE file run #1 of the workflow
+    # caught) — and ldconfig regenerates it on first boot anyway. Dropping
+    # it keeps the image honest about determinism instead of excluding it
+    # from the check.
+    rm -f "${rootfs}/var/cache/ldconfig/aux-cache"
     rm -rf "${rootfs}/var/lib/apt/lists"/*
     rm -rf "${rootfs}/var/cache/apt/archives"/*.deb
 
