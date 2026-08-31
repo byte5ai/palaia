@@ -208,3 +208,40 @@ describe("first-memory celebration copy — no jargon (system.md §3 rule 0)", (
     }
   });
 });
+
+describe("Home — SPEC-604 back up", () => {
+  const BANNED = [
+    /\bmcp\b/i,
+    /\boauth\b/i,
+    /\bjwt\b/i,
+    /\basgi\b/i,
+    /\bapi\b/i,
+    /\bjson\b/i,
+    /\bvault\b/i,
+    /\bfunnel\b/i,
+  ];
+
+  it("shows a download link to the backup endpoint, and its warning", async () => {
+    mockApi({ funnel: NO_FUNNEL });
+
+    mount();
+
+    const card = await screen.findByTestId("backup-card");
+    const link = screen.getByRole("link", { name: /back up now/i });
+    expect(link).toHaveAttribute("href", api.backupUrl());
+    expect(link).toHaveAttribute("download");
+    expect(card).toHaveTextContent(/store it like you.d store a password/i);
+  });
+
+  it("the card's own text uses no in-house word", async () => {
+    mockApi({ funnel: NO_FUNNEL });
+
+    mount();
+
+    const card = await screen.findByTestId("backup-card");
+    const text = card.textContent ?? "";
+    for (const pattern of BANNED) {
+      expect(text).not.toMatch(pattern);
+    }
+  });
+});

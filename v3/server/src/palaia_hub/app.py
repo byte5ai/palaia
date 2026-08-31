@@ -34,6 +34,7 @@ from .automations import (
     build_automations_router,
 )
 from .automations.outbox import OUTBOX_RELATIVE_PATH as AUTOMATIONS_OUTBOX_RELATIVE_PATH
+from .backup_api import build_backup_router
 from .config import HubConfig, load_config, palaia_home
 from .curator import CuratorScheduler
 from .curator.wiring import CuratorWiring
@@ -740,6 +741,14 @@ def create_app(
     # hub has a funnel store from its first boot, whether or not a vault
     # exists yet.
     app.include_router(build_funnel_router(funnel_store))
+
+    # SPEC-604: always mounted, same posture as the two routers just above —
+    # every hub has a home directory to archive from its first boot. Gated
+    # like every other `/api/*` route by the admin session middleware added
+    # below (see `palaia_hub.admin_session`'s module docstring); this route
+    # has no opt-in parameter of its own precisely so it can never be
+    # mounted without that gate wrapping it.
+    app.include_router(build_backup_router(home=hub_home))
 
     if token_store is not None:
         app.include_router(build_auth_router(token_store, dynamic_gateway=dynamic_gateway))

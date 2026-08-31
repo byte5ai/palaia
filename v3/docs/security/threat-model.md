@@ -29,6 +29,7 @@
 | **Messenger envelopes** | `<home>/messenger.db`, plain text bodies | What the user's agents said to each other |
 | **Stash entries** | `<home>/stash.db` | Hand-off payloads between agents — often the most recent, most specific working context |
 | **The owner password hash** | `<home>/oauth/oauth.sqlite3`, argon2id | Offline cracking → the whole hub |
+| **A downloaded backup archive** | Wherever the owner saved it after `GET /api/backup` (SPEC-604) — outside the hub's control from that point on | Everything in every row above, in one file. Restoring it onto another host impersonates this hub completely |
 
 The first two rows are the reason the product exists; the rest are the doors
 to them.
@@ -147,6 +148,7 @@ See [§8](#8-accepted-risks-and-open-gaps).
 | `/api/automations` | event-triggered actions | |
 | `/api/notifications` | the dashboard notification centre | |
 | `/api/connect` | the connect page's client bundles (MCPB) | |
+| `/api/backup` | downloads the whole hub home as one `tar.gz` (SPEC-604) — config, every vault, the OAuth store, **the upstream secret store and its encryption key** | the single highest-value response in this table: a full-home archive can impersonate the hub outright; **always mounted, gated like everything else in this section, streamed, never written to disk** |
 | `/api/update` | release-channel update check against GHCR (SPEC-501) — read-only, outbound fetch is size/time-capped, "cannot check" is a state not an error | makes one outbound registry request |
 | `/api/funnel` | local-only first-run funnel status — wizard-step timestamps, time-to-first-memory (SPEC-504) — **read-only**, never accepts a caller-supplied timestamp | every value it returns was set from a real server-side event, never from a request; `server/tests/funnel/test_no_egress.py` proves the whole path never opens a socket |
 | `/api/_test` | a deliberately slow endpoint for shutdown testing | **only exists when `PALAIA_TEST_SLOW_ENDPOINT_SECONDS` is set**; never in a shipped hub |
@@ -161,6 +163,8 @@ See [§8](#8-accepted-risks-and-open-gaps).
 | Clickjacking / sniffing / referrer leakage | A content-security policy per surface, `nosniff`, `no-referrer`, `DENY` framing, and HSTS when the request arrived over TLS | `server/src/palaia_hub/security/headers.py`, `server/tests/security/test_security_headers.py` |
 | Script injection through vault content in the dashboard | The dashboard renders note bodies as text (React escapes); `dangerouslySetInnerHTML` appears nowhere in `web/src` | `server/tests/security/test_injection_surfaces.py` |
 | Locking the operator out of a fresh hub | The gate stays open until a way in exists (an owner account or a provider), then latches closed on the next call | `server/src/palaia_hub/admin_session.py`, `server/tests/test_admin_session.py` |
+| A full-home backup archive read by anyone but the owner (secrets, signing keys, every vault, in one download) | `GET /api/backup` (SPEC-604) sits behind the same admin gate as everything else in this table — no separate opt-in, no route that exists without it; the archive is built and streamed straight to the response body and never written to a temp file server-side, so there is no on-disk copy to leave world-readable even briefly; the dashboard's "Back up" button carries an explicit "store this like a password" warning | `server/src/palaia_hub/backup.py`, `server/src/palaia_hub/backup_api.py`, `server/tests/backup/test_routes.py`, `web/src/routes/Home.tsx` |
+| A raw file copy of a SQLite store mid-write landing torn or missing WAL-resident rows in the archive | Every database is captured through SQLite's own online-backup API into an in-memory snapshot, not by copying bytes off disk — correct even while another connection holds the file open in WAL mode | `server/src/palaia_hub/backup.py`, `server/tests/backup/test_archive.py::test_a_sqlite_snapshot_includes_wal_resident_data_and_omits_the_wal_file` |
 
 ---
 
@@ -275,6 +279,24 @@ argue with them; that is what the list is for.
    request arrives over TLS — see `docs/exposure.md`.
 8. **No hardware-backed key storage.** The signing key and the secret-store
    key are files, protected by file modes and by whatever the host provides.
+9. **A backup is not one atomic snapshot across every store.** Each
+   individual file in the archive is internally consistent (every SQLite
+   database goes through the engine's own online-backup API; every other
+   file is written atomically, so a read mid-write only ever sees the whole
+   old or whole new content — see `server/src/palaia_hub/backup.py`'s
+   module docstring). There is no cross-store quiesce lock, so two stores
+   written to in the same second could land a moment apart in one archive.
+   Building a global write-freeze was explicitly out of scope for this pass
+   ("use what each store already supports, don't invent" — SPEC-604); for a
+   single-operator personal hub with no distributed transaction spanning
+   multiple stores, that gap is not a real exposure.
+10. **A vault registered at a path outside the hub home is not covered.**
+    `GET /api/backup` archives the hub home directory; a vault created at a
+    custom absolute path elsewhere on disk (`vault_registry.py` allows this)
+    is not inside it. The default "create a vault" flow always places one
+    under the home, so this only affects an operator who deliberately chose
+    a custom location — documented in `v3/docs/backup-restore.md`, not
+    silently missed.
 
 ---
 

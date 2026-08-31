@@ -734,6 +734,13 @@ export const api = {
   /** Same-origin URL for the SSE stream — passed straight to `EventSource`
    * by `useEventStream` (./events.ts), never fetched with `fetch`. */
   eventsUrl: () => `${API_BASE}/api/events`,
+  /** SPEC-604: same-origin URL for the "Back up" download — a plain `<a
+   * href download>` in `Home.tsx`, never fetched with `fetch`. It is a
+   * `GET`, so no CSRF token is needed (`SAFE_METHODS` above); the browser
+   * navigation carries the session cookie the same way any same-origin GET
+   * does, and the admin gate answers 401 (redirecting to sign-in) exactly
+   * like it would for a fetch call if that session is missing. */
+  backupUrl: () => `${API_BASE}/api/backup`,
 
   // ---- SPEC-110: wizard + memory explorer ----
   listVaults: () => getJson<VaultSummary[]>("/api/vaults"),

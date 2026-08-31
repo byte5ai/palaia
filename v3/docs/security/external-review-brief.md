@@ -27,6 +27,11 @@
    read.
 6. **The parser and the renderers** — the paths untrusted content takes from
    a Markdown file to a browser or an AI client.
+7. **The backup archive (`GET /api/backup`, SPEC-604)** — the one response
+   in the whole system that intentionally contains everything: every
+   secret, every key, every vault, in one file. Its gating, its
+   consistency claim, and the fact that it never touches disk server-side
+   deserve the same scrutiny as the secret store itself.
 
 **Explicitly out of scope for this engagement:**
 
@@ -106,6 +111,9 @@ directory):
    per-caller identity the limiter keys on.
 8. `server/src/palaia_hub/upstream/secrets.py` — the encrypted store, and the
    stated rule that no value ever leaves the process.
+9. `server/src/palaia_hub/backup.py` — the whole-home archive, its
+   file-by-content SQLite snapshotting, and the honest statement of what its
+   consistency guarantee is (and is not).
 
 ---
 
@@ -186,6 +194,11 @@ outside answer to:
 5. Is the failed-attempt limiter's proxy handling (`X-Forwarded-For` from a
    loopback peer only, last entry wins) sound for every deployment shape we
    ship?
+6. `GET /api/backup` has no opt-in parameter and mounts unconditionally,
+   specifically so it can never exist without the admin session gate
+   wrapping it. Is that construction actually load-bearing, or is there a
+   path (a future refactor of `create_app`, a different app assembly for
+   some deployment shape) where it could end up exposed?
 
 ## Accepted risks
 

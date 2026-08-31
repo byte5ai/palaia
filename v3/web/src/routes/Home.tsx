@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 
-import { Badge, CardFoot, CardHead, EmptyState } from "../components";
+import { Badge, CardBody, CardFoot, CardHead, EmptyState } from "../components";
 import type { FunnelStatus, InfoResponse, TokenInfo, VaultSummary } from "../lib/api/client";
 import { api } from "../lib/api/client";
+import { docsUrl } from "../lib/docs";
 import type { EventStreamState, VaultChangeEntry } from "../lib/events";
-import { CheckIcon, ClientsIcon, ExplorerIcon } from "../shell/icons";
+import { CheckIcon, ClientsIcon, ExplorerIcon, WarningIcon } from "../shell/icons";
 
 interface InboxAggregate {
   count: number;
@@ -377,6 +378,40 @@ export function Home() {
             ) : null}
           </CardFoot>
         </div>
+      </section>
+
+      {/* SPEC-604: the dashboard's one "Back up" action. Always shown — the
+       * endpoint behind it (GET /api/backup) is mounted on every hub with
+       * no opt-in parameter, the same posture as /api/health — so there is
+       * no service-not-configured state to branch on here. */}
+      <section className="card" data-testid="backup-card">
+        <CardHead title="back up" />
+        <CardBody className="stack stack--3">
+          <p className="t-sm t-muted">
+            Downloads one file with everything this hub has saved — every memory, your sign-in
+            and connection setup, and any saved keys for tools you&rsquo;ve connected.
+          </p>
+          <div className="banner banner--warn">
+            <WarningIcon className="icon icon--sm" />
+            <div>
+              <p className="banner__title">This file can act as your hub.</p>
+              <p className="t-sm t-muted">
+                Anyone who has it can read everything in it. Store it like you&rsquo;d store a
+                password — never somewhere shared or public.
+              </p>
+            </div>
+          </div>
+        </CardBody>
+        <CardFoot>
+          <a className="btn btn--primary btn--sm" href={api.backupUrl()} download>
+            Back up now
+          </a>
+          <span className="t-meta">
+            <a href={docsUrl("/backup-restore/")} target="_blank" rel="noreferrer">
+              How restore works
+            </a>
+          </span>
+        </CardFoot>
       </section>
     </div>
   );
