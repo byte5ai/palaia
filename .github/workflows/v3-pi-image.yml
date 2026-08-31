@@ -10,16 +10,7 @@ name: v3 Pi appliance image
 on:
   workflow_dispatch: {}
   push:
-    # TEMPORARY, for this PR only — see the PR description's "workflow-run
-    # bootstrap" note: GitHub only accepts a `workflow_dispatch` API call
-    # for a workflow already known to it (present on the default branch,
-    # or already fired by a matching push), so a brand-new workflow file
-    # cannot be dispatched from a feature branch at all. `pi-image-ci-test-*`
-    # is this workflow's own, deliberately non-colliding tag pattern (never
-    # matched by publish.yml's `v*` or v3-release.yml's `v3.*`) used once to
-    # get a real run and is removed again before merge — the real trigger
-    # is `v3.*`, immediately below, unchanged.
-    tags: ['v3.*', 'pi-image-ci-test-*']
+    tags: ['v3.*']
 
 permissions:
   contents: write # only used to attach the release asset on a tag push
