@@ -1,0 +1,138 @@
+#cloud-config
+# palaia v3 — VPS install (SPEC-601). Paste this whole file into your
+# provider's server-creation user-data field — Hetzner Cloud calls it
+# "Cloud config", DigitalOcean and AWS call it "User data" — then create
+# the server. Everything below runs itself: no terminal, no SSH session
+# needed to finish setup.
+#
+# ONE THING TO EDIT — find this line further down and replace the
+# placeholder with a real key from
+# https://login.tailscale.com/admin/settings/keys (a reusable, ephemeral
+# key works well here — this file re-runs safely, see below):
+#
+#     TAILSCALE_AUTH_KEY="tskey-REPLACE_ME"
+#
+# Nothing else in this file needs to change.
+#
+# What it does: installs Docker and Tailscale, joins your private network
+# (tailnet) with the key above, starts the hub with the exact same
+# hardened container flags v3/deploy/install.sh uses (never a second,
+# hand-copied list — see server/tests/deploy/test_cloud_init.py's drift
+# check), and binds the hub's published port to the tailnet address only
+# plus a firewall rule that denies it everywhere else — so the hub is
+# never reachable from the public internet, only from your own devices on
+# the tailnet. See v3/deploy/README.md's "Cloud-init" section for what
+# the data volume holds and how to back it up or move it.
+#
+# This step (installing Docker/Tailscale/the hub itself) only runs once
+# per server — cloud-init's own rule, not this file's. The script it
+# writes below is still written so that running it a second time by hand
+# (`sudo bash /opt/palaia/cloud-init-setup.sh`) changes nothing that is
+# already in place, in case you ever need to re-apply it.
+#
+# Everything this does is also logged to /var/log/cloud-init-output.log —
+# check there first if the hub does not come up.
+package_update: true
+packages:
+  - ca-certificates
+  - curl
+  - ufw
+write_files:
+  - path: /opt/palaia/cloud-init-setup.sh
+    permissions: "0700"
+    owner: root:root
+    content: |
+      #!/usr/bin/env bash
+      # Written by cloud-init.yaml — see that file for the one thing to
+      # edit. Every step below is guarded so re-running this script (a
+      # second cloud-init boot, or by hand) changes nothing already done.
+      set -euo pipefail
+
+      log() { echo "palaia cloud-init: $*"; }
+
+      TAILSCALE_AUTH_KEY="tskey-REPLACE_ME"
+      IMAGE="ghcr.io/byte5ai/palaia-hub:stable"
+      CONTAINER_NAME="palaia-hub"
+      VOLUME="palaia_home"
+      PORT=8420
+
+      if [ "${TAILSCALE_AUTH_KEY}" = "tskey-REPLACE_ME" ]; then
+          log "ERROR: edit this file's TAILSCALE_AUTH_KEY before pasting it —"
+          log "  see https://login.tailscale.com/admin/settings/keys"
+          exit 1
+      fi
+
+      # --- Docker --------------------------------------------------------
+      if ! command -v docker >/dev/null 2>&1; then
+          log "installing Docker ..."
+          curl -fsSL https://get.docker.com | sh
+      else
+          log "Docker already installed, skipping."
+      fi
+      systemctl enable --now docker
+
+      # --- Tailscale -------------------------------------------------------
+      # A different private network entirely? Swap this install step and
+      # the `tailscale up`/`tailscale0` lines below for your VPN's own join
+      # step and interface name — the firewall rule further down is the
+      # only other line that names it.
+      if ! command -v tailscale >/dev/null 2>&1; then
+          log "installing Tailscale ..."
+          curl -fsSL https://tailscale.com/install.sh | sh
+      else
+          log "Tailscale already installed, skipping."
+      fi
+      systemctl enable --now tailscaled
+
+      log "joining the tailnet ..."
+      tailscale up --auth-key="${TAILSCALE_AUTH_KEY}" --hostname="palaia-hub"
+      TAILSCALE_IP="$(tailscale ip -4)"
+      log "tailnet address: ${TAILSCALE_IP}"
+
+      # --- Firewall: the hub port, reachable via the tailnet only -----------
+      # Two independent layers, so one weak spot does not undo the other:
+      # binding docker's published port to the tailnet address itself
+      # (below, in the `docker run` line) means nothing is even listening
+      # on the public interface; this ufw rule denies the port there too,
+      # for anything that ever changes that bind.
+      if command -v ufw >/dev/null 2>&1; then
+          ufw allow OpenSSH >/dev/null 2>&1 || true
+          ufw allow in on tailscale0 to any port "${PORT}" proto tcp \
+              comment 'palaia hub, tailnet only'
+          ufw --force enable
+          log "ufw enabled: ${PORT}/tcp reachable on the tailscale0 interface only."
+      else
+          log "ufw not found — skipping the firewall rule; the docker publish"
+          log "  below already binds to the tailnet address only, regardless."
+      fi
+
+      # --- The hub -----------------------------------------------------------
+      if docker inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
+          log "container '${CONTAINER_NAME}' already exists, leaving it as-is."
+      else
+          log "pulling ${IMAGE} ..."
+          docker pull "${IMAGE}"
+          log "starting ${CONTAINER_NAME} on ${TAILSCALE_IP}:${PORT} (tailnet only) ..."
+          # Hardening flags mirror install.sh / docker-compose.yml
+          # (SPEC-502) verbatim — checked by
+          # server/tests/deploy/test_cloud_init.py's drift test. Only the
+          # `-p` bind address differs from install.sh's own, on purpose:
+          # binding to the tailnet address (not `0.0.0.0`) is what keeps
+          # the hub off the public internet.
+          docker run -d \
+              --name "${CONTAINER_NAME}" \
+              -p "${TAILSCALE_IP}:${PORT}:8420" \
+              -v "${VOLUME}:/data" \
+              --restart unless-stopped \
+              --security-opt no-new-privileges:true \
+              --cap-drop ALL \
+              --read-only \
+              --tmpfs /tmp \
+              --tmpfs /run \
+              "${IMAGE}"
+      fi
+
+      log "done. Open http://${TAILSCALE_IP}:${PORT}/ from any device on your tailnet."
+
+runcmd:
+  - [bash, /opt/palaia/cloud-init-setup.sh]
