@@ -60,30 +60,30 @@ Run on 2026-08-25, against the current lockfiles:
 | Python runtime dependencies (`uv export --no-dev`) | **No known vulnerabilities** |
 | Python including dev dependencies | **No known vulnerabilities** |
 | `v3/web` (8 runtime, 723 dev packages) | **0 vulnerabilities** |
-| `v3/tools/build-mcpb` (1 runtime, 55 dev packages) | 1 high, 4 low — see below |
+| `v3/tools/build-mcpb` (1 runtime, 55 dev packages) | **0 vulnerabilities** — see below |
 
-### The one open finding
+### Resolved: the `tmp` finding (formerly tracked as issue #264)
 
 `tmp <= 0.2.5` (GHSA-52f5-9888-hmc6, GHSA-ph9p-34f9-6g65 — arbitrary
 temporary file write via a symlinked `dir`, and path traversal via an
-unsanitized prefix) reaches `v3/tools/build-mcpb` through
+unsanitized prefix) reached `v3/tools/build-mcpb` through
 `@anthropic-ai/mcpb → @inquirer/prompts → @inquirer/editor →
-external-editor → tmp`. **No fix is available upstream.**
+external-editor → tmp`, pinned at `tmp@0.0.33` by that chain's own
+`package.json` ranges. `@anthropic-ai/mcpb` had no newer release to pick up
+a patched `@inquirer` chain — but `tmp@0.2.6` (current: `0.2.7`) fixes both
+advisories on its own, and nothing in `external-editor`'s use of `tmp`
+needed the older major. A `package.json` **`overrides`** entry pins
+`tmp` to `^0.2.6` underneath the unpatched chain, narrower than waiting on
+an upstream `@anthropic-ai/mcpb` release: it changes only the one
+transitive package the advisories are actually about, not the chain
+carrying it. `npm audit` is clean; `npm ci && npm run build` and the
+proxy's own test suite still pass unchanged.
 
-Accepted, with reasons:
-
-- it is a **build-time devDependency of the bundle packer**, not a runtime
-  dependency of the hub or the dashboard — nothing in the published image or
-  the published bundle contains it;
-- the vulnerable path is reached only through `@inquirer`'s interactive
-  editor prompt, which the packer never invokes (its build is
-  non-interactive: `mcpb validate` and `mcpb pack`);
-- exploiting it requires local control of the arguments passed to `tmp`,
-  i.e. an attacker who already runs code on the build machine.
-
-**Review trigger:** re-check on every dependency sweep, and upgrade
-`@anthropic-ai/mcpb` as soon as a release ships a patched `@inquirer`
-chain. If this is still open at 3.0, it is listed in the release notes.
+This was accepted for a time (build-time devDependency only, reached only
+through an interactive prompt the packer's non-interactive `mcpb validate`/
+`mcpb pack` never invokes) — see the closed issue for that original
+reasoning — but a clean override was available, so it no longer needs to
+carry into 3.0 on a review trigger.
 
 ## Reproducing the audit
 
