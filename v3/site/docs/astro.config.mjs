@@ -58,6 +58,7 @@ export default defineConfig({
         { label: "Profiles & access", slug: "access" },
         { label: "Agents & messages", slug: "agents-messages" },
         { label: "Automations", slug: "automations" },
+        { label: "Back up & restore", slug: "backup-restore" },
         { label: "Troubleshooting & FAQ", slug: "troubleshooting" },
         { label: "For developers", slug: "developers" },
       ],
