@@ -1,0 +1,40 @@
+[Unit]
+Description=palaia hub (appliance image)
+Documentation=https://github.com/byte5ai/palaia
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# --network host: the image's own mDNS announcer (v3/deploy/mdns_announce.py,
+# baked into the palaia-hub image and started by its entrypoint.sh whenever
+# PALAIA_MDNS_ENABLED=1, the default) needs the host's real network to
+# advertise http://palaia.local — Docker's default bridge network does not
+# forward multicast to the LAN. This appliance is always a dedicated Linux
+# host, so host networking has none of the caveats it has on the compose
+# path (see docker-compose.yml's own `network_mode: host` comment, written
+# for a shared/desktop host where this is opt-in instead of the default).
+#
+# The five flags from --security-opt through --tmpfs /run are install.sh's
+# own SPEC-502 hardening set, reused verbatim (never a second, forked copy —
+# see install.sh's own comment) — server/tests/deploy/test_pi_image.py
+# checks this file for drift against install.sh the same way
+# test_cloud_init.py already does for cloud-init.yaml.
+ExecStartPre=-/usr/bin/docker rm -f palaia-hub
+ExecStart=/usr/bin/docker run --rm --name palaia-hub \
+    --network host \
+    -v palaia_home:/data \
+    --security-opt no-new-privileges:true \
+    --cap-drop ALL \
+    --read-only \
+    --tmpfs /tmp \
+    --tmpfs /run \
+    ghcr.io/byte5ai/palaia-hub:stable
+ExecStop=/usr/bin/docker stop --time 30 palaia-hub
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

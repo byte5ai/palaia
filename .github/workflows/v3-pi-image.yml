@@ -1,0 +1,92 @@
+name: v3 Pi appliance image
+
+# SPEC-603: builds and verifies the palaia Raspberry Pi appliance image
+# (v3/deploy/pi-image/). Deliberately NOT run on every push/PR — this
+# customizes a real OS image (loop-mount, chroot under arm64 emulation,
+# a double-build reproducibility check, xz -9 compression) and can take a
+# while; see v3/deploy/pi-image/README.md. Manual dispatch, or the same
+# v3.* release tag v3-release.yml already reacts to (see that workflow's
+# own comment on why tag pushes have no `paths` filter).
+on:
+  workflow_dispatch: {}
+  push:
+    tags: ['v3.*']
+
+permissions:
+  contents: write # only used to attach the release asset on a tag push
+
+jobs:
+  build-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free up disk space
+        # A customized Pi Lite image, built twice for the reproducibility
+        # check, needs several GB of scratch space this runner's default
+        # free space is not reliably enough for once the preinstalled
+        # toolchains nobody here uses are counted. Cheap insurance, no
+        # external action dependency.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}" \
+            2>/dev/null || true
+          df -h /
+
+      - name: Set up QEMU (arm64 emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Install image-build tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qemu-user-static parted e2fsprogs xz-utils dosfstools
+
+      - name: Build the appliance image (double-build reproducibility check)
+        working-directory: v3/deploy/pi-image
+        run: sudo ./build.sh
+
+      - name: Inspect rootfs (Docker enabled, palaia unit enabled, mDNS on, SSH off)
+        working-directory: v3/deploy/pi-image
+        run: sudo ./inspect.sh /tmp/pi-image-build/run-1/palaia-appliance.img
+
+      - name: Fix output ownership (root -> runner, for upload-artifact)
+        run: sudo chown -R "$(id -u):$(id -g)" /tmp/pi-image-build/out
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: palaia-appliance-image
+          path: |
+            /tmp/pi-image-build/out/*.img.xz
+            /tmp/pi-image-build/out/*.img.xz.sha256
+          retention-days: 14
+
+      - name: Attach to GitHub release, if one exists for this tag
+        if: startsWith(github.ref, 'refs/tags/v3.')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if gh release view "${tag}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${tag}" /tmp/pi-image-build/out/*.img.xz /tmp/pi-image-build/out/*.img.xz.sha256 \
+              --repo "${GITHUB_REPOSITORY}" --clobber
+          else
+            echo "::notice::No GitHub release exists yet for tag ${tag} (see v3/RELEASING.md — release creation is an owner step, not automated). The image is attached as a workflow artifact instead; re-run this workflow (workflow_dispatch, ref=${tag}) once the release exists to attach it there too."
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Pi appliance image"
+            if [ -f /tmp/pi-image-build/out/*.img.xz.sha256 ]; then
+              echo '```'
+              cat /tmp/pi-image-build/out/*.img.xz.sha256
+              echo '```'
+              ls -lh /tmp/pi-image-build/out/*.img.xz | awk '{print "Size: "$5}'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
