@@ -351,17 +351,13 @@ def test_full_funnel_fresh_home_to_second_client_recall(
     assert status["first_memory_at"] is not None, (
         f"the real claude CLI's reply was: {payload.get('result')!r}"
     )
-    # Honest gap, not asserted away: client.connected (and so
-    # client_connected_at) only fires from a SPEC-108 plt_ token's first
-    # verify() (palaia_hub.app's own "client.connected fires on a token's
-    # first successful verify()" comment) — an OAuth JWT never touches
-    # that hook. Filed as
-    # https://github.com/byte5ai/palaia/issues/272; not fixed here per
-    # this SPEC's "no behavior changes outside release plumbing" rule,
-    # and it does not affect time_to_first_memory_seconds below, which is
-    # computed from hub_started_at/first_memory_at alone
-    # (palaia_hub.funnel.FunnelSnapshot.time_to_first_memory_seconds).
-    assert status["client_connected_at"] is None
+    # Fixed by https://github.com/byte5ai/palaia/issues/272: session A's
+    # real OAuth 2.1 JWT now fires client.connected on its first successful
+    # verify() too (palaia_hub.oauth.verifier.build_jwt_verifier's
+    # `on_verified` hook, wired onto the funnel's bus in
+    # palaia_hub.serve.build_production_app) — not only a SPEC-108 plt_
+    # token's own TokenStore.on_verified hook, as before this fix.
+    assert status["client_connected_at"] is not None
 
     # --- Session B: a scripted fastmcp.Client carrying a real SPEC-108
     # plt_ token, minted through the real REST surface (the wizard's
@@ -390,10 +386,14 @@ def test_full_funnel_fresh_home_to_second_client_recall(
         f"B's recall output did not contain A's exact fact.\nrecall result: {recalled_text}"
     )
 
-    # client.connected now fires — B's plt_ token, unlike A's OAuth token,
-    # goes through TokenStore.verify().
+    # client_connected_at was already set from A's OAuth connect above (see
+    # https://github.com/byte5ai/palaia/issues/272); B's plt_ token verify
+    # is a second client.connected the funnel's own first-write-wins
+    # record_client_connected() leaves the timestamp exactly as A set it.
+    status_before = status["client_connected_at"]
     status = admin.get("/api/funnel/status").json()
     assert status["client_connected_at"] is not None
+    assert status["client_connected_at"] == status_before
 
     wall_elapsed = time.monotonic() - wall_start
     hub_side_seconds = status["time_to_first_memory_seconds"]

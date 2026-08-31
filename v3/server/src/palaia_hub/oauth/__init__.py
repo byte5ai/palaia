@@ -40,7 +40,11 @@ Public surface:
 - :func:`~palaia_hub.oauth.verifier.build_profile_auth` — the resource side:
   per-profile fastmcp ``JWTVerifier`` (SPEC-108's upgrade seam), combined via
   ``MultiAuth`` with the SPEC-108 ``plt_`` verifier so both credentials keep
-  working on every profile.
+  working on every profile. Its ``on_oauth_verified`` fires SPEC-201's
+  ``client.connected`` on a JWT's first verify this process, the same
+  milestone :class:`~palaia_hub.auth.store.TokenStore` already fires for
+  ``plt_`` tokens (issue #272) — see
+  :func:`~palaia_hub.oauth.verifier.oauth_client_connected_hook`.
 - :func:`~palaia_hub.oauth.clients.provision_machine_client` — the only way a
   confidential (secret-bearing, audience-pinned) client comes into existence.
 - :func:`~palaia_hub.oauth.login.set_owner_password` — the local owner
@@ -83,9 +87,11 @@ from .service import (
 )
 from .store import OAuthStore
 from .verifier import (
+    OnOAuthVerified,
     build_jwt_verifier,
     build_profile_auth,
     log_profile_auth,
+    oauth_client_connected_hook,
     summarize_profile_auth,
 )
 
@@ -108,6 +114,7 @@ __all__ = [
     "LoginThrottle",
     "OAuthError",
     "OAuthStore",
+    "OnOAuthVerified",
     "OidcIdpProvider",
     "ProvisionedMachineClient",
     "PruneReport",
@@ -123,6 +130,7 @@ __all__ = [
     "log_profile_auth",
     "normalize_issuer",
     "now_seconds",
+    "oauth_client_connected_hook",
     "provision_machine_client",
     "register_dcr_client",
     "set_owner_password",

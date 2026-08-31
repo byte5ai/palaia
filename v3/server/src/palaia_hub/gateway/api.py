@@ -41,7 +41,7 @@ from ..config import (
 )
 from ..events import EventBus, publish_event
 from ..oauth import AuthorizationServer
-from ..oauth.verifier import build_profile_auth
+from ..oauth.verifier import build_profile_auth, oauth_client_connected_hook
 from .build import GatewayConfigError
 from .config import (
     CURATOR_PROFILE_PATH,
@@ -290,12 +290,17 @@ def build_gateway_profiles_router(
 
     def _new_profile_auth(profile_path: str) -> AuthProvider | None:
         """The verifier a genuinely new profile should get, mirroring
-        exactly how ``build_production_app`` builds one at startup."""
+        exactly how ``build_production_app`` builds one at startup —
+        including firing ``client.connected`` on its first OAuth verify
+        (issue #272), when there is a bus to publish it on."""
         providers = build_profile_auth(
             [profile_path],
             key=oauth_server.key if oauth_server is not None else None,
             resources=oauth_server.resources if oauth_server is not None else None,
             token_store=token_store if config.auth_enabled else None,
+            on_oauth_verified=(
+                oauth_client_connected_hook(event_bus) if event_bus is not None else None
+            ),
         )
         return providers.get(profile_path)
 
