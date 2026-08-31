@@ -126,6 +126,33 @@ const REPO = "https://github.com/byte5ai/palaia";
       </section>
     </div>
 
+    <h2>Looking for your machine?</h2>
+    <p>The tabs above cover all of these — here is which one is yours:</p>
+    <ul class="op-machines">
+      <li>
+        <strong>Mac or Windows</strong> — install{" "}
+        <a href="https://www.docker.com/products/docker-desktop/">Docker Desktop</a> once, then
+        the <em>Docker</em> tab's one command is the whole install.
+      </li>
+      <li>
+        <strong>Raspberry Pi</strong> (or another small always-on box) — works today with the
+        64-bit Raspberry Pi OS and Docker installed, then the same one command. A
+        flash-and-boot card image that skips even those steps is{" "}
+        <a href={`${REPO}/issues/280`}>planned and tracked in the open</a>.
+      </li>
+      <li>
+        <strong>Synology NAS</strong> — its Container Manager runs the <em>Compose file</em> tab's
+        file as a "project"; no terminal needed on the NAS itself.
+      </li>
+      <li>
+        <strong>A rented server</strong> (also over Tailscale or another private network) — the{" "}
+        <em>Docker</em> tab's one command, unchanged. Only the address differs:{" "}
+        <code>http://palaia.local</code> works on home networks, so use the server's own name or
+        address with <code>:8420</code> instead, and pick the guarded remote setting when the
+        wizard asks how far your hub should reach.
+      </li>
+    </ul>
+
     <h2>Then open your hub</h2>
     <p>
       Once it is running, open <code>http://palaia.local</code> in a browser on the same network
@@ -281,5 +308,17 @@ const REPO = "https://github.com/byte5ai/palaia";
   .op-stores-status {
     font-size: var(--sl-text-xs);
     color: var(--sl-color-gray-3);
+  }
+
+  .op-machines {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: 0.6rem;
+  }
+  .op-machines li {
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--sl-color-hairline);
+    border-radius: 0.4rem;
   }
 </style>
