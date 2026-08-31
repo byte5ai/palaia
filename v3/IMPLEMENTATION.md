@@ -199,6 +199,29 @@ protocol).
 | [505](specs/SPEC-505-v2-sunset.md) | v2 sunset + migration guide | 111 | Sonnet 5 | medium | owner (timeline) |
 | [506](specs/SPEC-506-phase5-gate.md) | RC + gate evidence | 501–505 | Sonnet 5 | medium | gate evidence |
 
+## 4f. Phase 6 SPEC index (owner-directed, 2026-08-31: "every install path and day-2 operation at 5-star ease")
+
+Scope set in planning with the owner: VPS gets cloud-init (an image is the
+wrong vehicle there), Synology gets a no-terminal walkthrough (owner has a
+test device), the Pi gets the flash-and-boot appliance image (#280 — also
+the load-measurement platform that gates the Home Assistant add-on
+decision), and operations gets the missing backup/restore floor.
+Explicitly deferred by the owner: native Mac/Windows (the hub should not
+live on a laptop), the HA add-on (until #280's measurements exist), bare
+metal without Docker (deliberate non-goal). Store submissions remain owner
+actions.
+
+Waves: **6a** = 601, 602 (independent, docs/deploy only) → **6b** = 603,
+604 (independent of each other; 604 touches server+web, so it waits for
+the in-flight issue-fix PRs to land first).
+
+| SPEC | Title | Depends on | Model | Effort | Review gate |
+|---|---|---|---|---|---|
+| [601](specs/SPEC-601-cloud-init.md) | Cloud-init VPS install (Tailscale) | 501, 504 | Sonnet 5 | medium | owner boot test |
+| [602](specs/SPEC-602-synology-guide.md) | Synology walkthrough, no terminal | 503, 504 | Sonnet 5 | low | owner device pass |
+| [603](specs/SPEC-603-pi-appliance-image.md) | Pi appliance image pipeline (#280) | 501 | Sonnet 5 | high | owner boot test + measurements |
+| [604](specs/SPEC-604-backup-restore.md) | Backup & restore floor | 401, 501 | Sonnet 5 | high | **Fable 5 security review** (admin-gated secret-bearing endpoint) |
+
 ## 5. Phase 2 work packages (superseded by §4b — kept for provenance)
 
 | Package | Content | Model | Effort |
