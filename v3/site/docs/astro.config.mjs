@@ -31,6 +31,10 @@ export default defineConfig({
             // it is linked by its literal route here rather than `slug`.
             { label: "Get palaia running", link: "/onboarding/" },
             { label: "Install it (the full version)", slug: "install" },
+            // SPEC-602: generated (see scripts/lib/synology.mjs) — its
+            // pasted compose block comes straight out of
+            // v3/deploy/docker-compose.yml, never a hand-typed copy.
+            { label: "Synology (no terminal)", slug: "install-synology" },
             { label: "Your first shared memory", slug: "first-shared-memory" },
             {
               label: "Moving from v2?",

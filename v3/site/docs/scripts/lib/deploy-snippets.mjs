@@ -65,3 +65,29 @@ export function loadDeploySnippets() {
     curlInstall: fences[2],
   };
 }
+
+/**
+ * The Synology guide pastes `v3/deploy/docker-compose.yml` into Container
+ * Manager's project editor verbatim — the whole point being that a reader
+ * pastes the same file this repository actually ships, never a hand-typed
+ * approximation of it. Sanity-checked against substrings only the real
+ * file has, so a shape change (a renamed service, a moved volume) is
+ * caught the same way `loadDeploySnippets()`'s own checks are, rather than
+ * silently handing back a stale or empty file.
+ */
+export function loadComposeFile() {
+  const composePath = path.join(DEPLOY_ROOT, "docker-compose.yml");
+  const compose = readFileSync(composePath, "utf8").trimEnd();
+
+  const checks = ["services:", "hub:", "image: ghcr.io/byte5ai/palaia-hub:stable", "palaia_home:/data", "volumes:"];
+  for (const needle of checks) {
+    if (!compose.includes(needle)) {
+      throw new Error(
+        `deploy-snippets: expected ${composePath} to contain ${JSON.stringify(needle)} — ` +
+          "the file's shape changed; update this extractor to match (never hand-copy the file instead).",
+      );
+    }
+  }
+
+  return compose;
+}
