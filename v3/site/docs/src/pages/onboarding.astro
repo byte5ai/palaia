@@ -28,9 +28,10 @@
 // v3/deploy source files and asserts the extracted snippets are exactly
 // what they say.
 import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
-import { loadDeploySnippets } from "../../scripts/lib/deploy-snippets.mjs";
+import { loadCloudInitTemplate, loadDeploySnippets } from "../../scripts/lib/deploy-snippets.mjs";
 
 const snippets = loadDeploySnippets();
+const cloudInit = loadCloudInitTemplate();
 
 const STORES = [
   { name: "Umbrel", dir: "umbrel" },
@@ -146,12 +147,23 @@ const REPO = "https://github.com/byte5ai/palaia";
         <a href="/install-synology/">step-by-step Synology walkthrough</a> for exactly where to
         click.
       </li>
-      <li>
-        <strong>A rented server</strong> (also over Tailscale or another private network) — the{" "}
-        <em>Docker</em> tab's one command, unchanged. Only the address differs:{" "}
-        <code>http://palaia.local</code> works on home networks, so use the server's own name or
-        address with <code>:8420</code> instead, and pick the guarded remote setting when the
-        wizard asks how far your hub should reach.
+      <li class="op-machine-rented">
+        <strong>A rented server</strong> (Hetzner Cloud, DigitalOcean, AWS, or similar) — paste
+        this file into the "user data" or "cloud config" field the provider offers when you create
+        the server, after editing the one line it marks clearly. It installs everything and joins
+        your own private network by itself, so the server never has to accept connections from the
+        open internet — only from your own devices.
+        <div class="op-snippet op-snippet-file">
+          <pre><code>{cloudInit}</code></pre>
+          <button type="button" class="op-copy" data-copy-target="op-code-cloud-init">Copy</button>
+        </div>
+        <code id="op-code-cloud-init" class="op-copy-source" hidden>{cloudInit}</code>
+        <p class="op-fine">
+          A server that already exists, running some other way? The <em>Docker</em> tab's one
+          command above still works there, unchanged — only the address differs: use the server's
+          own name or address with <code>:8420</code> instead of <code>http://palaia.local</code>,
+          and pick the guarded remote setting when the wizard asks how far your hub should reach.
+        </p>
       </li>
     </ul>
 
@@ -286,6 +298,16 @@ const REPO = "https://github.com/byte5ai/palaia";
   .op-fine {
     font-size: var(--sl-text-sm);
     color: var(--sl-color-gray-3);
+  }
+
+  /* The cloud-init file is much longer than the other snippets — scrolls
+     inside its own fixed-height box instead of stretching the page. */
+  .op-snippet-file {
+    max-height: 16rem;
+    overflow-y: auto;
+  }
+  .op-machine-rented .op-snippet {
+    margin-block: 0.75rem;
   }
 
   .op-stores {

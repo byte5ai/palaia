@@ -10,7 +10,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { DEPLOY_ROOT, loadDeploySnippets } from "../scripts/lib/deploy-snippets.mjs";
+import { DEPLOY_ROOT, loadCloudInitTemplate, loadDeploySnippets } from "../scripts/lib/deploy-snippets.mjs";
 
 describe("onboarding page snippets", () => {
   it("reads v3/deploy/README.md, not a hand-copied string", () => {
@@ -89,6 +89,43 @@ describe("onboarding page snippets", () => {
     // The tab bar wraps rather than forcing the page wider than the
     // platform labels' combined width.
     expect(style).toMatch(/\.op-tabbar\s*\{[^}]*flex-wrap:\s*wrap/);
+  });
+
+  it("SPEC-601: the cloud-init snippet reads v3/deploy/cloud-init.yaml, not a hand-copied string", () => {
+    const cloudInitPath = path.join(DEPLOY_ROOT, "cloud-init.yaml");
+    const realFile = readFileSync(cloudInitPath, "utf8");
+    const cloudInit = loadCloudInitTemplate();
+
+    // Same proof shape as the "reads README.md" test above: this can only
+    // be true without a duplicate copy if the extractor actually read the
+    // real file.
+    expect(realFile).toContain(cloudInit);
+    expect(cloudInit).toContain("#cloud-config");
+    expect(cloudInit).toContain("tskey-REPLACE_ME");
+  });
+
+  it("SPEC-601: the cloud-init snippet's docker run reuses install.sh's hardening flags verbatim", () => {
+    // The authoritative drift test is server/tests/deploy/test_cloud_init.py
+    // (it also proves the file validates against `cloud-init schema`); this
+    // is the same "read the real files, never a second hand-typed list"
+    // check applied on the onboarding-page side, so a change to either file
+    // that breaks the pairing fails loudly here too, not only in the Python
+    // suite.
+    const installSh = readFileSync(path.join(DEPLOY_ROOT, "install.sh"), "utf8");
+    const cloudInit = loadCloudInitTemplate();
+
+    for (const flag of [
+      "--security-opt no-new-privileges:true",
+      "--cap-drop ALL",
+      "--read-only",
+      "--tmpfs /tmp",
+      "--tmpfs /run",
+    ]) {
+      expect(installSh, `install.sh should still contain ${JSON.stringify(flag)}`).toContain(flag);
+      expect(cloudInit, `cloud-init.yaml should reuse install.sh's ${JSON.stringify(flag)}`).toContain(
+        flag,
+      );
+    }
   });
 
   it("throws instead of returning an empty snippet if the source shape ever changes", () => {

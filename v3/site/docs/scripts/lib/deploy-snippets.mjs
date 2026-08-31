@@ -67,6 +67,36 @@ export function loadDeploySnippets() {
 }
 
 /**
+ * SPEC-601: the whole `v3/deploy/cloud-init.yaml` file, read verbatim —
+ * the rented-server onboarding entry's "paste this file" snippet is this
+ * text and nothing else, never a hand-copied excerpt. Unlike the three
+ * commands above (fences lifted out of README.md's prose), this is the one
+ * snippet that is itself a real file meant to be pasted whole into a cloud
+ * provider's user-data field, so it is read directly rather than extracted
+ * from a fence.
+ */
+export function loadCloudInitTemplate() {
+  const cloudInitPath = path.join(DEPLOY_ROOT, "cloud-init.yaml");
+  const cloudInit = readFileSync(cloudInitPath, "utf8").trimEnd();
+
+  if (!cloudInit.startsWith("#cloud-config")) {
+    throw new Error(
+      `deploy-snippets: ${cloudInitPath} no longer opens with '#cloud-config' — cloud-init ` +
+        `would ignore it; update this extractor's expectation to match a real change, never ` +
+        `paste a different opening line here instead.`,
+    );
+  }
+  if (!cloudInit.includes("tskey-REPLACE_ME")) {
+    throw new Error(
+      `deploy-snippets: ${cloudInitPath} no longer contains the 'tskey-REPLACE_ME' placeholder ` +
+        `the onboarding page tells readers to look for — update both together.`,
+    );
+  }
+
+  return cloudInit;
+}
+
+/**
  * The Synology guide pastes `v3/deploy/docker-compose.yml` into Container
  * Manager's project editor verbatim — the whole point being that a reader
  * pastes the same file this repository actually ships, never a hand-typed

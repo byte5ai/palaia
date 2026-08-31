@@ -33,6 +33,73 @@ Or the convenience script (never required — see `install.sh`):
 curl -fsSL https://raw.githubusercontent.com/byte5ai/palaia/main/v3/deploy/install.sh | bash
 ```
 
+## Cloud-init (rented servers)
+
+SPEC-601. For a server you rent rather than a machine you already own —
+Hetzner Cloud, DigitalOcean, AWS, or similar — the vehicle is
+[`cloud-init.yaml`](cloud-init.yaml): paste the whole file into the
+provider's server-creation user-data field (Hetzner Cloud calls it "Cloud
+config"; DigitalOcean and AWS call it "User data"), enter one Tailscale
+auth key first, and the server finishes its own setup with no terminal
+session needed. The onboarding page's "A rented server" entry shows the
+same file with a copy button; this is the file it copies from — never a
+second, hand-typed one.
+
+What it does, in order: installs Docker and Tailscale, joins your tailnet
+with the key you provided, then starts the hub with the exact hardening
+flags [`install.sh`](install.sh) uses (`--security-opt
+no-new-privileges:true --cap-drop ALL --read-only --tmpfs /tmp --tmpfs
+/run` — never a forked copy of that list, checked by
+`server/tests/deploy/test_cloud_init.py`'s drift test) and binds its
+published port to the tailnet address only, backed by a `ufw` rule that
+denies the same port on every other interface. The hub is reachable from
+your own devices on the tailnet and nowhere else — never the public
+internet.
+
+**Where the data lives.** Same as every other install path: the
+`palaia_home` named Docker volume, holding everything under `/data`
+(config, vault, index). Nothing about running the hub this way changes
+where or how that volume is managed — `docker volume inspect
+palaia_home`, `docker exec palaia-hub ls /data`, and ordinary Docker
+volume backup tooling all work exactly as they do for the compose or
+one-liner install.
+
+**Updating.** The file only runs its install step once, on first boot
+(cloud-init's own rule). To update the hub afterward, connect over the
+tailnet (SSH, or Tailscale SSH if you enabled it) and use the same two
+commands any other install uses — `docker pull` the new image tag, then
+recreate the container — or run `palaia-hub update` from the dashboard's
+own update banner (see "Updates" above); nothing here needs re-pasting.
+
+**Backing up.** `docker run --rm -v palaia_home:/data -v
+$(pwd):/backup alpine tar czf /backup/palaia-backup.tar.gz -C /data .`
+from the server itself (over the tailnet, or a provider console),
+run any time.
+
+**The one thing cloud-init cannot prove by itself.** Everything above is
+checked in CI at the file level — the config parses
+(`cloud-init schema --config-file`), its `docker run` flags never drift
+from `install.sh`'s, the one placeholder stays the only one. Whether a
+real, freshly created VPS actually finishes this and serves the wizard is
+inherently something only booting a real server proves — the same
+reasoning as this file's "Manual verification" section above, applied to
+a cloud instance instead of a local VM. That is an owner action, not
+something CI claims:
+
+- [ ] Create a server on a real provider (Hetzner Cloud, DigitalOcean, or
+      similar), pasting `cloud-init.yaml` with a real Tailscale auth key
+      into its user-data field.
+- [ ] Wait for the server to finish booting (a couple of minutes is
+      typical for the package installs plus image pull).
+- [ ] From a device already on the same tailnet, open
+      `http://<tailnet-address>:8420/` and confirm the setup wizard
+      loads.
+- [ ] Confirm the same address is *not* reachable from a device that is
+      not on the tailnet (e.g. a phone on mobile data).
+- [ ] If anything above did not come up, `/var/log/cloud-init-output.log`
+      on the server (reachable over the tailnet, or the provider's own
+      console) has the full log of what ran.
+
 ## What's in the image
 
 Multi-stage build (`Dockerfile`):
