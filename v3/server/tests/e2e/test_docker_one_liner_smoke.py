@@ -16,6 +16,14 @@ one-liner itself (`v3/deploy/README.md`'s "Quick start", verbatim what
 proves matches byte-for-byte) are the standing evidence for the claims this
 test cannot check on a daemon-less sandbox.
 
+Issue #263 ("verify the container's hardened posture in CI"): the SPEC-502
+hardening (`no-new-privileges`, `cap_drop: ALL`, read-only root filesystem,
+the SPEC-502 nginx `/oauth` fix) is a runtime property of a *container*, not
+of the code, so the unit test suite cannot assert it — only a daemon that
+actually starts the image can. GitHub-hosted CI runners carry a Docker
+daemon, so on CI this module builds, starts and inspects the real thing;
+locally it degrades to the same honest skip as the rest of this file.
+
 Builds the *local* `v3/deploy/Dockerfile` (not a GHCR pull — this SPEC has
 no docker daemon to push an rc image from, and pulling `:stable`/`:beta`
 would prove someone else's already-published image, not this branch's
@@ -33,9 +41,12 @@ daemon at all.
 from __future__ import annotations
 
 import asyncio
+import json
 import subprocess
 import time
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -45,6 +56,11 @@ from palaia_hub.market.docker_runtime import docker_available
 V3_ROOT = Path(__file__).resolve().parents[3]
 IMAGE_TAG = "palaia-hub-rc-smoke:test"
 CONTAINER_NAME = "palaia-hub-rc-smoke-test"
+#: A host port other than install.sh's own 8420 default, so this smoke run
+#: never collides with a developer's already-running hub. Fixed rather than
+#: randomized: every test function below that speaks HTTP to the container
+#: shares this one running instance (see `running_container` fixture).
+HOST_PORT = 18420
 
 #: The hardening flags `deploy/install.sh` passes to `docker run` (SPEC-502
 #: — must mirror `docker-compose.yml`'s `security_opt`/`cap_drop`/
@@ -101,15 +117,26 @@ def built_image() -> str:
     return IMAGE_TAG
 
 
-def test_the_shipped_one_liner_starts_the_image_and_serves_the_wizard(
-    built_image: str,
-) -> None:
+def _docker_inspect(name: str) -> dict[str, Any]:
+    """Return `docker inspect <name>`'s single JSON object for this container."""
+    result = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        ["docker", "inspect", name], capture_output=True, text=True, timeout=10
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload: list[dict[str, Any]] = json.loads(result.stdout)
+    return payload[0]
+
+
+@pytest.fixture(scope="module")
+def running_container(built_image: str) -> Iterator[str]:
+    """Start the one-liner's container once and share it across every
+    assertion in this module — rebuilding or restarting per-assertion would
+    burn well into the e2e job's 15-minute CI timeout for no benefit; the
+    image is already built once by `built_image` for the same reason.
+    """
     subprocess.run(  # noqa: S603 - fixed argv, no shell
         ["docker", "rm", "-f", CONTAINER_NAME], capture_output=True, check=False
     )
-    # A host port other than install.sh's own 8420 default, so this smoke
-    # run never collides with a developer's already-running hub.
-    host_port = 18420
     argv = [
         "docker",
         "run",
@@ -117,7 +144,7 @@ def test_the_shipped_one_liner_starts_the_image_and_serves_the_wizard(
         "--name",
         CONTAINER_NAME,
         "-p",
-        f"{host_port}:8420",
+        f"{HOST_PORT}:8420",
         *_HARDENING_FLAGS,
         built_image,
     ]
@@ -129,21 +156,97 @@ def test_the_shipped_one_liner_starts_the_image_and_serves_the_wizard(
 
         deadline = time.monotonic() + 30
         last_error: Exception | None = None
-        healthy = False
+        ready = False
         while time.monotonic() < deadline:
             try:
-                resp = httpx.get(f"http://127.0.0.1:{host_port}/api/health", timeout=1.0)
+                resp = httpx.get(f"http://127.0.0.1:{HOST_PORT}/api/health", timeout=1.0)
                 if resp.status_code == 200:
-                    healthy = True
+                    ready = True
                     break
             except httpx.HTTPError as exc:
                 last_error = exc
             time.sleep(1)
-        assert healthy, f"container never answered /api/health: {last_error}"
+        assert ready, f"container never answered /api/health: {last_error}"
 
-        wizard = httpx.get(f"http://127.0.0.1:{host_port}/", timeout=5.0)
-        assert wizard.status_code == 200, wizard.text
+        yield CONTAINER_NAME
     finally:
         subprocess.run(  # noqa: S603 - fixed argv, no shell
             ["docker", "rm", "-f", CONTAINER_NAME], capture_output=True, check=False
         )
+
+
+def test_the_shipped_one_liner_starts_the_image_and_serves_the_wizard(
+    running_container: str,
+) -> None:
+    wizard = httpx.get(f"http://127.0.0.1:{HOST_PORT}/", timeout=5.0)
+    assert wizard.status_code == 200, wizard.text
+
+
+def test_container_inspect_reports_the_spec_502_hardening(running_container: str) -> None:
+    """`docker inspect` — not just the flags this test *asked* `docker run`
+    for — actually reports the hardened posture SPEC-502 added: a read-only
+    root filesystem, every Linux capability dropped, and no-new-privileges.
+    """
+    host_config = _docker_inspect(running_container)["HostConfig"]
+    assert host_config["ReadonlyRootfs"] is True
+    assert host_config["CapDrop"] == ["ALL"], host_config["CapDrop"]
+    assert "no-new-privileges:true" in host_config["SecurityOpt"], host_config["SecurityOpt"]
+
+
+def test_container_process_does_not_run_as_root(running_container: str) -> None:
+    result = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        ["docker", "exec", running_container, "id", "-u"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert int(result.stdout.strip()) != 0, result.stdout
+
+
+def test_container_healthcheck_reaches_healthy(running_container: str) -> None:
+    """Polls `docker inspect`'s own health status rather than sleeping a
+    fixed amount: the Dockerfile's HEALTHCHECK (interval=30s,
+    start-period=20s, retries=3) means the first probe — and so the first
+    possible "healthy" transition — can land anywhere up to roughly
+    start-period + interval out from container start. The deadline below is
+    generous for that plus scheduling slack under CI load, not a guess.
+    """
+    deadline = time.monotonic() + 120
+    status: str | None = None
+    while time.monotonic() < deadline:
+        health = _docker_inspect(running_container)["State"].get("Health")
+        status = health["Status"] if health else None
+        if status == "healthy":
+            break
+        time.sleep(2)
+    assert status == "healthy", f"container health status never reached healthy: {status!r}"
+
+
+def test_get_root_carries_the_content_security_policy(running_container: str) -> None:
+    """nginx serves `/` directly from the dashboard build, never touching the
+    hub process — SPEC-502 added the browser-hardening headers there
+    (`v3/deploy/nginx.conf.template`) because that mount would otherwise be
+    the one surface a browser renders with no policy on it at all.
+    """
+    resp = httpx.get(f"http://127.0.0.1:{HOST_PORT}/", timeout=5.0)
+    assert resp.status_code == 200, resp.text
+    csp = resp.headers.get("content-security-policy")
+    assert csp is not None
+    assert "default-src 'self'" in csp
+
+
+def test_oauth_login_reaches_the_hub_not_the_dashboard_shell(running_container: str) -> None:
+    """The SPEC-502 nginx fix (`v3/deploy/nginx.conf.template`): `/oauth/*`
+    must proxy to the hub, not fall through to the SPA catch-all — before the
+    fix, `GET /oauth/login` 200'd with the dashboard's `index.html` instead
+    of the hub's actual sign-in form, silently hiding that no MCP client
+    could complete an OAuth flow against the packaged image.
+    """
+    resp = httpx.get(f"http://127.0.0.1:{HOST_PORT}/oauth/login", timeout=5.0)
+    assert resp.status_code == 200, resp.text
+    # The hub's own login page (server/src/palaia_hub/oauth/routes.py,
+    # `_login_page`) — distinct from the dashboard SPA shell, which has no
+    # such title or form action.
+    assert "Sign in to palaia" in resp.text
+    assert 'action="/oauth/login"' in resp.text
