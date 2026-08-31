@@ -61,7 +61,7 @@ from .messenger.store import MessengerStore
 from .notifications import NotificationStore
 from .notifications.store import NOTIFICATIONS_RELATIVE_PATH
 from .oauth import AuthorizationServer
-from .oauth.verifier import build_profile_auth
+from .oauth.verifier import build_profile_auth, oauth_client_connected_hook
 from .registry import RegistryClient
 from .stash.service import StashService
 from .stash.store import StashStore
@@ -322,11 +322,21 @@ async def build_production_app(
     # once, instead of only ever the latter (the gap this closes: before
     # this SPEC, a hub with `oauth.enabled: true` and `auth_enabled: false`
     # mounted its gateway with no verifier at all).
+    # Issue #272: an OAuth JWT never touches TokenStore.on_verified (that
+    # hook only fires from a SPEC-108 `plt_` token's verify()), so
+    # `client.connected` — and the funnel's `client_connected_at` — never
+    # fired for an OAuth-only client. `on_oauth_verified` closes that gap
+    # the same way `token_store.on_verified` is wired in `app.create_app`:
+    # one hook, called on a JWT's first successful verify this process.
+    on_oauth_verified = (
+        oauth_client_connected_hook(event_bus) if oauth_server is not None else None
+    )
     token_verifiers = build_profile_auth(
         [p.path for p in profiles],
         key=oauth_server.key if oauth_server is not None else None,
         resources=oauth_server.resources if oauth_server is not None else None,
         token_store=token_store if config.auth_enabled else None,
+        on_oauth_verified=on_oauth_verified,
     )
 
     def _auth_provider_for(path: str) -> Any | None:
@@ -343,6 +353,7 @@ async def build_production_app(
             key=oauth_server.key if oauth_server is not None else None,
             resources=oauth_server.resources if oauth_server is not None else None,
             token_store=token_store if config.auth_enabled else None,
+            on_oauth_verified=on_oauth_verified,
         ).get(path)
 
     dynamic_gateway = DynamicGateway(

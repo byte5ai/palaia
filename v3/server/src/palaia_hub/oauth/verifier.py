@@ -35,18 +35,101 @@ OAuth on, so trying it first avoids paying an argon2 verify on the hot path.
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
-from fastmcp.server.auth import AuthProvider, MultiAuth, TokenVerifier
+from fastmcp.server.auth import AccessToken, AuthProvider, MultiAuth, TokenVerifier
 from fastmcp.server.auth.providers.jwt import JWTVerifier
 from pydantic import AnyHttpUrl
 
 from ..auth.store import TokenStore
 from ..auth.verifier import PalaiaTokenVerifier
+from ..events import EventBus, publish_event
 from .keys import ALGORITHM, SigningKey
 from .resources import ResourceRegistry
 
 logger = logging.getLogger("palaia_hub.oauth.verifier")
+
+#: A profile's first successful OAuth verify this process, handed the
+#: profile path and the ``AccessToken`` fastmcp's own ``JWTVerifier``
+#: produced. See :class:`_ConnectedJWTVerifier` and
+#: :func:`oauth_client_connected_hook`.
+OnOAuthVerified = Callable[[str, AccessToken], None]
+
+
+class _ConnectedJWTVerifier(JWTVerifier):
+    """A ``JWTVerifier`` that also fires ``on_verified`` once per client.
+
+    Closes issue #272: ``client.connected`` (and so the funnel's
+    ``client_connected_at``, see :mod:`palaia_hub.funnel`) previously only
+    fired from :class:`~palaia_hub.auth.store.TokenStore`'s ``on_verified``
+    hook on a SPEC-108 ``plt_`` token's first ``verify()`` — the real OAuth
+    2.1 JWT path never touched it, because fastmcp's own ``JWTVerifier``
+    does all the validation with no hook point of its own. Subclassing (as
+    opposed to wrapping in a plain :class:`~fastmcp.server.auth.TokenVerifier`)
+    keeps this an actual ``JWTVerifier`` instance, so
+    :func:`summarize_profile_auth`'s ``isinstance`` check and everything
+    else that inspects the verifier chain keeps working unchanged.
+
+    Dedup is "first successful verify this *verifier instance*'s
+    lifetime", keyed by ``client_id`` (falling back to ``subject`` — a
+    resource-owner ``sub`` claim without a ``client_id`` is still one
+    client worth counting once) — the JWT-side equivalent of the ``plt_``
+    side's per-token-id dedup, since an OAuth access token is short-lived
+    and re-issued per session, so keying on the token itself would fire on
+    every refresh. A verifier is rebuilt (and so this dedup resets) only
+    when its profile itself is rebuilt (a runtime profile edit, or the
+    wizard's first vault); harmless either way, since
+    :meth:`~palaia_hub.funnel.FunnelStore.record_client_connected` is
+    itself first-write-wins.
+    """
+
+    def __init__(
+        self, *args: object, on_verified: OnOAuthVerified, profile: str, **kwargs: object
+    ) -> None:
+        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
+        self._on_verified = on_verified
+        self._profile = profile
+        self._seen_clients: set[str] = set()
+
+    async def verify_token(self, token: str) -> AccessToken | None:
+        access = await super().verify_token(token)
+        if access is not None:
+            client_key = access.client_id or access.subject or "unknown"
+            if client_key not in self._seen_clients:
+                self._seen_clients.add(client_key)
+                try:
+                    self._on_verified(self._profile, access)
+                except Exception:  # noqa: BLE001 - a hook must not break verification
+                    logger.exception(
+                        "client.connected hook failed", extra={"profile": self._profile}
+                    )
+        return access
+
+
+def oauth_client_connected_hook(event_bus: EventBus) -> OnOAuthVerified:
+    """Build the ``on_oauth_verified`` callback that fires ``client.connected``.
+
+    The OAuth-side counterpart to how :func:`palaia_hub.app.create_app`
+    wires :class:`~palaia_hub.auth.store.TokenStore`'s own
+    ``on_verified`` hook onto the same event — deliberately never leaks
+    the bearer token or client secret: only the OAuth ``client_id`` (public
+    by design — RFC 6749 §2.2) and the profile path reach the bus, and from
+    there the dashboard's event feed and any configured webhook.
+    """
+
+    def _hook(profile: str, access: AccessToken) -> None:
+        publish_event(
+            event_bus,
+            "client.connected",
+            origin="auth",
+            data={
+                "client_id": access.client_id,
+                "profile": profile,
+                "auth_method": "oauth",
+            },
+        )
+
+    return _hook
 
 
 class ProfileAuth(MultiAuth):
@@ -78,7 +161,11 @@ class ProfileAuth(MultiAuth):
 
 
 def build_jwt_verifier(
-    key: SigningKey, resources: ResourceRegistry, profile: str
+    key: SigningKey,
+    resources: ResourceRegistry,
+    profile: str,
+    *,
+    on_verified: OnOAuthVerified | None = None,
 ) -> JWTVerifier:
     """A ``JWTVerifier`` accepting only *this* profile's access tokens.
 
@@ -86,12 +173,26 @@ def build_jwt_verifier(
         key: the signing key whose public half verifies tokens.
         resources: the registry that owns the canonical audience strings.
         profile: which profile's audience to pin to.
+        on_verified: given, the returned verifier is a
+            :class:`_ConnectedJWTVerifier` instead of a plain
+            ``JWTVerifier`` — see that class's docstring (issue #272).
+            Omitted (the default), behavior is identical to before this
+            parameter existed.
     """
-    return JWTVerifier(
+    if on_verified is None:
+        return JWTVerifier(
+            public_key=key.public_pem(),
+            algorithm=ALGORITHM,
+            issuer=resources.issuer,
+            audience=resources.audience(profile),
+        )
+    return _ConnectedJWTVerifier(
         public_key=key.public_pem(),
         algorithm=ALGORITHM,
         issuer=resources.issuer,
         audience=resources.audience(profile),
+        on_verified=on_verified,
+        profile=profile,
     )
 
 
@@ -101,6 +202,7 @@ def build_profile_auth(
     key: SigningKey | None = None,
     resources: ResourceRegistry | None = None,
     token_store: TokenStore | None = None,
+    on_oauth_verified: OnOAuthVerified | None = None,
 ) -> dict[str, AuthProvider]:
     """One :class:`AuthProvider` per profile path, combining every credential.
 
@@ -112,6 +214,12 @@ def build_profile_auth(
             SPEC-108-only posture, unchanged from before this SPEC.
         resources: the resource registry; required together with ``key``.
         token_store: the MVP token store. Omit to serve OAuth only.
+        on_oauth_verified: given (together with ``key``/``resources``),
+            each profile's JWT verifier fires this on its first successful
+            verify of a given client this process (issue #272) — see
+            :func:`oauth_client_connected_hook` for the production wiring
+            onto the hub's event bus. Omitted (the default), behavior is
+            identical to before this parameter existed.
 
     Returns:
         ``{profile path: AuthProvider}`` ready for
@@ -129,7 +237,9 @@ def build_profile_auth(
     for profile in list(profiles):
         verifiers: list[TokenVerifier] = []
         if key is not None and resources is not None:
-            verifiers.append(build_jwt_verifier(key, resources, profile))
+            verifiers.append(
+                build_jwt_verifier(key, resources, profile, on_verified=on_oauth_verified)
+            )
         if token_store is not None:
             verifiers.append(PalaiaTokenVerifier(token_store, profile))
         if not verifiers:
@@ -179,9 +289,11 @@ def log_profile_auth(providers: Mapping[str, AuthProvider]) -> None:
 
 
 __all__ = [
+    "OnOAuthVerified",
     "ProfileAuth",
     "build_jwt_verifier",
     "build_profile_auth",
     "log_profile_auth",
+    "oauth_client_connected_hook",
     "summarize_profile_auth",
 ]

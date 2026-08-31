@@ -21,6 +21,7 @@ from fastapi import FastAPI
 from palaia_hub.app import create_app
 from palaia_hub.auth.store import TokenStore
 from palaia_hub.config import HubConfig, OAuthSettings
+from palaia_hub.events import EventBus
 from palaia_hub.gateway.build import GatewayASGI, build_gateway
 from palaia_hub.gateway.config import GatewayConfig, ProfileConfig, VaultMountConfig
 from palaia_hub.gateway.fake_vault import FakeVaultService
@@ -32,6 +33,7 @@ from palaia_hub.oauth import (
     SigningKey,
     StaticCimdFetcher,
     build_profile_auth,
+    oauth_client_connected_hook,
     set_owner_password,
 )
 
@@ -87,6 +89,11 @@ class Harness:
     clock: Clock
     cimd: StaticCimdFetcher
     home: Path
+    #: The bus `create_app` publishes onto — also what
+    #: `oauth_client_connected_hook` (issue #272) is wired to below, so a
+    #: test can assert on `client.connected` the same way it would in
+    #: production. Same object `app.state.event_bus` holds.
+    event_bus: EventBus
     profiles: tuple[str, ...] = field(default=PROFILES)
 
     def audience(self, profile: str) -> str:
@@ -132,18 +139,29 @@ def build_harness(
         vaults=[VaultMountConfig(key=VAULT_KEY, name=VAULT_KEY, purpose="Work vault.")],
         profiles=[ProfileConfig(path=profile, vaults=[VAULT_KEY]) for profile in profiles],
     )
+    # Built here (not left for `create_app` to build its own) so
+    # `oauth_client_connected_hook` (issue #272) and `create_app` publish
+    # onto the same bus a test can assert against.
+    event_bus = EventBus()
     providers = build_profile_auth(
         profiles,
         key=key,
         resources=server.resources,
         token_store=token_store if with_plt_tokens else None,
+        on_oauth_verified=oauth_client_connected_hook(event_bus),
     )
     gateway = build_gateway(
         gateway_config,
         {VAULT_KEY: FakeVaultService()},
         token_verifiers=providers,  # type: ignore[arg-type]
     )
-    app = create_app(config, gateway=gateway, oauth_server=server, token_store=token_store)
+    app = create_app(
+        config,
+        gateway=gateway,
+        oauth_server=server,
+        token_store=token_store,
+        event_bus=event_bus,
+    )
     return Harness(
         app=app,
         gateway=gateway,
@@ -155,5 +173,6 @@ def build_harness(
         clock=clock,
         cimd=cimd,
         home=home,
+        event_bus=event_bus,
         profiles=profiles,
     )
