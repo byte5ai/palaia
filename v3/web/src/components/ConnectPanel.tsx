@@ -22,10 +22,23 @@
  * unmounted profile path by hand; step 3 below tells the truth about
  * whichever path is actually in play by polling for a real first call
  * rather than faking one.
+ *
+ * Issue 270: step 1 also offers a per-vault read/save picker (checkboxes
+ * next to each vault the target tool profile mounts), all checked by
+ * default — the same "every vault, read and save" shape `palaia_hub.auth.
+ * routes`'s empty-`scopes` default already grants, so a caller who never
+ * touches the picker sends exactly what it always has: no `scopes` field
+ * at all, letting that server-side default do the work. Only unchecking a
+ * box switches this panel to sending an explicit, narrower list — see
+ * `explicitScopes` below. The picker never sends an empty explicit list on
+ * purpose: an empty `scopes` array is the server's "use the default"
+ * sentinel (that module's docstring), so "everything unchecked" would
+ * silently grant full access instead of none — `wouldGrantNothing` below
+ * blocks Issue token in that one case rather than let it widen access.
  */
 import { useEffect, useMemo, useState } from "react";
 
-import type { CreatedToken, TokenInfo } from "../lib/api/client";
+import type { CreatedToken, GatewayProfile, TokenInfo } from "../lib/api/client";
 import { api } from "../lib/api/client";
 import type { GuidedClient } from "../lib/clients";
 import { describeApiError } from "../lib/errors";
@@ -65,6 +78,12 @@ export function ConnectPanel({
   const [token, setToken] = useState<TokenInfo | null>(null);
   const [tab, setTab] = useState<"command" | "prompt" | "file">("command");
   const [error, setError] = useState<string | null>(null);
+  const [profiles, setProfiles] = useState<GatewayProfile[] | null>(null);
+  // Every entry a caller has explicitly *un*checked, as `vault-key:read` /
+  // `vault-key:write`. Absence means checked — so a vault this panel has
+  // never rendered a checkbox for (the profile isn't known yet, or has no
+  // vaults) never ends up narrower by accident.
+  const [unchecked, setUnchecked] = useState<Set<string>>(new Set());
 
   // Look for an already-issued, non-revoked token for this client on
   // mount — inside the effect's own promise callback, never synchronously
@@ -98,6 +117,78 @@ export function ConnectPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client.name]);
 
+  // Which vaults the target tool profile mounts, for the read/save picker
+  // below — the same `/api/gateway/profiles` listing the tool-profile
+  // editor already reads (ToolProfiles.tsx), not a new endpoint. Fetched
+  // once on mount: this panel only needs to look a profile name up in an
+  // already-fetched list, not refetch on every keystroke in the profile
+  // field.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .listGatewayProfiles()
+      .then((list) => {
+        if (!cancelled) setProfiles(list);
+      })
+      .catch(() => {
+        // no gateway attached, or a transient failure — the picker simply
+        // stays hidden and issuing a token behaves exactly as it did
+        // before this panel could show one (no explicit scopes, ever).
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // A caller can retype the profile name before issuing; whatever was
+  // unchecked for the previous name shouldn't silently narrow a different
+  // profile's vaults once it resolves. Adjusted during render rather than
+  // in an effect — the pattern React's own docs recommend for "reset some
+  // state when a prop changes" (react.dev/learn/you-might-not-need-an-
+  // effect#adjusting-some-state-when-a-prop-changes) — since a `useEffect`
+  // that calls `setState` unconditionally on every commit is exactly the
+  // cascading-render shape `react-hooks/set-state-in-effect` flags.
+  const [previousProfileDraft, setPreviousProfileDraft] = useState(profileDraft);
+  if (profileDraft !== previousProfileDraft) {
+    setPreviousProfileDraft(profileDraft);
+    setUnchecked(new Set());
+  }
+
+  const targetProfile = profiles?.find((candidate) => candidate.path === profileDraft) ?? null;
+  const mountedVaults = targetProfile?.vaults ?? [];
+
+  function isChecked(vaultKey: string, permission: "read" | "write"): boolean {
+    return !unchecked.has(`${vaultKey}:${permission}`);
+  }
+
+  function togglePermission(vaultKey: string, permission: "read" | "write", checked: boolean) {
+    setUnchecked((prev) => {
+      const next = new Set(prev);
+      const id = `${vaultKey}:${permission}`;
+      if (checked) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Nothing has been unchecked: this is today's behavior, so no explicit
+  // list is built at all (see `issueToken` below).
+  const pickerTouched = unchecked.size > 0;
+  const explicitScopes = pickerTouched
+    ? mountedVaults.flatMap((key) => {
+        const scopes: string[] = [];
+        if (isChecked(key, "read")) scopes.push(`vault:${key}:read`);
+        if (isChecked(key, "write")) scopes.push(`vault:${key}:write`);
+        return scopes;
+      })
+    : [];
+  // Every box unchecked would resolve to an empty list — which the server
+  // reads as "no explicit scopes were sent, use the default" (see this
+  // file's header comment), the opposite of what an operator unchecking
+  // everything means. Block issuing rather than silently grant more than
+  // shown.
+  const wouldGrantNothing = pickerTouched && explicitScopes.length === 0;
+
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const profile = token?.profile ?? profileDraft;
   const connected = Boolean(token?.last_used_at);
@@ -124,7 +215,16 @@ export function ConnectPanel({
     setIssuing(true);
     setError(null);
     try {
-      const result: CreatedToken = await api.createToken({ name: client.name, profile: profileDraft });
+      // No `scopes` field at all unless the picker was actually touched —
+      // this is what keeps the one-click flow byte-for-byte what it always
+      // sent, so the server's own "empty scopes = everything this profile
+      // mounts" default (still the no-touch path) is the one deciding
+      // what a caller who never opens the picker gets.
+      const body =
+        pickerTouched && explicitScopes.length > 0
+          ? { name: client.name, profile: profileDraft, scopes: explicitScopes }
+          : { name: client.name, profile: profileDraft };
+      const result: CreatedToken = await api.createToken(body);
       setToken(result.info);
       setPlaintext(result.token);
       onTokenIssued?.(result.info);
@@ -213,7 +313,55 @@ export function ConnectPanel({
                   style={{ maxWidth: 220 }}
                   aria-label="Tool profile name"
                 />
-                <Button variant="primary" onClick={issueToken} disabled={issuing}>
+              </div>
+              {mountedVaults.length > 0 ? (
+                <div className="stack stack--2">
+                  <span className="field__label">What {client.name} can read or save</span>
+                  <p className="t-xs t-muted">
+                    Every vault below is included, both ways, by default — the same as today.
+                    Uncheck a box to leave a vault out, or to give read-only access to it.
+                  </p>
+                  <div className="stack stack--2">
+                    {mountedVaults.map((vaultKey) => (
+                      <div key={vaultKey} className="row row--wrap" style={{ gap: 14 }}>
+                        <span className="t-sm t-mono">{vaultKey}</span>
+                        <label className="row" style={{ gap: 4 }}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked(vaultKey, "read")}
+                            onChange={(event) =>
+                              togglePermission(vaultKey, "read", event.target.checked)
+                            }
+                          />
+                          <span className="t-xs">Read</span>
+                        </label>
+                        <label className="row" style={{ gap: 4 }}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked(vaultKey, "write")}
+                            onChange={(event) =>
+                              togglePermission(vaultKey, "write", event.target.checked)
+                            }
+                          />
+                          <span className="t-xs">Save</span>
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                  {wouldGrantNothing ? (
+                    <p className="field__error">
+                      Check at least one box — leaving every vault unchecked would give this
+                      client full access instead of none.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+              <div className="row row--wrap">
+                <Button
+                  variant="primary"
+                  onClick={issueToken}
+                  disabled={issuing || wouldGrantNothing}
+                >
                   {issuing ? "Issuing…" : "Issue token"}
                 </Button>
               </div>
