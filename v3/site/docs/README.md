@@ -57,6 +57,20 @@ See `scripts/lib/extract.mjs` (the bundler that reads the TypeScript
 source without a copy) and `scripts/lib/render.mjs` (turns one catalog
 entry into a page) for how this actually works.
 
+## `install-synology.md` is also generated
+
+The Synology Container Manager walkthrough pastes the real
+[`v3/deploy/docker-compose.yml`](../../deploy/docker-compose.yml) into the
+page rather than a hand-typed copy of it, the same "extract, don't copy"
+rule as above.
+
+- Changed `docker-compose.yml`? Run `npm run gen:synology` from here and
+  commit the result.
+- `npm run check:generated` covers this page too, alongside the connect
+  pages.
+- Never hand-edit `src/content/docs/install-synology.md` — edit
+  `scripts/lib/synology.mjs` instead and regenerate.
+
 ## Tests and checks
 
 ```bash

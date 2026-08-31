@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "astro dev",
     "gen:connect": "node scripts/generate-connect-pages.mjs",
+    "gen:synology": "node scripts/generate-synology-page.mjs",
     "check:generated": "node scripts/check-generated.mjs",
     "build": "astro build && node scripts/check-links.mjs",
     "preview": "astro preview",
