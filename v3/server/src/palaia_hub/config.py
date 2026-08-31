@@ -227,6 +227,12 @@ exposure:
 #   # its identity (the MCP URL segment, and the OAuth resource audience if
 #   # OAuth is on) — set once, never renamed; give it a `label` instead if
 #   # you want a friendlier display name.
+#   #
+#   # A vault listed here does not have to exist yet: naming it pre-declares
+#   # that this profile will (eventually) serve it, so `oauth.enabled: true`
+#   # can be turned on — and its scopes granted — before you have ever run
+#   # the dashboard's "create a vault" wizard step. It mounts for real, with
+#   # no restart, the moment that vault is created.
 #   profiles:
 #     - path: default
 #       label: Default
