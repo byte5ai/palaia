@@ -155,7 +155,7 @@ build_one() {
     # ships, not this run's temporary DNS setup. A bind mount would try to
     # mount over wherever that symlink resolves to, which doesn't exist
     # under a chroot with no systemd running — hence a plain swap instead.
-    resolv_backup=""
+    local resolv_backup=""
     if [ -e "${rootfs}/etc/resolv.conf" ] || [ -L "${rootfs}/etc/resolv.conf" ]; then
         resolv_backup="${rootfs}/etc/.resolv.conf.pi-image-orig"
         mv "${rootfs}/etc/resolv.conf" "${resolv_backup}"
