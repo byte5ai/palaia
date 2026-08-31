@@ -24,14 +24,10 @@ no long-term-support branches.
 
 **Please do not open a public issue for a security problem.**
 
-Two ways, either is fine:
-
-1. **GitHub private vulnerability reporting** — the "Report a vulnerability"
-   button under this repository's *Security* tab. This is the preferred
-   route: it keeps the report, the discussion and the eventual advisory in
-   one place.
-2. **Email** — security@byte5.de. Say "palaia v3" in the subject so it is
-   routed correctly.
+Use **GitHub private vulnerability reporting** — the "Report a
+vulnerability" button under this repository's *Security* tab. It keeps the
+report, the discussion and the eventual advisory in one place, and it is
+currently the only monitored channel; there is no security email address.
 
 Please include, as far as you have it:
 
