@@ -61,6 +61,35 @@ async def watched(make_engine: EngineFactory, debounce_ms: int = 100):
     return engine, watcher, collector
 
 
+async def wait_until_watcher_settles(
+    watcher: VaultWatcher, *, timeout: float = 10.0, quiet: float = 0.3
+) -> None:
+    """Poll ``watcher.stats.batches`` until it stops changing for ``quiet``
+    seconds, or ``timeout`` elapses.
+
+    A fixed sleep is exactly what made
+    ``test_engine_writes_are_echoes_not_watcher_events`` flaky under
+    full-suite CPU contention (#253): a delay generous enough on a quiet
+    machine can still be shorter than the watcher's actual debounce + batch
+    processing time once the event loop is starved of scheduling slices.
+    Waiting for the batch counter to go quiet ties the wait to what the
+    watcher actually did, not to a wall-clock guess — and ``stats.echoes``/
+    ``stats.events`` are updated synchronously as part of processing each
+    batch (before any ``await`` on an empty-events batch), so once
+    ``batches`` has gone quiet those counters have already settled too.
+    """
+    deadline = time.monotonic() + timeout
+    last_batches = watcher.stats.batches
+    quiet_since = time.monotonic()
+    while time.monotonic() < deadline:
+        await asyncio.sleep(0.02)
+        if watcher.stats.batches != last_batches:
+            last_batches = watcher.stats.batches
+            quiet_since = time.monotonic()
+        elif time.monotonic() - quiet_since >= quiet:
+            return
+
+
 # ----------------------------------------------------------------- integration
 
 
@@ -161,7 +190,11 @@ async def test_engine_writes_are_echoes_not_watcher_events(
             body="y\n",
             expected_checksum=(await engine.read_note("notes/a")).checksum,
         )
-        events = await collector.drain(settle=0.8)
+        # #253: wait for the watcher to actually finish processing the
+        # resulting filesystem batch(es) instead of a fixed sleep, which a
+        # busy machine can outrun (see wait_until_watcher_settles).
+        await wait_until_watcher_settles(watcher)
+        events = await collector.drain(settle=0.05)
     finally:
         await watcher.stop()
     # Only the engine's own (non-external) events reached the bus.
