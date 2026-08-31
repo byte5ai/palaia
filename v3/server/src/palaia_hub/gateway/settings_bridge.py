@@ -21,6 +21,7 @@ module is the one place that converts between it and
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -32,13 +33,19 @@ from ..modes.patch import replace_config_section
 from ..upstream.models import UpstreamConfig
 from .config import CURATOR_PROFILE_PATH, ProfileConfig, VaultMountConfig
 
+logger = logging.getLogger("palaia_hub.gateway.settings_bridge")
+
 
 class GatewaySettingsError(ValueError):
     """``config.yaml``'s ``gateway:`` section is structurally fine (it is
     already a valid :class:`~palaia_hub.config.GatewaySettings`) but
-    disagrees with reality — e.g. a profile names a vault key that is not
-    actually registered. Distinct from the :class:`pydantic.ValidationError`
-    the settings model itself already raises for a malformed section.
+    disagrees with reality — e.g. a profile names an external server key
+    that is not listed under ``gateway.upstreams``. Distinct from the
+    :class:`pydantic.ValidationError` the settings model itself already
+    raises for a malformed section, and — since #273 — no longer raised for
+    a profile's vault key that simply does not exist *yet*: see
+    :func:`resolve_profiles`'s docstring for why that case is a legitimate
+    pre-declaration, not an error.
     """
 
 
@@ -82,6 +89,7 @@ def resolve_profiles(
     vault_keys: Sequence[str],
     *,
     default_profile: str,
+    include_pending: bool = False,
 ) -> list[ProfileConfig]:
     """The ordinary (non-curator) profiles this hub serves.
 
@@ -90,10 +98,59 @@ def resolve_profiles(
     every vault in ``vault_keys``, or no profiles at all when there are no
     vaults yet. A populated ``profiles`` list is authoritative instead.
 
+    **Pre-declared vaults (#273).** A configured profile's ``vaults`` may
+    name a key that is not (yet) in ``vault_keys`` — an operator writing
+    ``gateway.profiles`` before ever running the first-run wizard, saying
+    "the ``default`` profile will serve a vault named ``work``, create it
+    in a minute." That is never an error (this function used to raise
+    :class:`GatewaySettingsError` for it; it no longer does — see that
+    class's docstring). Instead, ``include_pending`` picks which of two
+    views of the same declared shape this call returns, because this
+    function's two production callers each need a different one:
+
+    * ``include_pending=False`` (the default —
+      :func:`palaia_hub.serve.build_production_app`'s use, via
+      :func:`resolve_full_gateway_profiles`): the *mountable* shape. A
+      pending vault key is left out of the returned
+      ``ProfileConfig.vaults`` — there is nothing to mount yet, and
+      :class:`~palaia_hub.gateway.config.GatewayConfig`'s own validator
+      would refuse a profile naming a vault absent from its ``vaults``
+      list regardless. Logged once at ``INFO``, not raised: the config is
+      not wrong, only ahead of vault creation. Nothing further has to
+      happen for it to catch up — the moment the vault is registered
+      (``POST /api/vaults``), :meth:`~palaia_hub.gateway.dynamic.
+      DynamicGateway.add_vault` appends its key straight onto this same
+      profile's *live* vault list, no restart and no second call to this
+      function required.
+    * ``include_pending=True`` (:func:`palaia_hub.cli.
+      _gateway_profiles_for_oauth`'s use): the *declared* shape — every
+      vault key the profile names, mounted or not. This is what the
+      OAuth authorization server's grantable-scope ceiling
+      (:func:`palaia_hub.cli._profile_scopes`) is computed from, because
+      :class:`~palaia_hub.oauth.service.AuthorizationServer` freezes that
+      ceiling at construction and never mutates it afterward (see its
+      class docstring): a pending vault's scopes have to be decided now,
+      before the wizard creates it, or Cloud mode + OAuth simply cannot
+      be turned on before the first vault exists.
+
+    Granting a scope for a vault that is not mounted yet never widens
+    anything a live token can actually do: nothing enforces the scope
+    until the vault is mounted (there is no tool on the wire to invoke,
+    and :mod:`palaia_hub.auth.enforcement` has nothing to check it
+    against before then). By the time a client could present such a
+    token to a real tool call, the vault has to already be mounted —
+    which happens only once its key is registered, at which point the
+    pre-declared ceiling and the real mount already agree, by
+    construction: the declaration is what the mount converges to, never
+    the other way around, so there is nothing to reconcile at
+    vault-creation time.
+
     Raises:
-        GatewaySettingsError: a configured profile names a vault key not in
-            ``vault_keys`` (a vault that either never existed or was
-            renamed/removed since the section was written).
+        GatewaySettingsError: a configured profile names an *external
+            server* key not in ``gateway.upstreams``. Unlike a vault, an
+            upstream has no wizard-driven "not created yet" story — there
+            is no asynchronous flow that will register it later — so an
+            unknown upstream key stays a hard, loud config error.
     """
     if settings is None or not settings.profiles:
         if not vault_keys:
@@ -104,14 +161,20 @@ def resolve_profiles(
     known_upstreams = {u.key for u in settings.upstreams}
     resolved: list[ProfileConfig] = []
     for profile in settings.profiles:
-        unknown = [v for v in profile.vaults if v not in known]
-        if unknown:
-            raise GatewaySettingsError(
-                f"config.yaml: gateway.profiles[path={profile.path!r}] references "
-                f"vault key(s) {unknown} that are not registered on this hub (it "
-                f"has: {sorted(known) or 'none'}). Fix: create the vault first, or "
-                f"remove it from this profile's `vaults` list in config.yaml."
+        pending = [v for v in profile.vaults if v not in known]
+        if pending and not include_pending:
+            logger.info(
+                "config.yaml: gateway.profiles[path=%r] pre-declares vault "
+                "key(s) %s not yet registered on this hub — its tools stay "
+                "absent until the vault is created (the dashboard wizard, "
+                "or `palaia-hub import ...`), but its OAuth scopes (if "
+                "oauth.enabled) are already reserved for this profile.",
+                profile.path,
+                sorted(pending),
             )
+        vaults = (
+            list(profile.vaults) if include_pending else [v for v in profile.vaults if v in known]
+        )
         unknown_upstreams = [u for u in profile.upstreams if u not in known_upstreams]
         if unknown_upstreams:
             raise GatewaySettingsError(
@@ -125,7 +188,7 @@ def resolve_profiles(
             ProfileConfig(
                 path=profile.path,
                 label=profile.label,
-                vaults=list(profile.vaults),
+                vaults=vaults,
                 stash=profile.stash,
                 directory=profile.directory,
                 messenger=profile.messenger,
@@ -158,6 +221,7 @@ def resolve_full_gateway_profiles(
     vault_keys: Sequence[str],
     *,
     default_profile: str,
+    include_pending: bool = False,
 ) -> list[ProfileConfig]:
     """:func:`resolve_profiles` plus the curator's own profile, when it runs.
 
@@ -165,9 +229,20 @@ def resolve_full_gateway_profiles(
     which needs to know every resource up front) and
     ``palaia_hub.serve.build_production_app`` (building the real gateway)
     call, so the two never compute a different profile list for the same
-    config (SPEC-301 deliverable #3's "one source of truth").
+    config (SPEC-301 deliverable #3's "one source of truth") — they differ
+    only in ``include_pending`` (see :func:`resolve_profiles`), never in
+    which profiles exist or what else each one carries.
+
+    The curator's own profile is exempt from ``include_pending``: it is
+    always synthesized from the vaults *actually* registered
+    (``vault_keys``), never from a pre-declaration — the curator has no
+    config surface of its own naming vaults ahead of their creation, and
+    synthesizing it from a pending key would let curation start on a vault
+    that does not exist.
     """
-    profiles = resolve_profiles(config.gateway, vault_keys, default_profile=default_profile)
+    profiles = resolve_profiles(
+        config.gateway, vault_keys, default_profile=default_profile, include_pending=include_pending
+    )
     if config.curator.enabled and vault_keys:
         # Deferred import: the curator package pulls in fastmcp, which this
         # module otherwise has no need for (it only touches config.py's

@@ -273,19 +273,33 @@ def _gateway_profiles_for_oauth(config: HubConfig) -> list[ProfileConfig]:
     resolution ``palaia_hub.serve.build_production_app`` uses to build the
     real gateway (SPEC-301 deliverable #3's "one source of truth"), so the
     CLI's OAuth-server assembly (built before the gateway exists, see
-    ``_maybe_oauth_server``'s caller) never disagrees with it.
+    ``_maybe_oauth_server``'s caller) never disagrees with it about which
+    profiles exist or what else each one carries.
+
+    ``include_pending=True`` (#273): unlike ``build_production_app``, which
+    only wants what it can mount *right now*, the OAuth server's grantable
+    scope ceiling has to be decided once, at construction, and never
+    changes after (:class:`~palaia_hub.oauth.service.AuthorizationServer`'s
+    class docstring) — so a vault a ``gateway.profiles`` entry pre-declares
+    but the wizard has not created yet still has to contribute its scopes
+    here, or an operator could never turn on Cloud mode + OAuth before
+    running the wizard's first "create a vault" step. See
+    ``resolve_profiles``'s own docstring for the full reasoning, including
+    why this never lets a live token do anything the real mount does not
+    also allow.
 
     Falls back to the deprecated ``oauth.profiles`` list only when nothing
     resolves from the gateway's own shape at all (no ``gateway:`` section
-    *and* no vault registered yet) — "an old config still works" (SPEC-301
-    acceptance criterion), for the one case that genuinely has nothing
-    else to go on. The moment even one vault exists, the gateway's own
-    ``default`` profile resolves and takes over, same as any other config.
+    *and* no vault registered yet, pending or real) — "an old config still
+    works" (SPEC-301 acceptance criterion), for the one case that
+    genuinely has nothing else to go on. The moment even one vault exists
+    (or is pre-declared), the gateway's own ``default`` profile resolves
+    and takes over, same as any other config.
     """
     vault_keys = sorted(VaultRegistry().names())
     try:
         profiles = resolve_full_gateway_profiles(
-            config, vault_keys, default_profile=DEFAULT_GATEWAY_PROFILE
+            config, vault_keys, default_profile=DEFAULT_GATEWAY_PROFILE, include_pending=True
         )
     except GatewaySettingsError as exc:
         print(f"palaia-hub: {exc}", file=sys.stderr)
@@ -296,7 +310,17 @@ def _gateway_profiles_for_oauth(config: HubConfig) -> list[ProfileConfig]:
 
 
 def _maybe_oauth_server(config: HubConfig) -> AuthorizationServer | None:
-    """Build the authorization server if config asks for one; else ``None``."""
+    """Build the authorization server if config asks for one; else ``None``.
+
+    This is the CLI's own stricter boot-time guard (issue #273): it still
+    refuses to start with genuinely zero profiles, pending or real — that
+    part is unchanged. What #273 fixes is upstream of here, in
+    ``_gateway_profiles_for_oauth``: a ``gateway.profiles`` entry that
+    pre-declares a vault the wizard has not created yet now makes
+    ``profiles`` below non-empty (its scopes are reserved), so this guard
+    only fires when the operator has not even said what this hub will
+    eventually serve.
+    """
     if not config.oauth.enabled:
         return None
     if not config.oauth.issuer:
@@ -312,7 +336,10 @@ def _maybe_oauth_server(config: HubConfig) -> AuthorizationServer | None:
         print(
             "palaia-hub: oauth.enabled is true but this hub serves no MCP profiles "
             "yet, so no resource can be named in a token. Fix: create a vault first "
-            "(the wizard, or `palaia-hub import ...`).",
+            "(the wizard, or `palaia-hub import ...`), or pre-declare one in "
+            "config.yaml's `gateway.profiles[].vaults` before it exists (e.g. "
+            "`gateway:\\n  profiles:\\n    - path: default\\n      vaults: [work]`) "
+            "so OAuth scopes are reserved for it from the very first boot.",
             file=sys.stderr,
         )
         raise SystemExit(1)

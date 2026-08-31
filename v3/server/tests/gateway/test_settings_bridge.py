@@ -92,13 +92,56 @@ def test_resolve_profiles_uses_configured_shape() -> None:
     assert profiles[1].messenger is False
 
 
-def test_resolve_profiles_unknown_vault_raises() -> None:
+def test_resolve_profiles_pending_vault_is_dropped_from_the_mountable_shape() -> None:
+    """#273: a profile pre-declaring a vault key that is not registered yet
+    is not an error — the pending key is simply absent from the *mountable*
+    ``ProfileConfig.vaults`` this default (``include_pending=False``) view
+    returns, since there is nothing to mount yet."""
     settings = GatewaySettings(
-        profiles=[GatewayProfileSettings(path="alpha", vaults=["ghost"])]
+        profiles=[GatewayProfileSettings(path="alpha", vaults=["work", "ghost"])]
+    )
+
+    profiles = resolve_profiles(settings, ["work"], default_profile="default")
+
+    assert profiles == [ProfileConfig(path="alpha", vaults=["work"])]
+
+
+def test_resolve_profiles_include_pending_keeps_the_full_declared_shape() -> None:
+    """#273: the OAuth-scope-ceiling view (``include_pending=True``) keeps a
+    not-yet-registered vault key instead of dropping it — this is what lets
+    the authorization server pre-grant that vault's scopes before it exists."""
+    settings = GatewaySettings(
+        profiles=[GatewayProfileSettings(path="alpha", vaults=["work", "ghost"])]
+    )
+
+    profiles = resolve_profiles(
+        settings, ["work"], default_profile="default", include_pending=True
+    )
+
+    assert profiles == [ProfileConfig(path="alpha", vaults=["work", "ghost"])]
+
+
+def test_resolve_profiles_all_pending_still_resolves_the_profile() -> None:
+    """A profile whose every declared vault is still pending still exists
+    (with an empty mountable vault list) rather than vanishing or raising —
+    the "operator turns on Cloud+OAuth before the wizard's first vault"
+    scenario #273 exists for."""
+    settings = GatewaySettings(profiles=[GatewayProfileSettings(path="default", vaults=["work"])])
+
+    profiles = resolve_profiles(settings, [], default_profile="default")
+
+    assert profiles == [ProfileConfig(path="default", vaults=[])]
+
+
+def test_resolve_profiles_unknown_upstream_still_raises() -> None:
+    """Unlike a pending vault, an unknown *external server* key stays a hard
+    error — there is no wizard-driven "not connected yet" story for it."""
+    settings = GatewaySettings(
+        profiles=[GatewayProfileSettings(path="alpha", vaults=[], upstreams=["ghost"])]
     )
 
     with pytest.raises(GatewaySettingsError, match="ghost"):
-        resolve_profiles(settings, ["work"], default_profile="default")
+        resolve_profiles(settings, [], default_profile="default")
 
 
 def test_resolve_full_gateway_profiles_adds_curator_profile_when_enabled() -> None:
