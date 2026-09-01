@@ -158,7 +158,7 @@ jobs:
           fi
 
       - name: Scan image for secrets
-        uses: aquasecurity/trivy-action@0.32.0
+        uses: aquasecurity/trivy-action@v0.32.0
         with:
           image-ref: ${{ env.IMAGE }}:edge-${{ steps.tags.outputs.short_sha }}
           scanners: secret
