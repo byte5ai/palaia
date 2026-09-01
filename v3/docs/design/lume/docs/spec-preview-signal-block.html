@@ -1,0 +1,180 @@
+<!doctype html>
+<!--
+  ============================================================================
+  Signal accent — preview block for docs/visual-spec-preview-lume.html (v0.4)
+  ============================================================================
+  This is a STANDALONE, self-contained page (own tokens inline) so it renders
+  on its own for review. To land it in the repo's visual-spec-preview-lume.html:
+
+  1) Add the Signal CSS variables to that file's token blocks:
+
+     :root (light)  — add inside the existing :root { … }:
+       --signal: #D6177A; --signal-hover: #C2126D; --signal-active: #AD0E60;
+       --signal-subtle: rgba(214,23,122,0.10);
+       --signal-glow: rgba(214,23,122,0.24);
+       --signal-glow-strong: rgba(214,23,122,0.42);
+       --signal-glow-core: rgba(255,200,230,0.55);
+
+     [data-mode="dark"] — add inside the existing [data-mode="dark"] { … }:
+       --signal: #FF5FA8; --signal-hover: #FF77B6; --signal-active: #FF90C4;
+       --signal-subtle: rgba(255,95,168,0.18);
+       --signal-glow: rgba(255,95,168,0.30);
+       --signal-glow-strong: rgba(255,95,168,0.46);
+       --signal-glow-core: rgba(255,215,235,0.50);
+
+  2) Copy the <section class="section" id="signal"> … </section> below into the
+     preview's body, right after the accent-palette section. It uses the
+     preview's existing classes (.section, .section-title, .accent-swatch,
+     .btn) plus a couple of local helpers defined in the <style> here — move
+     those helper rules into the preview's stylesheet if you prefer.
+  ============================================================================
+-->
+<html lang="en" data-mode="light" data-accent="lagoon">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Signal accent — preview block (v0.4)</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body.sigprev {
+    padding: 40px;
+    display: flex; flex-direction: column; gap: 28px;
+    max-width: 920px; margin: 0 auto;
+  }
+  .mode-toggle {
+    position: fixed; top: 16px; right: 16px;
+    display: flex; gap: 4px; padding: 3px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+    border: 1px solid var(--border-subtle-btm); border-top-color: var(--border-subtle-top);
+    box-shadow: 0 1px 0 var(--top-edge-highlight) inset;
+    z-index: 10;
+  }
+  .mode-toggle button {
+    border: 0; background: transparent; cursor: pointer;
+    font: 500 12px/16px var(--font-mono); color: var(--text-tertiary);
+    padding: 4px 12px; border-radius: 999px;
+  }
+  .mode-toggle button.on { background: var(--accent-fill); color: #fff; }
+
+  .section-title { font: 600 20px/28px var(--font-sans); margin: 0 0 4px; }
+  .section-lede  { font: 400 16px/26px var(--font-serif); color: var(--text-secondary); margin: 0 0 8px; max-width: 680px; }
+
+  .sig-swatches { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+  .sig-swatch   { height: 56px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.08); }
+  .sig-name     { font: 500 11px/14px var(--font-mono); color: var(--text-secondary); margin-top: 6px; }
+  .sig-val      { font: 450 11px/14px var(--font-mono); color: var(--text-tertiary); }
+
+  .sig-demo-row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .sig-demo-cell {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 14px; border-radius: 10px;
+    background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+    border: 1px solid var(--border-subtle-btm); border-top-color: var(--border-subtle-top);
+    box-shadow: 0 1px 0 var(--top-edge-highlight) inset;
+  }
+  .sig-demo-label { font: 450 11px/14px var(--font-mono); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.04em; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 16px; border-radius: 8px;
+    font: 500 13px/16px var(--font-sans); cursor: pointer; border: 0;
+  }
+  .btn-secondary {
+    color: var(--text-primary);
+    background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+    border: 1px solid var(--border-subtle-btm); border-top-color: var(--border-subtle-top);
+    box-shadow: 0 1px 0 var(--top-edge-highlight) inset;
+  }
+  .btn-accent {
+    color: var(--text-on-accent);
+    background: linear-gradient(180deg, var(--accent-fill), var(--accent-fill-hover));
+    border: 1px solid var(--accent-fill-hover); border-top-color: rgba(255,255,255,0.22);
+    box-shadow: 0 0 4px var(--accent-glow-core), 0 4px 12px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.18);
+  }
+  /* The Signal button — the one loud element */
+  .btn-signal {
+    color: #fff;
+    background: linear-gradient(180deg, var(--signal-fill), var(--signal-fill-hover));
+    border: 1px solid var(--signal-fill-hover); border-top-color: rgba(255,255,255,0.28);
+    box-shadow: 0 0 6px var(--signal-glow-core), 0 6px 18px var(--signal-glow-strong), inset 0 1px 0 rgba(255,255,255,0.22);
+  }
+  .note { font: 400 16px/26px var(--font-serif); color: var(--text-secondary); max-width: 680px; }
+  .note code { font-family: var(--font-mono); font-size: 14px; color: var(--text-primary); }
+</style>
+</head>
+<body class="sigprev">
+
+<div class="mode-toggle">
+  <button class="on" data-m="light" onclick="setMode('light')">light</button>
+  <button data-m="dark" onclick="setMode('dark')">dark</button>
+</div>
+
+<!-- ===== PASTE FROM HERE INTO visual-spec-preview-lume.html ===== -->
+<section class="section" id="signal">
+  <h2 class="section-title">Signal — the loud accent <span style="font-family:var(--font-mono);font-size:12px;color:var(--text-tertiary);font-weight:400">§2.5.5 · v0.4</span></h2>
+  <p class="section-lede">
+    One universal, palette-independent magenta-pink for the rare loud moment —
+    a hero CTA, a critically-important element, and non-UI brand surfaces (web,
+    video). It does not bind to the accent slot, and is capped at one element
+    per view.
+  </p>
+
+  <div class="sig-swatches">
+    <div><div class="sig-swatch" style="background:var(--signal-fill)"></div><div class="sig-name">signal</div><div class="sig-val" data-sig="fill">#D6177A</div></div>
+    <div><div class="sig-swatch" style="background:var(--signal-fill-hover)"></div><div class="sig-name">hover</div><div class="sig-val" data-sig="hover">#C2126D</div></div>
+    <div><div class="sig-swatch" style="background:var(--signal-fill-active)"></div><div class="sig-name">active</div><div class="sig-val" data-sig="active">#AD0E60</div></div>
+    <div><div class="sig-swatch" style="background:var(--signal-subtle)"></div><div class="sig-name">subtle</div><div class="sig-val" data-sig="subtle">.10</div></div>
+    <div><div class="sig-swatch" style="background:var(--signal-glow)"></div><div class="sig-name">glow</div><div class="sig-val" data-sig="glow">.24</div></div>
+    <div><div class="sig-swatch" style="background:var(--signal-glow-strong)"></div><div class="sig-name">glow.strong</div><div class="sig-val" data-sig="glowstrong">.42</div></div>
+    <div><div class="sig-swatch" style="background:var(--signal-glow-core)"></div><div class="sig-name">glow.core</div><div class="sig-val" data-sig="glowcore">core</div></div>
+  </div>
+
+  <p class="section-lede" style="margin-top:8px">One CTA, three palettes — the Signal stays constant while the accent recedes:</p>
+  <div class="sig-demo-row">
+    <div class="sig-demo-cell" data-accent="lagoon">
+      <span class="sig-demo-label">lagoon</span>
+      <span class="btn btn-secondary">Later</span>
+      <span class="btn btn-accent">Confirm</span>
+      <span class="btn btn-signal">Upgrade</span>
+    </div>
+    <div class="sig-demo-cell" data-accent="petrol">
+      <span class="sig-demo-label">petrol</span>
+      <span class="btn btn-secondary">Later</span>
+      <span class="btn btn-accent">Confirm</span>
+      <span class="btn btn-signal">Upgrade</span>
+    </div>
+    <div class="sig-demo-cell" data-accent="atelier">
+      <span class="sig-demo-label">atelier</span>
+      <span class="btn btn-secondary">Later</span>
+      <span class="btn btn-accent">Confirm</span>
+      <span class="btn btn-signal">Upgrade</span>
+    </div>
+  </div>
+
+  <p class="note" style="margin-top:8px">
+    Hue ≈335° sits in the only open gap in the token map (error 25°, Atelier
+    50°, warning 80°, success 150°, Lagoon 200°, Petrol 235°) — complement of
+    the two cool default palettes, and unambiguously <em>not red</em>, so a
+    loud Signal CTA never reads as destructive. Destructive actions keep
+    <code>state.error</code> text + 1px edge; Signal never becomes the colour
+    of "delete".
+  </p>
+</section>
+<!-- ===== PASTE TO HERE ===== -->
+
+<script>
+  // The dark-mode swatch hexes shown under each swatch, for the value labels.
+  const SIG = {
+    light: { fill:'#D6177A', hover:'#C2126D', active:'#AD0E60', subtle:'.10', glow:'.24', glowstrong:'.42', glowcore:'core' },
+    dark:  { fill:'#FF5FA8', hover:'#FF77B6', active:'#FF90C4', subtle:'.18', glow:'.30', glowstrong:'.46', glowcore:'core' },
+  };
+  function setMode(m) {
+    document.documentElement.setAttribute('data-mode', m);
+    document.querySelectorAll('.mode-toggle button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
+    const vals = SIG[m];
+    document.querySelectorAll('[data-sig]').forEach(el => { el.textContent = vals[el.dataset.sig]; });
+  }
+</script>
+</body>
+</html>

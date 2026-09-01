@@ -1,0 +1,170 @@
+/* Shared card chrome for /preview cards. Cards render inside a 700px-wide
+   viewport set by the Design System tab. */
+
+html, body {
+  height: 100%;
+}
+body.card {
+  padding: 18px 22px;
+  background:
+    linear-gradient(180deg, var(--bg-canvas-top) 0%, var(--bg-canvas-btm) 100%);
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.row    { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.row-sb { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.col    { display: flex; flex-direction: column; gap: 10px; }
+
+.label  {
+  font: 500 11px/14px var(--font-mono);
+  color: var(--text-tertiary);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.swatch {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+}
+
+.token-name {
+  font: 450 11px/14px var(--font-mono);
+  color: var(--text-secondary);
+}
+.token-value {
+  font: 450 11px/14px var(--font-mono);
+  color: var(--text-tertiary);
+}
+
+/* Reusable Lume button */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--radius-md);
+  font: 500 13px/16px var(--font-sans);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--duration-quick) var(--easing-standard),
+              box-shadow var(--duration-quick) var(--easing-standard),
+              color var(--duration-quick) var(--easing-standard);
+}
+.btn-primary {
+  color: var(--text-on-accent);
+  background: linear-gradient(180deg, var(--accent-fill) 0%, var(--accent-fill-hover) 100%);
+  border: 1px solid var(--accent-fill-hover);
+  border-top-color: rgba(255, 255, 255, 0.22);
+  box-shadow:
+    0 0 4px var(--accent-glow-core),
+    0 4px 12px var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.btn-primary:hover {
+  background: linear-gradient(180deg, var(--accent-fill-hover), var(--accent-fill-active));
+  box-shadow:
+    0 0 6px var(--accent-glow-core),
+    0 6px 18px var(--accent-glow-strong),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.btn-secondary {
+  color: var(--text-primary);
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  box-shadow: 0 1px 0 var(--top-edge-highlight) inset;
+}
+.btn-secondary:hover {
+  background:
+    linear-gradient(180deg, var(--accent-subtle), var(--accent-subtle)),
+    linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+}
+.btn-ghost {
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+}
+.btn-ghost:hover {
+  background: var(--accent-subtle);
+  color: var(--text-primary);
+}
+.btn-danger {
+  color: var(--state-error-fg);
+  background: transparent;
+  border: 1px solid var(--state-error-edge);
+}
+/* Signal — the loud accent. Use sparingly, one per view. */
+.btn-signal {
+  color: #fff;
+  background: linear-gradient(180deg, var(--signal-fill) 0%, var(--signal-fill-hover) 100%);
+  border: 1px solid var(--signal-fill-hover);
+  border-top-color: rgba(255, 255, 255, 0.28);
+  box-shadow:
+    0 0 6px var(--signal-glow-core),
+    0 6px 18px var(--signal-glow-strong),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.btn-signal:hover {
+  background: linear-gradient(180deg, var(--signal-fill-hover), var(--signal-fill-active));
+  box-shadow:
+    0 0 8px var(--signal-glow-core),
+    0 8px 22px var(--signal-glow-strong),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.btn-disabled,
+.btn-disabled:hover {
+  background: var(--skeleton-base);
+  color: var(--text-disabled);
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+/* Reusable Lume input */
+.input {
+  padding: 7px 11px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  box-shadow: 0 1px 0 var(--top-edge-highlight) inset;
+  font: 400 13px/16px var(--font-sans);
+  color: var(--text-primary);
+  outline: none;
+}
+.input::placeholder { color: var(--text-tertiary); }
+.input.focused,
+.input:focus {
+  border-color: var(--accent-fill);
+  box-shadow:
+    0 1px 0 var(--top-edge-highlight) inset,
+    0 0 0 1px var(--accent-fill),
+    0 0 0 4px var(--accent-glow),
+    0 0 12px var(--accent-glow-core);
+}
+.input.error {
+  border-color: var(--state-error-edge);
+  border-top-color: var(--state-error-edge);
+}
+
+/* Reusable Lume card */
+.card-surface {
+  background: linear-gradient(180deg, var(--bg-surface-top), var(--bg-surface-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+}
+.card-raised {
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 0 var(--top-edge-highlight) inset;
+  padding: 14px 16px;
+}

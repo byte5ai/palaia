@@ -1,0 +1,35 @@
+<!doctype html>
+<!-- @dsCard group="Components" name="Choice — checkbox · radio · switch" subtitle="Small primitives, small two-stop glow" viewport="700x180" -->
+<html lang="en" data-mode="light" data-accent="lagoon">
+<head>
+<meta charset="utf-8">
+<title>Choice — checkbox · radio · switch</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="_card.css">
+</head>
+<body class="card">
+<div class="lume-caption" style="color:var(--text-tertiary);letter-spacing:0.04em;text-transform:uppercase">Small primitives · small two-stop glow</div>
+<div class="row" style="gap:32px">
+  <label class="row" style="gap:8px;cursor:pointer">
+    <span style="width:16px;height:16px;border-radius:4px;background:linear-gradient(180deg,var(--accent-fill),var(--accent-fill-hover));border:1px solid var(--accent-fill-hover);display:grid;place-items:center;box-shadow:0 0 3px var(--accent-glow-core),0 0 6px var(--accent-glow)">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </span>
+    <span class="lume-body">checkbox · checked</span>
+  </label>
+  <label class="row" style="gap:8px;cursor:pointer">
+    <span style="width:16px;height:16px;border-radius:50%;border:1px solid var(--accent-fill);background:radial-gradient(circle,var(--accent-fill) 0 4px,transparent 5px);box-shadow:0 0 3px var(--accent-glow-core),0 0 6px var(--accent-glow)"></span>
+    <span class="lume-body">radio · selected</span>
+  </label>
+  <label class="row" style="gap:8px;cursor:pointer">
+    <span style="width:30px;height:18px;border-radius:999px;background:linear-gradient(180deg,var(--accent-fill),var(--accent-fill-hover));position:relative;box-shadow:0 0 3px var(--accent-glow-core),0 0 6px var(--accent-glow)">
+      <span style="position:absolute;top:2px;right:2px;width:14px;height:14px;border-radius:50%;background:#fff"></span>
+    </span>
+    <span class="lume-body">switch · on</span>
+  </label>
+</div>
+<div class="row" style="gap:32px;margin-top:4px;opacity:0.7">
+  <label class="row" style="gap:8px"><span style="width:16px;height:16px;border-radius:4px;background:#fff;border:1px solid var(--border-strong-btm);border-top-color:var(--border-strong-top)"></span><span class="lume-body" style="color:var(--text-secondary)">unchecked</span></label>
+  <label class="row" style="gap:8px"><span style="width:16px;height:16px;border-radius:50%;background:#fff;border:1px solid var(--border-strong-btm);border-top-color:var(--border-strong-top)"></span><span class="lume-body" style="color:var(--text-secondary)">unselected</span></label>
+  <label class="row" style="gap:8px"><span style="width:30px;height:18px;border-radius:999px;background:linear-gradient(180deg,var(--bg-surface-sunken-top),var(--bg-surface-sunken-btm));border:1px solid var(--border-strong-btm);border-top-color:var(--border-strong-top);position:relative"><span style="position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff"></span></span><span class="lume-body" style="color:var(--text-secondary)">off</span></label>
+</div>
+</body></html>

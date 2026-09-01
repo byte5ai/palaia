@@ -1,0 +1,1645 @@
+<!doctype html>
+<html lang="en" data-mode="light" data-accent="petrol">
+<head>
+<meta charset="utf-8">
+<title>Omadia UI — Lume material concept</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;450;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   LUME — light-as-material concept
+   ============================================================
+   Sibling of visual-spec-preview.html. Same primitive vocabulary
+   but every surface, accent, transition has been rewritten to
+   express the Lume thesis: UI condenses out of light.
+
+   Variables that DIFFER from the v0.1 preview:
+   - bg-*: now carries a subtle vertical luminosity (used as
+     CSS gradient stops, not as flat fills)
+   - accent-glow: new token, the Lume soft form of accent
+   - shadow-*: now include accent-tinted ambient component
+   ============================================================ */
+:root {
+  --space-0: 0; --space-1: 2px; --space-2: 4px; --space-3: 8px;
+  --space-4: 12px; --space-5: 16px; --space-6: 24px; --space-7: 32px;
+  --space-8: 48px; --space-9: 64px;
+  /* Lume corner scale — one stop softer than v0.1 flat spec.
+     radius-0 reserved for editor-class surfaces (canvas-region, timeline)
+     where Lume material stops. Everywhere else: softness expresses
+     "this surface was condensed, not stamped". */
+  --radius-0: 0; --radius-sm: 6px; --radius-md: 8px;
+  --radius-lg: 12px; --radius-pill: 999px;
+  --motion-quick: 100ms; --motion-smooth: 200ms; --motion-deliberate: 320ms;
+  --ease-standard: cubic-bezier(0.22, 0.61, 0.36, 1.00);
+  --ease-emphasis: cubic-bezier(0.4, 0.0, 0.2, 1.0);
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+/* ===== LIGHT MODE — LUME ===== */
+[data-mode="light"] {
+  /* Two-stop luminosity per surface: TOP is the lit edge, BTM is the resting tone */
+  --bg-canvas-top: #FDFDFE;
+  --bg-canvas-btm: #F7F8FB;
+  --bg-surface-top: #FFFFFF;
+  --bg-surface-btm: #FAFAFD;
+  --bg-surface-raised-top: #FFFFFF;
+  --bg-surface-raised-btm: #FCFCFE;
+  --bg-surface-sunken-top: #F2F3F7;
+  --bg-surface-sunken-btm: #ECEDF2;
+  --bg-modal-surface-top: #FFFFFF;
+  --bg-modal-surface-btm: #FBFBFE;
+
+  /* text */
+  --text-primary: #1B1D24;
+  --text-secondary: #5B5F6B;
+  --text-tertiary: #8D9099;
+  --text-disabled: #BFC1C6;
+  --text-inverse: #FCFCFD;
+
+  /* borders with directional lighting: top-of-border catches more light */
+  --border-subtle-top: rgba(20, 24, 36, 0.05);
+  --border-subtle-btm: rgba(20, 24, 36, 0.09);
+  --border-default-top: rgba(20, 24, 36, 0.08);
+  --border-default-btm: rgba(20, 24, 36, 0.14);
+  --border-strong-top: rgba(20, 24, 36, 0.16);
+  --border-strong-btm: rgba(20, 24, 36, 0.26);
+
+  /* states */
+  --state-error-fg: #A8443B;
+  --state-error-edge: #C45A50;
+  --state-success-fg: #3F7A55;
+  --state-warning-fg: #8C6A1F;
+
+  /* shadows now include a subtle accent-tinted ambient component */
+  --shadow-popover: 0 1px 2px rgba(20,24,36,0.04), 0 8px 24px rgba(20,24,36,0.06);
+  --shadow-modal: 0 4px 16px rgba(20,24,36,0.06), 0 24px 48px rgba(20,24,36,0.12);
+  --shadow-drag: 0 8px 24px rgba(20,24,36,0.16);
+
+  /* modal scrim — minimally accent-tinted, not neutral */
+  --bg-modal-overlay: rgba(20, 30, 50, 0.40);
+}
+
+/* ===== DARK MODE — LUME ===== */
+[data-mode="dark"] {
+  --bg-canvas-top: #232631;
+  --bg-canvas-btm: #1B1D24;
+  --bg-surface-top: #2A2D38;
+  --bg-surface-btm: #23262F;
+  --bg-surface-raised-top: #303440;
+  --bg-surface-raised-btm: #292C37;
+  --bg-surface-sunken-top: #1D1F26;
+  --bg-surface-sunken-btm: #16181E;
+  --bg-modal-surface-top: #303440;
+  --bg-modal-surface-btm: #292C37;
+  --text-primary: #EEEFF3;
+  --text-secondary: #B6B9C3;
+  --text-tertiary: #888B95;
+  --text-disabled: #525561;
+  --text-inverse: #1F2127;
+  --border-subtle-top: rgba(255, 255, 255, 0.06);
+  --border-subtle-btm: rgba(0, 0, 0, 0.40);
+  --border-default-top: rgba(255, 255, 255, 0.10);
+  --border-default-btm: rgba(0, 0, 0, 0.50);
+  --border-strong-top: rgba(255, 255, 255, 0.18);
+  --border-strong-btm: rgba(0, 0, 0, 0.60);
+  --state-error-fg: #E08577;
+  --state-error-edge: #C5685A;
+  --state-success-fg: #88C499;
+  --state-warning-fg: #D6B468;
+  --shadow-popover: 0 1px 2px rgba(0,0,0,0.40), 0 8px 24px rgba(0,0,0,0.45);
+  --shadow-modal: 0 4px 16px rgba(0,0,0,0.55), 0 24px 48px rgba(0,0,0,0.65);
+  --shadow-drag: 0 8px 24px rgba(0,0,0,0.55);
+  --bg-modal-overlay: rgba(0, 0, 0, 0.60);
+}
+
+/* ===== ACCENT (single slot, three palettes) ==========================
+   Lume tokens per palette:
+   - accent / hover / active        — the fill form (buttons, indicators)
+   - accent-subtle                  — the row-tint fill (~10% alpha)
+   - accent-glow / glow-strong      — the soft accent-tinted corona
+   - accent-glow-core               — the LIGHT-SOURCE inner core, deliberately
+                                      shifted toward white so it reads as
+                                      emitted light, not as accent-tinted shadow.
+                                      This is what made light-mode previously
+                                      feel weaker than dark-mode.
+   ====================================================================== */
+[data-accent="petrol"] {
+  --accent: #0F7AB8;
+  --accent-hover: #0C6CA8;
+  --accent-active: #0A5E94;
+  --accent-subtle: rgba(15, 122, 184, 0.10);
+  --accent-glow: rgba(15, 122, 184, 0.22);
+  --accent-glow-strong: rgba(15, 122, 184, 0.36);
+  --accent-glow-core: rgba(165, 215, 240, 0.55);
+}
+[data-mode="dark"][data-accent="petrol"] {
+  --accent: #52B0E2;
+  --accent-hover: #74C0E8;
+  --accent-active: #90CFEE;
+  --accent-subtle: rgba(82, 176, 226, 0.16);
+  --accent-glow: rgba(82, 176, 226, 0.28);
+  --accent-glow-strong: rgba(82, 176, 226, 0.44);
+  --accent-glow-core: rgba(197, 229, 245, 0.45);
+}
+/* PALETTE 2 — ATELIER (Hue ~50°, warm burnt amber)
+   Studio-lamp story. Separated from error.fg (hue 25°) and warning.fg (hue 80°).
+   Light-mode L 0.57, dark-mode L 0.74 — same perceptual weight as Petrol. */
+[data-accent="atelier"] {
+  --accent: #B36B2E;
+  --accent-hover: #9F5C26;
+  --accent-active: #8A4E1F;
+  --accent-subtle: rgba(179, 107, 46, 0.10);
+  --accent-glow: rgba(179, 107, 46, 0.24);
+  --accent-glow-strong: rgba(179, 107, 46, 0.38);
+  --accent-glow-core: rgba(245, 215, 175, 0.55);
+}
+[data-mode="dark"][data-accent="atelier"] {
+  --accent: #E0A26B;
+  --accent-hover: #E5B080;
+  --accent-active: #EBBE93;
+  --accent-subtle: rgba(224, 162, 107, 0.18);
+  --accent-glow: rgba(224, 162, 107, 0.30);
+  --accent-glow-strong: rgba(224, 162, 107, 0.46);
+  --accent-glow-core: rgba(250, 228, 200, 0.45);
+}
+
+/* PALETTE 3 — LAGOON (refined from Botanical, Hue ~200°, lit teal-cyan)
+   The twist: hue lifted from 195° to 200° (cyan-leaning), light-mode L lifted
+   from 0.54 to 0.58 (more emissive, less absorbent), chroma 0.10 → 0.12.
+   Critically, --accent-glow-core is bright cyan-white — the inner core of an
+   actual light source, not a tinted shadow. This is what closes the light/dark
+   asymmetry the previous Botanical version had. */
+[data-accent="lagoon"] {
+  --accent: #1F8FA3;
+  --accent-hover: #197D90;
+  --accent-active: #146B7C;
+  --accent-subtle: rgba(31, 143, 163, 0.12);
+  --accent-glow: rgba(60, 175, 195, 0.32);
+  --accent-glow-strong: rgba(60, 175, 195, 0.48);
+  --accent-glow-core: rgba(180, 238, 248, 0.60);
+}
+[data-mode="dark"][data-accent="lagoon"] {
+  --accent: #6FC8D6;
+  --accent-hover: #88D2DE;
+  --accent-active: #A1DCE6;
+  --accent-subtle: rgba(111, 200, 214, 0.20);
+  --accent-glow: rgba(111, 200, 214, 0.32);
+  --accent-glow-strong: rgba(111, 200, 214, 0.48);
+  --accent-glow-core: rgba(210, 245, 250, 0.50);
+}
+
+/* ============================================================
+   BASE — surfaces all use linear-gradient(180deg, top, btm)
+   ============================================================ */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; min-height: 100%; }
+body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: linear-gradient(180deg, var(--bg-canvas-top) 0%, var(--bg-canvas-btm) 100%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+}
+h1, h2, h3, h4 { margin: 0; font-weight: 600; }
+p { margin: 0; }
+button { font: inherit; cursor: pointer; }
+
+/* Lume border helper — top-light + bottom-shadow, perceived as a true edge */
+.lume-edge {
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+}
+.lume-edge-default {
+  border: 1px solid var(--border-default-btm);
+  border-top-color: var(--border-default-top);
+}
+
+/* ============================================================
+   PAGE STRUCTURE
+   ============================================================ */
+.page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--space-7) var(--space-7) var(--space-9);
+}
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-6);
+  margin-bottom: var(--space-8);
+  padding: var(--space-5) 0 var(--space-6);
+  border-bottom: 1px solid var(--border-subtle-btm);
+  position: sticky;
+  top: 0;
+  background: linear-gradient(180deg, var(--bg-canvas-top) 0%, var(--bg-canvas-top) 80%, transparent 100%);
+  z-index: 100;
+}
+.page-header h1 {
+  font-size: 22px;
+  letter-spacing: -0.005em;
+}
+.page-header .concept-tag {
+  display: inline-block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  color: var(--accent);
+}
+.page-header .subtitle {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.controls { display: flex; gap: var(--space-5); align-items: center; }
+.control-group { display: flex; align-items: center; gap: var(--space-3); }
+.control-group label {
+  font-size: 11px; font-weight: 600; color: var(--text-secondary);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.toggle-segment {
+  display: inline-flex;
+  background: linear-gradient(180deg, var(--bg-surface-sunken-top), var(--bg-surface-sunken-btm));
+  padding: 3px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+}
+.toggle-segment button {
+  background: transparent;
+  border: none;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: all var(--motion-quick) var(--ease-standard);
+}
+.toggle-segment button[aria-pressed="true"] {
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  color: var(--text-primary);
+  box-shadow: 0 1px 0 var(--border-subtle-top) inset, 0 1px 2px rgba(0,0,0,0.06);
+}
+
+.section { margin-bottom: var(--space-8); }
+.section-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: var(--space-5); }
+.section-header h2 { font-size: 18px; }
+.section-header .section-tag { font-family: var(--font-mono); font-size: 12px; color: var(--text-tertiary); }
+.section-intro {
+  margin-bottom: var(--space-5);
+  color: var(--text-secondary);
+  font-size: 13px;
+  max-width: 76ch;
+  line-height: 1.6;
+}
+
+.lume-callout {
+  background: linear-gradient(180deg, var(--bg-surface-top), var(--bg-surface-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5);
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  max-width: 76ch;
+  margin-bottom: var(--space-5);
+}
+.lume-callout b { color: var(--text-primary); }
+
+.card {
+  background: linear-gradient(180deg, var(--bg-surface-top), var(--bg-surface-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+}
+.card.raised {
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+}
+.card-title {
+  font-size: 11px; font-weight: 600; color: var(--text-secondary);
+  text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: var(--space-4);
+}
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-5); }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-4); }
+
+/* ============================================================
+   §1 — SIDE-BY-SIDE: FLAT vs LUME
+   The defining comparison. Same primitive, two materials.
+   ============================================================ */
+.compare-wrap { position: relative; }
+.compare-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border-subtle-btm); border-top-color: var(--border-subtle-top); }
+.compare-half { padding: var(--space-6); }
+.compare-half.flat {
+  background: #FFFFFF;
+  border-right: 1px solid var(--border-subtle-btm);
+}
+[data-mode="dark"] .compare-half.flat { background: #2C2F38; border-right-color: var(--border-subtle-btm); }
+.compare-half.lume {
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+}
+.compare-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-4);
+}
+
+/* Flat-mode primitives (exact mirror of original spec preview) */
+.flat .btn-flat {
+  display: inline-flex; align-items: center; height: 32px;
+  padding: 0 12px; border-radius: var(--radius-sm);
+  font-size: 14px; font-weight: 500;
+  background: var(--accent); color: var(--text-inverse);
+  border: 1px solid transparent;
+  font-family: inherit;
+}
+.flat .row-flat {
+  display: flex; align-items: center; padding: 8px 12px;
+  border-radius: var(--radius-sm); font-size: 14px;
+  margin-bottom: 4px;
+  position: relative;
+}
+.flat .row-flat.selected {
+  background: rgba(15, 122, 184, 0.10);
+}
+[data-mode="dark"] .flat .row-flat.selected { background: rgba(82, 176, 226, 0.16); }
+.flat .row-flat.selected::before {
+  content: ''; position: absolute; left: 0; top: 4px; bottom: 4px;
+  width: 2px; background: var(--accent); border-radius: 2px;
+}
+.flat .input-flat {
+  width: 240px; height: 32px; padding: 0 10px;
+  border: 1px solid var(--border-default-btm);
+  border-top-color: var(--border-default-top);
+  border-radius: var(--radius-sm);
+  font-family: inherit; font-size: 14px;
+  background: #FFFFFF; color: var(--text-primary);
+}
+[data-mode="dark"] .flat .input-flat { background: #303440; }
+.flat .input-flat.focused {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* Lume-mode primitives — same shapes, redrawn in the material */
+.lume-btn {
+  display: inline-flex; align-items: center; height: 32px;
+  padding: 0 12px; border-radius: var(--radius-sm);
+  font-size: 14px; font-weight: 500;
+  background: linear-gradient(180deg, var(--accent), var(--accent-hover));
+  color: var(--text-inverse);
+  border: 1px solid var(--accent-hover);
+  border-top-color: rgba(255,255,255,0.18);
+  font-family: inherit;
+  /* Two-stop glow: bright core close to the surface, accent-tinted corona further out */
+  box-shadow: 0 1px 0 rgba(255,255,255,0.16) inset,
+              0 0 4px var(--accent-glow-core),
+              0 4px 12px var(--accent-glow);
+  transition: all var(--motion-quick) var(--ease-standard);
+}
+.lume-btn:hover {
+  background: linear-gradient(180deg, var(--accent-hover), var(--accent-active));
+  box-shadow: 0 1px 0 rgba(255,255,255,0.20) inset,
+              0 0 6px var(--accent-glow-core),
+              0 6px 18px var(--accent-glow-strong);
+}
+.lume-btn:active { transform: translateY(1px); box-shadow: 0 1px 0 rgba(255,255,255,0.10) inset, 0 0 3px var(--accent-glow-core), 0 2px 6px var(--accent-glow); }
+.lume-btn.secondary {
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  color: var(--text-primary);
+  border-color: var(--border-default-btm);
+  border-top-color: var(--border-default-top);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.08) inset;
+}
+.lume-btn.secondary:hover {
+  background: linear-gradient(180deg, var(--bg-surface-top), var(--bg-surface-btm));
+  box-shadow: 0 1px 0 rgba(255,255,255,0.10) inset, 0 2px 8px rgba(20,24,36,0.06);
+}
+.lume-btn.ghost { background: transparent; color: var(--text-primary); border-color: transparent; box-shadow: none; }
+.lume-btn.ghost:hover {
+  background: var(--accent-subtle);
+}
+.lume-btn.danger {
+  background: transparent;
+  color: var(--state-error-fg);
+  border-color: var(--state-error-edge);
+}
+.lume-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.16) inset,
+              0 2px 6px var(--accent-glow),
+              0 0 0 2px var(--accent),
+              0 0 0 6px var(--accent-glow);
+}
+
+.lume-row {
+  display: flex; align-items: center; padding: 8px 12px;
+  border-radius: var(--radius-sm); font-size: 14px;
+  margin-bottom: 4px;
+  position: relative;
+  transition: all var(--motion-quick) var(--ease-standard);
+}
+.lume-row:hover { background: var(--accent-subtle); }
+.lume-row.selected {
+  background: radial-gradient(ellipse at 30% 50%, var(--accent-glow-core) 0%, var(--accent-glow) 20%, transparent 70%),
+              linear-gradient(180deg, var(--accent-subtle), transparent);
+  box-shadow: 0 0 12px -2px var(--accent-glow-core),
+              0 0 24px -6px var(--accent-glow-strong);
+}
+.lume-row.selected::before {
+  content: ''; position: absolute; left: 0; top: 4px; bottom: 4px;
+  width: 2px; background: var(--accent); border-radius: 2px;
+  box-shadow: 0 0 6px var(--accent-glow-strong);
+}
+
+.lume-input {
+  width: 240px; height: 32px; padding: 0 10px;
+  border-radius: var(--radius-sm);
+  font-family: inherit; font-size: 14px;
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  color: var(--text-primary);
+  border: 1px solid var(--border-default-btm);
+  border-top-color: var(--border-default-top);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset;
+  transition: all var(--motion-quick) var(--ease-standard);
+}
+.lume-input.focused, .lume-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset,
+              0 0 0 1px var(--accent),
+              0 0 0 4px var(--accent-glow),
+              0 0 12px var(--accent-glow-core);
+}
+
+/* ============================================================
+   §2 — MATERIAL ANATOMY
+   ============================================================ */
+.anatomy-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-5);
+}
+.anatomy-card {
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+}
+.anatomy-title { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+.anatomy-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.55; margin-bottom: var(--space-4); }
+
+/* surface gradient visualization */
+.swatch-stack { display: flex; flex-direction: column; gap: 1px; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border-subtle-btm); }
+.swatch-stack div {
+  height: 28px;
+  display: flex; align-items: center;
+  padding: 0 var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.surface-grad {
+  height: 96px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+/* glow demo */
+.glow-demo { height: 96px; display: flex; align-items: center; justify-content: center; }
+.glow-orb {
+  width: 56px; height: 56px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.3), transparent 50%), var(--accent);
+  box-shadow: 0 0 24px var(--accent-glow-strong),
+              0 0 48px var(--accent-glow);
+}
+
+/* border anatomy */
+.border-demo {
+  height: 56px;
+  border: 1px solid var(--border-default-btm);
+  border-top-color: var(--border-default-top);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  display: flex; align-items: center; padding: 0 var(--space-4);
+  font-size: 12px; color: var(--text-secondary);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset;
+}
+
+/* ============================================================
+   §3 — ACCENT × LUME COMPARISON
+   ============================================================ */
+.accent-card {
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  display: flex; flex-direction: column; gap: var(--space-4);
+}
+.accent-card.active-choice {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+.accent-card-name { font-weight: 600; font-size: 14px; }
+.accent-card-meta { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); }
+.accent-swatch { width: 32px; height: 32px; border-radius: var(--radius-sm); border: 1px solid rgba(0,0,0,0.08); }
+.accent-card-header { display: flex; justify-content: space-between; align-items: center; }
+
+.accent-preview[data-show="petrol"]  { --accent: #0F7AB8; --accent-hover: #0C6CA8; --accent-subtle: rgba(15,122,184,0.10); --accent-glow: rgba(15,122,184,0.22); --accent-glow-strong: rgba(15,122,184,0.36); --accent-glow-core: rgba(165,215,240,0.55); }
+.accent-preview[data-show="atelier"] { --accent: #B36B2E; --accent-hover: #9F5C26; --accent-subtle: rgba(179,107,46,0.10); --accent-glow: rgba(179,107,46,0.24); --accent-glow-strong: rgba(179,107,46,0.38); --accent-glow-core: rgba(245,215,175,0.55); }
+.accent-preview[data-show="lagoon"]  { --accent: #1F8FA3; --accent-hover: #197D90; --accent-subtle: rgba(31,143,163,0.12); --accent-glow: rgba(60,175,195,0.32); --accent-glow-strong: rgba(60,175,195,0.48); --accent-glow-core: rgba(180,238,248,0.60); }
+[data-mode="dark"] .accent-preview[data-show="petrol"]  { --accent: #52B0E2; --accent-subtle: rgba(82,176,226,0.16); --accent-glow: rgba(82,176,226,0.28); --accent-glow-strong: rgba(82,176,226,0.44); --accent-glow-core: rgba(197,229,245,0.45); }
+[data-mode="dark"] .accent-preview[data-show="atelier"] { --accent: #E0A26B; --accent-subtle: rgba(224,162,107,0.18); --accent-glow: rgba(224,162,107,0.30); --accent-glow-strong: rgba(224,162,107,0.46); --accent-glow-core: rgba(250,228,200,0.45); }
+[data-mode="dark"] .accent-preview[data-show="lagoon"]  { --accent: #6FC8D6; --accent-subtle: rgba(111,200,214,0.20); --accent-glow: rgba(111,200,214,0.32); --accent-glow-strong: rgba(111,200,214,0.48); --accent-glow-core: rgba(210,245,250,0.50); }
+
+/* ============================================================
+   §4 — PATCH CONDENSATION (the signature animation)
+   ============================================================ */
+.condense-wrap {
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5);
+}
+.condense-stage {
+  height: 180px;
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  display: flex; flex-direction: column; gap: 6px;
+  position: relative;
+  overflow: hidden;
+}
+.condense-cell {
+  display: flex; align-items: baseline; gap: 12px; padding: 6px 0;
+  border-bottom: 1px solid var(--border-subtle-btm);
+}
+.condense-cell:last-child { border-bottom: none; }
+.condense-label { font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.04em; min-width: 88px; }
+.condense-value { font-family: var(--font-mono); font-size: 18px; font-weight: 500; }
+
+/* Fade-in vs Condense */
+.fade-anim {
+  animation: fade-in 800ms ease-out forwards;
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.condense-anim {
+  position: relative;
+  animation: condense-in 800ms var(--ease-emphasis) forwards;
+}
+@keyframes condense-in {
+  0%   { opacity: 0; transform: scale(1.03); filter: blur(2px); }
+  40%  { opacity: 0.9; transform: scale(1.005); filter: blur(0); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.condense-pulse {
+  position: absolute; inset: -12px;
+  border-radius: var(--radius-md);
+  background: radial-gradient(ellipse at center, var(--accent-glow-strong) 0%, transparent 60%);
+  pointer-events: none;
+  animation: pulse-collapse 800ms ease-out forwards;
+}
+@keyframes pulse-collapse {
+  0%   { opacity: 0.8; transform: scale(1.2); }
+  100% { opacity: 0; transform: scale(0.5); }
+}
+.condense-bar {
+  position: absolute; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: condense-sweep 500ms ease-out forwards;
+  pointer-events: none;
+}
+@keyframes condense-sweep {
+  0%   { opacity: 0; transform: scaleX(0); }
+  30%  { opacity: 1; transform: scaleX(1); }
+  100% { opacity: 0; transform: scaleX(1); }
+}
+
+/* ============================================================
+   §5 — SELECTION HALO & FOCUS HALO
+   ============================================================ */
+.halo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); }
+.halo-stage {
+  background: linear-gradient(180deg, var(--bg-surface-top), var(--bg-surface-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  min-height: 220px;
+}
+
+/* ============================================================
+   §6 — SPOTLIGHT WITH FULL LUME TREATMENT
+   ============================================================ */
+.spotlight-stage {
+  background:
+    radial-gradient(ellipse at 50% 30%, var(--accent-glow) 0%, transparent 60%),
+    linear-gradient(180deg, var(--bg-surface-top), var(--bg-surface-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-md);
+  padding: var(--space-8);
+  min-height: 400px;
+  display: flex; align-items: flex-start; justify-content: center;
+}
+.spotlight {
+  max-width: 480px;
+  width: 100%;
+}
+.spotlight-input {
+  width: 100%;
+  height: 48px;
+  padding: 0 var(--space-5);
+  font-size: 18px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  color: var(--text-primary);
+  font-family: inherit;
+  border: 1px solid var(--accent);
+  /* Spotlight is the showcase moment — three-stop glow: tight core, accent corona, wide outer fall-off */
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.10) inset,
+    0 0 0 4px var(--accent-glow),
+    0 0 16px var(--accent-glow-core),
+    0 12px 40px var(--accent-glow-strong);
+  outline: none;
+}
+.spotlight-results {
+  margin-top: var(--space-2);
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
+  padding: var(--space-2);
+}
+.spotlight-section {
+  font-size: 10px; font-weight: 600; color: var(--text-tertiary);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  padding: var(--space-3) var(--space-3) var(--space-2);
+}
+.spotlight-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: var(--space-3); border-radius: var(--radius-sm);
+  font-size: 14px; cursor: pointer;
+  transition: all var(--motion-quick) var(--ease-standard);
+  position: relative;
+}
+.spotlight-item:hover { background: var(--accent-subtle); }
+.spotlight-item.focused {
+  background: radial-gradient(ellipse at 25% 50%, var(--accent-glow-core) 0%, var(--accent-glow) 25%, transparent 70%),
+              linear-gradient(180deg, var(--accent-subtle), transparent);
+  box-shadow: 0 0 10px -2px var(--accent-glow-core),
+              0 0 24px -6px var(--accent-glow-strong);
+}
+.spotlight-item.focused::before {
+  content: ''; position: absolute; left: 0; top: 6px; bottom: 6px;
+  width: 2px; background: var(--accent); border-radius: 2px;
+  box-shadow: 0 0 6px var(--accent-glow-strong);
+}
+.spotlight-item .path { color: var(--text-tertiary); font-size: 12px; }
+
+/* ============================================================
+   §7 — EDITOR BOUNDARY (canvas-region stays opaque)
+   ============================================================ */
+.ps {
+  display: grid;
+  grid-template-columns: 48px 1fr 220px;
+  gap: var(--space-3);
+  height: 360px;
+}
+.ps-toolbar {
+  background: linear-gradient(180deg, var(--bg-surface-sunken-top), var(--bg-surface-sunken-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-md);
+  display: flex; flex-direction: column; align-items: center;
+  padding: var(--space-2); gap: var(--space-2);
+}
+.ps-tool {
+  width: 36px; height: 36px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.ps-tool:hover { background: var(--accent-subtle); }
+.ps-tool.active {
+  /* Donut glow — clear pocket at center keeps the icon legible,
+     bright ring radiates outward. Physical analogue: lit lampshade
+     where the reflector edge glows, not the bulb seen through. */
+  background: radial-gradient(
+    circle at center,
+    var(--accent-subtle) 0%,
+    var(--accent-subtle) 35%,
+    var(--accent-glow-core) 75%,
+    transparent 100%
+  );
+  border-color: var(--accent);
+  color: var(--text-primary);
+  box-shadow: 0 0 12px var(--accent-glow-core),
+              0 0 22px -4px var(--accent-glow-strong),
+              0 1px 0 rgba(255,255,255,0.06) inset;
+}
+.ps-canvas {
+  /* DELIBERATELY opaque, sharp-cornered — Lume stops at the canvas edge */
+  background: #2A2D38;
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 20px var(--accent-glow);
+  display: flex; align-items: center; justify-content: center;
+  color: rgba(238,239,243,0.6);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  position: relative;
+}
+[data-mode="light"] .ps-canvas {
+  background: #1F2127;
+  color: rgba(238,239,243,0.6);
+}
+.ps-canvas .zoom-chip {
+  position: absolute; bottom: 8px; right: 8px;
+  background: rgba(0,0,0,0.4);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: rgba(238,239,243,0.8);
+}
+.ps-canvas-label {
+  position: absolute; top: 8px; left: 8px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: rgba(238,239,243,0.4);
+}
+.ps-right {
+  display: grid; grid-template-rows: 1fr 1fr; gap: var(--space-3);
+}
+.ps-inspector, .ps-layers {
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+.ps-section-title {
+  font-size: 10px; font-weight: 600; color: var(--text-secondary);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  margin-bottom: var(--space-3);
+}
+.ps-insp-row {
+  display: grid; grid-template-columns: 70px 1fr 36px;
+  align-items: center; gap: var(--space-3); font-size: 12px;
+  margin-bottom: var(--space-3);
+}
+.ps-insp-row .lbl { color: var(--text-secondary); }
+.ps-slider {
+  height: 4px;
+  background: linear-gradient(180deg, var(--bg-surface-sunken-top), var(--bg-surface-sunken-btm));
+  border-radius: var(--radius-pill);
+  position: relative;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.05);
+}
+.ps-slider::after {
+  content: ''; position: absolute;
+  left: 0; top: 0; bottom: 0;
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+  border-radius: var(--radius-pill);
+  box-shadow: 0 0 6px var(--accent-glow-strong);
+}
+.ps-slider.s50::after { width: 50%; }
+.ps-slider.s60::after { width: 60%; }
+.ps-slider.s85::after { width: 85%; }
+.ps-slider.s24::after { width: 24%; }
+.ps-slider .knob {
+  position: absolute; top: 50%;
+  width: 12px; height: 12px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-hover));
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 2px var(--bg-surface-raised-top),
+              0 0 0 3px var(--accent),
+              0 0 8px var(--accent-glow-strong);
+}
+.ps-insp-row .val { font-family: var(--font-mono); font-size: 12px; color: var(--text-primary); text-align: right; }
+.ps-layer {
+  display: grid; grid-template-columns: 16px 12px 1fr;
+  align-items: center; gap: var(--space-3);
+  padding: 4px 6px; border-radius: var(--radius-sm);
+  font-size: 13px; position: relative;
+}
+.ps-layer:hover { background: var(--accent-subtle); }
+.ps-layer.selected {
+  background: linear-gradient(180deg, var(--accent-subtle), transparent);
+  box-shadow: 0 0 12px -4px var(--accent-glow-strong);
+}
+.ps-layer.selected::before {
+  content: ''; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px;
+  background: var(--accent); border-radius: 2px;
+  box-shadow: 0 0 4px var(--accent-glow-strong);
+}
+.ps-layer .eye { font-family: var(--font-mono); color: var(--text-secondary); font-size: 12px; }
+.ps-layer .caret { color: var(--text-tertiary); font-size: 10px; }
+
+/* ============================================================
+   §8 — DASHBOARD WITH LUME KPI CARDS
+   ============================================================ */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 2fr;
+  gap: var(--space-5);
+}
+.kpi {
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset;
+}
+.kpi-label {
+  font-size: 11px; color: var(--text-secondary);
+  text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;
+}
+.kpi-value {
+  margin-top: var(--space-3); font-size: 28px; font-weight: 600;
+  letter-spacing: -0.01em; font-family: var(--font-mono);
+  font-feature-settings: 'tnum';
+}
+.kpi-delta { margin-top: var(--space-2); font-size: 12px; color: var(--text-secondary); }
+.kpi-delta.down { color: var(--state-warning-fg); }
+.kpi-delta.up { color: var(--accent); text-shadow: 0 0 6px var(--accent-glow); }
+.dashboard-trend-bars {
+  margin-top: var(--space-4);
+  display: flex; align-items: flex-end; gap: 6px; height: 64px;
+}
+.dashboard-trend-bars div {
+  flex: 1;
+  background: linear-gradient(180deg, var(--accent), var(--accent-hover));
+  border-radius: 2px 2px 0 0;
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+
+/* ============================================================
+   §9 — MODAL with accent-tinted scrim
+   ============================================================ */
+.modal-demo {
+  position: relative;
+  background:
+    radial-gradient(ellipse at 50% 60%, rgba(20,30,50,0.10), transparent 50%),
+    linear-gradient(180deg, var(--bg-surface-sunken-top), var(--bg-surface-sunken-btm));
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.modal-demo::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: var(--bg-modal-overlay);
+}
+.modal {
+  position: relative;
+  background: linear-gradient(180deg, var(--bg-modal-surface-top), var(--bg-modal-surface-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-modal),
+              0 0 32px var(--accent-glow-core),
+              0 0 96px var(--accent-glow);
+  padding: var(--space-6);
+  max-width: 440px;
+  width: 90%;
+}
+.modal h3 { font-size: 18px; margin-bottom: var(--space-3); }
+.modal p { font-size: 14px; color: var(--text-primary); margin-bottom: var(--space-2); }
+.modal p.caveat { color: var(--text-secondary); font-size: 13px; }
+.modal-footer { display: flex; gap: var(--space-3); justify-content: flex-end; margin-top: var(--space-5); }
+
+/* ============================================================
+   §10 — REVISED OPEN QUESTIONS
+   ============================================================ */
+.oq {
+  background: linear-gradient(180deg, var(--bg-surface-top), var(--bg-surface-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+}
+.oq-item {
+  display: grid; grid-template-columns: 28px 1fr; gap: var(--space-4);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--border-subtle-btm);
+}
+.oq-item:last-child { border-bottom: none; }
+.oq-num { font-family: var(--font-mono); font-size: 13px; color: var(--text-tertiary); }
+.oq-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.oq-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.55; }
+
+.split { display: grid; grid-template-columns: 1fr auto; gap: var(--space-4); align-items: baseline; }
+.demo-label {
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--text-tertiary); text-transform: uppercase;
+  letter-spacing: 0.08em; margin-bottom: var(--space-3);
+}
+
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ===================================================== -->
+  <!-- HEADER                                               -->
+  <!-- ===================================================== -->
+  <header class="page-header">
+    <div>
+      <div class="concept-tag">Concept · Lume</div>
+      <h1>Omadia UI — Light-as-material</h1>
+      <div class="subtitle">Sibling preview to <code style="font-family:var(--font-mono);font-size:12px">visual-spec-preview.html</code>. The flat tokens are still there underneath — this is what happens when every surface, accent and transition is reauthored to express the agent-materialization thesis.</div>
+    </div>
+    <div class="controls">
+      <div class="control-group">
+        <label>Mode</label>
+        <div class="toggle-segment" id="modeToggle">
+          <button data-mode="light" aria-pressed="true">Light</button>
+          <button data-mode="dark"  aria-pressed="false">Dark</button>
+        </div>
+      </div>
+      <div class="control-group">
+        <label>Palette</label>
+        <div class="toggle-segment" id="accentToggle">
+          <button data-accent="petrol" aria-pressed="true">Petrol</button>
+          <button data-accent="atelier">Atelier</button>
+          <button data-accent="lagoon">Lagoon</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===================================================== -->
+  <!-- INTRO                                                -->
+  <!-- ===================================================== -->
+  <div class="lume-callout">
+    <b>The thesis.</b> Apple has never shipped "colors and shadows" — they ship a named material per generation
+    (Aqua, Frosted Glass, Spatial Glass, Liquid Glass). Each is physical, named, and everything else flows
+    from it. The current Omadia spec (v0.1) inherits tokens from the Linear/Notion lineage — correct in spirit,
+    but materially flat. <b>Lume is a proposed Omadia material.</b> Light is the structural element; the agent's
+    attention is visible as accent-tinted illumination; UI condenses out of light instead of being printed onto paper.
+    Refraction and glassmorphism are explicitly out (Linear's "ProKit" lesson for productivity-grade UIs).
+  </div>
+
+  <!-- ===================================================== -->
+  <!-- §1 — FLAT vs LUME (the headline comparison)          -->
+  <!-- ===================================================== -->
+  <section class="section">
+    <div class="section-header">
+      <h2>§1 — Flat (v0.1) vs Lume — same primitives</h2>
+      <span class="section-tag">the headline comparison</span>
+    </div>
+    <p class="section-intro">
+      Identical primitives, identical accent, identical spacing. Left side is the v0.1 preview's material
+      (flat fills, hard borders, single-pixel focus rings). Right side is Lume. Watch the button glow, the
+      selected-row halo, the focused input's light bloom, the surface having an actual top-edge.
+    </p>
+
+    <div class="compare-pair">
+      <div class="compare-half flat">
+        <div class="compare-tag">Flat — visual-spec v0.1</div>
+        <button class="btn-flat">Send proposal</button>
+        <div style="margin-top:16px">
+          <div class="row-flat">Anna Schmidt</div>
+          <div class="row-flat selected">Bernd Lutz — selected</div>
+          <div class="row-flat">Cara König</div>
+        </div>
+        <input class="input-flat focused" value="focused input" style="margin-top:16px">
+      </div>
+      <div class="compare-half lume">
+        <div class="compare-tag">Lume — proposed material</div>
+        <button class="lume-btn">Send proposal</button>
+        <div style="margin-top:16px">
+          <div class="lume-row">Anna Schmidt</div>
+          <div class="lume-row selected">Bernd Lutz — selected</div>
+          <div class="lume-row">Cara König</div>
+        </div>
+        <input class="lume-input focused" value="focused input" style="margin-top:16px">
+      </div>
+    </div>
+
+    <div class="lume-callout" style="margin-top:var(--space-5)">
+      <b>What changed concretely:</b> button gets a top-to-bottom gradient + inner highlight + ambient
+      accent shadow (suggests a lit surface, not a paint chip). Selected row gets a feathered halo
+      (radial accent glow under the fill — the "Agent is here" signal). Input focus is no longer just a
+      2px ring — it's a 4px ring <i>plus</i> an outer 4px accent-tinted glow. None of it shouts; all of
+      it adds up to <i>this surface has light on it</i>.
+    </div>
+  </section>
+
+  <!-- ===================================================== -->
+  <!-- §2 — MATERIAL ANATOMY                                -->
+  <!-- ===================================================== -->
+  <section class="section">
+    <div class="section-header">
+      <h2>§2 — Material anatomy</h2>
+      <span class="section-tag">the three forces</span>
+    </div>
+    <p class="section-intro">
+      Three building blocks. Everything else in Lume is a composition of these.
+    </p>
+
+    <div class="anatomy-grid">
+      <div class="anatomy-card">
+        <div class="demo-label">Force 1</div>
+        <div class="anatomy-title">Surface luminosity</div>
+        <div class="anatomy-desc">Every surface is a 180° linear-gradient from a slightly lit top to a slightly settled bottom (~1–2% L difference). Imperceptible in isolation; cumulative effect: surfaces feel illuminated.</div>
+        <div class="surface-grad">linear-gradient(180°, top, btm)</div>
+      </div>
+      <div class="anatomy-card">
+        <div class="demo-label">Force 2</div>
+        <div class="anatomy-title">Accent as illumination</div>
+        <div class="anatomy-desc">The single accent token splits into two visual modes: <code style="font-family:var(--font-mono);font-size:11px">accent</code> (fill, for buttons and indicators), <code style="font-family:var(--font-mono);font-size:11px">accent-glow</code> (soft, for halos and ambient shadow). Same hue, two forms.</div>
+        <div class="glow-demo"><div class="glow-orb"></div></div>
+      </div>
+      <div class="anatomy-card">
+        <div class="demo-label">Force 3</div>
+        <div class="anatomy-title">Directional borders</div>
+        <div class="anatomy-desc">Borders use a lighter top-color and a slightly stronger bottom-color, so an edge reads as catching light from above. With a 1px inner highlight on raised surfaces, this gives every container a perceived thickness.</div>
+        <div class="border-demo">1px border, top-lit</div>
+      </div>
+    </div>
+
+    <div class="lume-callout" style="margin-top:var(--space-5)">
+      <b>Why this and not Liquid Glass:</b> productivity surfaces are data-dominant; refraction, real-time
+      blur, specular highlights on every chrome element would compete with the data. Lume keeps the
+      Apple lineage (light shapes hierarchy) but throttles to what Linear's ProKit team found readable —
+      no refraction, no flat translucency-everywhere. Just enough light for the surface to feel materialized.
+    </div>
+
+    <!-- Corner rule — own block, the 4th force -->
+    <div class="anatomy-card" style="margin-top:var(--space-5);display:grid;grid-template-columns:1fr 1.5fr;gap:var(--space-6);align-items:start">
+      <div>
+        <div class="demo-label">Force 4 — formal language</div>
+        <div class="anatomy-title">Soft corners, with one hard exception</div>
+        <div class="anatomy-desc" style="margin-bottom:var(--space-4)">
+          Light has no edges. If the material is condensed luminosity, its corners must soften.
+          Lume shifts the v0.1 radius scale up by one stop. The exception is the editor boundary:
+          <code style="font-family:var(--font-mono);font-size:11px">canvas-region</code> stays sharp-cornered (radius&nbsp;0) because
+          that's where the agent's material ends and the user's raw work begins. Apple's
+          "concentric corners" rule applies — outermost containers match the macOS window radius (12px).
+        </div>
+        <table style="font-size:12px;width:100%;border-collapse:collapse">
+          <tr style="border-bottom:1px solid var(--border-subtle-btm)"><td style="padding:6px 0;color:var(--text-secondary)">Editor surfaces</td><td style="padding:6px 0;font-family:var(--font-mono);text-align:right">0&nbsp;px</td></tr>
+          <tr style="border-bottom:1px solid var(--border-subtle-btm)"><td style="padding:6px 0;color:var(--text-secondary)">Buttons, inputs, rows</td><td style="padding:6px 0;font-family:var(--font-mono);text-align:right">6&nbsp;px</td></tr>
+          <tr style="border-bottom:1px solid var(--border-subtle-btm)"><td style="padding:6px 0;color:var(--text-secondary)">Containers, cards</td><td style="padding:6px 0;font-family:var(--font-mono);text-align:right">8&nbsp;px</td></tr>
+          <tr style="border-bottom:1px solid var(--border-subtle-btm)"><td style="padding:6px 0;color:var(--text-secondary)">Modals, panes, outer windows</td><td style="padding:6px 0;font-family:var(--font-mono);text-align:right">12&nbsp;px</td></tr>
+          <tr><td style="padding:6px 0;color:var(--text-secondary)">Pills, switches</td><td style="padding:6px 0;font-family:var(--font-mono);text-align:right">999&nbsp;px</td></tr>
+        </table>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4)">
+        <div style="background:linear-gradient(180deg,var(--bg-surface-raised-top),var(--bg-surface-raised-btm));border:1px solid var(--border-default-btm);border-top-color:var(--border-default-top);border-radius:12px;padding:var(--space-4);min-height:80px;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;color:var(--text-tertiary);box-shadow:0 1px 0 rgba(255,255,255,0.06) inset">
+          12&nbsp;px<br>outer window
+        </div>
+        <div style="background:linear-gradient(180deg,var(--bg-surface-raised-top),var(--bg-surface-raised-btm));border:1px solid var(--border-default-btm);border-top-color:var(--border-default-top);border-radius:8px;padding:var(--space-4);min-height:80px;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;color:var(--text-tertiary);box-shadow:0 1px 0 rgba(255,255,255,0.06) inset">
+          8&nbsp;px<br>container
+        </div>
+        <div style="background:linear-gradient(180deg,var(--bg-surface-raised-top),var(--bg-surface-raised-btm));border:1px solid var(--border-default-btm);border-top-color:var(--border-default-top);border-radius:6px;padding:var(--space-4);min-height:80px;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;color:var(--text-tertiary);box-shadow:0 1px 0 rgba(255,255,255,0.06) inset">
+          6&nbsp;px<br>button / row
+        </div>
+        <div style="background:#1F2127;border:2px solid var(--accent);border-radius:0;padding:var(--space-4);min-height:80px;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;color:rgba(238,239,243,0.6);box-shadow:0 0 12px var(--accent-glow)">
+          0&nbsp;px<br>editor surface
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== -->
+  <!-- §3 — PATCH CONDENSATION (signature animation)        -->
+  <!-- ===================================================== -->
+  <section class="section">
+    <div class="section-header">
+      <h2>§3 — Patch condensation</h2>
+      <span class="section-tag">the signature motion</span>
+    </div>
+    <p class="section-intro">
+      The flat spec uses a fade-in + accent-subtle wash that fades out over 800ms. Lume re-tells the
+      same story as <b>condensation</b>: a brief accent-tinted bloom collapses inward and the value
+      settles. The motion is "this just materialized" rather than "this just appeared". Click
+      <b>Replay</b> to retrigger.
+    </p>
+
+    <div class="condense-wrap">
+      <div>
+        <div class="demo-label">Flat (v0.1) — fade-in + highlight wash</div>
+        <div class="condense-stage" id="flatStage">
+          <div class="condense-cell" id="flatCell">
+            <div class="condense-label">Open tickets</div>
+            <div class="condense-value">127</div>
+          </div>
+          <div class="condense-cell">
+            <div class="condense-label">Budget left</div>
+            <div class="condense-value">342&nbsp;h</div>
+          </div>
+          <div class="condense-cell">
+            <div class="condense-label">Overdue</div>
+            <div class="condense-value">3</div>
+          </div>
+        </div>
+        <button class="lume-btn secondary" style="margin-top:12px" onclick="replayFlat()">Replay fade</button>
+      </div>
+      <div>
+        <div class="demo-label">Lume — condensation</div>
+        <div class="condense-stage" id="lumeStage">
+          <div class="condense-cell" id="lumeCell" style="position:relative">
+            <div class="condense-label">Open tickets</div>
+            <div class="condense-value">127</div>
+          </div>
+          <div class="condense-cell">
+            <div class="condense-label">Budget left</div>
+            <div class="condense-value">342&nbsp;h</div>
+          </div>
+          <div class="condense-cell">
+            <div class="condense-label">Overdue</div>
+            <div class="condense-value">3</div>
+          </div>
+        </div>
+        <button class="lume-btn" style="margin-top:12px" onclick="replayLume()">Replay condense</button>
+      </div>
+    </div>
+
+    <div class="lume-callout" style="margin-top:var(--space-5)">
+      <b>Story:</b> when the agent emits a new value, light briefly converges on the cell, the value
+      sharpens out of a faint blur, the bloom collapses inward and disappears. Total duration matches
+      the flat spec (800ms) so we don't slow the system down. The motion is what changes, not the speed.
+    </div>
+  </section>
+
+  <!-- ===================================================== -->
+  <!-- §4 — SELECTION & FOCUS HALOS                         -->
+  <!-- ===================================================== -->
+  <section class="section">
+    <div class="section-header">
+      <h2>§4 — Selection &amp; focus halos</h2>
+      <span class="section-tag">where the agent is</span>
+    </div>
+    <p class="section-intro">
+      In the flat spec, selection is a tinted row + 2px accent left bar. In Lume, the same affordance
+      is wrapped in a soft accent-tinted halo. The user's eye finds "where the agent is working"
+      without reading the whole table. The halo is a perception, not a UI element — it does not add
+      space, doesn't shift layout.
+    </p>
+
+    <div class="halo-grid">
+      <div class="halo-stage">
+        <div class="demo-label">List with selection</div>
+        <div class="lume-row">Search the canvas</div>
+        <div class="lume-row">Add a new pane</div>
+        <div class="lume-row selected">Switch to Norton Commander layout</div>
+        <div class="lume-row">Open keyboard shortcuts</div>
+        <div class="lume-row">Toggle inspector</div>
+      </div>
+      <div class="halo-stage">
+        <div class="demo-label">Input focus &amp; primary button</div>
+        <div style="display:flex;flex-direction:column;gap:16px;margin-top:8px">
+          <input class="lume-input" placeholder="Default input">
+          <input class="lume-input focused" value="Focused input — note the bloom">
+          <div style="display:flex;gap:8px">
+            <button class="lume-btn">Send</button>
+            <button class="lume-btn secondary">Cancel</button>
+            <button class="lume-btn ghost">Skip</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== -->
+  <!-- §5 — THREE PALETTE PROPOSALS                         -->
+  <!-- ===================================================== -->
+  <section class="section">
+    <div class="section-header">
+      <h2>§5 — Three palette proposals</h2>
+      <span class="section-tag">pick one</span>
+    </div>
+    <p class="section-intro">
+      Three palettes, each from a different hue family, each with its own Lume story. All three are
+      separated from semantic states (error 25°, warning 80°, success 150°) by enough hue distance to
+      avoid colour-blindness merge. All three are <i>not</i> the colour every other productivity app
+      uses (no Vercel #0070F3, no Linear purple, no Notion neutral). Switch the Palette control above
+      and watch §6 (Spotlight) and §7 (Editor) repaint in each.
+    </p>
+
+    <div class="grid-3">
+      <div class="accent-card active-choice accent-preview" data-show="petrol">
+        <div class="accent-card-header">
+          <div>
+            <div class="accent-card-name">1 · Petrol</div>
+            <div class="accent-card-meta">#0F7AB8 · OKLCH 0.55 0.16 235</div>
+          </div>
+          <div class="accent-swatch" style="background:#0F7AB8"></div>
+        </div>
+        <button class="lume-btn">Primary</button>
+        <input class="lume-input focused" value="focused" style="width:100%">
+        <div class="lume-row selected">Selected row</div>
+        <div style="margin-top:8px;font-size:12px;color:var(--text-primary);font-weight:600">Computational ambient</div>
+        <div class="accent-card-meta" style="font-family:var(--font-sans);font-size:12px;color:var(--text-secondary);line-height:1.55">
+          Cool steel-blue. The Lume story: <i>steady daylight</i>, the agent as quiet ambient presence. Halo recedes, doesn't shout.
+        </div>
+        <div class="accent-card-meta" style="font-family:var(--font-sans);font-size:11px;color:var(--text-tertiary);line-height:1.5">
+          <b>For:</b> data-aggregation work, long reading sessions, "professional tool" reading.<br>
+          <b>Risk:</b> closest to the 2026-trend-against "Startup Blue" — survives only because desaturation + Lume material pull it away from the cliché.<br>
+          <b>Hue separation:</b> 210° from error · 155° from warning · 85° from success.
+        </div>
+      </div>
+
+      <div class="accent-card accent-preview" data-show="atelier">
+        <div class="accent-card-header">
+          <div>
+            <div class="accent-card-name">2 · Atelier</div>
+            <div class="accent-card-meta">#B36B2E · OKLCH 0.57 0.13 50</div>
+          </div>
+          <div class="accent-swatch" style="background:#B36B2E"></div>
+        </div>
+        <button class="lume-btn">Primary</button>
+        <input class="lume-input focused" value="focused" style="width:100%">
+        <div class="lume-row selected">Selected row</div>
+        <div style="margin-top:8px;font-size:12px;color:var(--text-primary);font-weight:600">Studio warmth</div>
+        <div class="accent-card-meta" style="font-family:var(--font-sans);font-size:12px;color:var(--text-secondary);line-height:1.55">
+          Warm burnt-amber. The Lume story: <i>studio lamp</i>, the agent as craftsman lighting the work. Strongest narrative fit with "Agent materialises UI" — workshop metaphor.
+        </div>
+        <div class="accent-card-meta" style="font-family:var(--font-sans);font-size:11px;color:var(--text-tertiary);line-height:1.5">
+          <b>For:</b> creative work surfaces (proposals, drafts, image edits), warmth as differentiation.<br>
+          <b>Risk:</b> Anthropic-adjacent (their terracotta). Atelier at 50° is meaningfully bolder + further from red than Anthropic's; needs guard against drifting back toward terracotta during implementation.<br>
+          <b>Hue separation:</b> 25° from error · 30° from warning · 100° from success. Tightest separations of the three — but L+C differ enough that no daltonism collision.
+        </div>
+      </div>
+
+      <div class="accent-card accent-preview" data-show="lagoon">
+        <div class="accent-card-header">
+          <div>
+            <div class="accent-card-name">3 · Lagoon <span style="font-family:var(--font-mono);font-size:10px;color:var(--accent);margin-left:6px">REFINED</span></div>
+            <div class="accent-card-meta">#1F8FA3 · OKLCH 0.58 0.12 200</div>
+          </div>
+          <div class="accent-swatch" style="background:#1F8FA3"></div>
+        </div>
+        <button class="lume-btn">Primary</button>
+        <input class="lume-input focused" value="focused" style="width:100%">
+        <div class="lume-row selected">Selected row</div>
+        <div style="margin-top:8px;font-size:12px;color:var(--text-primary);font-weight:600">Lit water · bioluminescence</div>
+        <div class="accent-card-meta" style="font-family:var(--font-sans);font-size:12px;color:var(--text-secondary);line-height:1.55">
+          Refined from earlier Botanical: hue 195°→200° (cyan-shifted from deep pool to lit surface), light-mode L 0.54→0.58, chroma 0.10→0.12. The Lume story is now <i>lit water</i> — light passing through a shallow lagoon — strongest light-metaphor coherence of the three.
+        </div>
+        <div class="accent-card-meta" style="font-family:var(--font-sans);font-size:11px;color:var(--text-tertiary);line-height:1.5">
+          <b>The twist:</b> <code style="font-family:var(--font-mono);font-size:11px">accent-glow-core</code> is bright cyan-white (#B4EEF8), not accent-tinted. The selection halo and focus rings now read as <i>emitted light</i> in light mode, not as accent-tinted shadow. Closes the previous light/dark imbalance.<br>
+          <b>For:</b> the strongest Lume-narrative fit. Differentiates maximally from reference apps.<br>
+          <b>Risk:</b> the brighter, more saturated take edges closer to tropical/consumer territory; restraint in glow alphas is what keeps it professional.<br>
+          <b>Hue separation:</b> 175° from error · 120° from warning · 50° from success · 35° from Petrol.
+        </div>
+      </div>
+    </div>
+
+    <div class="lume-callout" style="margin-top:var(--space-5)">
+      <b>Research grounding.</b> Pantone's 2026 Color of the Year is "Cloud Dancer" — a white — signalling
+      industry-wide retreat from chroma toward atmosphere; Lume itself is the answer to that, the palette
+      then plays a supporting role. The 2026 SaaS-trend literature explicitly calls out movement away from
+      Startup Blue (Vercel/Linear territory) and toward elevated-warm-neutral palettes (Atelier territory)
+      and eco-inspired ocean/moss accents (Botanical territory). All three proposals are positioned in
+      hue-space where no first-tier productivity tool currently lives.<br><br>
+      <b>How to decide.</b> Switch the global Palette above; watch §6 Spotlight, §7 Editor, §8 Dashboard,
+      §9 Modal repaint. The right answer is the one that still feels coherent in <i>all</i> idioms — not
+      just where it's most flattering.
+    </div>
+  </section>
+
+  <!-- ===================================================== -->
+  <!-- §6 — SPOTLIGHT (Lume material showcase)              -->
+  <!-- ===================================================== -->
+  <section class="section">
+    <div class="section-header">
+      <h2>§6 — Spotlight idiom</h2>
+      <span class="section-tag">⌘K · the showcase moment</span>
+    </div>
+    <p class="section-intro">
+      The Spotlight idiom is where Lume earns its keep visually. The whole stage has a radial accent
+      glow centered on the input; the input itself is the brightest point on screen; results inherit
+      the halo treatment from §4. The user's focus is unambiguous because the canvas itself directs
+      light to it.
+    </p>
+
+    <div class="spotlight-stage">
+      <div class="spotlight">
+        <input class="spotlight-input" placeholder="Search projects, files, commands…" value="visual" autofocus>
+        <div class="spotlight-results">
+          <div class="spotlight-section">Files</div>
+          <div class="spotlight-item focused"><span>visual-spec.md</span><span class="path">docs/</span></div>
+          <div class="spotlight-item"><span>visual-spec-preview.html</span><span class="path">docs/</span></div>
+          <div class="spotlight-item"><span>visual-spec-preview-lume.html</span><span class="path">docs/</span></div>
+          <div class="spotlight-item"><span>CONCEPT.md</span><span class="path">/</span></div>
+          <div class="spotlight-section">Commands</div>
+          <div class="spotlight-item"><span>Run: omadia start</span><span class="path">⏎</span></div>
+          <div class="spotlight-item"><span>Set appearance to dark</span><span class="path">⌘D</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== -->
+  <!-- §7 — EDITOR BOUNDARY                                 -->
+  <!-- ===================================================== -->
+  <section class="section">
+    <div class="section-header">
+      <h2>§7 — Editor boundary</h2>
+      <span class="section-tag">where Lume stops</span>
+    </div>
+    <p class="section-intro">
+      The Photoshop-workspace idiom is the critical test. Around the canvas-region everything is Lume
+      material: lit toolbar, accent-glowing active tool, illuminated inspector sliders, halo'd layer
+      selection. <b>Inside</b> the canvas-region itself: dark, sharp-cornered, opaque — explicitly
+      <i>not</i> Lume. The materialization stops at the canvas edge. This is the part of the screen
+      the agent doesn't touch — the user's raw bitmap, untreated.
+    </p>
+
+    <div class="ps">
+      <div class="ps-toolbar">
+        <div class="ps-tool">⬛</div>
+        <div class="ps-tool">⊙</div>
+        <div class="ps-tool active">✎</div>
+        <div class="ps-tool">⤬</div>
+        <div class="ps-tool">✂</div>
+        <div class="ps-tool">■</div>
+        <div class="ps-tool">⤡</div>
+        <div class="ps-tool">⤢</div>
+      </div>
+      <div class="ps-canvas">
+        <div class="ps-canvas-label">CANVAS-REGION — Lume stops here</div>
+        opaque · sharp-cornered · agent-untreated work surface
+        <div class="zoom-chip">32%</div>
+      </div>
+      <div class="ps-right">
+        <div class="ps-inspector">
+          <div class="ps-section-title">Inspector — Brush</div>
+          <div class="ps-insp-row"><span class="lbl">Size</span><div class="ps-slider s50"><div class="knob" style="left:50%"></div></div><span class="val">18</span></div>
+          <div class="ps-insp-row"><span class="lbl">Hardness</span><div class="ps-slider s60"><div class="knob" style="left:60%"></div></div><span class="val">60%</span></div>
+          <div class="ps-insp-row"><span class="lbl">Opacity</span><div class="ps-slider s85"><div class="knob" style="left:85%"></div></div><span class="val">85%</span></div>
+          <div class="ps-insp-row"><span class="lbl">Colour</span><div style="height:16px;background:linear-gradient(180deg,var(--accent),var(--accent-hover));border-radius:var(--radius-sm);box-shadow:0 0 8px var(--accent-glow-strong)"></div><span class="val" style="font-size:11px">accent</span></div>
+          <div class="ps-insp-row"><span class="lbl">Flow</span><div class="ps-slider s24"><div class="knob" style="left:24%"></div></div><span class="val">24%</span></div>
+        </div>
+        <div class="ps-layers">
+          <div class="ps-section-title">Layers</div>
+          <div class="ps-layer"><span class="eye">👁</span><span class="caret">▾</span><span>Adjustments</span></div>
+          <div class="ps-layer" style="padding-left:24px"><span class="eye">👁</span><span class="caret"></span><span>Curves</span></div>
+          <div class="ps-layer" style="padding-left:24px"><span class="eye">👁</span><span class="caret"></span><span>Levels</span></div>
+          <div class="ps-layer selected"><span class="eye">👁</span><span class="caret">▸</span><span>Background</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="lume-callout" style="margin-top:var(--space-5)">
+      <b>Semantic claim:</b> Lume material is the chrome the agent authors. The canvas-region is the
+      content the user owns. The visual contrast (lit surfaces around an opaque work area) doubles as
+      a Tier-1 boundary marker — exactly where Class A direct gestures take over from Tier 2.
+    </div>
+  </section>
+
+  <!-- ===================================================== -->
+  <!-- §8 — DASHBOARD (KPI cards with light)               -->
+  <!-- ===================================================== -->
+  <section class="section">
+    <div class="section-header">
+      <h2>§8 — Dashboard idiom</h2>
+      <span class="section-tag">data first, light second</span>
+    </div>
+    <p class="section-intro">
+      The most-trafficked idiom in walkthrough 1. Lume here is restrained: surfaces have luminosity,
+      KPI deltas inherit a soft accent text-shadow when positive, the trend bars get a faint
+      accent-glow underneath. <b>None of it reduces data readability.</b>
+    </p>
+
+    <div class="dashboard-grid">
+      <div class="kpi">
+        <div class="kpi-label">Open tickets</div>
+        <div class="kpi-value">127</div>
+        <div class="kpi-delta up">▲ 12 vs Mar</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Budget left</div>
+        <div class="kpi-value">342&nbsp;h</div>
+        <div class="kpi-delta down">▼ 8% vs Mar</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Weekly trend</div>
+        <div class="dashboard-trend-bars">
+          <div style="height:20%"></div><div style="height:30%"></div><div style="height:45%"></div>
+          <div style="height:60%"></div><div style="height:75%"></div><div style="height:85%"></div>
+          <div style="height:95%"></div><div style="height:80%"></div><div style="height:70%"></div>
+          <div style="height:55%"></div><div style="height:40%"></div><div style="height:30%"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== -->
+  <!-- §9 — MODAL (accent-tinted scrim)                     -->
+  <!-- ===================================================== -->
+  <section class="section">
+    <div class="section-header">
+      <h2>§9 — Confirmation modal</h2>
+      <span class="section-tag">accent-tinted scrim</span>
+    </div>
+    <p class="section-intro">
+      The scrim behind a modal is no longer neutral black-with-alpha. It's minimally accent-tinted —
+      as if the modal itself is the lit object, the rest of the canvas falls into its shadow. The
+      modal pane carries an outer accent glow, so the eye reads <i>this surface is the active one</i>.
+    </p>
+
+    <div class="modal-demo">
+      <div class="modal">
+        <h3>Confirm send</h3>
+        <p>Send proposal PDF to <strong>contact@acmeinsure.com</strong>?</p>
+        <p class="caveat">This email cannot be unsent.</p>
+        <div class="modal-footer">
+          <button class="lume-btn secondary">Cancel</button>
+          <button class="lume-btn">Send →</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== -->
+  <!-- §10 — OPEN QUESTIONS (Lume-flavoured)                -->
+  <!-- ===================================================== -->
+  <section class="section">
+    <div class="section-header">
+      <h2>§10 — Decision points</h2>
+      <span class="section-tag">if Lume goes forward</span>
+    </div>
+    <p class="section-intro">
+      Lume is a hypothesis. If you want to pursue it, here are the questions it now opens — different
+      from the v0.1 question list because the material decision precedes them.
+    </p>
+
+    <div class="oq">
+      <div class="oq-item">
+        <div class="oq-num">A</div>
+        <div>
+          <div class="oq-title">Do we adopt Lume as the Omadia material identity?</div>
+          <div class="oq-desc">Three options: (a) Yes — rewrite v0.1 to v0.2-Lume, ship as the Omadia look. (b) Partial — keep Lume motion + selection halos, drop surface luminosity (less risk, less differentiation). (c) No — stay with the flat spec, revisit when a brand-design pass happens later.</div>
+        </div>
+      </div>
+      <div class="oq-item">
+        <div class="oq-num">B</div>
+        <div>
+          <div class="oq-title">Glow intensity</div>
+          <div class="oq-desc">Current alphas: 0.18 / 0.30 (light), 0.24 / 0.40 (dark). These are tuned to be subtle. Reviewer call: too quiet to register, or just right? Bigger numbers = "magical" + risk of dated; smaller = "did I imagine that".</div>
+        </div>
+      </div>
+      <div class="oq-item">
+        <div class="oq-num">C</div>
+        <div>
+          <div class="oq-title">Surface luminosity range</div>
+          <div class="oq-desc">Current top→bottom gradient is ~1.5% L. Wider (3–4%) reads as "deliberately lit" and pushes harder on the metaphor. Narrower (0.5%) gets you the cumulative-perception benefit without anyone noticing per-card.</div>
+        </div>
+      </div>
+      <div class="oq-item">
+        <div class="oq-num">D</div>
+        <div>
+          <div class="oq-title">Patch-condensation duration</div>
+          <div class="oq-desc">800ms matches v0.1 fade. With the bloom and blur, this might feel longer than it is. Shorter (500ms) keeps the workflow snappy; full 800ms gives the agent's contribution more visual weight.</div>
+        </div>
+      </div>
+      <div class="oq-item">
+        <div class="oq-num">E</div>
+        <div>
+          <div class="oq-title">Performance budget</div>
+          <div class="oq-desc">Lume uses gradients, multi-layer box-shadows, no blur (intentionally). On a busy canvas (50 rows + 8 panes + active patch animation), this should stay 60fps in Electron + Skia. Worth a spike measurement before locking in.</div>
+        </div>
+      </div>
+      <div class="oq-item">
+        <div class="oq-num">F</div>
+        <div>
+          <div class="oq-title">Palette: Petrol · Atelier · Botanical</div>
+          <div class="oq-desc">Three real proposals in §5, each with its own Lume story, each from a different hue family, each defensible under the 2026 trend research. Pick one — the decision sets the light-source colour for the entire app and is expensive to revisit after implementation.</div>
+        </div>
+      </div>
+      <div class="oq-item">
+        <div class="oq-num">G</div>
+        <div>
+          <div class="oq-title">Reduced-motion fallback</div>
+          <div class="oq-desc">The condensation animation has blur + scale + opacity. Reduced-motion fallback: skip blur and scale, keep opacity-fade. The bloom collapse just becomes an instant glow that fades out. Acceptable degradation, or should we strip even more?</div>
+        </div>
+      </div>
+      <div class="oq-item">
+        <div class="oq-num">H</div>
+        <div>
+          <div class="oq-title">Name</div>
+          <div class="oq-desc">"Lume" is my pick — short, light-evocative, Apple-tradition (substantive material name) without Apple-mimetic. Alternatives: Atelier, Vellum, Glaze, Phosphor. Material-naming is a one-shot decision; rename later is expensive.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+document.getElementById('modeToggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-mode]');
+  if (!btn) return;
+  document.documentElement.setAttribute('data-mode', btn.dataset.mode);
+  document.querySelectorAll('#modeToggle button').forEach(b => {
+    b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+  });
+});
+
+document.getElementById('accentToggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-accent]');
+  if (!btn) return;
+  document.documentElement.setAttribute('data-accent', btn.dataset.accent);
+  document.querySelectorAll('#accentToggle button').forEach(b => {
+    b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+  });
+  document.querySelectorAll('.accent-card').forEach(c => c.classList.remove('active-choice'));
+  const match = document.querySelector('.accent-card.accent-preview[data-show="' + btn.dataset.accent + '"]');
+  if (match) match.classList.add('active-choice');
+});
+
+function replayFlat() {
+  const cell = document.getElementById('flatCell');
+  cell.classList.remove('fade-anim');
+  void cell.offsetWidth;
+  cell.classList.add('fade-anim');
+  // also do an absolute-positioned highlight overlay
+  const stage = document.getElementById('flatStage');
+  const existing = stage.querySelector('.flat-highlight');
+  if (existing) existing.remove();
+  const hl = document.createElement('div');
+  hl.className = 'flat-highlight';
+  hl.style.cssText = `position:absolute;left:16px;right:16px;top:12px;height:36px;
+    background: var(--accent-subtle);border-radius:var(--radius-sm);
+    animation: fade-out 800ms ease-out forwards;pointer-events:none;`;
+  stage.appendChild(hl);
+}
+
+function replayLume() {
+  const cell = document.getElementById('lumeCell');
+  const valueEl = cell.querySelector('.condense-value');
+  valueEl.classList.remove('condense-anim');
+  void valueEl.offsetWidth;
+  valueEl.classList.add('condense-anim');
+  // add the radial pulse
+  const existing = cell.querySelector('.condense-pulse');
+  if (existing) existing.remove();
+  const pulse = document.createElement('div');
+  pulse.className = 'condense-pulse';
+  cell.appendChild(pulse);
+  setTimeout(() => pulse.remove(), 800);
+  // sweep bar
+  const existingBar = cell.querySelector('.condense-bar');
+  if (existingBar) existingBar.remove();
+  const bar = document.createElement('div');
+  bar.className = 'condense-bar';
+  bar.style.bottom = '0';
+  cell.appendChild(bar);
+  setTimeout(() => bar.remove(), 500);
+}
+
+// Fire condensation once on load so it's visible
+window.addEventListener('load', () => {
+  setTimeout(replayLume, 500);
+});
+
+// Add a fade-out keyframe used in replayFlat
+const styleEl = document.createElement('style');
+styleEl.textContent = `@keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }`;
+document.head.appendChild(styleEl);
+</script>
+</body>
+</html>

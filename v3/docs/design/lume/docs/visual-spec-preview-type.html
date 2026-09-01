@@ -1,0 +1,1079 @@
+<!doctype html>
+<html lang="en" data-mode="light" data-arch="d">
+<head>
+<meta charset="utf-8">
+<title>Omadia UI — Typography architectures</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Load all three architectures' fonts so the toggle can swap instantly -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;450;500;600&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;450;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Fraunces:opsz,wght,SOFT@9..144,400..700,0..100&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   LUME TOKENS — reused from visual-spec-preview-lume.html
+   (Lagoon palette, default light/dark)
+   ============================================================ */
+:root {
+  --space-1: 2px; --space-2: 4px; --space-3: 8px;
+  --space-4: 12px; --space-5: 16px; --space-6: 24px; --space-7: 32px;
+  --space-8: 48px; --space-9: 64px;
+  --radius-sm: 6px; --radius-md: 8px; --radius-lg: 12px; --radius-pill: 999px;
+  --motion-quick: 100ms; --motion-smooth: 200ms;
+  --ease-standard: cubic-bezier(0.22, 0.61, 0.36, 1.00);
+
+  /* Architecture A — Inter + JBM, NO serif (falls back to sans) */
+  --font-a-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-a-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-a-serif: 'Inter', system-ui, sans-serif; /* deliberate fallback: A has no serif slot */
+
+  /* Architecture B — Geist Sans + Geist Mono, NO serif */
+  --font-b-sans: 'Geist', system-ui, -apple-system, sans-serif;
+  --font-b-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-b-serif: 'Geist', system-ui, sans-serif; /* deliberate fallback: B has no serif slot */
+
+  /* Architecture C — Geist + Geist Mono + Source Serif 4 */
+  --font-c-sans: 'Geist', system-ui, -apple-system, sans-serif;
+  --font-c-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-c-serif: 'Source Serif 4', Charter, 'Iowan Old Style', Georgia, serif;
+
+  /* Architecture D — Geist + Geist Mono + Fraunces (old-style, characterful, variable SOFT axis) */
+  --font-d-sans: 'Geist', system-ui, -apple-system, sans-serif;
+  --font-d-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-d-serif: 'Fraunces', Charter, 'Iowan Old Style', Georgia, serif;
+}
+
+[data-arch="a"] { --font-sans: var(--font-a-sans); --font-mono: var(--font-a-mono); --font-serif: var(--font-a-serif); }
+[data-arch="b"] { --font-sans: var(--font-b-sans); --font-mono: var(--font-b-mono); --font-serif: var(--font-b-serif); }
+[data-arch="c"] { --font-sans: var(--font-c-sans); --font-mono: var(--font-c-mono); --font-serif: var(--font-c-serif); }
+[data-arch="d"] { --font-sans: var(--font-d-sans); --font-mono: var(--font-d-mono); --font-serif: var(--font-d-serif); }
+
+/* Architecture D — Fraunces gets its SOFT axis tuned for Lume.
+   SOFT 50 sits between the harsh letterpress feel (0) and the marshmallow
+   feel (100). opsz auto-scales with font-size in supported browsers. */
+[data-arch="d"] .agent-prose,
+[data-arch="d"] .wizard-narration,
+[data-arch="d"] .col-prose {
+  font-variation-settings: 'opsz' 18, 'SOFT' 50;
+}
+
+[data-mode="light"] {
+  --bg-canvas-top: #FDFDFE; --bg-canvas-btm: #F7F8FB;
+  --bg-surface-top: #FFFFFF; --bg-surface-btm: #FAFAFD;
+  --bg-surface-raised-top: #FFFFFF; --bg-surface-raised-btm: #FCFCFE;
+  --bg-surface-sunken-top: #F2F3F7; --bg-surface-sunken-btm: #ECEDF2;
+  --text-primary: #1B1D24; --text-secondary: #5B5F6B;
+  --text-tertiary: #8D9099; --text-disabled: #BFC1C6;
+  --text-inverse: #FCFCFD;
+  --border-subtle-top: rgba(20, 24, 36, 0.05);
+  --border-subtle-btm: rgba(20, 24, 36, 0.09);
+  --border-default-top: rgba(20, 24, 36, 0.08);
+  --border-default-btm: rgba(20, 24, 36, 0.14);
+  /* Lagoon palette */
+  --accent: #1F8FA3;
+  --accent-hover: #197D90;
+  --accent-subtle: rgba(31, 143, 163, 0.12);
+  --accent-glow: rgba(60, 175, 195, 0.32);
+  --accent-glow-strong: rgba(60, 175, 195, 0.48);
+  --accent-glow-core: rgba(180, 238, 248, 0.60);
+}
+[data-mode="dark"] {
+  --bg-canvas-top: #232631; --bg-canvas-btm: #1B1D24;
+  --bg-surface-top: #2A2D38; --bg-surface-btm: #23262F;
+  --bg-surface-raised-top: #303440; --bg-surface-raised-btm: #292C37;
+  --bg-surface-sunken-top: #1D1F26; --bg-surface-sunken-btm: #16181E;
+  --text-primary: #EEEFF3; --text-secondary: #B6B9C3;
+  --text-tertiary: #888B95; --text-disabled: #525561;
+  --text-inverse: #1F2127;
+  --border-subtle-top: rgba(255, 255, 255, 0.06);
+  --border-subtle-btm: rgba(0, 0, 0, 0.40);
+  --border-default-top: rgba(255, 255, 255, 0.10);
+  --border-default-btm: rgba(0, 0, 0, 0.50);
+  --accent: #6FC8D6;
+  --accent-hover: #88D2DE;
+  --accent-subtle: rgba(111, 200, 214, 0.20);
+  --accent-glow: rgba(111, 200, 214, 0.32);
+  --accent-glow-strong: rgba(111, 200, 214, 0.48);
+  --accent-glow-core: rgba(210, 245, 250, 0.50);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; min-height: 100%; }
+body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: linear-gradient(180deg, var(--bg-canvas-top) 0%, var(--bg-canvas-btm) 100%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+}
+h1, h2, h3, h4 { margin: 0; font-weight: 600; font-family: var(--font-sans); }
+p { margin: 0; }
+button { font: inherit; cursor: pointer; font-family: var(--font-sans); }
+.mono { font-family: var(--font-mono); font-feature-settings: 'tnum'; }
+.serif { font-family: var(--font-serif); }
+
+/* ============================================================
+   PAGE
+   ============================================================ */
+.page { max-width: 1280px; margin: 0 auto; padding: var(--space-7) var(--space-7) var(--space-9); }
+.page-header {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: var(--space-6); margin-bottom: var(--space-8);
+  padding: var(--space-5) 0 var(--space-6);
+  border-bottom: 1px solid var(--border-subtle-btm);
+  position: sticky; top: 0;
+  background: linear-gradient(180deg, var(--bg-canvas-top) 0%, var(--bg-canvas-top) 80%, transparent 100%);
+  z-index: 100;
+}
+.page-header h1 { font-size: 22px; letter-spacing: -0.005em; }
+.page-header .concept-tag {
+  display: inline-block; margin-bottom: 6px;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+  font-weight: 600; color: var(--accent);
+}
+.page-header .subtitle {
+  margin-top: 4px; color: var(--text-secondary); font-size: 13px;
+}
+
+.controls { display: flex; gap: var(--space-5); align-items: center; }
+.control-group { display: flex; align-items: center; gap: var(--space-3); }
+.control-group label {
+  font-size: 11px; font-weight: 600; color: var(--text-secondary);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.toggle-segment {
+  display: inline-flex;
+  background: linear-gradient(180deg, var(--bg-surface-sunken-top), var(--bg-surface-sunken-btm));
+  padding: 3px; border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+}
+.toggle-segment button {
+  background: transparent; border: none;
+  padding: 4px 12px; border-radius: var(--radius-sm);
+  font-size: 12px; color: var(--text-secondary);
+  transition: all var(--motion-quick) var(--ease-standard);
+}
+.toggle-segment button[aria-pressed="true"] {
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  color: var(--text-primary);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset, 0 1px 2px rgba(0,0,0,0.06);
+}
+
+.section { margin-bottom: var(--space-8); }
+.section-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: var(--space-5); }
+.section-header h2 { font-size: 18px; }
+.section-header .section-tag { font-family: var(--font-mono); font-size: 12px; color: var(--text-tertiary); }
+.section-intro {
+  margin-bottom: var(--space-5); color: var(--text-secondary);
+  font-size: 13px; max-width: 76ch; line-height: 1.6;
+}
+
+.lume-callout {
+  background: linear-gradient(180deg, var(--bg-surface-top), var(--bg-surface-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5);
+  font-size: 13px; color: var(--text-secondary);
+  line-height: 1.6; max-width: 76ch;
+  margin-bottom: var(--space-5);
+}
+.lume-callout b { color: var(--text-primary); }
+
+.card {
+  background: linear-gradient(180deg, var(--bg-surface-top), var(--bg-surface-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+}
+.card-title {
+  font-size: 11px; font-weight: 600; color: var(--text-secondary);
+  text-transform: uppercase; letter-spacing: 0.04em;
+  margin-bottom: var(--space-4);
+}
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-5); }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-5); }
+
+/* ============================================================
+   AGENT PROSE — the showcase block for editorial differentiation
+   ============================================================ */
+.agent-prose {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--text-primary);
+  max-width: 64ch;
+  /* font-optical-sizing: auto works for variable Source Serif */
+  font-optical-sizing: auto;
+}
+.agent-prose p + p { margin-top: var(--space-4); }
+.agent-prose em { font-style: italic; }
+.agent-prose strong { font-weight: 600; }
+
+.prose-label {
+  display: block; font-family: var(--font-sans);
+  font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--accent);
+  margin-bottom: var(--space-3);
+}
+
+/* ============================================================
+   DATA TABLE — primary test for mono performance
+   ============================================================ */
+.tbl {
+  width: 100%; border-collapse: collapse; font-size: 14px;
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-md); overflow: hidden;
+}
+.tbl thead th {
+  padding: 10px 14px; text-align: left;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--text-secondary); font-weight: 600;
+  border-bottom: 1px solid var(--border-subtle-btm);
+  font-family: var(--font-sans);
+}
+.tbl tbody td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border-subtle-btm);
+  font-family: var(--font-sans);
+}
+.tbl tbody tr:last-child td { border-bottom: none; }
+.tbl tbody tr.highlight { background: var(--accent-subtle); }
+.tbl td.num, .tbl th.num {
+  text-align: right; font-family: var(--font-mono);
+  font-feature-settings: 'tnum';
+}
+
+/* ============================================================
+   CODE / TERMINAL — secondary test for mono performance
+   ============================================================ */
+.code-block {
+  font-family: var(--font-mono);
+  font-size: 13px; line-height: 1.55;
+  background: linear-gradient(180deg, var(--bg-surface-sunken-top), var(--bg-surface-sunken-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5);
+  color: var(--text-primary);
+  white-space: pre;
+  overflow-x: auto;
+}
+.code-block .c-key { color: var(--accent); }
+.code-block .c-str { color: var(--text-secondary); }
+.code-block .c-cmt { color: var(--text-tertiary); font-style: italic; }
+
+/* ============================================================
+   GLYPH TEST — disambiguation matrix
+   ============================================================ */
+.glyph-test {
+  font-family: var(--font-mono);
+  font-size: 22px; letter-spacing: 0.08em;
+  background: linear-gradient(180deg, var(--bg-surface-sunken-top), var(--bg-surface-sunken-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  text-align: center;
+  color: var(--text-primary);
+}
+.glyph-test .label {
+  font-family: var(--font-sans);
+  font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-3);
+  letter-spacing: 0.04em;
+}
+
+/* ============================================================
+   ARCHITECTURE-COMPARE — three columns
+   ============================================================ */
+.arch-compare {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-md); overflow: hidden;
+}
+.arch-col {
+  padding: var(--space-5);
+  border-right: 1px solid var(--border-subtle-btm);
+  background: linear-gradient(180deg, var(--bg-surface-top), var(--bg-surface-btm));
+}
+.arch-col:last-child { border-right: none; }
+.arch-tag {
+  font-family: var(--font-mono);
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-tertiary); margin-bottom: var(--space-3);
+}
+.arch-name { font-size: 14px; font-weight: 600; margin-bottom: var(--space-2); font-family: var(--font-sans); }
+.arch-fams { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); margin-bottom: var(--space-4); line-height: 1.5; }
+
+/* Each column applies its OWN architecture's fonts to its preview content,
+   regardless of the global toggle. The toggle only affects the rest of the page. */
+.arch-col[data-show="a"] .col-prose { font-family: var(--font-a-serif); }
+.arch-col[data-show="a"] .col-data  { font-family: var(--font-a-mono); }
+.arch-col[data-show="a"] .col-label { font-family: var(--font-a-sans); }
+.arch-col[data-show="b"] .col-prose { font-family: var(--font-b-serif); }
+.arch-col[data-show="b"] .col-data  { font-family: var(--font-b-mono); }
+.arch-col[data-show="b"] .col-label { font-family: var(--font-b-sans); }
+.arch-col[data-show="c"] .col-prose { font-family: var(--font-c-serif); font-optical-sizing: auto; }
+.arch-col[data-show="c"] .col-data  { font-family: var(--font-c-mono); }
+.arch-col[data-show="c"] .col-label { font-family: var(--font-c-sans); }
+.arch-col[data-show="d"] .col-prose { font-family: var(--font-d-serif); font-variation-settings: 'opsz' 16, 'SOFT' 50; }
+.arch-col[data-show="d"] .col-data  { font-family: var(--font-d-mono); }
+.arch-col[data-show="d"] .col-label { font-family: var(--font-d-sans); }
+
+.col-prose {
+  font-size: 14px; line-height: 1.6; color: var(--text-primary);
+  margin-bottom: var(--space-4);
+}
+.col-data {
+  font-size: 13px; color: var(--text-primary);
+  font-feature-settings: 'tnum';
+  background: var(--bg-surface-sunken-btm);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: var(--space-4);
+  white-space: pre;
+  overflow-x: auto;
+}
+.col-label {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+/* rationale columns (the static side-by-side cards) */
+.rat-card {
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  display: flex; flex-direction: column; gap: var(--space-3);
+}
+.rat-card.recommended {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-subtle),
+              0 0 24px var(--accent-glow);
+}
+.rat-card.recommended::before {
+  content: 'RECOMMENDED';
+  display: inline-block;
+  align-self: flex-start;
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+.rat-name { font-size: 16px; font-weight: 600; }
+.rat-fams { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
+.rat-body { font-size: 13px; color: var(--text-secondary); line-height: 1.55; }
+.rat-body b { color: var(--text-primary); }
+
+/* ============================================================
+   WIZARD PROSE TEST — narration + form mix
+   ============================================================ */
+.wizard-stage {
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  max-width: 640px;
+}
+.wizard-title { font-size: 18px; font-weight: 600; margin-bottom: var(--space-3); }
+.wizard-narration {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  margin-bottom: var(--space-5);
+  font-optical-sizing: auto;
+}
+.wizard-form .form-row {
+  display: grid; grid-template-columns: 120px 1fr;
+  align-items: center; gap: var(--space-4);
+  padding: var(--space-2) 0;
+}
+.wizard-form .form-label {
+  font-family: var(--font-sans);
+  font-size: 11px; color: var(--text-secondary);
+  font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.wizard-form .form-value {
+  font-family: var(--font-sans);
+  font-size: 14px; color: var(--text-primary);
+}
+
+/* ============================================================
+   INSPECTOR (editor-workspace) TEST — dense labels + values
+   ============================================================ */
+.inspector-stage {
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  width: 280px;
+}
+.inspector-title {
+  font-family: var(--font-sans);
+  font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-4);
+}
+.insp-row {
+  display: grid; grid-template-columns: 70px 1fr 40px;
+  align-items: center; gap: var(--space-3);
+  font-size: 12px; margin-bottom: var(--space-3);
+}
+.insp-row .lbl { color: var(--text-secondary); font-family: var(--font-sans); }
+.insp-row .val { font-family: var(--font-mono); font-size: 12px; text-align: right; }
+.insp-slider {
+  height: 4px;
+  background: var(--bg-surface-sunken-btm);
+  border-radius: var(--radius-pill);
+  position: relative;
+}
+.insp-slider::after {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+  background: var(--accent); border-radius: var(--radius-pill);
+  box-shadow: 0 0 6px var(--accent-glow-strong);
+}
+.insp-slider.s50::after { width: 50%; }
+.insp-slider.s60::after { width: 60%; }
+.insp-slider.s85::after { width: 85%; }
+.insp-slider.s24::after { width: 24%; }
+
+/* ============================================================
+   ARCHITECTURE-IDENTITY BAR (visual reminder of current choice)
+   ============================================================ */
+.identity-bar {
+  position: sticky; top: 88px;
+  background: linear-gradient(180deg, var(--bg-surface-raised-top), var(--bg-surface-raised-btm));
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 16px var(--accent-glow);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-5);
+  margin-bottom: var(--space-6);
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12px; z-index: 50;
+}
+.identity-bar .id-arch { font-family: var(--font-mono); font-size: 11px; color: var(--accent); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
+.identity-bar .id-fams { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
+[data-arch="a"] .show-when-a { display: inline; } [data-arch="a"] .show-when-b, [data-arch="a"] .show-when-c, [data-arch="a"] .show-when-d { display: none; }
+[data-arch="b"] .show-when-b { display: inline; } [data-arch="b"] .show-when-a, [data-arch="b"] .show-when-c, [data-arch="b"] .show-when-d { display: none; }
+[data-arch="c"] .show-when-c { display: inline; } [data-arch="c"] .show-when-a, [data-arch="c"] .show-when-b, [data-arch="c"] .show-when-d { display: none; }
+[data-arch="d"] .show-when-d { display: inline; } [data-arch="d"] .show-when-a, [data-arch="d"] .show-when-b, [data-arch="d"] .show-when-c { display: none; }
+
+/* ============================================================
+   OPEN QUESTIONS
+   ============================================================ */
+.oq {
+  background: linear-gradient(180deg, var(--bg-surface-top), var(--bg-surface-btm));
+  border: 1px solid var(--border-subtle-btm);
+  border-top-color: var(--border-subtle-top);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+}
+.oq-item {
+  display: grid; grid-template-columns: 28px 1fr; gap: var(--space-4);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--border-subtle-btm);
+}
+.oq-item:last-child { border-bottom: none; }
+.oq-num { font-family: var(--font-mono); font-size: 13px; color: var(--text-tertiary); }
+.oq-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.oq-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.55; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="page-header">
+    <div>
+      <div class="concept-tag">Typography · Lume</div>
+      <h1>Omadia UI — Type architecture options</h1>
+      <div class="subtitle">Three real candidates. Same Lume material, same Lagoon palette — only the typeface architecture changes. Toggle to see the rest of the page repaint.</div>
+    </div>
+    <div class="controls">
+      <div class="control-group">
+        <label>Mode</label>
+        <div class="toggle-segment" id="modeToggle">
+          <button data-mode="light" aria-pressed="true">Light</button>
+          <button data-mode="dark"  aria-pressed="false">Dark</button>
+        </div>
+      </div>
+      <div class="control-group">
+        <label>Architecture</label>
+        <div class="toggle-segment" id="archToggle">
+          <button data-arch="a">A · Safe</button>
+          <button data-arch="b">B · Geist</button>
+          <button data-arch="c">C · Source Serif</button>
+          <button data-arch="d" aria-pressed="true">D · Fraunces</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Identity bar -->
+  <div class="identity-bar">
+    <span class="id-arch">
+      <span class="show-when-a">Architecture A — Safe / Defensive</span>
+      <span class="show-when-b">Architecture B — Distinctive Modern</span>
+      <span class="show-when-c">Architecture C — Editorial Mix (Source Serif 4)</span>
+      <span class="show-when-d">Architecture D — Editorial / Characterful (Fraunces)</span>
+    </span>
+    <span class="id-fams">
+      <span class="show-when-a">Inter · JetBrains Mono · (sans fallback for prose)</span>
+      <span class="show-when-b">Geist · Geist Mono · (sans fallback for prose)</span>
+      <span class="show-when-c">Geist · Geist Mono · Source Serif 4</span>
+      <span class="show-when-d">Geist · Geist Mono · Fraunces (SOFT 50, opsz auto)</span>
+    </span>
+  </div>
+
+  <!-- ============================================================
+       INTRO
+       ============================================================ -->
+  <section class="section">
+    <div class="lume-callout">
+      <b>The thesis.</b> The current v0.2 spec ships Inter + JetBrains Mono — the same combination
+      Linear, Notion (pre-Diatype) and most 2020-2024 productivity tools use. That's the "Startup
+      Blue" of typography: safe, free, identical to everyone else. Lume is a distinctive material;
+      Lagoon is a distinctive palette; <i>Type cannot be the place where we revert to defensive
+      defaults.</i> This preview compares three real architectures, all variable-axis, all
+      open-source, all license-free.
+    </div>
+  </section>
+
+  <!-- ============================================================
+       §1 — THREE ARCHITECTURE CARDS (rationale)
+       ============================================================ -->
+  <section class="section">
+    <div class="section-header">
+      <h2>§1 — Four architectures</h2>
+      <span class="section-tag">pick one</span>
+    </div>
+
+    <div class="grid-2">
+      <div class="rat-card">
+        <div class="rat-name">A · Safe / Defensive</div>
+        <div class="rat-fams">Inter · JetBrains Mono</div>
+        <div class="rat-body">
+          The current v0.2 baseline. Inter is the most-adopted UI sans of the 2020s — Linear, Vercel
+          (pre-Geist), Notion (pre-Diatype) all sat here. JetBrains Mono is its mono counterpart
+          across the dev-tool stack. Both are free, variable-axis, screen-optimised.<br><br>
+          <b>For:</b> minimum adoption risk, zero licensing complexity, immediate developer familiarity.<br>
+          <b>Against (load-bearing):</b> <i>zero typographic differentiation.</i> Anyone using Linear
+          alongside Omadia would not feel a typeface distinction. Lume's material story is undermined
+          by chrome that looks like everyone else's.<br>
+          <b>Lume coherence:</b> functional, not narrative. The fonts don't fight Lume, but they don't reinforce it either.
+        </div>
+      </div>
+
+      <div class="rat-card">
+        <div class="rat-name">B · Distinctive Modern</div>
+        <div class="rat-fams">Geist · Geist Mono</div>
+        <div class="rat-body">
+          Vercel commissioned Geist in 2023 specifically because "existing monospace fonts" weren't
+          good enough for code-dense developer UIs. The result is a Swiss-design-inspired family with
+          angular terminals, high x-height, short descenders, and a Sans/Mono pair designed as
+          siblings (weights match across families perfectly). Open-source, MIT-licensed.<br><br>
+          <b>For:</b> distinctive without being weird; same effort as A; mono and sans were designed
+          together (no "the data column reads heavier than the prose" issue Inter+JBM has).<br>
+          <b>Against:</b> Vercel-adjacent signal — heavy Vercel users may feel a familiarity tax.
+          No editorial slot — agent-prose still lives in the sans family.<br>
+          <b>Lume coherence:</b> strong. Angular Swiss-precision terminals read as <i>materialised</i>,
+          not as <i>brushed</i>. The family's deliberate geometry matches Lume's "condensed from light" clarity.
+        </div>
+      </div>
+
+      <div class="rat-card">
+        <div class="rat-name">C · Editorial — Source Serif</div>
+        <div class="rat-fams">Geist · Geist Mono · Source Serif 4</div>
+        <div class="rat-body">
+          Architecture B plus a third slot: editorial serif. Source Serif 4 is Adobe's variable-axis
+          OFL-licensed serif with explicit optical-sizing for body reading. Neutral-transitional —
+          unobtrusive, designed to be a body face that doesn't compete with content.<br><br>
+          <b>For:</b> alignment with the 2026 editorial-serif resurgence; maximum differentiation
+          from Inter-SaaS-default; editorial signal makes the agent's narration feel <i>authored</i>.<br>
+          <b>Against (load-bearing):</b> <i>architecturally identical to Anthropic's approach</i>
+          (Styrene+Tiempos transitional pair). The specific fonts differ (Geist vs Styrene,
+          Source Serif vs Tiempos) but the typographic <i>register</i> reads in the same room.
+          Same risk as Atelier-palette ruled out earlier for Anthropic-adjacency.<br>
+          <b>Lume coherence:</b> strong, but the serif itself is neutral — it doesn't echo Lume's
+          material in any way.
+        </div>
+      </div>
+
+      <div class="rat-card recommended">
+        <div class="rat-name">D · Editorial — Fraunces (with SOFT axis)</div>
+        <div class="rat-fams">Geist · Geist Mono · Fraunces (var. opsz + SOFT)</div>
+        <div class="rat-body">
+          Same editorial-mix architecture as C, but Fraunces in the serif slot instead of Source
+          Serif 4. Fraunces is an old-style-revival by Undercase Type — characterful (ductus,
+          stress, distinct terminals), OFL-licensed, with two extra variable axes beyond weight:
+          <code class="mono">opsz</code> (9–144 optical sizing) and <code class="mono">SOFT</code>
+          (0–100, where 0 = sharp letterpress, 100 = soft marshmallow).<br><br>
+          <b>For:</b> escapes the Anthropic-adjacent room that C sits in. Fraunces has voice —
+          when the agent narrates, the prose <i>has personality</i>, not just "editorial dignity".<br>
+          <b>Lume-specific:</b> the <code class="mono">SOFT</code> axis literally responds to the
+          material. We tune SOFT 50 on Lume surfaces (the agent's lit chrome) and could push SOFT
+          70 on a longer prose-pane (more "warmth as light spreads through paper"). The type
+          itself participates in the material story — neither A, B nor C can do this.<br>
+          <b>Against:</b> characterful serifs are polarising — some users love them in
+          productivity tools, others find them too literary. Test in §3 below before locking.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       §2 — THE THREE ARCHITECTURES SIDE-BY-SIDE
+       ============================================================ -->
+  <section class="section">
+    <div class="section-header">
+      <h2>§2 — Side-by-side, same content</h2>
+      <span class="section-tag">the visible difference</span>
+    </div>
+    <p class="section-intro">
+      Each column renders in its <i>own</i> architecture's fonts, regardless of the global toggle.
+      Identical content — an agent prose excerpt, a data block, a label. Compare prose warmth,
+      digit precision, label authority.
+    </p>
+
+    <div class="arch-compare">
+      <div class="arch-col" data-show="a">
+        <div class="arch-tag">A · Safe</div>
+        <div class="arch-name">Inter · JetBrains Mono</div>
+        <div class="arch-fams">Sans Inter · Mono JetBrains Mono · Prose Inter</div>
+
+        <div class="col-prose">
+          Three people are under budget — Anna, Bernd, Cara. The Jira tickets show their hours
+          dropping below the 8-hour threshold over the last two weeks.
+        </div>
+
+        <div class="col-data">Anna Schmidt   12 open    5.0 h
+Bernd Lutz      8 open    7.5 h
+Cara König     15 open   22.0 h
+Daniel Roth    22 open   31.5 h</div>
+
+        <div class="col-label">OWNERS UNDER BUDGET · APR 2026</div>
+      </div>
+
+      <div class="arch-col" data-show="b">
+        <div class="arch-tag">B · Geist</div>
+        <div class="arch-name">Geist · Geist Mono</div>
+        <div class="arch-fams">Sans Geist · Mono Geist Mono · Prose Geist</div>
+
+        <div class="col-prose">
+          Three people are under budget — Anna, Bernd, Cara. The Jira tickets show their hours
+          dropping below the 8-hour threshold over the last two weeks.
+        </div>
+
+        <div class="col-data">Anna Schmidt   12 open    5.0 h
+Bernd Lutz      8 open    7.5 h
+Cara König     15 open   22.0 h
+Daniel Roth    22 open   31.5 h</div>
+
+        <div class="col-label">OWNERS UNDER BUDGET · APR 2026</div>
+      </div>
+
+      <div class="arch-col" data-show="c">
+        <div class="arch-tag">C · Source Serif</div>
+        <div class="arch-name">Geist · Geist Mono · Source Serif 4</div>
+        <div class="arch-fams">Sans Geist · Mono Geist Mono · Prose Source Serif 4</div>
+
+        <div class="col-prose">
+          Three people are under budget — Anna, Bernd, Cara. The Jira tickets show their hours
+          dropping below the 8-hour threshold over the last two weeks.
+        </div>
+
+        <div class="col-data">Anna Schmidt   12 open    5.0 h
+Bernd Lutz      8 open    7.5 h
+Cara König     15 open   22.0 h
+Daniel Roth    22 open   31.5 h</div>
+
+        <div class="col-label">OWNERS UNDER BUDGET · APR 2026</div>
+      </div>
+
+      <div class="arch-col" data-show="d">
+        <div class="arch-tag">D · Fraunces (rec.)</div>
+        <div class="arch-name">Geist · Geist Mono · Fraunces</div>
+        <div class="arch-fams">Sans Geist · Mono Geist Mono · Prose Fraunces SOFT 50</div>
+
+        <div class="col-prose">
+          Three people are under budget — Anna, Bernd, Cara. The Jira tickets show their hours
+          dropping below the 8-hour threshold over the last two weeks.
+        </div>
+
+        <div class="col-data">Anna Schmidt   12 open    5.0 h
+Bernd Lutz      8 open    7.5 h
+Cara König     15 open   22.0 h
+Daniel Roth    22 open   31.5 h</div>
+
+        <div class="col-label">OWNERS UNDER BUDGET · APR 2026</div>
+      </div>
+    </div>
+
+    <div class="lume-callout" style="margin-top:var(--space-5)">
+      <b>What to look for:</b> in the prose row, watch warmth and authority. A has Inter — quiet,
+      neutral, identical to the surrounding UI. B has Geist — precise, modern, slightly cooler.
+      C has Source Serif 4 — the prose now has a different voice from the structure around it.
+      The agent's narration reads as <i>narration</i>, not as label text.<br><br>
+      In the data row: A reads slightly chunky (JBM digits at 13px). B reads tighter, more
+      proportional (Geist Mono's tabular figures are specifically tuned for sibling-sans pairing).
+      C is identical to B in the data row.
+    </div>
+  </section>
+
+  <!-- ============================================================
+       §3 — AGENT PROSE (showcase for editorial differentiation)
+       ============================================================ -->
+  <section class="section">
+    <div class="section-header">
+      <h2>§3 — Agent prose at full size</h2>
+      <span class="section-tag">where the serif slot earns its keep</span>
+    </div>
+    <p class="section-intro">
+      The full Walkthrough 4 live-research narration as the agent might emit it, rendered in the
+      <b>currently-selected architecture</b>. Toggle to see prose change.
+    </p>
+
+    <div class="card" style="padding: var(--space-7)">
+      <span class="prose-label">Agent · live research narration</span>
+      <div class="agent-prose">
+        <p>
+          I&rsquo;ve pulled the public-company filings for the three candidates and cross-referenced
+          their AI-strategy disclosures over the past four quarters. Two patterns stand out.
+        </p>
+        <p>
+          AcmeInsure has been quietly assembling an in-house ML platform since Q2 last year &mdash;
+          three senior hires from competitors, two acquisitions of small claims-modeling startups,
+          and a public statement at their Q3 earnings call about "owning the underwriting stack."
+          They are the most internally-confident of the three.
+        </p>
+        <p>
+          NorthClaim, by contrast, has shifted to vendor partnerships &mdash; specifically the
+          announcement of a multi-year contract with a regional Anthropic reseller in January.
+          Their messaging frames AI as <em>infrastructure they consume</em>, not as a capability
+          they own. The product implications are different: shorter sales cycles, but stronger
+          dependency on the vendor's roadmap.
+        </p>
+        <p>
+          For the proposal, this means <strong>AcmeInsure wants to see a co-development pitch
+          and a path to bring the work in-house</strong>, while NorthClaim wants a managed-service
+          framing. The same product, two different stories.
+        </p>
+      </div>
+    </div>
+
+    <div class="lume-callout" style="margin-top:var(--space-5)">
+      <b>Architecture C only:</b> the prose above runs in Source Serif 4 at 16px with optical-sizing
+      enabled, line-height 1.65, max-width 64ch. The serif gives weight to the analysis. Italic and
+      bold both feel authored — designed for prose, not for UI labels.<br><br>
+      <b>Architectures A &amp; B:</b> the same prose runs in the sans family (Inter for A, Geist for B).
+      Still legible, but reads as <i>system output</i> rather than as <i>agent reasoning</i>. Watch
+      what happens to the italic <em>"infrastructure they consume"</em> — in sans-italic, it feels
+      like emphasis; in serif-italic, it feels like a quote.
+    </div>
+  </section>
+
+  <!-- ============================================================
+       §4 — DATA TABLE STRESS-TEST
+       ============================================================ -->
+  <section class="section">
+    <div class="section-header">
+      <h2>§4 — Data table</h2>
+      <span class="section-tag">mono performance under Lume</span>
+    </div>
+    <p class="section-intro">
+      Lume surfaces have a vertical luminosity gradient. Mono fonts need to hold their digit weight
+      against a non-flat background. Toggle to see how each mono performs.
+    </p>
+
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Owner</th>
+          <th class="num">Open</th>
+          <th class="num">Budget Left</th>
+          <th>Status</th>
+          <th class="num">Hours Δ</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="highlight">
+          <td>Anna Schmidt</td>
+          <td class="num">12</td>
+          <td class="num">5.0 h</td>
+          <td>out of budget</td>
+          <td class="num">−2.5 h</td>
+        </tr>
+        <tr>
+          <td>Bernd Lutz</td>
+          <td class="num">8</td>
+          <td class="num">7.5 h</td>
+          <td>under budget</td>
+          <td class="num">−0.5 h</td>
+        </tr>
+        <tr>
+          <td>Cara König</td>
+          <td class="num">15</td>
+          <td class="num">22.0 h</td>
+          <td>ok</td>
+          <td class="num">+4.0 h</td>
+        </tr>
+        <tr>
+          <td>Daniel Roth</td>
+          <td class="num">22</td>
+          <td class="num">31.5 h</td>
+          <td>ok</td>
+          <td class="num">+1.0 h</td>
+        </tr>
+        <tr>
+          <td>Eva Weiß</td>
+          <td class="num">6</td>
+          <td class="num">2.0 h</td>
+          <td>out of budget</td>
+          <td class="num">−6.0 h</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ============================================================
+       §5 — CODE / TERMINAL BLOCK
+       ============================================================ -->
+  <section class="section">
+    <div class="section-header">
+      <h2>§5 — Code / terminal</h2>
+      <span class="section-tag">mono ligature + glyph test</span>
+    </div>
+    <p class="section-intro">
+      Real surface event payload, with ligatures (<code class="mono">!=</code>,
+      <code class="mono">&gt;=</code>) and code-style highlighting. Toggle to see how each mono
+      handles tight spacing + ligatures + the digit-letter-disambiguation glyphs.
+    </p>
+
+    <div class="code-block"><span class="c-cmt">// surface_patch arriving from Tier 2</span>
+{
+  <span class="c-key">"type"</span>: <span class="c-str">"surface_patch"</span>,
+  <span class="c-key">"canvasSessionId"</span>: <span class="c-str">"cv-acme-q1-2026-0117"</span>,
+  <span class="c-key">"surfaceSeq"</span>: 1042,
+  <span class="c-key">"basedOnRevision"</span>: 4,
+  <span class="c-key">"producesRevision"</span>: 5,
+  <span class="c-key">"patches"</span>: [
+    { <span class="c-key">"op"</span>: <span class="c-str">"add-column"</span>, <span class="c-key">"target"</span>: <span class="c-str">"tbl-owners"</span>,
+      <span class="c-key">"column"</span>: {
+        <span class="c-key">"id"</span>: <span class="c-str">"vacation"</span>,
+        <span class="c-key">"label"</span>: <span class="c-str">"Out"</span>,
+        <span class="c-key">"data"</span>: [<span class="c-str">"anna"</span>, <span class="c-str">"cara"</span>],
+        <span class="c-key">"width"</span>: 80
+      }
+    }
+  ]
+}
+
+<span class="c-cmt">// glyph disambiguation in monospace context:</span>
+<span class="c-cmt">// digits  →</span> 0 1 2 3 4 5 6 7 8 9
+<span class="c-cmt">// confusables →</span> 0/O · 1/l/I · 5/S · 8/B
+<span class="c-cmt">// ligatures →</span> != &gt;= -&gt; =&gt; &lt;= == &amp;&amp; ||</div>
+  </section>
+
+  <!-- ============================================================
+       §6 — GLYPH TEST
+       ============================================================ -->
+  <section class="section">
+    <div class="section-header">
+      <h2>§6 — Glyph disambiguation</h2>
+      <span class="section-tag">large size, every confusable</span>
+    </div>
+    <p class="section-intro">
+      The disambiguation that matters for financial data and IDs. JetBrains Mono and Geist Mono both
+      handle these well; Geist Mono is slightly sharper at the angular terminals of 1 and l.
+    </p>
+
+    <div class="glyph-test">
+      <div class="label">DIGITS · MONO @ 22PX</div>
+      0&nbsp; 1&nbsp; 2&nbsp; 3&nbsp; 4&nbsp; 5&nbsp; 6&nbsp; 7&nbsp; 8&nbsp; 9
+    </div>
+    <div class="glyph-test" style="margin-top:var(--space-4)">
+      <div class="label">CONFUSABLES · 0/O · 1/l/I · 5/S · 8/B · 2/Z · 6/G</div>
+      0 O 1 l I 5 S 8 B 2 Z 6 G
+    </div>
+    <div class="glyph-test" style="margin-top:var(--space-4)">
+      <div class="label">LIGATURES (where supported)</div>
+      != &nbsp;&gt;= &nbsp;-&gt; &nbsp;=&gt; &nbsp;&lt;= &nbsp;== &nbsp;&amp;&amp; &nbsp;||
+    </div>
+  </section>
+
+  <!-- ============================================================
+       §7 — WIZARD PROSE + FORM (mixed surface)
+       ============================================================ -->
+  <section class="section">
+    <div class="section-header">
+      <h2>§7 — Wizard idiom — prose + form</h2>
+      <span class="section-tag">where serif and sans share a surface</span>
+    </div>
+    <p class="section-intro">
+      In Architecture C, this is where the editorial split shows its design discipline: the agent's
+      narration is serif, the form labels are sans, the values are sans. The two registers coexist
+      on the same surface without competing.
+    </p>
+
+    <div class="wizard-stage">
+      <div class="wizard-title">Sales Proposal — AcmeInsure</div>
+      <div class="wizard-narration">
+        Based on your inputs so far, I&rsquo;ve drafted a co-development proposal that mirrors
+        AcmeInsure&rsquo;s public messaging about owning the underwriting stack. The pricing tier
+        is set to <em>Enterprise + 12-month evaluation</em>; if you&rsquo;d rather lead with the
+        managed-service framing, I can swap that out before generating the PDF.
+      </div>
+
+      <div class="wizard-form">
+        <div class="form-row">
+          <div class="form-label">Customer</div>
+          <div class="form-value">AcmeInsure</div>
+        </div>
+        <div class="form-row">
+          <div class="form-label">Branch</div>
+          <div class="form-value">Insurance</div>
+        </div>
+        <div class="form-row">
+          <div class="form-label">Tier</div>
+          <div class="form-value">Enterprise + 12-month evaluation</div>
+        </div>
+        <div class="form-row">
+          <div class="form-label">Use case</div>
+          <div class="form-value">Claims triage + automated damage assessment + escalation routing</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       §8 — EDITOR INSPECTOR (label + numeric value dense surface)
+       ============================================================ -->
+  <section class="section">
+    <div class="section-header">
+      <h2>§8 — Editor inspector</h2>
+      <span class="section-tag">dense labels + numeric values</span>
+    </div>
+    <p class="section-intro">
+      The Photoshop-workspace inspector — all-sans labels + all-mono values, no prose. This is
+      where Architectures B and C are identical (both Geist Sans + Geist Mono) and A differs
+      (Inter + JBM). Watch the label/value rhythm.
+    </p>
+
+    <div class="inspector-stage">
+      <div class="inspector-title">Inspector — Brush</div>
+      <div class="insp-row"><span class="lbl">Size</span><div class="insp-slider s50"></div><span class="val">18 px</span></div>
+      <div class="insp-row"><span class="lbl">Hardness</span><div class="insp-slider s60"></div><span class="val">60%</span></div>
+      <div class="insp-row"><span class="lbl">Opacity</span><div class="insp-slider s85"></div><span class="val">85%</span></div>
+      <div class="insp-row"><span class="lbl">Flow</span><div class="insp-slider s24"></div><span class="val">24%</span></div>
+      <div class="insp-row"><span class="lbl">Spacing</span><div class="insp-slider s50"></div><span class="val">12 px</span></div>
+      <div class="insp-row"><span class="lbl">Smoothing</span><div class="insp-slider s60"></div><span class="val">42%</span></div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       §9 — DECISION POINTS
+       ============================================================ -->
+  <section class="section">
+    <div class="section-header">
+      <h2>§9 — Decision points</h2>
+      <span class="section-tag">lock these to ship v0.3</span>
+    </div>
+
+    <div class="oq">
+      <div class="oq-item">
+        <div class="oq-num">A</div>
+        <div>
+          <div class="oq-title">Architecture choice — A / B / C / D</div>
+          <div class="oq-desc">Updated recommendation: <b>D (Editorial · Fraunces)</b>. Same architecture as C, but the Fraunces serif escapes the Anthropic-adjacency zone Source Serif 4 sits in, and the variable SOFT axis literally tunes the type to Lume's light-as-material thesis. C remains a valid fallback if Fraunces tests too characterful for productivity-tool use. Newsreader (Production Type, OFL, screen-news-reading focus) is a documented third serif option not built into this preview — easy to swap if both C and D miss.</div>
+        </div>
+      </div>
+      <div class="oq-item">
+        <div class="oq-num">B</div>
+        <div>
+          <div class="oq-title">Skill rule — when does the agent emit serif vs sans?</div>
+          <div class="oq-desc">If C is chosen: the agent's prose-mode <code>text</code> primitive renders in serif when it's <i>narration, analysis, or summary</i>; sans when it's <i>label, caption, instruction, or eyebrow</i>. Rule needs codification in the UI Skill alongside the palette-binding protocol.</div>
+        </div>
+      </div>
+      <div class="oq-item">
+        <div class="oq-num">C</div>
+        <div>
+          <div class="oq-title">Type-scale revision for serif slot</div>
+          <div class="oq-desc">Source Serif 4 at body sizes wants <i>slightly larger</i> than Geist sans (serifs need air). Spec needs a separate type-scale token for prose-mode, ~+1px relative to the sans body scale at each step.</div>
+        </div>
+      </div>
+      <div class="oq-item">
+        <div class="oq-num">D</div>
+        <div>
+          <div class="oq-title">Variable-axis usage</div>
+          <div class="oq-desc">All families are variable. Spec should use optical-sizing on the serif automatically per font-size, and constrain weight usage to a small set (400 / 500 / 600). Geist's slant axis unused in v1. <b>If D ships:</b> the Fraunces SOFT axis becomes a small theme-token — SOFT 50 on Lume-lit surfaces, SOFT 70 on long-form prose panes, SOFT 30 on dense data labels. Three values total, codified, not free-form.</div>
+        </div>
+      </div>
+      <div class="oq-item">
+        <div class="oq-num">E</div>
+        <div>
+          <div class="oq-title">Font loading strategy</div>
+          <div class="oq-desc">Three variable-axis families × two-three weights subset each ≈ 250-350KB total when subsetted to Latin + numerics + ligatures. Acceptable. Strategy: preload the sans for FCP, defer mono and serif. Variable axis means one file per family, not nine.</div>
+        </div>
+      </div>
+      <div class="oq-item">
+        <div class="oq-num">F</div>
+        <div>
+          <div class="oq-title">System-font fallback strategy</div>
+          <div class="oq-desc">Font-display swap; system-ui sans, ui-monospace mono, Charter/Iowan/Georgia serif fallback chain so the page renders immediately and re-renders to the chosen architecture when fonts arrive. Same pattern as v0.1, fonts only change.</div>
+        </div>
+      </div>
+      <div class="oq-item">
+        <div class="oq-num">G</div>
+        <div>
+          <div class="oq-title">Are the three architectures user-bindable too, like the palettes?</div>
+          <div class="oq-desc">My take: no. Palette is identity-level personal preference (warm vs cool). Typography is product-identity. Letting the user swap to "Architecture A" defeats the differentiation argument. A single architecture ships. Possibly revisit in v2 if user-research argues otherwise.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+document.getElementById('modeToggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-mode]');
+  if (!btn) return;
+  document.documentElement.setAttribute('data-mode', btn.dataset.mode);
+  document.querySelectorAll('#modeToggle button').forEach(b => {
+    b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+  });
+});
+
+document.getElementById('archToggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-arch]');
+  if (!btn) return;
+  document.documentElement.setAttribute('data-arch', btn.dataset.arch);
+  document.querySelectorAll('#archToggle button').forEach(b => {
+    b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+  });
+});
+</script>
+</body>
+</html>

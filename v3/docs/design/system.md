@@ -6,9 +6,9 @@
 > do/don't rules per screen live in [`principles.md`](principles.md).
 >
 > Version 2 — 2026-08-22 — restyled onto **Lume**, palaia's shared design system
-> (source of truth: [`../lume/colors_and_type.css`](../lume/colors_and_type.css),
-> written up in [`../lume/visual-spec.md`](../lume/visual-spec.md), palaia's own
-> binding decisions in [`../lume/README.md`](../lume/README.md)). Version 1's
+> (source of truth: [`lume/colors_and_type.css`](lume/colors_and_type.css),
+> written up in [`lume/docs/visual-spec.md`](lume/docs/visual-spec.md), palaia's own
+> binding decisions in [`lume/README.md`](lume/README.md)). Version 1's
 > bespoke "warm paper / verdigris" token system is retired; this document now
 > describes how palaia binds Lume, not an invented parallel system. Still
 > grounded in MASTERPLAN §3 (P7), §4 (UX doctrine), §5.5, §5.7 and §6.
@@ -100,12 +100,12 @@ Three deliberate consequences:
 
 ## 1. Design tokens
 
-**Source of truth: [`../lume/colors_and_type.css`](../lume/colors_and_type.css).**
+**Source of truth: [`lume/colors_and_type.css`](lume/colors_and_type.css).**
 Every value in this document and every mockup is copied or mechanically derived
 from that file — never invented. Change a value there first, then mirror it here
 and in every mockup's token block (still byte-identical to each other, per §4).
-[`../lume/visual-spec.md`](../lume/visual-spec.md) is the written spec behind the
-tokens; [`../lume/README.md`](../lume/README.md) records palaia's four binding
+[`lume/docs/visual-spec.md`](lume/docs/visual-spec.md) is the written spec behind the
+tokens; [`lume/README.md`](lume/README.md) records palaia's four binding
 decisions on top of it, restated here because they are load-bearing for this
 document:
 
@@ -541,7 +541,7 @@ well and read badly). No accent, no exclamation mark, no emoji — see §1.6.
 
 Toast (bottom-right, 4s, one line + optional undo), inline validation (never a
 modal), `lume-skeleton` rows (never a full-screen spinner — the one exception is
-button-in-flight text, §7.3 of `../lume/visual-spec.md`), destructive
+button-in-flight text, §7.3 of `lume/docs/visual-spec.md`), destructive
 confirmation (dialog naming exactly what will change and how to undo it).
 
 ## 3. Tone of voice for UI copy
@@ -674,5 +674,5 @@ markup differ. Keep it that way: a change to a shared component means the same
 edit in all five files, and `md5` of that slice must match across them.
 
 **When you change a token**, change it in
-[`../lume/colors_and_type.css`](../lume/colors_and_type.css) first, then mirror
+[`lume/colors_and_type.css`](lume/colors_and_type.css) first, then mirror
 it here and in every mockup's shared block, then in `v3/web`.
