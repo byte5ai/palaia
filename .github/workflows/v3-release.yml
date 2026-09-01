@@ -164,7 +164,12 @@ jobs:
           fi
 
       - name: Scan image for secrets
-        uses: aquasecurity/trivy-action@v0.32.0
+        # v0.36.0 — older releases (v0.32.0 included) install their pinned
+        # trivy binary via the install script from upstream's *current* main
+        # branch, which no longer supports those old pinned versions: run
+        # 33516927595 died in "Install Trivy" resolving v0.64.1. The latest
+        # action pins a current trivy (v0.70.x) that its installer supports.
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.IMAGE }}:edge-${{ steps.tags.outputs.short_sha }}
           scanners: secret
