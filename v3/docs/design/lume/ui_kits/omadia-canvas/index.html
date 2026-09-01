@@ -1,0 +1,49 @@
+<!doctype html>
+<!-- @dsCard group="UI Kit — Omadia Canvas" name="Omadia canvas — UI kit" subtitle="5-scene click-thru: empty · spotlight · dashboard · workspace · wizard" viewport="1280x700" -->
+<html lang="en" data-mode="light" data-accent="lagoon" data-screen-label="01 Omadia Canvas">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Omadia UI — Lume canvas</title>
+<link rel="stylesheet" href="../../colors_and_type.css?v=4">
+<link rel="stylesheet" href="kit.css?v=4">
+
+<!-- React + Babel -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<!-- Icon path bundle -->
+<script src="lucide-paths.js"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="primitives.jsx?v=3"></script>
+<script type="text/babel" src="frame.jsx?v=3"></script>
+<script type="text/babel" src="scene-empty.jsx?v=3"></script>
+<script type="text/babel" src="scene-dashboard.jsx?v=3"></script>
+<script type="text/babel" src="scene-workspace.jsx?v=3"></script>
+<script type="text/babel" src="scene-wizard.jsx?v=4"></script>
+<script type="text/babel" src="app.jsx?v=3"></script>
+
+<template id="__bundler_thumbnail" data-bg-color="#1F8FA3">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="lumeCore" cx="50%" cy="44%" r="42%">
+        <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.95"/>
+        <stop offset="38%" stop-color="#C3EBF2" stop-opacity="0.55"/>
+        <stop offset="100%" stop-color="#1F8FA3" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+    <rect width="1200" height="800" fill="#1F8FA3"/>
+    <rect x="320" y="232" width="560" height="336" rx="24" fill="#0E6E7E"/>
+    <rect x="320" y="232" width="560" height="336" rx="24" fill="url(#lumeCore)"/>
+    <rect x="372" y="318" width="300" height="22" rx="11" fill="#FFFFFF" fill-opacity="0.85"/>
+    <rect x="372" y="372" width="456" height="14" rx="7" fill="#FFFFFF" fill-opacity="0.45"/>
+    <rect x="372" y="408" width="396" height="14" rx="7" fill="#FFFFFF" fill-opacity="0.32"/>
+    <rect x="372" y="462" width="120" height="40" rx="12" fill="#FFFFFF" fill-opacity="0.92"/>
+  </svg>
+</template>
+</body>
+</html>
