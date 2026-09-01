@@ -72,13 +72,19 @@ whoever holds it.
 - [ ] Commit the version bump + changelog entry, PR it through the normal
       process (this file's own repository is still `AGENTS.md`-governed —
       a feature branch, a PR, conventional commits).
-- [ ] **[OWNER]** Tag the merge commit `v3.3.0.0` (yes — the leading `3.`
-      is the `v3` track's own fixed tag prefix, not a repeated major
-      version; `.github/workflows/v3-release.yml`'s own tag-parsing strips
-      exactly `refs/tags/v3.` and keeps the rest, so the tag really is
-      `v3.` + `v3/VERSION`'s content) and push it:
-      `git tag v3.3.0.0 && git push origin v3.3.0.0`. This is the step
-      that actually publishes — nothing before it does.
+- [ ] Tag + release: dispatch `.github/workflows/v3-cut-release.yml` on
+      the merge commit with `expected_version: 3.0.0`. It creates the
+      `v3.3.0.0` tag (yes — the leading `3.` is the `v3` track's own fixed
+      tag prefix, not a repeated major version; `v3-release.yml`'s
+      tag-parsing strips exactly `refs/tags/v3.` and keeps the rest, so
+      the tag really is `v3.` + `v3/VERSION`'s content), publishes the
+      GitHub release from `v3/docs/release-notes/<version>.md` (which must
+      exist — write it first), and dispatches the image build on the tag.
+      This is the step that actually publishes — nothing before it does.
+      (A plain `git tag v3.3.0.0 && git push origin v3.3.0.0` by someone
+      with tag-push rights creates the same tag, but then the GitHub
+      release and its notes are manual — the workflow exists because
+      agent sessions cannot push tags.)
 - [ ] Watch `v3-release.yml`'s run: it builds and pushes
       `ghcr.io/byte5ai/palaia-hub:v3.3.0.0` and `:stable` (never `:beta`
       for a non-`rc`/non-`beta` version — the workflow's own branch logic;

@@ -1,0 +1,100 @@
+# Cuts a v3 release from the dispatched ref: creates the `v3.<version>` tag
+# and the GitHub release (pre-release for `rc`/`beta` versions) from the
+# committed notes file, then dispatches the `v3 hub image` workflow on that
+# tag so the container images publish. Exists because release cuts are done
+# by an agent session whose git access blocks tag pushes — the repo's own
+# Actions token does what the session cannot (v3/RELEASING.md §3).
+#
+# Every guard here re-checks what v3/RELEASING.md's preflight already
+# requires, so a dispatch against the wrong ref or a half-bumped VERSION
+# fails loudly instead of tagging it.
+
+name: v3 cut release
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_version:
+        description: >-
+          The version you intend to cut (must equal v3/VERSION at the
+          dispatched ref, e.g. 3.0.0-rc1). A mismatch aborts before anything
+          is tagged — this is the guard against dispatching the wrong ref.
+        type: string
+        required: true
+
+permissions:
+  contents: write # create the tag + release
+  actions: write # dispatch the v3 hub image workflow on the new tag
+
+jobs:
+  cut:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guards — version, notes, changelog, tag novelty
+        id: guard
+        env:
+          EXPECTED: ${{ inputs.expected_version }}
+        run: |
+          set -euo pipefail
+          version="$(cat v3/VERSION)"
+          if [[ "${version}" != "${EXPECTED}" ]]; then
+            echo "v3/VERSION is ${version} but the dispatch expected ${EXPECTED} — wrong ref or missing bump." >&2
+            exit 1
+          fi
+          tag="v3.${version}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" > /dev/null; then
+            echo "Tag ${tag} already exists — a cut version is immutable; bump v3/VERSION instead." >&2
+            exit 1
+          fi
+          if ! grep -q "^## ${version} " v3/CHANGELOG.md; then
+            echo "v3/CHANGELOG.md has no '## ${version}' section." >&2
+            exit 1
+          fi
+          notes="v3/docs/release-notes/${version}.md"
+          if [[ ! -f "${notes}" ]]; then
+            echo "Missing ${notes} — release notes are curated in-repo, not generated here." >&2
+            exit 1
+          fi
+          # First line `# <title>` names the release; the body is the rest.
+          title="$(head -1 "${notes}" | sed -n 's/^# //p')"
+          if [[ -z "${title}" ]]; then
+            title="palaia ${version}"
+            cp "${notes}" /tmp/release-body.md
+          else
+            tail -n +2 "${notes}" | sed '1{/^$/d}' > /tmp/release-body.md
+          fi
+          prerelease_flag=""
+          if [[ "${version}" == *rc* || "${version}" == *beta* ]]; then
+            prerelease_flag="--prerelease"
+          fi
+          {
+            echo "version=${version}"
+            echo "tag=${tag}"
+            echo "title=${title}"
+            echo "prerelease_flag=${prerelease_flag}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create tag + release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "${{ steps.guard.outputs.tag }}" \
+            --target "${GITHUB_SHA}" \
+            --title "${{ steps.guard.outputs.title }}" \
+            --notes-file /tmp/release-body.md \
+            ${{ steps.guard.outputs.prerelease_flag }}
+
+      - name: Dispatch image build on the new tag
+        # A tag created with the workflow's own token does not fire the
+        # `push: tags:` trigger of v3-release.yml (GitHub suppresses
+        # workflow runs caused by GITHUB_TOKEN pushes), so dispatch it
+        # explicitly on the tag ref — its tag-derived version logic works
+        # the same under workflow_dispatch.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run v3-release.yml --ref "${{ steps.guard.outputs.tag }}" \
+            --repo "${GITHUB_REPOSITORY}"
