@@ -11,6 +11,14 @@ import { fileURLToPath } from "node:url";
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = path.join(PROJECT_ROOT, "dist");
 
+// The site is served under a base path (astro.config.mjs `base`), so its links
+// are `/docs/...` while the build output stays flat under dist/ (Astro does not
+// nest the physical files under the base). Read the base from the config —
+// rather than duplicating the literal — and strip it before resolving a link
+// against dist.
+const CONFIG = readFileSync(path.join(PROJECT_ROOT, "astro.config.mjs"), "utf8");
+const BASE = (CONFIG.match(/\bBASE\s*=\s*["'`]([^"'`]+)["'`]/)?.[1] ?? "").replace(/\/$/, "");
+
 function walk(dir) {
   const out = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -25,7 +33,11 @@ function walk(dir) {
 // a route resolves if either the exact file or its directory-index form
 // exists.
 function routeExists(routePath) {
-  const clean = routePath.split("#")[0].split("?")[0];
+  let clean = routePath.split("#")[0].split("?")[0];
+  // Links carry the base prefix; the flat dist output does not — strip it.
+  if (BASE && (clean === BASE || clean.startsWith(`${BASE}/`))) {
+    clean = clean.slice(BASE.length) || "/";
+  }
   if (clean === "" || clean === "/") return existsSync(path.join(DIST, "index.html"));
   const relative = clean.replace(/^\//, "");
   const asFile = path.join(DIST, relative);
