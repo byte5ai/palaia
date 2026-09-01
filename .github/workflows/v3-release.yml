@@ -128,19 +128,25 @@ jobs:
         run: docker pull "${IMAGE}:edge-${{ steps.tags.outputs.short_sha }}" || true
 
       - name: arm64 smoke test (QEMU) — starts and answers /api/health
+        # Deadline, not a fixed retry count: under QEMU emulation the hub's
+        # Python cold start takes minutes, not seconds — this workflow's
+        # first real run (33515957674) showed the app alive and progressing
+        # (startup banner, mDNS announce) but not yet listening when a 60s
+        # window expired. 10 minutes is the honest budget for emulated
+        # arm64; native starts answer in seconds and exit the loop early.
         run: |
           docker run -d --name palaia-hub-arm64 --platform linux/arm64 \
             -p 18420:8420 "${IMAGE}:edge-${{ steps.tags.outputs.short_sha }}"
-          for i in $(seq 1 30); do
-            if curl -fsS http://localhost:18420/api/health; then
-              echo "arm64 image healthy"
-              exit 0
+          deadline=$(( $(date +%s) + 600 ))
+          until curl -fsS http://localhost:18420/api/health; do
+            if [ "$(date +%s)" -ge "${deadline}" ]; then
+              echo "arm64 image never became healthy within 10 minutes" >&2
+              docker logs palaia-hub-arm64 >&2 || true
+              exit 1
             fi
-            sleep 2
+            sleep 5
           done
-          echo "arm64 image never became healthy" >&2
-          docker logs palaia-hub-arm64 >&2 || true
-          exit 1
+          echo "arm64 image healthy"
 
       - name: Image size check (< 400MB compressed, per SPEC-112)
         run: |
