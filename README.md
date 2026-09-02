@@ -1,57 +1,56 @@
-<!-- graphic: hero — logo/wordmark + tagline banner, light + dark variant, SVG preferred (issue #298 item 1). Drops in directly above the <h1>; the text below must keep working without it. -->
+<!-- graphic: hero banner (logo/wordmark + tagline), light + dark, SVG preferred (issue #298 item 1). Goes directly above the <h1>. -->
 
 <div align="center">
 
 # palaia
 
-**One self-hosted hub. Every AI tool you use shares one memory, one toolbox, and one way to talk to each other.**
+**Your AI tools finally share one memory.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/release-3.0.0--rc1-orange.svg)](v3/CHANGELOG.md)
+[![Release](https://img.shields.io/github/v/release/byte5ai/palaia?include_prereleases&label=release)](https://github.com/byte5ai/palaia/releases)
 [![v3 CI](https://github.com/byte5ai/palaia/actions/workflows/v3-ci.yml/badge.svg)](https://github.com/byte5ai/palaia/actions/workflows/v3-ci.yml)
 [![Container image](https://img.shields.io/badge/image-ghcr.io%2Fbyte5ai%2Fpalaia--hub-blue?logo=docker&logoColor=white)](v3/deploy/README.md)
 
-[Quickstart](#quickstart-60-seconds) · [What you get](#what-you-get) · [Architecture](#architecture) · [Docs](v3/site/docs/src/content/docs/) · [Migrating from v2](v3/docs/migrate-from-v2.md) · [Security](v3/SECURITY.md)
+[Get started](#get-started-in-60-seconds) · [What it does](#what-it-does-for-you) · [Docs](v3/site/docs/src/content/docs/index.md) · [How it works](v3/docs/how-it-works.md) · [Coming from v2?](v3/docs/migrate-from-v2.md)
 
 </div>
 
-> [!IMPORTANT]
-> **palaia v3 is a release candidate (`3.0.0-rc1`), not a final release.**
-> Everything described below is implemented and covered by tests, but `3.0.0` is not
-> tagged yet: an external security review and a usability run with a real
-> non-developer still stand between here and the tag
-> ([`v3/RELEASING.md`](v3/RELEASING.md) is the ordered list). Run it, break it, tell
-> us. Keep backups. **palaia v2 remains the stable, supported product** until v3 is
-> tagged; see [palaia v2](#palaia-v2-maintenance-mode).
+<!-- graphic: 30-second demo GIF (issue #298 item 2): the install command, the setup wizard, a memory saved from one AI tool and recalled from another. Goes here, before the first paragraph. -->
 
----
+palaia is a small server you run yourself, at home or on a rented machine. Every AI
+tool you use connects to it once: Claude, ChatGPT, Codex, Gemini, and any other tool
+that speaks MCP, the open standard AI tools use to reach outside data and tools. From
+then on they share one memory and one set of tools, and they can hand work to each
+other. Your data stays in plain files on hardware you own.
 
-## Why palaia exists
+Think Home Assistant, for your AI tools.
 
-Every AI tool you use starts from zero. Tell one assistant about a decision on
-Monday, and another has never heard of it on Tuesday. Switch machines, and
-yesterday's context is gone. Each tool keeps its own settings, its own credentials,
-and its own memory (if it has one at all), and none of them share.
+> [!NOTE]
+> **palaia v3 is a release candidate (`3.0.0-rc1`).** Everything below works and is
+> tested, but it has not had an outside security review yet. Try it, keep backups, and
+> [tell us what breaks](https://github.com/byte5ai/palaia/issues). If you are running
+> palaia v2 today, it stays [supported](#already-using-palaia-v2).
 
-It gets worse with every tool you add. Three AI clients and four tool servers means
-twelve setups to configure and keep working: the same server, entered again and
-again, in a different config file with a different syntax each time.
+## What it does for you
 
-palaia ends that. It is one small server on hardware you own. Every AI tool connects
-to it once and gets everything: a shared memory, a shared toolbox, and a way to
-reach your other agents. What one tool learns, the next one already knows. Your
-memory is a folder of plain Markdown files you can open, read, search, and back up
-like any other documents. No account to be locked out of, no vendor that has to
-stay in business.
+- **Your AI tools remember, together.** Tell one assistant about a decision and the
+  others know it too. Your memory is a folder of plain Markdown notes you can open in
+  any editor (Obsidian opens it as-is), search, and back up like any other files.
+- **Set up a tool once, use it everywhere.** Install an add-on in palaia and every
+  connected AI can use it. No more pasting the same configuration into five apps.
+- **Your agents can work as a team.** An AI session on your laptop can hand a task
+  to one on your server, with the context attached, and find out who is already
+  working on what.
+- **Runs where you decide.** A Raspberry Pi, a NAS, a small cloud server. No account
+  with us, no subscription, no data leaving your machine unless you say so.
+- **Safe by default.** Sign in with GitHub or Google, pick in the setup wizard how far
+  your hub should reach (just this machine, your private network, or the internet),
+  and back everything up with one click.
 
-Think Home Assistant, for your AI stack.
+## Get started in 60 seconds
 
-<!-- graphic: 30-second demo — animated GIF or short capture: install one-liner → wizard → first memory saved from one client → recalled from a second client (issue #298 item 2). Goes here, above the Quickstart. -->
-
-## Quickstart (60 seconds)
-
-You need Docker ([Docker Desktop](https://www.docker.com/products/docker-desktop/) on
-macOS/Windows, Docker Engine on Linux). That is the whole prerequisite list.
+You need [Docker](https://docs.docker.com/get-started/get-docker/). That is the whole
+prerequisite list.
 
 ```bash
 docker run -d --name palaia-hub \
@@ -60,306 +59,62 @@ docker run -d --name palaia-hub \
   --restart unless-stopped \
   --security-opt no-new-privileges:true --cap-drop ALL \
   --read-only --tmpfs /tmp --tmpfs /run \
-  ghcr.io/byte5ai/palaia-hub:stable
+  ghcr.io/byte5ai/palaia-hub:beta
 ```
 
-Until `3.0.0` is tagged there is no `stable` image yet, so swap the last line for
-`ghcr.io/byte5ai/palaia-hub:beta` (the release-candidate build) or
-`ghcr.io/byte5ai/palaia-hub:edge` (built from `main` on every change). The
-three [release channels](v3/deploy/README.md#updates-spec-501) are `stable`, `beta`
-and `edge`; `palaia-hub update --channel <name>` switches a Compose install between
-them.
+Then open **`http://<your-machine>:8420`** in a browser (on many home networks
+`http://palaia.local` works too). A short setup wizard takes it from there: sign in,
+save your first memory, connect your first AI tool. No config files, no second
+command.
 
-Then open **`http://palaia.local`** in a browser on the same network. If that name
-does not resolve (Docker's bridge network doesn't forward mDNS, and Docker Desktop
-never will), use the address the container prints on startup (`docker logs
-palaia-hub`), which always works: `http://<host>:8420`. Both paths are documented in
-[`v3/deploy/README.md`](v3/deploy/README.md#mdns-httppalaialocal).
+Once `3.0.0` is final, use `:stable` instead of `:beta`. Updating later is one click
+in the dashboard.
 
-From there a setup wizard takes over in the browser: sign in, choose how far your hub
-should reach, create your first memory, connect your first AI tool. No config files,
-no second command. See
-[Your first shared memory](v3/site/docs/src/content/docs/first-shared-memory.md) for
-what that looks like end to end.
+**Other ways to install**
 
-**Other ways to install:**
-
-| Your machine | How |
+| You have… | Do this |
 |---|---|
-| A file you keep, or Portainer-style setups | [`docker-compose.yml`](v3/deploy/docker-compose.yml): `cd v3/deploy && docker compose up -d` |
-| A script that checks Docker first, then prints the address | [`install.sh`](v3/deploy/install.sh): `curl -fsSL https://raw.githubusercontent.com/byte5ai/palaia/main/v3/deploy/install.sh \| bash` |
-| Umbrel, CasaOS, Runtipi, TrueNAS SCALE | Packages built and kept current in [`v3/deploy/stores/`](v3/deploy/stores/). Not listed in the official catalogs yet, so install the same image with Docker or Compose for now |
-| Synology NAS | Container Manager runs the compose file as a "project", no terminal needed: [step-by-step guide](v3/site/docs/src/content/docs/install-synology.md) |
-| Raspberry Pi | Works today on 64-bit Raspberry Pi OS with Docker, same one-liner. A flash-and-boot card image is in progress: [`v3/deploy/pi-image/`](v3/deploy/pi-image/) |
-| A rented server (Hetzner, DigitalOcean, AWS, …) | Paste [`cloud-init.yaml`](v3/deploy/cloud-init.yaml) into the provider's user-data field. It installs Docker, joins your private network, and never exposes the hub to the open internet |
+| A Synology NAS | Paste one file into Container Manager, no terminal: [step-by-step guide](v3/site/docs/src/content/docs/install-synology.md) |
+| A Raspberry Pi | The command above works on 64-bit Raspberry Pi OS with Docker. A ready-to-flash card image is [in progress](v3/deploy/pi-image/) |
+| A rented server (Hetzner, DigitalOcean, AWS, …) | Paste [`cloud-init.yaml`](v3/deploy/cloud-init.yaml) into your provider's user-data field. It installs everything and keeps the hub off the open internet |
+| Umbrel, CasaOS, Runtipi, TrueNAS SCALE | [Packages are ready](v3/deploy/stores/); until they are in the official catalogs, use the command above |
+| Docker Compose or Portainer | [`docker-compose.yml`](v3/deploy/docker-compose.yml) |
 
-The full onboarding page (with copy buttons and the platform picker) lives at
-[`v3/site/docs/src/pages/onboarding.astro`](v3/site/docs/src/pages/onboarding.astro);
-the docs site is not publicly hosted yet, so this repository is the source of truth.
+Stuck? See [Your first shared memory](v3/site/docs/src/content/docs/first-shared-memory.md)
+for a walkthrough with screenshots, or [troubleshooting](v3/site/docs/src/content/docs/troubleshooting.md).
 
-## Pick your path
+## Works with
 
-| You are… | Start here |
-|---|---|
-| **New to palaia** | The [Quickstart](#quickstart-60-seconds) above, then [What is palaia?](v3/site/docs/src/content/docs/index.md) and [Your first shared memory](v3/site/docs/src/content/docs/first-shared-memory.md). Then connect the tools you actually use: [connect guides, one per client](v3/site/docs/src/content/docs/connect/clients/). |
-| **An engineer who wants the design** | [Architecture](#architecture) below, then [`v3/MASTERPLAN.md`](v3/MASTERPLAN.md) (vision, pillars, full system design), the [ADRs](v3/decisions/), the [executable SPECs](v3/specs/), and [`v3/README.md`](v3/README.md) for dev setup and the test/lint commands. |
-| **Already running palaia** | [Updating, backing up, migrating](#already-running-palaia), including the [v2 → v3 migration guide](v3/docs/migrate-from-v2.md) and where to get [help](#community--support). |
+Claude Code · Claude Desktop · claude.ai · ChatGPT · Codex · Gemini CLI · Grok ·
+LM Studio · any other MCP-compatible tool
 
-## What you get
+Each one has a short [connect guide](v3/site/docs/src/content/docs/connect/clients/).
+Claude Desktop gets a one-click bundle: download, click, connected.
 
-Grouped by what it does for you, not by what module it lives in. Every item below
-ships in `3.0.0-rc1`; the full list is in [`v3/CHANGELOG.md`](v3/CHANGELOG.md).
+<!-- graphic: dashboard screenshots (issue #298 item 4): home screen, memory explorer, connect page, marketplace. One row of four goes here. -->
 
-### Memory that outlives the session
+## Learn more
 
-- **A vault of plain Markdown files you own.** One note per thing, YAML frontmatter,
-  wikilinks and backlinks. Obsidian opens it as-is. The format is
-  [formally specified](v3/docs/vault-format.md) and pinned by a conformance suite.
-- **Every change is a real git commit**, written by the hub with a meaningful message
-  (which agent, which client, why). `git log` is your audit trail; `git revert` is
-  your undo.
-- **Search that finds meaning, not just strings.** Full-text and hybrid text+vector
-  recall, graph traversal ("continue where we left off"), and context assembly that
-  respects a token budget. Embeddings are optional and local; without them, search
-  falls back to text-only instead of breaking.
-- **An inbox and a curator.** Agents drop what they learn mid-work without deciding
-  where it belongs; an asynchronous curator files, merges and de-duplicates it.
-  Adding knowledge is autonomous; rewriting or retiring existing notes only ever
-  becomes a proposal you approve.
-- **Skills that teach your tools to save and look things up on their own**, so you
-  stop having to ask every time.
+- **[Documentation](v3/site/docs/src/content/docs/index.md):** getting started, connecting each tool, backup and restore, troubleshooting.
+- **[How it works](v3/docs/how-it-works.md):** the full feature list, the architecture, the test evidence behind the claims, and when palaia is not the right fit.
+- **[Security](v3/SECURITY.md)** and the [threat model](v3/docs/security/threat-model.md).
+- **[What is left before 3.0.0](v3/RELEASING.md)** and [what shipped](v3/CHANGELOG.md).
+- **For contributors:** [`CONTRIBUTING.md`](CONTRIBUTING.md), [`AGENTS.md`](AGENTS.md), and [`v3/README.md`](v3/README.md) for the dev setup.
 
-### Connect every AI tool, once
+## Already using palaia v2?
 
-- **One MCP endpoint** for Claude Code, Claude Desktop, claude.ai, ChatGPT, Codex,
-  Gemini/Antigravity CLI, Grok, LM Studio, and anything else that speaks MCP. Each
-  has its [own connect guide](v3/site/docs/src/content/docs/connect/clients/).
-- **A one-click desktop bundle (MCPB).** Download, click, connected. No address to
-  type, no token to paste.
-- **Real auth, not a shared secret.** Sign in with GitHub, Google or any OIDC
-  provider, plus a full OAuth 2.1 authorization server (dynamic client registration,
-  PKCE, token rotation), plus per-client tokens for tools that don't do OAuth.
-- **Per-client tool profiles.** Give your phone's assistant a narrow tool set and
-  your desktop everything, from one place, with zero client-side config. Each profile
-  is its own endpoint URL.
-- **Three access modes (Locked, Cloud, Open)**, chosen in a wizard and enforced in
-  code, so how far your memory reaches is a decision you made
-  ([modes explained](v3/docs/exposure.md)).
-
-### A marketplace, and automations
-
-- **Install a tool once; every connected AI has it.** A curated add-on index and a
-  one-click marketplace in the dashboard, plus support for any
-  [external MCP server](v3/docs/external-servers.md) with its credentials in an
-  encrypted store: entered once, never again in a client config file.
-- **An event bus with a rules editor.** A new note, a recall, a message, an idle
-  session: hook any of it to webhooks, notifications, tool runs or memory writes
-  ([events](v3/docs/events.md)).
-- **An SDK for add-on authors**, with local testing and a submission flow
-  ([`v3/sdk/`](v3/sdk/README.md)).
-
-### Agents that can find and hand off to each other
-
-- **A session directory.** One AI session can discover another already working on
-  something related, by what it's doing, never by a hardcoded name.
-- **Structured messages between sessions**, including a `handoff` type that carries a
-  reference *into memory* instead of duplicating the text
-  ([messenger](v3/docs/messenger.md)).
-- **Skills that make tools check their inbox and hand off work unprompted**, plus a
-  team screen showing who is doing what.
-
-### Operations you can live with
-
-- **A real dashboard.** Setup wizard, memory explorer, per-client connect pages,
-  marketplace, profile editor, health. Three in-chat MCP Apps (hub status, recall
-  explorer, review queue) cover the everyday checks without a browser tab.
-- **One-click backup** of the entire hub home, and a documented offline restore
-  ([backup & restore](v3/docs/backup-restore.md)).
-- **Release channels** (`stable` / `beta` / `edge`) and an in-dashboard update check.
-- **A hardened container.** Non-root, all capabilities dropped, read-only filesystem,
-  `no-new-privileges`. The flags in the Quickstart are the real, tested
-  configuration, the same ones the install script and compose file use.
-
-<!-- graphic: dashboard screenshots — hub status, memory explorer, connect page, marketplace, from the current build (issue #298 item 4). One row of four, or a single wide shot of the home screen, goes here. -->
-
-## The two moments it clicks
-
-Both of palaia's core claims are proven end to end by tests that run a real hub over
-a real socket.
-
-**1. Install a tool once; every AI already has it.** One marketplace install call,
-two clients with completely different credentials, on two different profiles, zero
-client-side configuration on either: both list the new tool and both can call it.
-Evidence:
-[`test_spec308_phase3_gate.py`](v3/server/tests/e2e/test_spec308_phase3_gate.py),
-written up in
-[client-matrix-results §7](v3/docs/client-matrix-results.md).
-
-**2. What one tool learns, the next one already knows.** From an empty hub: the
-wizard runs, a vault is created, a real client connects over OAuth and writes a
-fact, and a second client on a different credential recalls that exact fact. Under
-13 seconds, twice in a row, with no reconfiguration in between. Evidence:
-[`test_spec506_phase5_gate.py`](v3/server/tests/e2e/test_spec506_phase5_gate.py),
-written up in
-[client-matrix-results §9](v3/docs/client-matrix-results.md).
-
-To be honest about the edges: those runs use a real client CLI and a real scripted
-MCP client, not a phone and not a second vendor's binary. The hub's protocol surface
-is not client-specific, but the phone-shaped and second-vendor-shaped versions of
-these demos are owner tasks still open. Every such gap is listed, by name, in
-[client-matrix-results](v3/docs/client-matrix-results.md) rather than glossed over.
-
-## Architecture
-
-<!-- graphic: architecture diagram — hub in the middle, AI tools connecting via MCP, vault/marketplace/messenger as the three pillars, light + dark (issue #298 item 3). Replaces the mermaid block below when it lands. -->
-
-```mermaid
-flowchart LR
-    C["AI clients<br/>desktop · CLI · web · phone"]
-    subgraph HUB["palaia hub: one host, one endpoint"]
-        GW["MCP gateway<br/>streamable HTTP + OAuth 2.1"]
-        MEM["Memory engine"]
-        MSG["Messenger &amp;<br/>session directory"]
-        STORE["Marketplace &amp;<br/>add-on manager"]
-        UI["Dashboard"]
-    end
-    VAULT[("Markdown vault<br/>git-versioned")]
-    IDX[("SQLite index<br/>FTS + vectors<br/>rebuildable")]
-    UP["Add-ons &amp; external<br/>MCP servers"]
-
-    C -->|one connection each| GW
-    GW --> MEM & MSG & STORE
-    GW --> UP
-    MEM --> VAULT & IDX
-```
-
-The parts worth knowing before you read code:
-
-- **One hub, one endpoint.** The gateway aggregates built-in tools, installed add-ons
-  and external MCP servers behind a single streamable-HTTP endpoint per profile
-  (`/mcp/<profile>`), so the URL a client connects to already selects its tool
-  surface. Names are namespaced and user-renamable; an agent must be able to pick
-  the right tool from the surface alone.
-- **Files are the source of truth.** The vault is plain Markdown + YAML frontmatter
-  in a git repository. Writes go to disk synchronously; there is no
-  accepted-but-not-yet-persisted state. Crash safety comes from git and atomic
-  writes, not from a custom WAL.
-- **The database is derived, and disposable.** A per-vault SQLite index (full-text +
-  `sqlite-vec` vectors) is rebuilt from the vault on every start. Delete it and
-  nothing is lost. A known trade-off is documented rather than hidden: metadata
-  filters on a vector query are applied after the KNN step, so a heavily filtered
-  query over-fetches before filtering ([MASTERPLAN §5.1](v3/MASTERPLAN.md)).
-- **Auth is real.** OAuth 2.1 with dynamic client registration and PKCE, IdP sign-in
-  (GitHub / Google / OIDC), and per-client bearer tokens for clients that can't do
-  OAuth. Scopes are enforced hub-side; a client only ever sees what its token allows.
-- **Exposure is an explicit mode.** Locked / Cloud / Open change what is reachable and
-  what sign-in is mandatory, enforced at config-load, wizard and request time
-  ([exposure](v3/docs/exposure.md), [threat model](v3/docs/security/threat-model.md)).
-- **Vaults are physically isolated.** One vault with scopes, or many fully separate
-  ones (work / personal / a project): a search in one can never surface another's
-  content.
-
-Go deeper: [`v3/MASTERPLAN.md`](v3/MASTERPLAN.md) is the source of truth for scope and
-design; [`v3/decisions/`](v3/decisions/) holds the ADRs; [`v3/specs/`](v3/specs/) holds
-the executable SPECs (one SPEC = one branch = one PR);
-[`v3/README.md`](v3/README.md) has the dev setup, test and lint commands.
-
-## When to use it, and when not to
-
-**Reach for palaia if** you use two or more AI tools and are tired of configuring the
-same MCP server in each of them; if you want your AI's memory to be files you own on
-hardware you control; if you self-host already and want an appliance rather than a
-weekend project; or if you want agents on different machines and different providers
-to be able to hand work to each other.
-
-**Look elsewhere if** you use exactly one AI tool and its built-in memory is enough
-(palaia's whole point is the second tool); if you want a hosted service with no
-server to run, because palaia is self-hosted by design and there is no cloud version;
-if you need a chat UI or an agent framework, because palaia hosts no models and
-orchestrates no reasoning; or if you need a workflow from the
-[v2 feature list](v3/docs/migrate-from-v2.md#what-v3-doesnt-have-yet) that v3 hasn't
-carried over yet. That table is kept honest, so check it before you move.
-
-## Already running palaia
-
-**Update.** The dashboard shows an "update available" banner and updates in one click.
-On the command line it is pull-and-recreate:
-
-```bash
-docker pull ghcr.io/byte5ai/palaia-hub:stable
-docker stop palaia-hub && docker rm palaia-hub
-# re-run the same `docker run` command from the Quickstart
-```
-
-With Compose, `palaia-hub update --channel stable --file docker-compose.yml` rewrites
-the pinned tag, then `docker compose pull && docker compose up -d`. Details and the
-channel semantics: [`v3/deploy/README.md`](v3/deploy/README.md#updates-spec-501).
-
-**Back up first.** "Back up" in the dashboard streams a `tar.gz` of the whole hub
-home: config, every vault including its git history, OAuth keys, the encrypted secret
-store, tokens, hooks and automations. Or from the host:
-
-```bash
-docker run --rm -v palaia_home:/data -v "$(pwd)":/backup alpine \
-  tar czf /backup/palaia-backup.tar.gz -C /data .
-```
-
-What is in the archive, what is deliberately left out, and how to restore offline:
-[backup & restore](v3/docs/backup-restore.md).
-
-**Coming from palaia v2?** One command imports your existing store into a v3 vault,
-entry by entry, with provenance preserved. It only ever *reads* your v2 install, so
-rolling back means deleting what it wrote. Read
-[Moving from palaia v2 to v3](v3/docs/migrate-from-v2.md) first, especially the table
-of what v3 does not carry yet.
-
-**Something wrong?** [Troubleshooting](v3/site/docs/src/content/docs/troubleshooting.md)
-covers the common ones, then see [Community & support](#community--support).
-
-## palaia v2 (maintenance mode)
-
-palaia v2, the Python package at the repository root (a memory system built primarily
-for OpenClaw), is **stable, still installable, and still supported**. It is in
-maintenance mode: no new features, but critical hotfixes (security, data loss, a broken
-release) land on the
-[`v2-maintenance`](https://github.com/byte5ai/palaia/tree/v2-maintenance) branch, and
-`v2.x.y` tags are cut from there.
-
-```bash
-pip install "palaia[mcp,fastembed]"
-palaia init
-```
-
-Its documentation is unchanged and still current:
-[Getting started](docs/getting-started.md) ·
-[CLI reference](docs/cli-reference.md) ·
-[Configuration](docs/configuration.md) ·
-[MCP server](docs/mcp.md) ·
-[Multi-agent](docs/multi-agent.md) ·
-[Architecture](ARCHITECTURE.md) ·
-[Changelog](CHANGELOG.md) ·
-[PyPI](https://pypi.org/project/palaia/)
-
-Nobody is being pushed off it. When you are ready, the
-[migration guide](v3/docs/migrate-from-v2.md) covers what carries over, what changes,
-what is missing, and how to roll back.
+palaia v2 is the Python package at the root of this repository. It stays installable
+and supported with critical fixes; its [documentation](docs/getting-started.md) is
+unchanged. Nobody is being pushed off it. When you are ready, one command imports
+your v2 knowledge into v3, and the [migration guide](v3/docs/migrate-from-v2.md)
+covers what changes and how to roll back.
 
 ## Community & support
 
-- **Questions, bugs, feature requests:** [open an issue](https://github.com/byte5ai/palaia/issues).
-  A version, your access mode, and what you expected instead gets you a useful answer
-  fastest.
-- **Security vulnerabilities:** please do **not** open a public issue. Use GitHub's
+- **Questions, bugs, ideas:** [open an issue](https://github.com/byte5ai/palaia/issues).
+- **Security vulnerabilities:** please do not open a public issue. Use GitHub's
   [private vulnerability reporting](https://github.com/byte5ai/palaia/security/advisories/new)
-  (the "Report a vulnerability" button on the Security tab). It is the only monitored
-  channel; there is no security email address. Response targets and scope:
-  [`v3/SECURITY.md`](v3/SECURITY.md).
-- **Contributing:** [`CONTRIBUTING.md`](CONTRIBUTING.md) for the general process,
-  [`AGENTS.md`](AGENTS.md) for the rules every contributor (human or agent) follows,
-  most importantly the strict v2/v3 separation: a PR touches files of exactly one
-  track. v3 dev setup is in [`v3/README.md`](v3/README.md).
-- **Following along:** [`v3/CHANGELOG.md`](v3/CHANGELOG.md) for what shipped,
-  [`v3/RELEASING.md`](v3/RELEASING.md) for what stands between `3.0.0-rc1` and `3.0.0`.
+  instead. Details in [`v3/SECURITY.md`](v3/SECURITY.md).
 
 ## License
 
