@@ -156,3 +156,38 @@ Grouped; each item is confirmed by reading unless tagged.
 8. **Owner items already listed in RELEASING.md** (external review, usability session, security reporting channel) remain; the external review should start only after step 1 and step 7's threat-model corrections, otherwise the reviewer audits a document that misdescribes the surface.
 
 Steps 1–4 are the release gate. Steps 5–7 decide whether the "60 seconds" story in the README is true on day one.
+
+## 9. Issue index
+
+Every finding above was filed on 2026-09-02 as a GitHub issue (#313–#407);
+blockers carry the `release-blocker` label. Mediums and lows that the text
+above groups by area map to the issues below.
+
+| Finding | Issue |
+|---|---|
+| B1 hub-wide MCP mounts unauthenticated | [#313](https://github.com/byte5ai/palaia/issues/313) |
+| B2 Authorization forwarded to upstreams | [#314](https://github.com/byte5ai/palaia/issues/314) |
+| B3 semantic_routing drops verifier | [#315](https://github.com/byte5ai/palaia/issues/315) |
+| B4 VaultWatcher never started | [#316](https://github.com/byte5ai/palaia/issues/316) |
+| B5 `/api/backup` + admin surface ungated | [#317](https://github.com/byte5ai/palaia/issues/317) |
+| B6 connect snippets omit the token | [#318](https://github.com/byte5ai/palaia/issues/318) |
+| B7 OCI annotation on wrong manifest level | [#319](https://github.com/byte5ai/palaia/issues/319) |
+| B8 pre-release version compare | [#320](https://github.com/byte5ai/palaia/issues/320) |
+| B9 curated index key / no cache | [#321](https://github.com/byte5ai/palaia/issues/321) |
+| B10 docs links → placeholder domain | [#322](https://github.com/byte5ai/palaia/issues/322) |
+| H1–H22 (in order) | [#323](https://github.com/byte5ai/palaia/issues/323) – [#344](https://github.com/byte5ai/palaia/issues/344) |
+
+Mediums (§4), one issue each:
+
+| Area | Issues |
+|---|---|
+| Auth / admin | #345 IdP state binding · #346 refresh reuse · #347 audit log rewrite · #348 `GET /api/mode` re-parse |
+| Gateway / market / upstream / SDK | #349 consent before command · #350 add-on permissions display-only · #351 orphaned upstream on failed mount · #352 session-manager leak · #353 size caps after buffering · #354 SDK stderr hang |
+| Vault / index | #355 non-UTF-8 notes · #356 cross-write ordering · #357 watcher blocking I/O + dir moves · #358 `assign_missing_permalinks` unwired · #359 sweep commits `.obsidian` · #360 ASCII-only lower · #361 hybrid degraded reason · #362 embedder cold load |
+| Team / automations / CLI / config | #363 ttl bounds · #364 pruned session loses mail · #365 owner unreplyable · #366 StashError / malformed yaml · #367 disable dead-letters · #368 backup thread leak · #369 port range · #370 env-override docs · #371 `palaia-hub update` misreport |
+| Web | #372 wizard unreachable · #373 profile picker ignored · #374 sign-in switch unsaveable · #375 dead CTAs · #376 handlers without catch · #377 `[object Object]` · #378 spinner forever · #379 no errorElement · #380 dead ⌘K · #381 IdP sign-out · #382 backup anchor · #383 a11y labels · #384 refetch storms · #385 Claude Desktop label |
+| Release / docs | #386 pre-release detection · #387 changelog guards · #388 RELEASING.md · #389 CHANGELOG rc1 · #390 migrate placeholders · #391 `publish.yml` tags (v2 track) · #392 `v3-ci.yml` paths · #393 `channel=stable` dispatch · #394 HA add-on version · #395 Runtipi format |
+
+Lows (§5), grouped as checklists: #396 server/CLI · #397 gateway/market/SDK/clients · #398 vault/index · #399 web/docs-site · #400 container/nginx/stores · #401 release workflows.
+
+Optimisations (§6): #402 curator verify · #403 rename reindex · #404 SQLite indexes · #405 CI/build caching · #406 web bundle · #407 `ruff format` decision.
