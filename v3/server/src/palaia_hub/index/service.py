@@ -66,6 +66,11 @@ logger = logging.getLogger("palaia_hub.index.service")
 #: safety net — every indexing write wakes it immediately.
 _WORKER_POLL_SECONDS = 2.0
 
+#: A failed model load is usually transient (for example, a temporary network
+#: error during the first model download), so keep retrying without spinning.
+_EMBEDDER_RETRY_INITIAL_SECONDS = 1.0
+_EMBEDDER_RETRY_MAX_SECONDS = 60.0
+
 #: A chunk that fails this many times is parked as ``failed`` instead of
 #: spinning the worker forever on the same input.
 _MAX_EMBED_ATTEMPTS = 3
@@ -110,7 +115,9 @@ class VaultIndex:
         self._doctor = VaultDoctor(engine)
         self._embedder: Embedder | None = embedder
         self._embedder_failed = ""
-        self._embedder_probed = embedder is not None
+        self._embedder_probe_attempts = 0
+        self._embedder_retry_at = 0.0
+        self._embedder_lock = asyncio.Lock()
         self._unsubscribe: Callable[[], None] | None = None
         self._worker: asyncio.Task[None] | None = None
         self._wake = asyncio.Event()
@@ -283,27 +290,54 @@ class VaultIndex:
     async def _ensure_embedder(self) -> Embedder | None:
         if self._embedder is not None:
             return self._embedder
-        if self._embedder_probed:
+        if time.monotonic() < self._embedder_retry_at:
             return None
-        self._embedder_probed = True
-        try:
-            embedder = await asyncio.to_thread(build_embedder, self._embedding)
-        except EmbedderUnavailableError as exc:
-            self._embedder_failed = str(exc)
-            logger.warning("embeddings unavailable: %s", exc)
-            return None
-        self._embedder = embedder
-        self.db.meta_set(META_EMBED_MODEL, embedder.name)
-        self.db.meta_set(META_EMBED_DIM, str(embedder.dim))
-        return embedder
+        async with self._embedder_lock:
+            if self._embedder is not None:
+                return self._embedder
+            if time.monotonic() < self._embedder_retry_at:
+                return None
+            try:
+                embedder = await asyncio.to_thread(build_embedder, self._embedding)
+            except EmbedderUnavailableError as exc:
+                self._embedder_probe_attempts += 1
+                delay = min(
+                    _EMBEDDER_RETRY_INITIAL_SECONDS
+                    * 2 ** (self._embedder_probe_attempts - 1),
+                    _EMBEDDER_RETRY_MAX_SECONDS,
+                )
+                self._embedder_retry_at = time.monotonic() + delay
+                self._embedder_failed = str(exc)
+                logger.warning("embeddings unavailable; retrying in %.1fs: %s", delay, exc)
+                return None
+            self._embedder = embedder
+            self._embedder_failed = ""
+            self._embedder_probe_attempts = 0
+            self._embedder_retry_at = 0.0
+            self.db.meta_set(META_EMBED_MODEL, embedder.name)
+            self.db.meta_set(META_EMBED_DIM, str(embedder.dim))
+            return embedder
 
     async def _worker_loop(self) -> None:
         """Drain the embed backlog in batches, forever."""
         while not self._closing:
             try:
-                await asyncio.wait_for(self._wake.wait(), timeout=_WORKER_POLL_SECONDS)
+                await self._ensure_embedder()
+                timeout = min(
+                    _WORKER_POLL_SECONDS,
+                    max(0.0, self._embedder_retry_at - time.monotonic())
+                    if self._embedder is None
+                    else _WORKER_POLL_SECONDS,
+                )
+                await asyncio.wait_for(self._wake.wait(), timeout=timeout)
             except TimeoutError:
                 pass
+            except asyncio.CancelledError:  # pragma: no cover - shutdown
+                raise
+            except Exception:  # noqa: BLE001 - the worker must survive anything
+                logger.exception("embed worker wakeup failed")
+                await asyncio.sleep(_WORKER_POLL_SECONDS)
+                continue
             self._wake.clear()
             embedded_this_wake = 0
             try:
