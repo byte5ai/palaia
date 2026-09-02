@@ -9,13 +9,23 @@ in ``test_hybrid_relevance.py``.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
 import pytest
 from stub_embedder import StubEmbedder
 
-from palaia_hub.index import EmbeddingConfig, chunk_text, embeddable_text, fingerprint
+from palaia_hub.index import (
+    EmbedderUnavailableError,
+    EmbeddingConfig,
+    VaultIndex,
+    chunk_text,
+    embeddable_text,
+    fingerprint,
+)
+from palaia_hub.index import service as index_service
+from palaia_hub.vault import EventBus, VaultEngine
 
 pytestmark = pytest.mark.anyio
 
@@ -140,8 +150,6 @@ async def test_background_worker_drains_the_backlog_without_being_asked(
     golden_work_vault: Path, open_index: Any
 ) -> None:
     """The write path never embeds; the worker does, on its own."""
-    import asyncio
-
     _, index = await open_index(
         golden_work_vault, embedding=_stub_config(), embedder=StubEmbedder()
     )
@@ -155,6 +163,78 @@ async def test_background_worker_drains_the_backlog_without_being_asked(
     status = index.status()
     assert status.embeds.pending == 0
     assert status.embeds.ready > 0
+
+
+async def test_worker_warms_embedder_for_a_ready_index_after_restart(
+    golden_work_vault: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A persisted vector index loads its model in the worker, not a query."""
+    db_path = tmp_path / "index.sqlite3"
+    engine = VaultEngine(golden_work_vault, "work", bus=EventBus())
+    await engine.open(purpose="embedder warmup test", create=True)
+    first = VaultIndex(
+        engine,
+        path=db_path,
+        embedding=_stub_config(batch_size=16),
+        embedder=StubEmbedder(),
+    )
+    await first.open(start_worker=False)
+    try:
+        await first.drain_embeddings()
+        assert first.status().embeds.pending == 0
+        assert first.status().embeds.ready > 0
+    finally:
+        await first.close()
+
+    warmed = StubEmbedder()
+    builds = 0
+
+    def build(_config: EmbeddingConfig) -> StubEmbedder:
+        nonlocal builds
+        builds += 1
+        return warmed
+
+    monkeypatch.setattr(index_service, "build_embedder", build)
+    reopened = VaultIndex(engine, path=db_path, embedding=_stub_config(batch_size=16))
+    await reopened.open(build=False)
+    try:
+        reopened.start_worker()
+        deadline = asyncio.get_running_loop().time() + 1.0
+        while builds == 0 and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.01)
+        assert builds == 1
+    finally:
+        await reopened.close()
+        await engine.close()
+
+
+async def test_failed_embedder_probe_retries_after_backoff(
+    golden_work_vault: Path, open_index: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A transient model-load failure must not disable vectors permanently."""
+    attempts = 0
+    recovered = StubEmbedder()
+
+    def build(_config: EmbeddingConfig) -> StubEmbedder:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise EmbedderUnavailableError("temporary model download failure")
+        return recovered
+
+    monkeypatch.setattr(index_service, "build_embedder", build)
+    _, index = await open_index(golden_work_vault, embedding=_stub_config())
+
+    assert await index.embed_next_batch() == 0
+    assert attempts == 1
+    assert await index.embed_next_batch() == 0
+    assert attempts == 1
+
+    # Advance past the production backoff without making the test sleep.
+    index._embedder_retry_at = 0.0
+    assert await index.embed_next_batch() > 0
+    assert attempts == 2
+    assert index.status().embeds.reason == ""
 
 
 async def test_editing_a_note_only_re_embeds_its_changed_chunks(
