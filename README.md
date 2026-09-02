@@ -1,10 +1,17 @@
 <!-- graphic: hero banner (logo/wordmark + tagline), light + dark, SVG preferred (issue #298 item 1). Goes directly above the <h1>. -->
 
+```
+             .__         .__
+___________  |  | _____  |__|____
+\____ \__  \ |  | \__  \ |  \__  \
+|  |_> > __ \|  |__/ __ \|  |/ __ \_
+|   __(____  /____(____  /__(____  /
+|__|       \/          \/        \/
+```
+
 <div align="center">
 
-# palaia
-
-**Your AI tools finally share one memory.**
+# Your AI tools finally share one memory.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/byte5ai/palaia?include_prereleases&label=release)](https://github.com/byte5ai/palaia/releases)
