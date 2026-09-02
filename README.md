@@ -1,15 +1,15 @@
 <!-- graphic: hero banner (logo/wordmark + tagline), light + dark, SVG preferred (issue #298 item 1). Goes directly above the <h1>. -->
 
-```
-             .__         .__
-___________  |  | _____  |__|____
-\____ \__  \ |  | \__  \ |  \__  \
+<div align="center">
+
+<pre>
+             .__         .__        
+___________  |  | _____  |__|____   
+\____ \__  \ |  | \__  \ |  \__  \  
 |  |_> > __ \|  |__/ __ \|  |/ __ \_
 |   __(____  /____(____  /__(____  /
-|__|       \/          \/        \/
-```
-
-<div align="center">
+|__|       \/          \/        \/ 
+</pre>
 
 # Your AI tools finally share one memory.
 
@@ -24,11 +24,12 @@ ___________  |  | _____  |__|____
 
 <!-- graphic: 30-second demo GIF (issue #298 item 2): the install command, the setup wizard, a memory saved from one AI tool and recalled from another. Goes here, before the first paragraph. -->
 
-palaia is a small server you run yourself, at home or on a rented machine. Every AI
-tool you use connects to it once: Claude, ChatGPT, Codex, Gemini, and any other tool
-that speaks MCP, the open standard AI tools use to reach outside data and tools. From
-then on they share one memory and one set of tools, and they can hand work to each
-other. Your data stays in plain files on hardware you own.
+palaia is a hub you run yourself: on a server in your office, in your own cloud
+account, or on a machine at home. Every AI tool you and your team use connects to it
+once: Claude, ChatGPT, Codex, Gemini, and any other tool that speaks MCP, the open
+standard AI tools use to reach outside data and tools. From then on they share one
+memory and one set of tools, and they can hand work to each other. Your data stays in
+plain files on hardware you control.
 
 Think Home Assistant, for your AI tools.
 
@@ -48,8 +49,9 @@ Think Home Assistant, for your AI tools.
 - **Your agents can work as a team.** An AI session on your laptop can hand a task
   to one on your server, with the context attached, and find out who is already
   working on what.
-- **Runs where you decide.** A Raspberry Pi, a NAS, a small cloud server. No account
-  with us, no subscription, no data leaving your machine unless you say so.
+- **Runs where you decide.** A server in your office, a machine in your cloud account,
+  a NAS, or a Raspberry Pi. No account with us, no subscription, no data leaving your
+  infrastructure unless you say so.
 - **Safe by default.** Sign in with GitHub or Google, pick in the setup wizard how far
   your hub should reach (just this machine, your private network, or the internet),
   and back everything up with one click.
