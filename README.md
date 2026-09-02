@@ -25,7 +25,7 @@ ___________  |  | _____  |__|____
 <!-- graphic: 30-second demo GIF (issue #298 item 2): the install command, the setup wizard, a memory saved from one AI tool and recalled from another. Goes here, before the first paragraph. -->
 
 palaia is a hub you run yourself: on a server in your office, in your own cloud
-account, or on a machine at home. Every AI tool you and your team use connects to it
+account, or on a machine at home. Every AI tool you use connects to it
 once: Claude, ChatGPT, Codex, Gemini, and any other tool that speaks MCP, the open
 standard AI tools use to reach outside data and tools. From then on they share one
 memory and one set of tools, and they can hand work to each other. Your data stays in
