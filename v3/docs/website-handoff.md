@@ -28,10 +28,12 @@ public-facing; nothing here prescribes design.
    of the homepage). The dashboard's `web/src/lib/docs.ts` is pinned to
    that value by `web/src/lib/docs.test.ts` (issue #322), so changing it
    means changing both — the test says so.
-2. **Hosting + deploy** — CI builds the site but deploys nowhere;
-   `https://palaia.byte5.ai/docs/` still answers 404. Any static host
-   works on `dist/` served under `/docs`; a deploy workflow does not exist
-   yet.
+2. **Hosting + deploy** — the site is live at
+   `https://palaia.byte5.ai/docs`, served by the palaia-homepage repo
+   (its `DOCS-HOSTING.md`). This repository's CI only builds and
+   link-checks `dist/`; a deploy step that hands a new build to the
+   homepage repo does not exist here yet, so content changes reach the
+   live site only when that repo picks them up.
 3. **Marketing** — every page is functional, none is promotional. Whether
    a marketing landing page fronts the docs site (or lives elsewhere) is
    a website-session decision. The root README's pitch (being rewritten,
