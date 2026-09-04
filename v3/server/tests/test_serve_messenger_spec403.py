@@ -38,7 +38,18 @@ async def test_hub_wide_messenger_is_mounted(tmp_path: Path) -> None:
     production = await build_production_app(config, home=tmp_path)
     try:
         async with production.app.router.lifespan_context(production.app):
-            transport = mcp_client_transport(production.app, f"{BASE_URL}/mcp/messenger/")
+            # Issue #313: the hub-wide mount needs a token like any profile.
+            with pytest.raises(Exception):  # noqa: B017 - fastmcp surfaces the 401 as a transport error
+                async with Client(
+                    mcp_client_transport(production.app, f"{BASE_URL}/mcp/messenger/")
+                ):
+                    pass
+            token = production.token_store.create(
+                "t", "default", ["messenger:read", "messenger:send"]
+            )
+            transport = mcp_client_transport(
+                production.app, f"{BASE_URL}/mcp/messenger/", token=token.token
+            )
             async with Client(transport) as client:
                 names = {t.name for t in await client.list_tools()}
         assert names == {
@@ -75,9 +86,7 @@ async def test_profile_with_messenger_true_shares_the_hub_wide_messenger(
     production = await build_production_app(config, home=tmp_path)
     try:
         async with production.app.router.lifespan_context(production.app):
-            profile_transport = mcp_client_transport(
-                production.app, f"{BASE_URL}/mcp/default/"
-            )
+            profile_transport = mcp_client_transport(production.app, f"{BASE_URL}/mcp/default/")
             async with Client(profile_transport) as profile:
                 names = {t.name for t in await profile.list_tools()}
                 assert "messenger_send" in names
@@ -85,12 +94,8 @@ async def test_profile_with_messenger_true_shares_the_hub_wide_messenger(
 
                 # Two sessions, one profile connection: register both, then
                 # message from one to the other.
-                first = await profile.call_tool(
-                    "directory_register", {"scope": "sender"}
-                )
-                second = await profile.call_tool(
-                    "directory_register", {"scope": "recipient"}
-                )
+                first = await profile.call_tool("directory_register", {"scope": "sender"})
+                second = await profile.call_tool("directory_register", {"scope": "recipient"})
                 a_handle = first.structured_content["session"]["handle"]
                 a_secret = first.structured_content["session_secret"]
                 b_handle = second.structured_content["session"]["handle"]
@@ -119,9 +124,7 @@ async def test_profile_with_messenger_true_shares_the_hub_wide_messenger(
                 assert refused.is_error
 
             # Read it back through the hub-wide mount: same store.
-            messenger_transport = mcp_client_transport(
-                production.app, f"{BASE_URL}/mcp/messenger/"
-            )
+            messenger_transport = mcp_client_transport(production.app, f"{BASE_URL}/mcp/messenger/")
             async with Client(messenger_transport) as messenger:
                 arrived = await messenger.call_tool(
                     "messenger_check",

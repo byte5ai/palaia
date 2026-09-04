@@ -96,7 +96,7 @@ from fastmcp.server.middleware import Middleware
 from starlette.routing import Mount, Router
 from starlette.types import ASGIApp
 
-from ..auth.policy import check_gateway_auth_policy
+from ..auth.policy import AuthPolicyError, check_gateway_auth_policy
 from ..directory.service import DirectoryService
 from ..messenger.service import MessengerService
 from ..stash.service import StashService
@@ -227,9 +227,7 @@ class DynamicGateway:
         self._mode = mode
         self._token_verifiers: dict[str, TokenVerifier] = dict(token_verifiers or {})
         self._auth_provider_factory = auth_provider_factory
-        self._profile_middleware: dict[str, Sequence[Middleware]] = dict(
-            profile_middleware or {}
-        )
+        self._profile_middleware: dict[str, Sequence[Middleware]] = dict(profile_middleware or {})
         self._stash_service = stash_service
         self._directory_service = directory_service
         self._messenger_service = messenger_service
@@ -301,26 +299,6 @@ class DynamicGateway:
                     "uses. Fix: name the vault differently, or give that server "
                     "another namespace."
                 )
-            self._config = self._config.model_copy(update={"vaults": [*self._config.vaults, vault]})
-            self._vault_services[vault.key] = service
-            self._vault_servers[vault.key] = _build_vault_servers(
-                GatewayConfig(vaults=[vault]), {vault.key: service}
-            )[vault.key]
-
-            profiles_by_path = {p.path: p for p in self._config.profiles}
-            for path in profile_paths:
-                existing = profiles_by_path.get(path)
-                if existing is None:
-                    new_profile = ProfileConfig(path=path, vaults=[vault.key])
-                else:
-                    new_profile = existing.model_copy(
-                        update={"vaults": [*existing.vaults, vault.key]}
-                    )
-                profiles_by_path[path] = new_profile
-            self._config = self._config.model_copy(
-                update={"profiles": list(profiles_by_path.values())}
-            )
-
             # SPEC-504 first-run funnel audit fix: a profile path that has
             # never been mounted before (the overwhelmingly common case for
             # the very first vault a fresh install's wizard creates — see
@@ -340,6 +318,28 @@ class DynamicGateway:
                         verifier = self._auth_provider_factory(path)
                         if verifier is not None:
                             self._token_verifiers[path] = verifier
+            # Issue #315: refuse *before* the config or the mounts change.
+            self._refuse_unauthenticated(profile_paths)
+
+            self._config = self._config.model_copy(update={"vaults": [*self._config.vaults, vault]})
+            self._vault_services[vault.key] = service
+            self._vault_servers[vault.key] = _build_vault_servers(
+                GatewayConfig(vaults=[vault]), {vault.key: service}
+            )[vault.key]
+
+            profiles_by_path = {p.path: p for p in self._config.profiles}
+            for path in profile_paths:
+                existing = profiles_by_path.get(path)
+                if existing is None:
+                    new_profile = ProfileConfig(path=path, vaults=[vault.key])
+                else:
+                    new_profile = existing.model_copy(
+                        update={"vaults": [*existing.vaults, vault.key]}
+                    )
+                profiles_by_path[path] = new_profile
+            self._config = self._config.model_copy(
+                update={"profiles": list(profiles_by_path.values())}
+            )
 
             for path in profile_paths:
                 await self._request_mount(profiles_by_path[path])
@@ -441,6 +441,8 @@ class DynamicGateway:
                 )
             if auth is not None:
                 self._token_verifiers[path] = auth
+            # Issue #315: refuse *before* the config or the mounts change.
+            self._refuse_unauthenticated([path])
             profiles_by_path = {p.path: p for p in self._config.profiles}
             if upstreams is None:
                 previous = profiles_by_path.get(path)
@@ -492,15 +494,10 @@ class DynamicGateway:
         async with self._lock:
             if vault.key not in self._vault_services:
                 raise GatewayConfigError(
-                    f"cannot update vault identity: {vault.key!r} is not mounted "
-                    "at this gateway."
+                    f"cannot update vault identity: {vault.key!r} is not mounted at this gateway."
                 )
             self._config = self._config.model_copy(
-                update={
-                    "vaults": [
-                        vault if v.key == vault.key else v for v in self._config.vaults
-                    ]
-                }
+                update={"vaults": [vault if v.key == vault.key else v for v in self._config.vaults]}
             )
             self._vault_servers[vault.key] = _build_vault_servers(
                 GatewayConfig(vaults=[vault]), {vault.key: self._vault_services[vault.key]}
@@ -555,9 +552,7 @@ class DynamicGateway:
             if key not in {u.key for u in self._config.upstreams}:
                 raise KeyError(f"no external server configured under {key!r}")
             profiles = [
-                profile.model_copy(
-                    update={"upstreams": [k for k in profile.upstreams if k != key]}
-                )
+                profile.model_copy(update={"upstreams": [k for k in profile.upstreams if k != key]})
                 if key in profile.upstreams
                 else profile
                 for profile in self._config.profiles
@@ -606,6 +601,27 @@ class DynamicGateway:
             mounts[key] = UpstreamMount(config=config, server=proxy)
         return mounts
 
+    def _refuse_unauthenticated(self, paths: Sequence[str]) -> None:
+        """Issue #315: the operating-mode auth rule, applied *before* any
+        config mutation or mount. ``check_gateway_auth_policy`` after the
+        fact used to be the only check, which left an unauthenticated
+        profile live (and the config already changed) when it raised.
+        Every mount below passes ``self._token_verifiers.get(path)`` as the
+        server's ``auth``, so "no verifier known for this path" is exactly
+        "would be mounted unauthenticated"."""
+        if self._mode not in ("cloud", "open"):
+            return
+        missing = sorted(p for p in paths if p not in self._token_verifiers)
+        if missing:
+            raise AuthPolicyError(
+                f"mode {self._mode!r} requires every mounted MCP profile to have a "
+                f"token verifier attached, but {missing} would be mounted without "
+                f"one. Nothing was changed. Fix: pass `auth=` (or an "
+                f"`auth_provider_factory` that covers this path), or set `mode: "
+                f"locked` in config.yaml if these profiles are meant to stay "
+                f"VPN/tailnet-only."
+            )
+
     async def _request_mount(self, profile: ProfileConfig) -> None:
         """Build one profile's FastMCP app (plain construction — safe in the
         caller's own task) and hand it to the lifecycle task to actually
@@ -624,6 +640,11 @@ class DynamicGateway:
             self._directory_service,
             self._messenger_service,
         )
+        # Belt and braces for issue #315: whatever `_build_profile_server`
+        # returned (a semantic-routing router included) is what gets served,
+        # so it — not some intermediate — must carry the verifier. Raising
+        # here leaves the previous generation mounted and untouched.
+        check_gateway_auth_policy(self._mode, {profile.path: server})
         asgi_app = server.http_app(path="/")
         done: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         await self._queue.put(_MountCommand(profile.path, server, asgi_app, done))

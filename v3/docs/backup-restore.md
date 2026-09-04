@@ -132,10 +132,19 @@ grew there naturally.
 
 ## 4. Security posture
 
-- `GET /api/backup` sits behind the admin session gate
-  (`palaia_hub.admin_session`) like every other `/api/*` route, in every
-  mode that gates one at all — no opt-in parameter exists to mount it
-  without that gate wrapping it (`palaia_hub.app.create_app`).
+- `GET /api/backup` is served only to a signed-in owner (issue #317). Where
+  the admin session gate (`palaia_hub.admin_session`) is mounted it answers
+  401 like every other `/api/*` route; where it is *not* — `mode: locked`
+  without a `dashboard.require_sign_in` override, or a hub with no sign-in
+  server — the route refuses with 403 and names the two ways out, because
+  the archive is key material rather than "the vault" the locked-mode LAN
+  posture was written for. `create_app` tells the route which case applies
+  (`session_gated`); no opt-in parameter exists to mount it any other way.
+- `palaia-hub backup [--out PATH]` writes the identical archive on the
+  machine the hub runs on (mode `0600`, via a `.part` file renamed into
+  place) — the way to back up a hub whose dashboard has no sign-in. In the
+  container: `docker exec palaia-hub palaia-hub backup --out /tmp/hub.tar.gz`
+  then `docker cp palaia-hub:/tmp/hub.tar.gz .`.
 - The archive is built and streamed straight into the HTTP response body;
   `server/src/palaia_hub/backup.py` never writes it to a temp file, so
   there is no window where a full copy of a hub's secrets sits in a

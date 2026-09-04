@@ -33,7 +33,15 @@ async def test_hub_wide_stash_is_mounted(tmp_path: Path) -> None:
     production = await build_production_app(config, home=tmp_path)
     try:
         async with production.app.router.lifespan_context(production.app):
-            transport = mcp_client_transport(production.app, f"{BASE_URL}/mcp/stash/")
+            # Issue #313: `auth_enabled: true` (the default) covers the
+            # hub-wide mounts too — no token, no tools.
+            with pytest.raises(Exception):  # noqa: B017 - fastmcp surfaces the 401 as a transport error
+                async with Client(mcp_client_transport(production.app, f"{BASE_URL}/mcp/stash/")):
+                    pass
+            token = production.token_store.create("t", "default", ["stash:read", "stash:write"])
+            transport = mcp_client_transport(
+                production.app, f"{BASE_URL}/mcp/stash/", token=token.token
+            )
             async with Client(transport) as client:
                 names = {t.name for t in await client.list_tools()}
         assert "stash_set" in names
@@ -63,9 +71,7 @@ async def test_profile_with_stash_true_shares_the_hub_wide_stash(tmp_path: Path)
             # Set through the profile-mounted copy, read through the
             # hub-wide `/mcp/stash` mount — same store, so the value
             # round-trips.
-            profile_transport = mcp_client_transport(
-                production.app, f"{BASE_URL}/mcp/default/"
-            )
+            profile_transport = mcp_client_transport(production.app, f"{BASE_URL}/mcp/default/")
             async with Client(profile_transport) as profile_client:
                 await profile_client.call_tool(
                     "stash_set", {"namespace": "ns", "key": "k", "value": "v"}
@@ -73,9 +79,7 @@ async def test_profile_with_stash_true_shares_the_hub_wide_stash(tmp_path: Path)
 
             stash_transport = mcp_client_transport(production.app, f"{BASE_URL}/mcp/stash/")
             async with Client(stash_transport) as stash_client:
-                result = await stash_client.call_tool(
-                    "stash_get", {"namespace": "ns", "key": "k"}
-                )
+                result = await stash_client.call_tool("stash_get", {"namespace": "ns", "key": "k"})
         assert not result.is_error
         text = result.content[0].text if result.content else ""  # type: ignore[union-attr]
         assert "v" in text

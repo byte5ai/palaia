@@ -2,7 +2,13 @@ import { useEffect, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 
 import { Badge, CardBody, CardFoot, CardHead, EmptyState } from "../components";
-import type { FunnelStatus, InfoResponse, TokenInfo, VaultSummary } from "../lib/api/client";
+import type {
+  FunnelStatus,
+  InfoResponse,
+  SignInInfo,
+  TokenInfo,
+  VaultSummary,
+} from "../lib/api/client";
 import { api } from "../lib/api/client";
 import { docsUrl } from "../lib/docs";
 import type { EventStreamState, VaultChangeEntry } from "../lib/events";
@@ -184,6 +190,8 @@ export function Home() {
   }, [funnel?.first_memory_at]);
 
   const isHealthy = stream.health?.status === "ok";
+  // `sign_in` is typed `unknown` by the generated schema (see SignInInfo).
+  const signIn = info?.sign_in as SignInInfo | undefined;
   const hasVaults = (vaults?.length ?? 0) > 0;
   const totalNotes = vaults?.reduce((sum, v) => sum + v.note_count, 0) ?? 0;
   const liveClients = (tokens ?? [])
@@ -380,10 +388,11 @@ export function Home() {
         </div>
       </section>
 
-      {/* SPEC-604: the dashboard's one "Back up" action. Always shown — the
-       * endpoint behind it (GET /api/backup) is mounted on every hub with
-       * no opt-in parameter, the same posture as /api/health — so there is
-       * no service-not-configured state to branch on here. */}
+      {/* SPEC-604: the dashboard's one "Back up" action. Issue 317: the
+       * download is served only to a signed-in owner (the file can act as
+       * the hub), so on a hub whose dashboard has no sign-in turned on the
+       * card explains the way to take a backup there instead of offering a
+       * link that would come back as a refusal. */}
       <section className="card" data-testid="backup-card">
         <CardHead title="back up" />
         <CardBody className="stack stack--3">
@@ -403,9 +412,17 @@ export function Home() {
           </div>
         </CardBody>
         <CardFoot>
-          <a className="btn btn--primary btn--sm" href={api.backupUrl()} download>
-            Back up now
-          </a>
+          {signIn?.required ? (
+            <a className="btn btn--primary btn--sm" href={api.backupUrl()} download>
+              Back up now
+            </a>
+          ) : (
+            <span className="t-sm t-muted" data-testid="backup-needs-sign-in">
+              Downloading a backup needs the dashboard sign-in, which this hub has not turned
+              on. On the machine the hub runs on, <code>palaia-hub backup</code> writes the
+              same file.
+            </span>
+          )}
           <span className="t-meta">
             <a href={docsUrl("/backup-restore/")} target="_blank" rel="noreferrer">
               How restore works

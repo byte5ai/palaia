@@ -19,6 +19,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 from fastmcp.apps import AppConfig
+from fastmcp.server.auth import AuthProvider
 from fastmcp.tools.base import ToolResult
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, ConfigDict, Field
@@ -202,9 +203,7 @@ async def collect_hub_status(deps: HubStatusDeps) -> HubStatusResult:
             if info.revoked_at is not None:
                 continue
             clients.append(
-                ClientStatus(
-                    name=info.name, profile=info.profile, last_used_at=info.last_used_at
-                )
+                ClientStatus(name=info.name, profile=info.profile, last_used_at=info.last_used_at)
             )
 
     return HubStatusResult(
@@ -216,13 +215,14 @@ async def collect_hub_status(deps: HubStatusDeps) -> HubStatusResult:
     )
 
 
-def build_hub_status_server(deps: HubStatusDeps) -> FastMCP:
+def build_hub_status_server(deps: HubStatusDeps, *, auth: AuthProvider | None = None) -> FastMCP:
     """The standalone hub-level ``hub_status`` tool server (mounted at
     ``/mcp/hub`` by :func:`palaia_hub.app.create_app`), mirroring
     :func:`palaia_hub.gateway.stash_tools.build_stash_server`'s shape for
     the one hub-level server this SPEC adds.
     """
     server = FastMCP(
+        auth=auth,
         name="palaia-hub-status",
         instructions=(
             "IDENTITY: this is the hub status tool — health, vaults, index/embed "

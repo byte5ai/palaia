@@ -30,6 +30,7 @@ from typing import Annotated, Any
 
 from fastmcp import FastMCP
 from fastmcp.apps import AppConfig
+from fastmcp.server.auth import AuthProvider
 from fastmcp.tools.base import ToolResult
 from mcp.types import ToolAnnotations
 from pydantic import AliasChoices, Field
@@ -99,9 +100,9 @@ def _scope_error(action: str) -> ToolResult | None:
     return ToolResult(content=message, is_error=True) if message else None
 
 
-def build_stash_server(service: StashService) -> FastMCP:
+def build_stash_server(service: StashService, *, auth: AuthProvider | None = None) -> FastMCP:
     """Build the stash tool family, backed by ``service``."""
-    server = FastMCP(name="palaia-stash", instructions=STASH_IDENTITY)
+    server = FastMCP(name="palaia-stash", instructions=STASH_IDENTITY, auth=auth)
 
     def desc(detail: str) -> str:
         return f"{STASH_IDENTITY}\n\n{detail}"
@@ -212,8 +213,7 @@ def build_stash_server(service: StashService) -> FastMCP:
             return err
         result = await service.status()
         text = (
-            f"{result.total_entries} entries, "
-            f"{result.total_bytes}/{result.budget_bytes} bytes used"
+            f"{result.total_entries} entries, {result.total_bytes}/{result.budget_bytes} bytes used"
         )
         return ToolResult(content=text, structured_content=result)
 
@@ -267,14 +267,19 @@ class StashGatewayASGI:
 
     app: ASGIApp
     lifespan: Any
+    #: The ``FastMCP`` behind ``app`` — what
+    #: :func:`palaia_hub.auth.policy.check_hub_mount_auth_policy` inspects.
+    server: FastMCP
 
 
-def build_stash_gateway(service: StashService) -> StashGatewayASGI:
+def build_stash_gateway(
+    service: StashService, *, auth: AuthProvider | None = None
+) -> StashGatewayASGI:
     """Build the stash server and its mountable ASGI app + lifespan, ready
     for ``app.mount("/mcp/stash", ...)`` (see :mod:`palaia_hub.app`)."""
-    server = build_stash_server(service)
+    server = build_stash_server(service, auth=auth)
     asgi_app = server.http_app(path="/")
-    return StashGatewayASGI(app=asgi_app, lifespan=asgi_app.lifespan)
+    return StashGatewayASGI(app=asgi_app, lifespan=asgi_app.lifespan, server=server)
 
 
 __all__ = [

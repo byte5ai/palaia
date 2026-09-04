@@ -10,10 +10,14 @@ keeps answering a session opened against it after a swap.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from fastmcp import Client
 
 from palaia_hub.auth.policy import AuthPolicyError
+from palaia_hub.auth.store import TokenStore
+from palaia_hub.auth.wiring import build_profile_verifiers
 from palaia_hub.directory.service import DirectoryService
 from palaia_hub.directory.store import DirectoryStore
 from palaia_hub.gateway.build import GatewayConfigError
@@ -113,6 +117,11 @@ async def test_add_vault_in_cloud_mode_without_a_verifier_raises() -> None:
             FakeVaultService(),
             profile_paths=["default"],
         )
+    # Issue #315: refused means *nothing* changed — no unauthenticated
+    # profile left serving, no vault or profile recorded in the config.
+    assert gateway.profile_servers == {}
+    assert gateway.config.profiles == []
+    assert gateway.config.vaults == []
 
     await gateway.aclose()
 
@@ -162,9 +171,7 @@ async def test_upsert_profile_replaces_an_existing_one_shape() -> None:
         ],
         profiles=[ProfileConfig(path="default", vaults=["work"])],
     )
-    gateway = DynamicGateway(
-        config, {"work": FakeVaultService(), "personal": FakeVaultService()}
-    )
+    gateway = DynamicGateway(config, {"work": FakeVaultService(), "personal": FakeVaultService()})
     await gateway.start()
 
     await gateway.upsert_profile("default", ["work", "personal"], stash=True)
@@ -195,6 +202,58 @@ async def test_upsert_profile_in_cloud_mode_without_auth_raises() -> None:
 
     with pytest.raises(AuthPolicyError):
         await gateway.upsert_profile("default", [])
+    assert gateway.profile_servers == {}
+    assert gateway.config.profiles == []
+
+    await gateway.aclose()
+
+
+async def test_semantic_routing_keeps_the_profile_verifier(tmp_path: Path) -> None:
+    """Issue #315: switching a profile to semantic routing must not drop its
+    token verifier — the router is what gets served."""
+    store = TokenStore(home=tmp_path)
+    verifiers = build_profile_verifiers(["default"], store)
+    config = GatewayConfig(
+        vaults=[VaultMountConfig(key="work", name="work")],
+        profiles=[ProfileConfig(path="default", vaults=["work"])],
+    )
+    gateway = DynamicGateway(
+        config, {"work": FakeVaultService()}, mode="cloud", token_verifiers=verifiers
+    )
+    await gateway.start()
+
+    await gateway.upsert_profile("default", ["work"], semantic_routing=True)
+
+    server = gateway.profile_servers["default"]
+    assert server.auth is verifiers["default"]
+    async with Client(server) as client:
+        names = {t.name for t in await client.list_tools()}
+    assert names == {"find_tool", "invoke_tool"}
+
+    await gateway.aclose()
+
+
+async def test_a_refused_upsert_leaves_the_previous_generation_serving(tmp_path: Path) -> None:
+    """Issue #315: a cloud-mode upsert for a path with no verifier is refused
+    before anything is mounted or recorded; the existing, authenticated
+    profile keeps serving."""
+    store = TokenStore(home=tmp_path)
+    verifiers = build_profile_verifiers(["default"], store)
+    config = GatewayConfig(
+        vaults=[VaultMountConfig(key="work", name="work")],
+        profiles=[ProfileConfig(path="default", vaults=["work"])],
+    )
+    gateway = DynamicGateway(
+        config, {"work": FakeVaultService()}, mode="cloud", token_verifiers=verifiers
+    )
+    await gateway.start()
+
+    with pytest.raises(AuthPolicyError):
+        await gateway.upsert_profile("other", ["work"])
+
+    assert set(gateway.profile_servers) == {"default"}
+    assert [p.path for p in gateway.config.profiles] == ["default"]
+    assert gateway.profile_servers["default"].auth is verifiers["default"]
 
     await gateway.aclose()
 
@@ -252,9 +311,7 @@ async def test_profile_with_stash_true_mounts_the_stash_tools_too() -> None:
         profiles=[ProfileConfig(path="default", vaults=["work"], stash=True)],
     )
     stash_service = StashService(StashStore(":memory:"))
-    gateway = DynamicGateway(
-        config, {"work": FakeVaultService()}, stash_service=stash_service
-    )
+    gateway = DynamicGateway(config, {"work": FakeVaultService()}, stash_service=stash_service)
     await gateway.start()
 
     async with Client(gateway.profile_servers["default"]) as client:
@@ -271,9 +328,7 @@ async def test_profile_with_stash_false_has_no_stash_tools() -> None:
         profiles=[ProfileConfig(path="default", vaults=["work"])],
     )
     stash_service = StashService(StashStore(":memory:"))
-    gateway = DynamicGateway(
-        config, {"work": FakeVaultService()}, stash_service=stash_service
-    )
+    gateway = DynamicGateway(config, {"work": FakeVaultService()}, stash_service=stash_service)
     await gateway.start()
 
     async with Client(gateway.profile_servers["default"]) as client:
@@ -328,9 +383,7 @@ async def test_upsert_profile_with_hidden_tools_hides_them_live() -> None:
     gateway = DynamicGateway(config, {"work": FakeVaultService()})
     await gateway.start()
 
-    await gateway.upsert_profile(
-        "default", ["work"], hidden_tools=["work_memory_delete"]
-    )
+    await gateway.upsert_profile("default", ["work"], hidden_tools=["work_memory_delete"])
 
     async with Client(gateway.profile_servers["default"]) as client:
         names = {t.name for t in await client.list_tools()}

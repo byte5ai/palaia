@@ -91,7 +91,7 @@ scoping). *Proven by* `server/tests/modes/test_policy.py`,
 | Profile | Reaches | Realistic goal |
 |---|---|---|
 | **A1 — the internet at large** | Whatever the mode exposes | Credential stuffing, scanning, spraying the OAuth endpoints |
-| **A2 — another device on the LAN** | Everything, in `locked` mode | Read the vault of a hub that assumed the LAN was safe |
+| **A2 — another device on the LAN** | Everything under `/api/*` in `locked` mode except the backup archive; `/mcp/*` only with a token | Read the vault of a hub that assumed the LAN was safe; mint a client token on it. The one thing it cannot fetch is `GET /api/backup` — the signing key, the secret-store key and the password hash — which refuses without a signed-in owner in every mode (issue #317) |
 | **A3 — another local account** on the same machine | The filesystem | Read `secrets.key`, the signing key, the databases |
 | **A4 — a connected AI client** with a valid token | Its profile's tools | Reach a vault it was not scoped to; escalate through a tool argument |
 | **A5 — a hostile upstream** the user installed | Tool results the hub relays | Prompt-inject the user's assistant; exfiltrate through a tool result |
@@ -113,6 +113,8 @@ under `server/src/palaia_hub/gateway/`, plus the MCP Apps in
 | Threat | Mitigation as built | Where |
 |---|---|---|
 | Unauthenticated tool call | Every mounted profile carries a verifier; the hub **refuses to start** an MCP endpoint with auth off in `cloud`/`open` | `server/src/palaia_hub/auth/policy.py`, `server/tests/auth/test_app_auth_policy.py` |
+| Unauthenticated call on a hub-wide mount (`/mcp/stash`, `/mcp/directory`, `/mcp/messenger`, `/mcp/hub`, `/mcp/market`, `/mcp/team`) | The six hub-level servers share one verifier accepting any live `plt_` token of this hub or an OAuth JWT for any of its profiles; the same start-time refusal applies to them in `cloud`/`open` (issue #313). What a token may then do there is decided by its hub-level scopes inside each tool | `server/src/palaia_hub/oauth/verifier.py` (`build_hub_auth`), `server/src/palaia_hub/auth/policy.py` (`check_hub_mount_auth_policy`), `server/tests/test_hub_mount_auth_spec313.py` |
+| A profile switched to `semantic_routing` losing its verifier | The router served in its place carries the profile's own `auth`; a cloud/open mount that would come up unauthenticated is refused *before* anything is mounted or recorded (issue #315) | `server/src/palaia_hub/gateway/semantic_routing.py`, `server/src/palaia_hub/gateway/dynamic.py`, `server/tests/gateway/test_dynamic.py` |
 | A token reaching a vault it was not scoped to | Per-token, per-profile scopes checked inside the gateway, not at the edge | `server/src/palaia_hub/auth/scopes.py`, `server/tests/auth/test_scopes.py` |
 | A stolen token file | Tokens are argon2id-hashed at rest; the plaintext is shown once at creation and never logged | `server/src/palaia_hub/auth/store.py`, `server/tests/test_logging_redaction.py` |
 | A browser session used as MCP auth | The admin gate deliberately never looks at `/mcp/*`; MCP clients authenticate with their own tokens | `server/src/palaia_hub/admin_session.py`, `server/tests/test_admin_session.py` |

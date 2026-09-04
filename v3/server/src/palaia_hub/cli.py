@@ -20,6 +20,7 @@ import uvicorn
 
 from .auth import TokenError, TokenStore
 from .auth.scopes import vault_scope
+from .backup import archive_filename, iter_archive_bytes
 from .compose_update import rewrite_compose_channel
 from .config import ConfigError, HubConfig, load_config, palaia_home
 from .curator import CURATOR_PROFILE_PATH, ApplyReport, CuratorRunReport, ProposalApplier
@@ -87,6 +88,24 @@ def _build_parser() -> argparse.ArgumentParser:
         "--file",
         default="docker-compose.yml",
         help="Path to your compose file (default: ./docker-compose.yml)",
+    )
+
+    backup_parser = subparsers.add_parser(
+        "backup",
+        help=(
+            "Write everything this hub has saved — every vault, config, sign-in and "
+            "connection setup, and the keys for connected tools — as one tar.gz on this "
+            "machine. The same archive the dashboard's Back up action downloads; this is "
+            "the way to take one on a hub whose dashboard has no sign-in turned on."
+        ),
+    )
+    backup_parser.add_argument(
+        "--out",
+        default=None,
+        help=(
+            "Where to write the archive (a file, or a directory to put a timestamped file "
+            "in). Default: a timestamped file in the current directory."
+        ),
     )
 
     import_parser = subparsers.add_parser("import", help="Import notes from another store")
@@ -163,9 +182,7 @@ def _add_curator_parser(subparsers: argparse._SubParsersAction[argparse.Argument
     token_parser = curator_subparsers.add_parser(
         "token", help="Mint the curator's own token, bound to the curator profile"
     )
-    token_parser.add_argument(
-        "--name", default="curator", help="Human-readable name for the token"
-    )
+    token_parser.add_argument("--name", default="curator", help="Human-readable name for the token")
 
 
 def _add_curator_common_args(parser: argparse.ArgumentParser) -> None:
@@ -253,9 +270,7 @@ def _profile_scopes(profiles: Sequence[ProfileConfig]) -> dict[str, list[str]]:
 
     def scopes_for(profile: ProfileConfig) -> list[str]:
         scopes = [
-            scope
-            for key in profile.vaults
-            for scope in (f"vault:{key}:read", f"vault:{key}:write")
+            scope for key in profile.vaults for scope in (f"vault:{key}:read", f"vault:{key}:write")
         ]
         if profile.stash:
             scopes += ["stash:read", "stash:write"]
@@ -406,10 +421,7 @@ def _oauth_clients() -> None:
         return
     for client in clients:
         kind = "machine" if client.is_machine else client.source
-        print(
-            f"{client.client_id}  {kind:8}  {client.client_name!r}  "
-            f"scopes={list(client.scopes)}"
-        )
+        print(f"{client.client_id}  {kind:8}  {client.client_name!r}  scopes={list(client.scopes)}")
 
 
 def _oauth_gc() -> None:
@@ -447,8 +459,7 @@ def _token_list() -> None:
     for info in tokens:
         status = "revoked" if info.revoked_at else "active"
         print(
-            f"{info.id}  {status:8}  {info.name!r}  "
-            f"profile={info.profile!r}  scopes={info.scopes}"
+            f"{info.id}  {status:8}  {info.name!r}  profile={info.profile!r}  scopes={info.scopes}"
         )
 
 
@@ -660,6 +671,36 @@ def _update_compose(channel: str | None, file_path: str) -> None:
     print("  docker compose up -d")
 
 
+def _backup(out: str | None) -> Path:
+    """``palaia-hub backup`` (issue #317): the dashboard's archive, written locally.
+
+    Streams :func:`palaia_hub.backup.iter_archive_bytes` — the exact bytes
+    ``GET /api/backup`` would serve — into ``out`` (default: a timestamped
+    ``palaia-backup-*.tar.gz`` in the current directory), via a ``.part``
+    sibling that is renamed into place only once the archive is complete, so
+    a killed run never leaves a truncated file under the real name. Mode
+    ``0600``: this file can act as the hub.
+    """
+    home = palaia_home()
+    target = Path(out) if out else Path.cwd() / archive_filename()
+    if target.is_dir():
+        target = target / archive_filename()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    partial = target.with_name(target.name + ".part")
+    written = 0
+    with partial.open("wb") as handle:
+        for chunk in iter_archive_bytes(home):
+            handle.write(chunk)
+            written += len(chunk)
+    partial.chmod(0o600)
+    partial.replace(target)
+    print(
+        f"Wrote {target} ({written} bytes). This file can act as your hub — anyone who "
+        "has it can read everything in it, so store it like a password."
+    )
+    return target
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -695,6 +736,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             _import_basic_memory(args)
     elif args.command == "update":
         _update_compose(args.channel, args.file)
+    elif args.command == "backup":
+        _backup(args.out)
 
 
 if __name__ == "__main__":

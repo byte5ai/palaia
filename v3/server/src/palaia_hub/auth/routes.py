@@ -39,7 +39,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from .models import CreatedToken, TokenInfo
-from .scopes import vault_scope
+from .scopes import directory_scope, messenger_scope, stash_scope, vault_scope
 from .store import TokenError, TokenStore
 
 if TYPE_CHECKING:
@@ -68,11 +68,23 @@ def _default_scopes_for_profile(dynamic_gateway: DynamicGateway, profile: str) -
     yet" behavior, not this default)."""
     for candidate in dynamic_gateway.config.profiles:
         if candidate.path == profile:
-            return [
+            scopes = [
                 vault_scope(key, permission)
                 for key in candidate.vaults
                 for permission in ("read", "write")
             ]
+            # Issue #313: the hub-wide mounts now require a token, so a
+            # default token for a profile that carries a built-in family
+            # (`stash`/`directory`/`messenger: true`) also gets that family's
+            # scope pair — the same rule the OAuth server's grantable
+            # ceiling already applies (`palaia_hub.cli._profile_scopes`).
+            if candidate.stash:
+                scopes += [stash_scope("read"), stash_scope("write")]
+            if candidate.directory:
+                scopes += [directory_scope("read"), directory_scope("write")]
+            if candidate.messenger:
+                scopes += [messenger_scope("read"), messenger_scope("send")]
+            return scopes
     return []
 
 

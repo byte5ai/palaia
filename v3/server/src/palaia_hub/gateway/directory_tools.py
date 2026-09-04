@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from typing import Annotated, Any
 
 from fastmcp import FastMCP
+from fastmcp.server.auth import AuthProvider
 from fastmcp.tools.base import ToolResult
 from mcp.types import ToolAnnotations
 from pydantic import AliasChoices, Field
@@ -107,9 +108,11 @@ def _scope_error(action: str) -> ToolResult | None:
     return ToolResult(content=message, is_error=True) if message else None
 
 
-def build_directory_server(service: DirectoryService) -> FastMCP:
+def build_directory_server(
+    service: DirectoryService, *, auth: AuthProvider | None = None
+) -> FastMCP:
     """Build the session directory tool family, backed by ``service``."""
-    server = FastMCP(name="palaia-directory", instructions=DIRECTORY_IDENTITY)
+    server = FastMCP(name="palaia-directory", instructions=DIRECTORY_IDENTITY, auth=auth)
 
     def desc(detail: str) -> str:
         return f"{DIRECTORY_IDENTITY}\n\n{detail}"
@@ -139,9 +142,7 @@ def build_directory_server(service: DirectoryService) -> FastMCP:
         model: Annotated[
             str,
             Field(
-                description=(
-                    "Model name, self-reported verbatim (display only, never trusted)."
-                )
+                description=("Model name, self-reported verbatim (display only, never trusted).")
             ),
         ] = "",
         capabilities: Annotated[
@@ -314,15 +315,20 @@ class DirectoryGatewayASGI:
 
     app: ASGIApp
     lifespan: Any
+    #: The ``FastMCP`` behind ``app`` — what
+    #: :func:`palaia_hub.auth.policy.check_hub_mount_auth_policy` inspects.
+    server: FastMCP
 
 
-def build_directory_gateway(service: DirectoryService) -> DirectoryGatewayASGI:
+def build_directory_gateway(
+    service: DirectoryService, *, auth: AuthProvider | None = None
+) -> DirectoryGatewayASGI:
     """Build the directory server and its mountable ASGI app + lifespan,
     ready for ``app.mount("/mcp/directory", ...)`` (see
     :mod:`palaia_hub.app`)."""
-    server = build_directory_server(service)
+    server = build_directory_server(service, auth=auth)
     asgi_app = server.http_app(path="/")
-    return DirectoryGatewayASGI(app=asgi_app, lifespan=asgi_app.lifespan)
+    return DirectoryGatewayASGI(app=asgi_app, lifespan=asgi_app.lifespan, server=server)
 
 
 __all__ = [

@@ -32,7 +32,18 @@ async def test_hub_wide_directory_is_mounted(tmp_path: Path) -> None:
     production = await build_production_app(config, home=tmp_path)
     try:
         async with production.app.router.lifespan_context(production.app):
-            transport = mcp_client_transport(production.app, f"{BASE_URL}/mcp/directory/")
+            # Issue #313: the hub-wide mount needs a token like any profile.
+            with pytest.raises(Exception):  # noqa: B017 - fastmcp surfaces the 401 as a transport error
+                async with Client(
+                    mcp_client_transport(production.app, f"{BASE_URL}/mcp/directory/")
+                ):
+                    pass
+            token = production.token_store.create(
+                "t", "default", ["directory:read", "directory:write"]
+            )
+            transport = mcp_client_transport(
+                production.app, f"{BASE_URL}/mcp/directory/", token=token.token
+            )
             async with Client(transport) as client:
                 names = {t.name for t in await client.list_tools()}
         assert "directory_register" in names
@@ -63,18 +74,14 @@ async def test_profile_with_directory_true_shares_the_hub_wide_directory(
         async with production.app.router.lifespan_context(production.app):
             # Register through the profile-mounted copy, read through the
             # hub-wide `/mcp/directory` mount — same store, so it round-trips.
-            profile_transport = mcp_client_transport(
-                production.app, f"{BASE_URL}/mcp/default/"
-            )
+            profile_transport = mcp_client_transport(production.app, f"{BASE_URL}/mcp/default/")
             async with Client(profile_transport) as profile_client:
                 registered = await profile_client.call_tool(
                     "directory_register", {"scope": "shared session"}
                 )
             handle = registered.structured_content["session"]["handle"]
 
-            directory_transport = mcp_client_transport(
-                production.app, f"{BASE_URL}/mcp/directory/"
-            )
+            directory_transport = mcp_client_transport(production.app, f"{BASE_URL}/mcp/directory/")
             async with Client(directory_transport) as directory_client:
                 listing = await directory_client.call_tool("directory_list", {})
         handles = {s["handle"] for s in listing.structured_content["sessions"]}

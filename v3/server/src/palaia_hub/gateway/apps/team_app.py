@@ -41,6 +41,7 @@ from __future__ import annotations
 
 from fastmcp import FastMCP
 from fastmcp.apps import AppConfig
+from fastmcp.server.auth import AuthProvider
 from fastmcp.tools.base import ToolResult
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, ConfigDict, Field
@@ -313,12 +314,13 @@ def render_team_html() -> str:
     return render_app_page(title=_TITLE, body_html=_BODY_HTML, script_js=_SCRIPT_JS)
 
 
-def build_team_server(deps: TeamAppDeps) -> FastMCP:
+def build_team_server(deps: TeamAppDeps, *, auth: AuthProvider | None = None) -> FastMCP:
     """The standalone hub-level ``session_monitor`` (+ ``messenger_send``)
     server, mounted at ``/mcp/team`` by :func:`palaia_hub.app.create_app` —
     mirrors :func:`~palaia_hub.gateway.apps.hub_status_app.
     build_hub_status_server`'s shape."""
     server = FastMCP(
+        auth=auth,
         name="palaia-team",
         instructions=(
             "IDENTITY: this is the team monitor — the live directory of "

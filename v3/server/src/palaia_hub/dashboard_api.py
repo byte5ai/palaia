@@ -73,6 +73,7 @@ from .vault import (
 )
 from .vault import permalink as pl
 from .vault.links import iter_links
+from .vault.watcher import VaultWatcher
 
 # Two starter notes offered by the wizard's "start from a template" switch
 # (deliverable #1). Deliberately small and deletable — a template is a
@@ -251,6 +252,7 @@ def build_dashboard_router(
     registry: VaultRegistry,
     *,
     indexes: dict[str, VaultIndex] | None = None,
+    watchers: dict[str, VaultWatcher] | None = None,
     dynamic_gateway: DynamicGateway | None = None,
     curator: CuratorWiring | None = None,
     event_bus: EventBus | None = None,
@@ -306,6 +308,13 @@ def build_dashboard_router(
             index = VaultIndex(engine)
             await index.open()
             indexes[body.key] = index
+        # Issue #316: a vault created through the wizard gets its external-
+        # edit watcher right away, same as a vault that existed at startup
+        # (`palaia_hub.serve`); the app lifespan stops it with the others.
+        if watchers is not None:
+            watcher = VaultWatcher(engine)
+            await watcher.start()
+            watchers[body.key] = watcher
 
         if dynamic_gateway is not None:
             service = EngineVaultService(engine, index)
@@ -422,9 +431,7 @@ async def _local_graph(engine: VaultEngine, permalink: str) -> LocalGraphOut:
         entry = engine.resolve(permalink)
         note = await engine.read_note(entry.path)
     except (NoteNotFoundError, AmbiguousReferenceError, InvalidPathError) as exc:
-        raise HTTPException(
-            status_code=404, detail=f"no note matching {permalink!r}"
-        ) from exc
+        raise HTTPException(status_code=404, detail=f"no note matching {permalink!r}") from exc
 
     outbound: list[GraphNodeOut] = []
     seen: set[str] = {entry.path}

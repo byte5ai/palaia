@@ -28,7 +28,7 @@ handler — no restart, per that module's ``dynamic_gateway`` parameter.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -61,7 +61,7 @@ from .messenger.store import MessengerStore
 from .notifications import NotificationStore
 from .notifications.store import NOTIFICATIONS_RELATIVE_PATH
 from .oauth import AuthorizationServer
-from .oauth.verifier import build_profile_auth, oauth_client_connected_hook
+from .oauth.verifier import build_hub_auth, build_profile_auth, oauth_client_connected_hook
 from .registry import RegistryClient
 from .stash.service import StashService
 from .stash.store import StashStore
@@ -69,7 +69,7 @@ from .upstream.monitor import UpstreamHealthMonitor
 from .upstream.secrets import SecretStore
 from .upstream.service import UpstreamService
 from .vault import EventBus as VaultEventBus
-from .vault import VaultEngine, VaultRegistry
+from .vault import VaultEngine, VaultRegistry, VaultWatcher
 
 #: The hub's one session-directory database (SPEC-402), named after
 #: ``STASH_FILENAME``'s own convention — one file per hub-level store,
@@ -119,6 +119,12 @@ class ProductionApp:
     #: of its own to close — everything it touches (``upstream_service``,
     #: ``secret_store``, ``dynamic_gateway``) is already listed above.
     install_service: InstallService | None = None
+    #: One filesystem watcher per opened vault (issue #316): what makes an
+    #: edit made outside the hub — Obsidian, `palaia-hub import` against a
+    #: running hub, a `git pull` into the vault — reach the index without a
+    #: restart. Started and stopped by the app's own lifespan; a vault the
+    #: wizard creates later gets its watcher from the dashboard router.
+    watchers: dict[str, VaultWatcher] = field(default_factory=dict)
 
 
 def _index_event_hook(event_bus: EventBus, vault_key: str) -> HubEventHook:
@@ -215,6 +221,7 @@ async def build_production_app(
         manual_store=ManualEntryStore(home / "market_manual.sqlite3" if home else None),
     )
     indexes: dict[str, VaultIndex] = {}
+    watchers: dict[str, VaultWatcher] = {}
     vault_services: dict[str, VaultService] = {}
     mounts: list[VaultMountConfig] = []
     engines: dict[str, VaultEngine] = {}
@@ -224,6 +231,12 @@ async def build_production_app(
         index = VaultIndex(engine, on_event=_index_event_hook(event_bus, record.name))
         await index.open()
         indexes[record.name] = index
+        # Issue #316: the watcher publishes on the engine's own bus, which the
+        # index just subscribed to in `open()` — so an external edit becomes
+        # a NoteCreated/NoteModified/NoteMoved event the index applies, and
+        # (via `create_app`'s vault-event bridge) a `memory.entry.*` event on
+        # the public bus. Constructed here, started by the app lifespan.
+        watchers[record.name] = VaultWatcher(engine)
         engines[record.name] = engine
         vault_services[record.name] = EngineVaultService(engine, index)
         mounts.append(
@@ -330,11 +343,22 @@ async def build_production_app(
     # fired for an OAuth-only client. `on_oauth_verified` closes that gap
     # the same way `token_store.on_verified` is wired in `app.create_app`:
     # one hook, called on a JWT's first successful verify this process.
-    on_oauth_verified = (
-        oauth_client_connected_hook(event_bus) if oauth_server is not None else None
-    )
+    on_oauth_verified = oauth_client_connected_hook(event_bus) if oauth_server is not None else None
     token_verifiers = build_profile_auth(
         [p.path for p in profiles],
+        key=oauth_server.key if oauth_server is not None else None,
+        resources=oauth_server.resources if oauth_server is not None else None,
+        token_store=token_store if config.auth_enabled else None,
+        on_oauth_verified=on_oauth_verified,
+    )
+
+    # Issue #313: the six hub-wide mounts (`/mcp/stash|directory|messenger|
+    # hub|market|team`) get one shared verifier built from the same
+    # credentials — any live `plt_` token of this hub, or an OAuth JWT for
+    # any of its profiles. `None` only when there is nothing to verify
+    # against at all (no OAuth server and `auth_enabled: false`), which
+    # `create_app` refuses in cloud/open like it does for a profile.
+    hub_auth = build_hub_auth(
         key=oauth_server.key if oauth_server is not None else None,
         resources=oauth_server.resources if oauth_server is not None else None,
         token_store=token_store if config.auth_enabled else None,
@@ -398,8 +422,10 @@ async def build_production_app(
         vault_services=vault_services,
         vault_registry=registry,
         indexes=indexes,
+        vault_watchers=watchers,
         event_bus=event_bus,
         oauth_server=oauth_server,
+        hub_auth=hub_auth,
         stash_service=stash_service,
         directory_service=directory_service,
         messenger_service=messenger_service,
@@ -430,6 +456,7 @@ async def build_production_app(
         upstream_service=upstream_service,
         secret_store=secret_store,
         install_service=install_service,
+        watchers=watchers,
     )
 
 

@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
+from fastmcp import FastMCP
+from fastmcp.server.auth import AuthProvider
 
 from . import __version__
 from .admin_session import (
@@ -27,6 +29,7 @@ from .admin_session import (
     sign_in_url_for,
 )
 from .auth import TokenRecord, TokenStore, build_auth_router, check_gateway_auth_policy
+from .auth.policy import check_hub_mount_auth_policy
 from .automations import (
     AutomationDispatcher,
     AutomationOutbox,
@@ -77,6 +80,7 @@ from .modes import ADMIN_PREFIX, AuthRateLimitMiddleware, ModeAuditLog, build_mo
 from .notifications import NotificationStore, build_notifications_router
 from .oauth import AuthorizationServer, build_oauth_router
 from .oauth.login import SESSION_COOKIE
+from .oauth.verifier import build_hub_auth
 from .security import SecurityHeadersMiddleware
 from .stash.service import StashService
 from .stash_api import build_stash_router
@@ -90,7 +94,7 @@ from .upstream.api import (
 from .upstream.monitor import UpstreamHealthMonitor
 from .upstream.secrets import SecretStore
 from .upstream.service import UpstreamService
-from .vault import VaultNotFoundError, VaultRegistry
+from .vault import VaultNotFoundError, VaultRegistry, VaultWatcher
 
 # Name of the env var that, when set to a positive number of seconds, adds a
 # `/api/_test/slow` route that sleeps that long before responding. This
@@ -109,8 +113,10 @@ def create_app(
     vault_services: Mapping[str, VaultService] | None = None,
     vault_registry: VaultRegistry | None = None,
     indexes: dict[str, VaultIndex] | None = None,
+    vault_watchers: dict[str, VaultWatcher] | None = None,
     event_bus: EventBus | None = None,
     oauth_server: AuthorizationServer | None = None,
+    hub_auth: AuthProvider | None = None,
     stash_service: StashService | None = None,
     directory_service: DirectoryService | None = None,
     messenger_service: MessengerService | None = None,
@@ -211,6 +217,25 @@ def create_app(
             independent of it (a profile's JWT verifier is wired into the
             gateway, not here), so a split deployment can verify tokens
             without hosting the endpoints that issue them.
+        vault_watchers: one :class:`~palaia_hub.vault.VaultWatcher` per opened
+            vault (issue #316), started once the gateway is up and stopped
+            before the indexes close, both from this app's lifespan. The
+            same (mutable) mapping is handed to the dashboard router, which
+            adds a watcher for every vault the wizard creates at runtime.
+            Omitted, edits made outside the hub reach the index only on the
+            next restart — the pre-#316 behavior, kept for embedders that
+            drive the index themselves.
+        hub_auth: the one token verifier every hub-wide MCP mount shares
+            (``/mcp/stash``, ``/mcp/directory``, ``/mcp/messenger``,
+            ``/mcp/hub``, ``/mcp/market``, ``/mcp/team`` — issue #313), built
+            by :func:`palaia_hub.oauth.verifier.build_hub_auth` from the
+            same credentials the profiles accept. Omitted, it is derived
+            here from ``oauth_server``/``token_store`` (minus the
+            ``client.connected`` hook ``palaia_hub.serve`` wires in); only a
+            hub with neither serves those mounts with no token check, which
+            :func:`palaia_hub.auth.policy.check_hub_mount_auth_policy`
+            refuses in ``cloud``/``open`` — the same rule the profiles are
+            held to.
         stash_service: the hub's stash cache (SPEC-202). Given, mounts the
             stash tool family at ``/mcp/stash`` and the ``/api/stash`` REST
             mirror, and wires its ``stash.*`` events onto ``event_bus``.
@@ -329,29 +354,33 @@ def create_app(
 
     stash_gateway = None
     if stash_service is not None:
+
         def _publish_stash(action: str, data: dict[str, Any]) -> None:
             publish_event(event_bus, action, origin="stash", data=data)
 
         stash_service.publish = _publish_stash
-        stash_gateway = build_stash_gateway(stash_service)
+        stash_gateway = build_stash_gateway(stash_service, auth=hub_auth)
 
     directory_gateway = None
     if directory_service is not None:
+
         def _publish_directory(action: str, data: dict[str, Any]) -> None:
             publish_event(event_bus, action, origin="directory", data=data)
 
         directory_service.publish = _publish_directory
-        directory_gateway = build_directory_gateway(directory_service)
+        directory_gateway = build_directory_gateway(directory_service, auth=hub_auth)
 
     messenger_gateway = None
     if messenger_service is not None:
+
         def _publish_messenger(action: str, data: dict[str, Any]) -> None:
             publish_event(event_bus, action, origin="messenger", data=data)
 
         messenger_service.publish = _publish_messenger
-        messenger_gateway = build_messenger_gateway(messenger_service)
+        messenger_gateway = build_messenger_gateway(messenger_service, auth=hub_auth)
 
     if market_service is not None:
+
         def _publish_market(action: str, data: dict[str, Any]) -> None:
             publish_event(event_bus, action, origin="market", data=data)
 
@@ -363,6 +392,17 @@ def create_app(
     # below, since there is nothing to report without one. Independent of
     # `gateway`/`dynamic_gateway`: this is its own standalone FastMCP
     # instance, not a profile of either.
+    # Issue #313: see the `hub_auth` parameter — a caller that did not
+    # build one gets the same recipe `palaia_hub.serve` uses, so a test or
+    # embedding that passes only `token_store`/`oauth_server` still mounts
+    # the hub-wide surfaces behind a verifier.
+    if hub_auth is None:
+        hub_auth = build_hub_auth(
+            key=oauth_server.key if oauth_server is not None else None,
+            resources=oauth_server.resources if oauth_server is not None else None,
+            token_store=token_store if config.auth_enabled else None,
+        )
+
     hub_status_asgi_app = None
     if vault_registry is not None:
         hub_status_deps = HubStatusDeps(
@@ -372,7 +412,7 @@ def create_app(
             mode=config.mode,
             start_time=start_time,
         )
-        hub_status_server = build_hub_status_server(hub_status_deps)
+        hub_status_server = build_hub_status_server(hub_status_deps, auth=hub_auth)
         hub_status_asgi_app = hub_status_server.http_app(path="/")
 
     # SPEC-304 deliverable #5: the marketplace MCP App, mounted at
@@ -384,12 +424,11 @@ def create_app(
         market_app_deps = MarketAppDeps(
             market_service=market_service,
             dashboard_url=(
-                config.exposure.public_url.rstrip("/")
-                if config.exposure.public_url
-                else None
+                config.exposure.public_url.rstrip("/") if config.exposure.public_url else None
             ),
         )
-        market_asgi_app = build_market_server(market_app_deps).http_app(path="/")
+        market_server = build_market_server(market_app_deps, auth=hub_auth)
+        market_asgi_app = market_server.http_app(path="/")
 
     # SPEC-405 deliverable #3: the session-monitor MCP App, mounted at
     # `/mcp/team` — hub-level, same standalone-FastMCP-instance shape as
@@ -403,12 +442,29 @@ def create_app(
             directory_service=directory_service,
             messenger_service=messenger_service,
             dashboard_url=(
-                config.exposure.public_url.rstrip("/")
-                if config.exposure.public_url
-                else None
+                config.exposure.public_url.rstrip("/") if config.exposure.public_url else None
             ),
         )
-        team_asgi_app = build_team_server(team_app_deps).http_app(path="/")
+        team_server = build_team_server(team_app_deps, auth=hub_auth)
+        team_asgi_app = team_server.http_app(path="/")
+
+    # Issue #313: the hub-wide mounts are held to the same operating-mode
+    # rule as the profiles (`check_gateway_auth_policy` above) — a hub in
+    # cloud/open never serves one of them without a token verifier.
+    hub_mount_servers: dict[str, FastMCP] = {}
+    if stash_gateway is not None:
+        hub_mount_servers["/mcp/stash"] = stash_gateway.server
+    if directory_gateway is not None:
+        hub_mount_servers["/mcp/directory"] = directory_gateway.server
+    if messenger_gateway is not None:
+        hub_mount_servers["/mcp/messenger"] = messenger_gateway.server
+    if hub_status_asgi_app is not None:
+        hub_mount_servers["/mcp/hub"] = hub_status_server
+    if market_asgi_app is not None:
+        hub_mount_servers["/mcp/market"] = market_server
+    if team_asgi_app is not None:
+        hub_mount_servers["/mcp/team"] = team_server
+    check_hub_mount_auth_policy(config.mode, hub_mount_servers)
 
     # One lifespan runs BOTH concerns: the events background tasks (SPEC-109)
     # and, when a gateway is mounted, its session-manager lifespan (SPEC-105 —
@@ -488,6 +544,10 @@ def create_app(
         tasks = start_background_tasks(event_bus, health_snapshot=health_snapshot)
         if dynamic_gateway is not None:
             await dynamic_gateway.start()
+        # Issue #316: external edits reach the index only while these run.
+        if vault_watchers is not None:
+            for watcher in list(vault_watchers.values()):
+                await watcher.start()
         if dispatcher is not None:
             tasks.append(asyncio.create_task(dispatcher.run_forever()))
         if automation_dispatcher is not None:
@@ -539,6 +599,11 @@ def create_app(
                 secret_store.close()
             if dynamic_gateway is not None:
                 await dynamic_gateway.aclose()
+            # Watchers before indexes: a batch landing during shutdown must
+            # find its index still open, not a closed connection.
+            if vault_watchers is not None:
+                for watcher in list(vault_watchers.values()):
+                    await watcher.stop()
             if indexes is not None:
                 for index in indexes.values():
                     await index.close()
@@ -659,9 +724,7 @@ def create_app(
         else:
             sign_in = {"method": "none", "provider_name": None}
         sign_in["required"] = admin_session_enforced
-        sign_in["sign_in_url"] = (
-            sign_in_url_for(oauth_server) if oauth_server is not None else None
-        )
+        sign_in["sign_in_url"] = sign_in_url_for(oauth_server) if oauth_server is not None else None
         return {
             "version": __version__,
             "mode": config.mode,
@@ -675,7 +738,7 @@ def create_app(
     # a fresh checkout that has never touched config.yaml.
     @app.get("/api/update/check")
     async def update_check() -> dict[str, Any]:
-        """"Up to date" / "Update available" / "could not check" — never an
+        """ "Up to date" / "Update available" / "could not check" — never an
         error page (this hub might simply be offline). See
         :func:`palaia_hub.update.check_for_update` for what each state
         means and how the remote version is read."""
@@ -743,12 +806,12 @@ def create_app(
     app.include_router(build_funnel_router(funnel_store))
 
     # SPEC-604: always mounted, same posture as the two routers just above —
-    # every hub has a home directory to archive from its first boot. Gated
-    # like every other `/api/*` route by the admin session middleware added
-    # below (see `palaia_hub.admin_session`'s module docstring); this route
-    # has no opt-in parameter of its own precisely so it can never be
-    # mounted without that gate wrapping it.
-    app.include_router(build_backup_router(home=hub_home))
+    # every hub has a home directory to archive from its first boot. Issue
+    # #317: the route is told whether the admin session gate (added above)
+    # actually wraps it — without the gate it refuses outright, because the
+    # archive is key material, not "the vault" the locked-mode LAN posture
+    # was written for.
+    app.include_router(build_backup_router(home=hub_home, session_gated=admin_session_enforced))
 
     if token_store is not None:
         app.include_router(build_auth_router(token_store, dynamic_gateway=dynamic_gateway))
@@ -787,6 +850,7 @@ def create_app(
             build_dashboard_router(
                 vault_registry,
                 indexes=indexes,
+                watchers=vault_watchers,
                 dynamic_gateway=dynamic_gateway,
                 curator=curator_wiring,
                 event_bus=event_bus,

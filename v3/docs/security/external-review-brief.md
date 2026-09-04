@@ -194,9 +194,11 @@ outside answer to:
 5. Is the failed-attempt limiter's proxy handling (`X-Forwarded-For` from a
    loopback peer only, last entry wins) sound for every deployment shape we
    ship?
-6. `GET /api/backup` has no opt-in parameter and mounts unconditionally,
-   specifically so it can never exist without the admin session gate
-   wrapping it. Is that construction actually load-bearing, or is there a
+6. `GET /api/backup` has no opt-in parameter and mounts unconditionally;
+   `create_app` tells it whether the admin session gate wraps it, and
+   without that gate it refuses outright (403, issue #317) instead of
+   trusting the network the way the rest of `/api/*` does in `locked`
+   mode — `palaia-hub backup` on the host is the ungated path. Is that construction actually load-bearing, or is there a
    path (a future refactor of `create_app`, a different app assembly for
    some deployment shape) where it could end up exposed?
 

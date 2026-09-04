@@ -67,8 +67,17 @@ function mount(stream: EventStreamState = BASE_STREAM) {
   return render(<RouterProvider router={router} />);
 }
 
-function mockApi(overrides: { funnel?: FunnelStatus } = {}) {
-  vi.spyOn(api, "info").mockResolvedValue({ version: "3.0.0", mode: "locked" } as InfoResponse);
+function mockApi(overrides: { funnel?: FunnelStatus; signInRequired?: boolean } = {}) {
+  vi.spyOn(api, "info").mockResolvedValue({
+    version: "3.0.0",
+    mode: "locked",
+    sign_in: {
+      method: "password",
+      provider_name: null,
+      required: overrides.signInRequired ?? true,
+      sign_in_url: "/oauth/login",
+    },
+  } as InfoResponse);
   vi.spyOn(api, "listVaults").mockResolvedValue([A_VAULT]);
   vi.spyOn(api, "inboxStatus").mockResolvedValue({
     count: 0,
@@ -239,6 +248,22 @@ describe("Home — SPEC-604 back up", () => {
     mount();
 
     const card = await screen.findByTestId("backup-card");
+    const text = card.textContent ?? "";
+    for (const pattern of BANNED) {
+      expect(text).not.toMatch(pattern);
+    }
+  });
+
+  it("without dashboard sign-in it names the command-line way instead of a dead link", async () => {
+    // Issue 317: the download is served only to a signed-in owner.
+    mockApi({ funnel: NO_FUNNEL, signInRequired: false });
+
+    mount();
+
+    const card = await screen.findByTestId("backup-card");
+    await screen.findByTestId("backup-needs-sign-in");
+    expect(screen.queryByRole("link", { name: /back up now/i })).toBeNull();
+    expect(card).toHaveTextContent(/palaia-hub backup/);
     const text = card.textContent ?? "";
     for (const pattern of BANNED) {
       expect(text).not.toMatch(pattern);
