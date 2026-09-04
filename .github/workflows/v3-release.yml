@@ -117,10 +117,13 @@ jobs:
             PALAIA_CHANNEL=${{ steps.tags.outputs.channel }}
           # SPEC-501: the annotation `palaia_hub.update.check_for_update`
           # reads back from the channel tag's manifest. `docker/build-
-          # push-action` >= v6 forwards this to `buildx build --annotation`
-          # (OCI Distribution Spec annotations, index- and manifest-level).
+          # push-action` >= v6 forwards this to `buildx build --annotation`.
+          # The `index,manifest:` level prefix matters (#319): without it
+          # buildx annotates only the per-platform manifests, and the OCI
+          # index the channel tag actually resolves to carries no
+          # annotations at all — so the update check could never succeed.
           annotations: |
-            org.opencontainers.image.version=${{ steps.tags.outputs.annotation_version }}
+            index,manifest:org.opencontainers.image.version=${{ steps.tags.outputs.annotation_version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

@@ -13,9 +13,7 @@ from pathlib import Path
 
 import yaml
 
-_WORKFLOW_PATH = (
-    Path(__file__).resolve().parents[3] / ".github" / "workflows" / "v3-release.yml"
-)
+_WORKFLOW_PATH = Path(__file__).resolve().parents[3] / ".github" / "workflows" / "v3-release.yml"
 
 
 def _load_workflow() -> dict:
@@ -41,7 +39,12 @@ def test_the_build_step_bakes_palaia_channel_and_a_version_annotation() -> None:
     build_step = next(s for s in steps if s.get("uses", "").startswith("docker/build-push-action"))
 
     assert "PALAIA_CHANNEL=" in build_step["with"]["build-args"]
-    assert "org.opencontainers.image.version=" in build_step["with"]["annotations"]
+    annotations = build_step["with"]["annotations"]
+    assert "org.opencontainers.image.version=" in annotations
+    # #319: buildx only annotates the OCI *index* (what the channel tag
+    # resolves to) when told so explicitly via the level prefix; the
+    # update check reads the index first.
+    assert "index,manifest:org.opencontainers.image.version=" in annotations
 
 
 def test_the_compute_tags_step_derives_stable_and_beta_channels() -> None:
@@ -53,7 +56,7 @@ def test_the_compute_tags_step_derives_stable_and_beta_channels() -> None:
     assert 'channel="stable"' in script
     assert 'channel="beta"' in script
     assert 'channel="edge"' in script
-    assert "echo \"channel=${channel}\" >> \"$GITHUB_OUTPUT\"" in script
+    assert 'echo "channel=${channel}" >> "$GITHUB_OUTPUT"' in script
 
 
 def test_the_compute_tags_step_fails_the_build_on_a_version_file_mismatch() -> None:
@@ -68,6 +71,6 @@ def test_the_compute_tags_step_fails_the_build_on_a_version_file_mismatch() -> N
     script = compute_step["run"]
 
     assert "file_version=" in script
-    assert 'cat v3/VERSION' in script
+    assert "cat v3/VERSION" in script
     assert '"${version}" != "${file_version}"' in script
     assert "exit 1" in script

@@ -11,7 +11,12 @@ The remote version comes from the GHCR image manifest's own
 ``org.opencontainers.image.version`` OCI annotation (set by the release
 workflow's ``docker/build-push-action`` ``annotations`` input — see
 ``.github/workflows/v3-release.yml``), read via the same anonymous
-token-then-manifest flow ``docker pull`` uses against a public GHCR image
+token-then-manifest flow ``docker pull`` uses against a public GHCR image.
+A multi-platform channel tag resolves to an OCI *index*; the annotation is
+read from the index itself when present and otherwise from the first
+linux/amd64|arm64 platform manifest the index points at (#319: buildx
+writes ``--annotation`` to the platform manifests only unless told to
+annotate the index too, and older releases were built that way)
 (`GHCR API reference
 <https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry>`_,
 `OCI Distribution Spec token auth
@@ -27,6 +32,7 @@ an honest reason instead.
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
 from typing import Literal
@@ -49,14 +55,30 @@ DEFAULT_REGISTRY = "https://ghcr.io"
 DEFAULT_TIMEOUT_SECONDS = 6.0
 DEFAULT_MAX_BYTES = 2 * 1024 * 1024
 
-_MANIFEST_ACCEPT = ", ".join(
+_INDEX_MEDIA_TYPES = frozenset(
     (
         "application/vnd.oci.image.index.v1+json",
         "application/vnd.docker.distribution.manifest.list.v2+json",
-        "application/vnd.oci.image.manifest.v1+json",
-        "application/vnd.docker.distribution.manifest.v2+json",
     )
 )
+_IMAGE_MANIFEST_MEDIA_TYPES = (
+    "application/vnd.oci.image.manifest.v1+json",
+    "application/vnd.docker.distribution.manifest.v2+json",
+)
+_MANIFEST_ACCEPT = ", ".join((*sorted(_INDEX_MEDIA_TYPES), *_IMAGE_MANIFEST_MEDIA_TYPES))
+_IMAGE_MANIFEST_ACCEPT = ", ".join(_IMAGE_MANIFEST_MEDIA_TYPES)
+_VERSION_ANNOTATION = "org.opencontainers.image.version"
+#: Platform children of an index worth descending into for the annotation
+#: — the two the release workflow builds. Attestation manifests (buildx
+#: provenance/SBOM) advertise ``architecture: unknown`` and are skipped.
+_PLATFORM_ARCHITECTURES = frozenset(("amd64", "arm64"))
+
+_VERSION_RE = re.compile(
+    r"^(?P<core>\d+(?:\.\d+)*)"
+    r"(?:-(?P<prerelease>[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
+    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
+)
+_IDENTIFIER_RUNS_RE = re.compile(r"\d+|[^\d]+")
 
 _STORE_NAMES: dict[str, str] = {
     "umbrel": "Umbrel",
@@ -124,19 +146,44 @@ class UpdateCheckResult:
     reason: str | None = None
 
 
-def _parse_version(text: str) -> tuple[int, ...] | None:
-    """Best-effort ``1.2.3`` -> ``(1, 2, 3)``. ``None`` for anything that
-    doesn't look like a plain dotted-numeric version (a pre-release suffix
-    like ``1.2.3-beta.1`` included) — those fall back to a straight string
-    comparison in :func:`_compare_versions` instead of a false "equal"."""
-    core = text.split("-", 1)[0].split("+", 1)[0]
-    parts = core.split(".")
-    if not parts or not all(part.isdigit() for part in parts):
+#: Sortable form of a version: ``(core, 1, ())`` for a final release and
+#: ``(core, 0, <pre-release key>)`` for a pre-release, so that a final
+#: release outranks every pre-release of the same core (SemVer 2.0 §11).
+_VersionKey = tuple[tuple[int, ...], int, tuple[tuple[tuple[int, int, str], ...], ...]]
+
+
+def _identifier_key(identifier: str) -> tuple[tuple[int, int, str], ...]:
+    """SemVer §11 ordering for one pre-release identifier: numeric
+    identifiers compare numerically and rank below alphanumeric ones, which
+    compare lexically. One pragmatic extension: an alphanumeric identifier
+    is split into its text and digit runs (``rc10`` -> ``rc``, ``10``) so
+    the house style ``rc1 < rc2 < rc10`` holds, where strict ASCII order
+    would put ``rc10`` before ``rc2``."""
+    runs = _IDENTIFIER_RUNS_RE.findall(identifier)
+    return tuple((0, int(run), "") if run.isdigit() else (1, 0, run) for run in runs)
+
+
+def _parse_version(text: str) -> _VersionKey | None:
+    """Best-effort SemVer parse into a sortable key, ``None`` for anything
+    that isn't ``<digits>(.<digits>)*`` with an optional ``-<pre-release>``
+    and optional ``+<build>`` — those make :func:`_compare_versions` fall
+    back to "any difference is an update". Build metadata (``+edge.<sha>``
+    on the edge channel's annotation) is ignored per SemVer §10; the
+    pre-release part orders per §11 with ``1.2.3-rc1 < 1.2.3``."""
+    match = _VERSION_RE.match(text.strip())
+    if match is None:
         return None
-    return tuple(int(part) for part in parts)
+    core = tuple(int(part) for part in match.group("core").split("."))
+    prerelease = match.group("prerelease")
+    if prerelease is None:
+        return (core, 1, ())
+    return (core, 0, tuple(_identifier_key(part) for part in prerelease.split(".")))
 
 
 def _compare_versions(current: str, latest: str) -> UpdateState:
+    """``update_available`` only when ``latest`` outranks ``current`` —
+    never for an equal version and never for a downgrade (a hub on
+    ``3.0.0`` is not nagged about ``3.0.0-rc2``)."""
     if current == latest:
         return "up_to_date"
     current_parsed = _parse_version(current)
@@ -150,6 +197,80 @@ def _compare_versions(current: str, latest: str) -> UpdateState:
     return "update_available"
 
 
+def _version_annotation(document: object) -> str | None:
+    """The ``org.opencontainers.image.version`` annotation of a manifest,
+    index, or index child descriptor — ``None`` when absent or malformed."""
+    if not isinstance(document, dict):
+        return None
+    annotations = document.get("annotations")
+    if not isinstance(annotations, dict):
+        return None
+    version = annotations.get(_VERSION_ANNOTATION)
+    return version if isinstance(version, str) and version else None
+
+
+def _is_index(manifest: dict[str, object]) -> bool:
+    return manifest.get("mediaType") in _INDEX_MEDIA_TYPES or isinstance(
+        manifest.get("manifests"), list
+    )
+
+
+def _first_platform_child(index: dict[str, object]) -> dict[str, object] | None:
+    """The first linux/amd64|arm64 child descriptor of an OCI index, skipping
+    buildx attestation entries (``architecture: unknown``)."""
+    children = index.get("manifests")
+    if not isinstance(children, list):
+        return None
+    for child in children:
+        if not isinstance(child, dict):
+            continue
+        platform = child.get("platform")
+        if not isinstance(platform, dict):
+            continue
+        if (
+            platform.get("os") == "linux"
+            and platform.get("architecture") in _PLATFORM_ARCHITECTURES
+        ):
+            return child
+    return None
+
+
+async def _get_registry_json(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    what: str,
+    not_found: str,
+    headers: dict[str, str] | None = None,
+    params: dict[str, str] | None = None,
+    timeout_seconds: float,
+    max_bytes: int,
+) -> dict[str, object]:
+    """One registry GET, decoded as a JSON object — every failure mode
+    becomes a :class:`_CheckFailed` naming ``what`` was being fetched."""
+    try:
+        response = await client.get(url, headers=headers, params=params, timeout=timeout_seconds)
+    except httpx.TimeoutException as exc:
+        raise _CheckFailed(f"timed out fetching {what} after {timeout_seconds:.0f}s") from exc
+    except httpx.RequestError as exc:
+        raise _CheckFailed(f"network error fetching {what}: {exc}") from exc
+    if response.status_code == 404:
+        raise _CheckFailed(not_found)
+    if response.status_code >= 400:
+        raise _CheckFailed(f"registry answered HTTP {response.status_code} for {what}")
+    if len(response.content) > max_bytes:
+        raise _CheckFailed(
+            f"{what} response too large ({len(response.content)} > {max_bytes} bytes)"
+        )
+    try:
+        document = response.json()
+    except ValueError as exc:
+        raise _CheckFailed(f"{what} response was not valid JSON") from exc
+    if not isinstance(document, dict):
+        raise _CheckFailed(f"{what} response was not a JSON object")
+    return document
+
+
 async def _fetch_manifest_version(
     client: httpx.AsyncClient,
     *,
@@ -161,63 +282,55 @@ async def _fetch_manifest_version(
     max_bytes: int,
 ) -> str:
     """Return the remote channel tag's ``org.opencontainers.image.version``
-    annotation, or raise :class:`_CheckFailed` naming exactly why not."""
-    scope = f"repository:{owner}/{image}:pull"
-    try:
-        token_response = await client.get(
-            f"{registry}/token",
-            params={"service": "ghcr.io", "scope": scope},
-            timeout=timeout_seconds,
-        )
-    except httpx.TimeoutException as exc:
-        raise _CheckFailed(
-            f"timed out getting a registry token after {timeout_seconds:.0f}s"
-        ) from exc
-    except httpx.RequestError as exc:
-        raise _CheckFailed(f"network error getting a registry token: {exc}") from exc
-    if token_response.status_code >= 400:
-        raise _CheckFailed(f"registry token endpoint answered HTTP {token_response.status_code}")
-    try:
-        token = token_response.json()["token"]
-    except (ValueError, KeyError, TypeError) as exc:
-        raise _CheckFailed("registry token response was not the expected shape") from exc
+    annotation, or raise :class:`_CheckFailed` naming exactly why not.
 
-    manifest_url = f"{registry}/v2/{owner}/{image}/manifests/{channel}"
-    try:
-        manifest_response = await client.get(
-            manifest_url,
-            headers={"Authorization": f"Bearer {token}", "Accept": _MANIFEST_ACCEPT},
-            timeout=timeout_seconds,
-        )
-    except httpx.TimeoutException as exc:
-        raise _CheckFailed(
-            f"timed out fetching the {channel!r} manifest after {timeout_seconds:.0f}s"
-        ) from exc
-    except httpx.RequestError as exc:
-        raise _CheckFailed(f"network error fetching the {channel!r} manifest: {exc}") from exc
-    if manifest_response.status_code == 404:
-        raise _CheckFailed(f"no {channel!r} tag is published for {owner}/{image} yet")
-    if manifest_response.status_code >= 400:
-        raise _CheckFailed(
-            f"registry answered HTTP {manifest_response.status_code} for the manifest"
-        )
-    if len(manifest_response.content) > max_bytes:
-        raise _CheckFailed(
-            f"manifest response too large ({len(manifest_response.content)} > {max_bytes} bytes)"
-        )
-    try:
-        manifest = manifest_response.json()
-    except ValueError as exc:
-        raise _CheckFailed("manifest response was not valid JSON") from exc
-    if not isinstance(manifest, dict):
-        raise _CheckFailed("manifest response was not a JSON object")
-    annotations = manifest.get("annotations")
-    version = (
-        annotations.get("org.opencontainers.image.version")
-        if isinstance(annotations, dict)
-        else None
+    Reads the annotation from the tag's manifest itself; when that is an
+    OCI index without one (#319), from the first linux platform child's
+    descriptor, and failing that from the child manifest fetched by digest
+    (one extra request, same anonymous token)."""
+    scope = f"repository:{owner}/{image}:pull"
+    token_document = await _get_registry_json(
+        client,
+        f"{registry}/token",
+        what="a registry token",
+        not_found="registry token endpoint answered HTTP 404",
+        params={"service": "ghcr.io", "scope": scope},
+        timeout_seconds=timeout_seconds,
+        max_bytes=max_bytes,
     )
-    if not isinstance(version, str) or not version:
+    token = token_document.get("token")
+    if not isinstance(token, str) or not token:
+        raise _CheckFailed("registry token response was not the expected shape")
+
+    manifests_url = f"{registry}/v2/{owner}/{image}/manifests"
+    manifest = await _get_registry_json(
+        client,
+        f"{manifests_url}/{channel}",
+        what=f"the {channel!r} manifest",
+        not_found=f"no {channel!r} tag is published for {owner}/{image} yet",
+        headers={"Authorization": f"Bearer {token}", "Accept": _MANIFEST_ACCEPT},
+        timeout_seconds=timeout_seconds,
+        max_bytes=max_bytes,
+    )
+    version = _version_annotation(manifest)
+    if version is None and _is_index(manifest):
+        child = _first_platform_child(manifest)
+        if child is not None:
+            version = _version_annotation(child)
+        digest = child.get("digest") if child is not None else None
+        if version is None and isinstance(digest, str) and digest:
+            child_manifest = await _get_registry_json(
+                client,
+                f"{manifests_url}/{digest}",
+                what=f"the {channel!r} platform manifest",
+                not_found=f"the {channel!r} index points at a platform manifest "
+                f"the registry does not have ({digest})",
+                headers={"Authorization": f"Bearer {token}", "Accept": _IMAGE_MANIFEST_ACCEPT},
+                timeout_seconds=timeout_seconds,
+                max_bytes=max_bytes,
+            )
+            version = _version_annotation(child_manifest)
+    if version is None:
         raise _CheckFailed(f"the {channel!r} manifest carries no published version annotation")
     return version
 
