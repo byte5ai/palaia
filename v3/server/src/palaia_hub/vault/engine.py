@@ -544,9 +544,7 @@ class VaultEngine:
         if normalized in self._catalog:
             return normalized
         matches = [
-            path
-            for path in self._catalog
-            if path == normalized or path.endswith("/" + normalized)
+            path for path in self._catalog if path == normalized or path.endswith("/" + normalized)
         ]
         if len(matches) > 1:
             raise AmbiguousReferenceError(
@@ -767,9 +765,11 @@ class VaultEngine:
             else:
                 merged[key] = value
 
-        resolved_title = title or (
-            fm.string_value(merged, "title")[0] if "title" in merged else None
-        ) or (existing.title if existing else _stem(relative))
+        resolved_title = (
+            title
+            or (fm.string_value(merged, "title")[0] if "title" in merged else None)
+            or (existing.title if existing else _stem(relative))
+        )
         self._reject_volatile("title", resolved_title)
 
         resolved_permalink = self._resolve_write_permalink(
@@ -974,9 +974,7 @@ class VaultEngine:
         """Delete a note and commit the removal."""
         self._require_writable()
         entry = self.resolve(reference)
-        return await self._locked(
-            lambda: self._delete_note_sync(entry.path, attribution, summary)
-        )
+        return await self._locked(lambda: self._delete_note_sync(entry.path, attribution, summary))
 
     def _delete_note_sync(
         self, relative: str, attribution: Attribution, summary: str | None
@@ -1243,6 +1241,15 @@ class VaultEngine:
         async with self._lock:
             return await asyncio.to_thread(self._sweep_external_edits)
 
+    @property
+    def lock(self) -> asyncio.Lock:
+        """The engine's write lock, for the one other component that mutates
+        the catalog: :class:`~palaia_hub.vault.watcher.VaultWatcher` holds it
+        while it applies a batch of external changes (in a worker thread), so
+        a batch never interleaves with an engine write — the catalog is
+        otherwise shared mutable state between the two (issue #331)."""
+        return self._lock
+
     def observe_external_change(
         self, relative: str, *, deleted: bool = False, permalink: str | None = None
     ) -> CatalogEntry | None:
@@ -1301,9 +1308,7 @@ class VaultEngine:
 
         return await VaultDoctor(self).reindex(sink)
 
-    async def assign_missing_permalinks(
-        self, *, attribution: Attribution = ENGINE
-    ) -> list[str]:
+    async def assign_missing_permalinks(self, *, attribution: Attribution = ENGINE) -> list[str]:
         """Assign permalinks to notes that lack one, in one attributed commit.
 
         Format spec §3.1: files arriving without a permalink (imports,
@@ -1363,9 +1368,7 @@ class VaultEngine:
 
     def _require_open(self) -> None:
         if not self._opened:
-            raise VaultError(
-                f"vault {self.name!r} is not open. Fix: await engine.open() first."
-            )
+            raise VaultError(f"vault {self.name!r} is not open. Fix: await engine.open() first.")
 
     def _require_writable(self) -> None:
         self._require_open()
