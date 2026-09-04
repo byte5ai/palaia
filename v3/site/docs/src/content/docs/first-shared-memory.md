@@ -24,11 +24,15 @@ this to it directly, letting it configure itself:
 ```text
 Please connect yourself to my palaia hub as an MCP server:
 http://palaia.local/mcp/default
+Send the header "Authorization: Bearer <paste-your-token>" with every request.
 Then run a test recall and tell me what you found.
 ```
 
-(Replace the address with your own hub's, if `palaia.local` doesn't resolve
-on your network — the wizard showed you the working one.) It should report
+(Replace `<paste-your-token>` with the token the dashboard shows when you
+click **Issue token** for this tool on its connect page — it is shown once,
+and every request needs it. Replace the address with your own hub's, too, if
+`palaia.local` doesn't resolve on your network — the wizard showed you the
+working one.) It should report
 back that the connection worked and that your memory is currently empty —
 that's expected, you haven't saved anything yet.
 

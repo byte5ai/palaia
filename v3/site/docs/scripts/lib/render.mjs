@@ -12,6 +12,17 @@ export const PLACEHOLDER_ORIGIN = "http://palaia.local";
 export const PLACEHOLDER_PROFILE = "default";
 export const PLACEHOLDER_ISSUER = "https://palaia.example.com";
 
+// Issue 318: the catalog renders every snippet with clients.ts's own
+// `TOKEN_PLACEHOLDER` when no token is passed (this generator never has
+// one — a token exists only in the dashboard, shown once). This sentence
+// tells the reader what to put there; the shorter form follows the second
+// and third snippet on the same page so it is never left implicit.
+const TOKEN_PLACEHOLDER = "<paste-your-token>";
+const TOKEN_NOTE =
+  `Replace \`${TOKEN_PLACEHOLDER}\` with the token the dashboard shows when you click **Issue token** ` +
+  "on its connect page — it is shown once, so copy it then. Every request needs it; without it the hub turns the tool away.";
+const TOKEN_NOTE_AGAIN = `Same here: replace \`${TOKEN_PLACEHOLDER}\` with your token.`;
+
 // A YAML comment, not an HTML one — it has to live *inside* the
 // frontmatter fence, because the fence must be the first bytes of the
 // file for Astro's frontmatter parser to recognize it at all.
@@ -93,11 +104,15 @@ export function renderGuidedPage(client, skillSupport) {
     "",
     fence("bash", command).trimEnd(),
     "",
+    TOKEN_NOTE,
+    "",
     "## Or just ask it",
     "",
     "If you would rather not touch a terminal, paste this to the AI itself and let it set itself up:",
     "",
     fence("text", prompt).trimEnd(),
+    "",
+    TOKEN_NOTE_AGAIN,
     "",
   ];
   if (client.configFile) {
@@ -108,6 +123,8 @@ export function renderGuidedPage(client, skillSupport) {
       `Some setups read this from a file instead of a command. Save it as \`${file.filename}\`:`,
       "",
       fence(file.mimeType.includes("json") ? "json" : "toml", file.content).trimEnd(),
+      "",
+      TOKEN_NOTE_AGAIN,
       "",
     );
   }

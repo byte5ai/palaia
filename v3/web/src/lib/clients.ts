@@ -41,6 +41,21 @@ export interface ConfigFile {
   mimeType: string;
 }
 
+/**
+ * Issue 318: every mounted profile requires the per-client token
+ * (`auth_enabled` defaults to true in every mode; a tokenless call gets a
+ * 401), so every snippet below carries it — in each client's own
+ * mechanism, verified against `v3/docs/client-matrix-results.md` where
+ * that document has evidence. `token` is the plaintext `ConnectPanel`
+ * just minted; when it is not known (the docs generator, or a panel
+ * revisited after the one-time display) this placeholder stands in, so
+ * a tokenless command is never rendered as if it would work.
+ */
+export const TOKEN_PLACEHOLDER = "<paste-your-token>";
+
+/** The environment variable Codex reads the token from (`bearer_token_env_var`). */
+export const CODEX_TOKEN_ENV = "PALAIA_TOKEN";
+
 export interface GuidedClient {
   kind: "guided";
   id: string;
@@ -48,15 +63,15 @@ export interface GuidedClient {
   icon: ComponentType<SVGProps<SVGSVGElement>>;
   estimate: string;
   /** The one-liner for the "copy the command" tab. */
-  command: (origin: string, profile: string) => string;
+  command: (origin: string, profile: string, token?: string) => string;
   /** The self-configuring prompt for the "paste a prompt" tab. */
-  prompt: (origin: string, profile: string) => string;
+  prompt: (origin: string, profile: string, token?: string) => string;
   /** SPEC-306 deliverable #3: a one-click "download config file" — the
    * client's own real config-file format (SPEC-209-corrected), computed
-   * client-side (no hub round-trip: it is just the origin and profile,
-   * templated). Present only on clients whose real install path is "put
-   * this file there" rather than "run this command". */
-  configFile?: (origin: string, profile: string) => ConfigFile;
+   * client-side (no hub round-trip: it is just the origin, profile and
+   * token, templated). Present only on clients whose real install path is
+   * "put this file there" rather than "run this command". */
+  configFile?: (origin: string, profile: string, token?: string) => ConfigFile;
 }
 
 export interface DownloadClient {
@@ -105,6 +120,18 @@ const OAUTH_CONNECT = (name: string) => (issuer: string, profile: string) => ({
     `palaia account when it asks.`,
 });
 
+const tokenOr = (token?: string): string => token ?? TOKEN_PLACEHOLDER;
+
+/** The `Authorization` header value every HTTP client sends. */
+const authHeader = (token?: string): string => `Bearer ${tokenOr(token)}`;
+
+/** The shared "paste a prompt" text: the address, the header the hub
+ * requires, and the one thing to do afterwards. */
+const connectPrompt = (origin: string, profile: string, token?: string): string =>
+  `Please connect yourself to my palaia hub as an MCP server:\n${origin}/mcp/${profile}\n` +
+  `Send the header "Authorization: ${authHeader(token)}" with every request.\n` +
+  `Then run a test recall and tell me what you found.`;
+
 export const CLIENTS: ClientEntry[] = [
   {
     kind: "guided",
@@ -112,10 +139,12 @@ export const CLIENTS: ClientEntry[] = [
     name: "Claude Code CLI",
     icon: SparkleIcon,
     estimate: "one command · 1 min",
-    command: (origin, profile) => `claude mcp add --transport http palaia ${origin}/mcp/${profile}`,
-    prompt: (origin, profile) =>
-      `Please connect yourself to my palaia hub as an MCP server:\n${origin}/mcp/${profile}\n` +
-      `Then run a test recall and tell me what you found.`,
+    // The literal command client-matrix-results.md §2.1/§7.2 ran against a
+    // real hub: `--header` is how the CLI attaches the token.
+    command: (origin, profile, token) =>
+      `claude mcp add --transport http palaia ${origin}/mcp/${profile} ` +
+      `--header "Authorization: ${authHeader(token)}"`,
+    prompt: connectPrompt,
   },
   {
     kind: "guided",
@@ -123,23 +152,28 @@ export const CLIENTS: ClientEntry[] = [
     name: "Codex",
     icon: ToolsIcon,
     estimate: "one command · 1 min",
-    command: (origin, profile) => `codex mcp add palaia --url ${origin}/mcp/${profile}`,
-    prompt: (origin, profile) =>
-      `Please connect yourself to my palaia hub as an MCP server:\n${origin}/mcp/${profile}\n` +
-      `Then run a test recall and tell me what you found.`,
+    // Codex never takes the token itself — only the name of an environment
+    // variable holding it (`codex mcp add <name> --url <url>
+    // --bearer-token-env-var VAR`, client-matrix-results.md §3), so the
+    // export comes first and has to be in place whenever Codex starts.
+    command: (origin, profile, token) =>
+      `export ${CODEX_TOKEN_ENV}=${tokenOr(token)}\n` +
+      `codex mcp add palaia --url ${origin}/mcp/${profile} --bearer-token-env-var ${CODEX_TOKEN_ENV}`,
+    prompt: connectPrompt,
     // ~/.codex/config.toml's `[mcp_servers.*]` table (research/mcp-landscape-2026.md
-    // §6) — streamable HTTP, no bearer env set here since the address
-    // alone is what this guided flow's default (no-auth) profile needs;
-    // an operator on a token-required profile adds `bearer_token_env_var`
-    // by hand, same as they would add `--header` to the command above.
-    configFile: (origin, profile) => ({
+    // §6) — streamable HTTP; `bearer_token_env_var` names the variable the
+    // token is read from, the same one the command above exports.
+    configFile: (origin, profile, token) => ({
       filename: "palaia-codex-mcp.toml",
       mimeType: "text/plain",
       content:
         `# Paste this into ~/.codex/config.toml (or merge it into an existing\n` +
         `# [mcp_servers] table).\n` +
         `[mcp_servers.palaia]\n` +
-        `url = "${origin}/mcp/${profile}"\n`,
+        `url = "${origin}/mcp/${profile}"\n` +
+        `bearer_token_env_var = "${CODEX_TOKEN_ENV}"\n` +
+        `# Codex reads the token from that variable — set it where Codex starts:\n` +
+        `#   export ${CODEX_TOKEN_ENV}=${tokenOr(token)}\n`,
     }),
   },
   {
@@ -184,19 +218,28 @@ export const CLIENTS: ClientEntry[] = [
     name: "Antigravity / Gemini CLI",
     icon: ClientsIcon,
     estimate: "one command · 1 min",
-    command: (origin, profile) =>
+    // `mcpServers.*.headers` is Gemini CLI's documented way to attach a
+    // header to an `httpUrl` server (client-matrix-results.md §3 confirmed
+    // the `httpUrl` shape against geminicli.com/docs/tools/mcp-server).
+    command: (origin, profile, token) =>
       `# add to ~/.gemini/settings.json under "mcpServers"\n` +
-      `{"palaia": {"httpUrl": "${origin}/mcp/${profile}"}}`,
-    prompt: (origin, profile) =>
-      `Please connect yourself to my palaia hub as an MCP server:\n${origin}/mcp/${profile}\n` +
-      `Then run a test recall and tell me what you found.`,
+      `{"palaia": {"httpUrl": "${origin}/mcp/${profile}", ` +
+      `"headers": {"Authorization": "${authHeader(token)}"}}}`,
+    prompt: connectPrompt,
     // A real, complete ~/.gemini/settings.json — not just the snippet to
     // merge in, since a settings.json with only this key is itself valid.
-    configFile: (origin, profile) => ({
+    configFile: (origin, profile, token) => ({
       filename: "palaia-gemini-settings.json",
       mimeType: "application/json",
       content: `${JSON.stringify(
-        { mcpServers: { palaia: { httpUrl: `${origin}/mcp/${profile}` } } },
+        {
+          mcpServers: {
+            palaia: {
+              httpUrl: `${origin}/mcp/${profile}`,
+              headers: { Authorization: authHeader(token) },
+            },
+          },
+        },
         null,
         2,
       )}\n`,
@@ -217,19 +260,24 @@ export const CLIENTS: ClientEntry[] = [
     name: "LM Studio",
     icon: ToolsIcon,
     estimate: "one command · 1 min",
-    command: (origin, profile) =>
+    // mcp.json's per-server `headers` object (lmstudio.ai/docs/app/mcp —
+    // the same page client-matrix-results.md §3 corrected the shape against).
+    command: (origin, profile, token) =>
       `# LM Studio → Program → mcp.json\n` +
-      `{"mcpServers": {"palaia": {"type": "streamable-http", "url": "${origin}/mcp/${profile}"}}}`,
-    prompt: (origin, profile) =>
-      `Please connect yourself to my palaia hub as an MCP server:\n${origin}/mcp/${profile}\n` +
-      `Then run a test recall and tell me what you found.`,
-    configFile: (origin, profile) => ({
+      `{"mcpServers": {"palaia": {"type": "streamable-http", "url": "${origin}/mcp/${profile}", ` +
+      `"headers": {"Authorization": "${authHeader(token)}"}}}}`,
+    prompt: connectPrompt,
+    configFile: (origin, profile, token) => ({
       filename: "palaia-lmstudio-mcp.json",
       mimeType: "application/json",
       content: `${JSON.stringify(
         {
           mcpServers: {
-            palaia: { type: "streamable-http", url: `${origin}/mcp/${profile}` },
+            palaia: {
+              type: "streamable-http",
+              url: `${origin}/mcp/${profile}`,
+              headers: { Authorization: authHeader(token) },
+            },
           },
         },
         null,
@@ -243,10 +291,11 @@ export const CLIENTS: ClientEntry[] = [
     name: "Any other AI tool",
     icon: ExplorerIcon,
     estimate: "endpoint and token",
-    command: (origin, profile) => `${origin}/mcp/${profile}`,
-    prompt: (origin, profile) =>
-      `Please connect yourself to my palaia hub as an MCP server:\n${origin}/mcp/${profile}\n` +
-      `Then run a test recall and tell me what you found.`,
+    // No vendor syntax to follow here: the address, and the one header
+    // every request to it must carry.
+    command: (origin, profile, token) =>
+      `${origin}/mcp/${profile}\nAuthorization: ${authHeader(token)}`,
+    prompt: connectPrompt,
   },
 ];
 

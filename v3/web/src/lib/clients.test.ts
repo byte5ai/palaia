@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { CLIENTS, guidedClients } from "./clients";
+import { CLIENTS, CODEX_TOKEN_ENV, TOKEN_PLACEHOLDER, guidedClients } from "./clients";
 
 describe("client integration catalog", () => {
   it("has one entry per MASTERPLAN §6 client", () => {
@@ -33,6 +33,75 @@ describe("client integration catalog", () => {
       expect(command).toContain("https://palaia.ts.net/mcp/coding");
       expect(prompt).toContain("https://palaia.ts.net/mcp/coding");
     }
+  });
+
+  // Issue 318: every mounted profile refuses a tokenless call, so every
+  // snippet must carry the token — in the mechanism each client really
+  // uses (v3/docs/client-matrix-results.md §2.1, §3, §7.2).
+  describe("guided snippets carry the token (issue 318)", () => {
+    const origin = "https://palaia.ts.net";
+    const profile = "coding";
+    const token = "plt_test_secret";
+    const url = `${origin}/mcp/${profile}`;
+    const guided = (id: string) => {
+      const client = CLIENTS.find((c) => c.id === id);
+      if (client?.kind !== "guided") throw new Error(`expected ${id} to be guided`);
+      return client;
+    };
+
+    it("Claude Code CLI attaches it with --header, the literal form the matrix ran", () => {
+      expect(guided("claude-code-cli").command(origin, profile, token)).toBe(
+        `claude mcp add --transport http palaia ${url} --header "Authorization: Bearer ${token}"`,
+      );
+    });
+
+    it("Codex exports it to the variable bearer_token_env_var names, on the command and in the file", () => {
+      const codex = guided("codex");
+      const command = codex.command(origin, profile, token);
+      expect(command).toContain(`export ${CODEX_TOKEN_ENV}=${token}`);
+      expect(command).toContain(`codex mcp add palaia --url ${url} --bearer-token-env-var ${CODEX_TOKEN_ENV}`);
+      const file = codex.configFile?.(origin, profile, token);
+      expect(file?.content).toContain(`bearer_token_env_var = "${CODEX_TOKEN_ENV}"`);
+      expect(file?.content).toContain(`export ${CODEX_TOKEN_ENV}=${token}`);
+    });
+
+    it("Gemini CLI and LM Studio carry it in their config's headers object", () => {
+      for (const id of ["gemini-cli", "lm-studio"]) {
+        const client = guided(id);
+        const parsed = JSON.parse(client.configFile?.(origin, profile, token)?.content ?? "{}");
+        expect(parsed.mcpServers.palaia.headers, id).toEqual({ Authorization: `Bearer ${token}` });
+        // The command tab is the same object, minus the file's outer shape.
+        expect(client.command(origin, profile, token), id).toContain(
+          `"headers": {"Authorization": "Bearer ${token}"}`,
+        );
+      }
+    });
+
+    it("the generic entry and every prompt name the header outright", () => {
+      expect(guided("generic").command(origin, profile, token)).toBe(
+        `${url}\nAuthorization: Bearer ${token}`,
+      );
+      for (const client of guidedClients()) {
+        expect(client.prompt(origin, profile, token), client.id).toContain(
+          `"Authorization: Bearer ${token}"`,
+        );
+      }
+    });
+
+    it("renders the placeholder, never a tokenless snippet, when no token is known", () => {
+      for (const client of guidedClients()) {
+        for (const text of [
+          client.command(origin, profile),
+          client.prompt(origin, profile),
+          client.configFile?.(origin, profile)?.content ?? TOKEN_PLACEHOLDER,
+        ]) {
+          expect(text, client.id).toContain(TOKEN_PLACEHOLDER);
+        }
+        // ...and the real token replaces the placeholder in place of it.
+        expect(client.command(origin, profile, token), client.id).not.toContain(TOKEN_PLACEHOLDER);
+        expect(client.prompt(origin, profile, token), client.id).not.toContain(TOKEN_PLACEHOLDER);
+      }
+    });
   });
 
   it("not-yet clients give a mode-aware, truthful reason — never a bare 'unavailable'", () => {
@@ -98,6 +167,7 @@ describe("client integration catalog", () => {
     expect(lmStudioParsed.mcpServers.palaia).toEqual({
       type: "streamable-http",
       url: `${origin}/mcp/${profile}`,
+      headers: { Authorization: `Bearer ${TOKEN_PLACEHOLDER}` },
     });
   });
 
@@ -113,12 +183,20 @@ describe("client integration catalog", () => {
       /\bstdio\b/i,
       /\bbearer\b/i,
     ];
+    // A command or prompt is not a label (system.md §3 rule 0 governs
+    // labels, headings, buttons, badges, status lines and option names):
+    // it is the technical text itself, shown inside a code block, and the
+    // header the hub requires is literally `Authorization: Bearer …`
+    // (issue 318) — the one place the word has to appear verbatim.
+    const BANNED_IN_SNIPPETS = BANNED.filter((pattern) => pattern.source !== "\\bbearer\\b");
     const origin = "https://hub.example.com";
     const profile = "default";
     for (const client of CLIENTS) {
       const strings: string[] = [client.name];
+      const snippets: string[] = [];
       if (client.kind === "guided") {
-        strings.push(client.estimate, client.command(origin, profile), client.prompt(origin, profile));
+        strings.push(client.estimate);
+        snippets.push(client.command(origin, profile), client.prompt(origin, profile));
       } else if (client.kind === "download") {
         strings.push(client.subtitle);
       } else {
@@ -126,6 +204,11 @@ describe("client integration catalog", () => {
       }
       for (const text of strings) {
         for (const pattern of BANNED) {
+          expect(text, `jargon ${pattern} in ${client.id}: ${text}`).not.toMatch(pattern);
+        }
+      }
+      for (const text of snippets) {
+        for (const pattern of BANNED_IN_SNIPPETS) {
           expect(text, `jargon ${pattern} in ${client.id}: ${text}`).not.toMatch(pattern);
         }
       }

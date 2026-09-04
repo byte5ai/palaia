@@ -120,21 +120,18 @@ whoever holds it.
       `SUBMIT.md`. None was submitted as part of any SPEC in this
       repository — SPEC-501's own non-goal, carried through SPEC-506's.
 - [ ] **[OWNER]** Deploy `v3/site/docs`'s built output to real hosting —
-      `astro.config.mjs`'s `site:` is still the placeholder
-      `https://docs.palaia.example`; this needs a real domain, DNS, and a
-      host before the onboarding page's links resolve for anyone outside
-      this repository. `v3-ci.yml`'s `docs-site` job builds and link-checks
-      the site on every PR; nothing in this repository currently deploys
-      that build anywhere.
-- [ ] **[OWNER]** Once the docs site has a real address, update
-      `astro.config.mjs`'s `site:` (currently the placeholder
-      `https://docs.palaia.example`) and anything that links to it
-      absolutely rather than relatively, then re-run
-      `onboarding.test.ts`/`generated-pages.test.ts` to confirm the
-      site's own drift tests still pass against the real value.
-      (`palaia.local` is unrelated and needs no change here — that is the
-      hub's own real mDNS self-advertisement, `deploy/README.md` §"Finding
-      it on your network", not a placeholder.)
+      `astro.config.mjs` already names the real address (`site:
+      "https://palaia.byte5.ai"`, `base: "/docs"`, served by the
+      palaia-homepage repo per its `DOCS-HOSTING.md`), but as of this
+      writing `https://palaia.byte5.ai/docs/` answers 404: nothing in this
+      repository deploys the build anywhere. `v3-ci.yml`'s `docs-site` job
+      builds and link-checks the site on every PR; the remaining step is
+      publishing that `dist/` under `/docs` on that origin, so the
+      dashboard's docs links (`web/src/lib/docs.ts`, pinned to `site` +
+      `base` by `web/src/lib/docs.test.ts` — issue #322) resolve for anyone
+      outside this repository. (`palaia.local` is unrelated and needs no
+      change here — that is the hub's own real mDNS self-advertisement,
+      `deploy/README.md` §"Finding it on your network", not a placeholder.)
 - [ ] **[OWNER]** Publish the GitHub release notes from
       `v3/CHANGELOG.md`'s new section (`gh release create v3.3.0.0
       --notes-file ...` or the GitHub UI) — this repository has no

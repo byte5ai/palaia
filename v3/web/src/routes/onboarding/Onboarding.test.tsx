@@ -91,6 +91,8 @@ describe("Onboarding wizard", () => {
     );
     const docsLink = screen.getByRole("link", { name: /read the docs/i });
     expect(docsLink).toHaveAttribute("target", "_blank");
-    expect(docsLink.getAttribute("href")).toMatch(/^https:\/\//);
+    // Issue 322: the real docs origin (astro.config.mjs's site + base),
+    // never the retired placeholder domain — see lib/docs.test.ts.
+    expect(docsLink.getAttribute("href")).toMatch(/^https:\/\/palaia\.byte5\.ai\/docs\//);
   });
 });

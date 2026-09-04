@@ -35,12 +35,22 @@
  * sentinel (that module's docstring), so "everything unchecked" would
  * silently grant full access instead of none — `wouldGrantNothing` below
  * blocks Issue token in that one case rather than let it widen access.
+ *
+ * Issue 318: the hub turns away any call to a mounted profile that does
+ * not carry the client's token, so every snippet this panel shows has the
+ * freshly minted plaintext embedded (each client's own mechanism — see
+ * `clients.ts`). The plaintext lives in this component's state only, for
+ * as long as the panel is mounted: it is never persisted, and a panel that
+ * finds an *existing* token on mount cannot know it, so the snippets then
+ * show `TOKEN_PLACEHOLDER` and the copy says so instead of pretending a
+ * tokenless command would work.
  */
 import { useEffect, useMemo, useState } from "react";
 
 import type { CreatedToken, GatewayProfile, TokenInfo } from "../lib/api/client";
 import { api } from "../lib/api/client";
 import type { GuidedClient } from "../lib/clients";
+import { TOKEN_PLACEHOLDER } from "../lib/clients";
 import { describeApiError } from "../lib/errors";
 import { CheckIcon, CopyIcon } from "../shell/icons";
 import { Badge } from "./Badge";
@@ -192,11 +202,16 @@ export function ConnectPanel({
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const profile = token?.profile ?? profileDraft;
   const connected = Boolean(token?.last_used_at);
+  // The one-time plaintext, or nothing — `clients.ts` renders its
+  // placeholder in that case (issue 318; see this file's header comment).
+  const snippetToken = plaintext ?? undefined;
+  const command = client.command(origin, profile, snippetToken);
+  const prompt = client.prompt(origin, profile, snippetToken);
 
   // SPEC-306 deliverable #3: a one-click "download config file" tab, for
   // the clients whose real install path is "put this file there" rather
   // than "run this command" (their real formats — SPEC-209-corrected).
-  const configFile = client.configFile?.(origin, profile);
+  const configFile = client.configFile?.(origin, profile, snippetToken);
   const configFileHref = useMemo(
     () =>
       configFile
@@ -409,8 +424,8 @@ export function ConnectPanel({
                 <CardBody className="stack stack--3">
                   {tab === "command" ? (
                     <div className="snippet snippet--wrap">
-                      <code>{client.command(origin, profile)}</code>
-                      <Button size="sm" onClick={() => copy(client.command(origin, profile), "Command")}>
+                      <code>{command}</code>
+                      <Button size="sm" onClick={() => copy(command, "Command")}>
                         <CopyIcon className="icon--sm" />
                         Copy
                       </Button>
@@ -421,12 +436,12 @@ export function ConnectPanel({
                     </div>
                   ) : (
                     <div className="snippet snippet--block">
-                      <code>{client.prompt(origin, profile)}</code>
+                      <code>{prompt}</code>
                     </div>
                   )}
                   {tab === "prompt" ? (
                     <div className="row row--wrap">
-                      <Button size="sm" onClick={() => copy(client.prompt(origin, profile), "Prompt")}>
+                      <Button size="sm" onClick={() => copy(prompt, "Prompt")}>
                         <CopyIcon className="icon--sm" />
                         Copy prompt
                       </Button>
@@ -444,14 +459,26 @@ export function ConnectPanel({
                     </div>
                   ) : null}
                   {plaintext ? (
-                    <div className="row row--wrap" style={{ gap: 6 }}>
-                      <span className="t-xs t-muted">Its token (shown once):</span>
-                      <span className="chip chip--mono">{plaintext}</span>
-                      <Button size="sm" variant="quiet" onClick={() => copy(plaintext, "Token")}>
-                        <CopyIcon className="icon--sm" />
-                      </Button>
-                    </div>
-                  ) : null}
+                    <>
+                      <div className="row row--wrap" style={{ gap: 6 }}>
+                        <span className="t-xs t-muted">Its token (shown once):</span>
+                        <span className="chip chip--mono">{plaintext}</span>
+                        <Button size="sm" variant="quiet" onClick={() => copy(plaintext, "Token")}>
+                          <CopyIcon className="icon--sm" />
+                        </Button>
+                      </div>
+                      <p className="t-xs t-muted">
+                        The token is already filled in above — every request needs it. Copy now:
+                        once you leave this page it is not shown again.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="t-xs t-muted">
+                      Replace <span className="t-mono">{TOKEN_PLACEHOLDER}</span> with the token{" "}
+                      {client.name} was given when it was issued — it was shown once and is not
+                      stored here. Without it, every request is turned away.
+                    </p>
+                  )}
                 </CardBody>
               </Card>
             </div>
@@ -478,7 +505,8 @@ export function ConnectPanel({
                   <p className="t-xs t-muted" style={{ marginTop: 8 }}>
                     Once a gateway profile named <span className="t-mono">{profile}</span> exposes a
                     vault, ask it <em>&ldquo;what do you remember about this project?&rdquo;</em> and
-                    this line changes on its own.
+                    this line changes on its own. It only changes if the client sends its token —
+                    a call without one is turned away and never shows up here.
                   </p>
                 </>
               )}
