@@ -205,6 +205,8 @@ async def build_production_app(
     market_kwargs: dict[str, Any] = {}
     if config.market.index_url:
         market_kwargs["index_url"] = config.market.index_url
+    if config.market.public_key:
+        market_kwargs["public_key_b64"] = config.market.public_key
     market_service = MarketService(
         registry_client=RegistryClient(cache_dir=home / "registry_cache" if home else None),
         curated_client=CuratedIndexClient(

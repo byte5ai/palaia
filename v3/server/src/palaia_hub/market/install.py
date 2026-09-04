@@ -73,6 +73,7 @@ from ..upstream.models import UpstreamAuthConfig, UpstreamConfig, UpstreamConfli
 from ..upstream.secrets import SecretStore, SecretStoreError
 from ..upstream.service import UpstreamNotConfiguredError, UpstreamService
 from . import docker_runtime
+from .curated import CuratedIndexResult
 from .installed_store import InstalledAddonRecord, InstalledAddonStore
 from .models import EntryKind, MarketEntry
 from .service import MarketService
@@ -372,20 +373,32 @@ async def _build_plan(
     if entry.kind == "remote":
         if entry.source.type == "url":
             return _build_http_plan(
-                entry, config, key=key, display_name=display_name, url=entry.source.value,
+                entry,
+                config,
+                key=key,
+                display_name=display_name,
+                url=entry.source.value,
                 secret_store=secret_store,
             )
         if entry.source.type == "registry_ref":
             return await _resolve_registry_ref_plan(
-                entry, config, key=key, display_name=display_name,
-                market_service=market_service, secret_store=secret_store,
+                entry,
+                config,
+                key=key,
+                display_name=display_name,
+                market_service=market_service,
+                secret_store=secret_store,
             )
         raise MarketInstallError(
             f"a 'remote' entry cannot install from a {entry.source.type!r} source."
         )
     if entry.kind == "container":
         return await _resolve_container_plan(
-            entry, config, key=key, display_name=display_name, secret_store=secret_store,
+            entry,
+            config,
+            key=key,
+            display_name=display_name,
+            secret_store=secret_store,
         )
     label = _KIND_LABELS.get(entry.kind, entry.kind)
     raise MarketInstallError(
@@ -519,8 +532,12 @@ class InstallService:
 
         try:
             plan = await _build_plan(
-                entry, request.config, key=key, display_name=display_name,
-                market_service=self.market_service, secret_store=self.secret_store,
+                entry,
+                request.config,
+                key=key,
+                display_name=display_name,
+                market_service=self.market_service,
+                secret_store=self.secret_store,
             )
         except (MarketInstallError, docker_runtime.DockerError, SecretStoreError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -589,7 +606,12 @@ class InstallService:
 
     # -------------------------------------------------------- installed
 
-    async def _out(self, record: InstalledAddonRecord) -> InstalledAddonOut:
+    async def _out(
+        self, record: InstalledAddonRecord, *, curated: CuratedIndexResult | None = None
+    ) -> InstalledAddonOut:
+        """One record's REST shape. ``curated`` is the index fetched once
+        for a whole listing (see :meth:`list_installed`); left ``None`` for
+        a single-record answer such as an install's own response."""
         try:
             status = self.upstream_service.status(record.upstream_key)
             up, detail = status.up, status.detail
@@ -601,7 +623,7 @@ class InstallService:
             # removing from the list, not a crash.
             up, detail = False, "No longer connected — reinstall it, or remove it below."
         current_ref: str | None = None
-        entry = await self.market_service.get_entry(record.entry_id)
+        entry = await self.market_service.get_entry(record.entry_id, curated=curated)
         if entry is not None:
             current_ref = entry.source.value
         profiles = sorted(
@@ -628,8 +650,19 @@ class InstallService:
             installed_at=record.installed_at,
         )
 
+    async def _outs(self) -> list[InstalledAddonOut]:
+        """Every installed record's REST shape, resolving all of them
+        against **one** curated-index fetch rather than one per record
+        (issue #321: ``GET /api/market/installed`` used to pay a full
+        index round-trip — up to its 8 s timeout — per installed add-on)."""
+        records = self.installed_store.list()
+        if not records:
+            return []
+        curated = await self.market_service.curated_client.fetch()
+        return [await self._out(record, curated=curated) for record in records]
+
     async def list_installed(self) -> list[InstalledAddonOut]:
-        return [await self._out(record) for record in self.installed_store.list()]
+        return await self._outs()
 
     async def update(self, upstream_key: str) -> InstalledAddonOut:
         record = self.installed_store.get(upstream_key)
@@ -726,8 +759,7 @@ class InstallService:
         ``addon.update_available`` for one whose availability just turned
         on — called after the curated index refreshes (deliverable #4)."""
         changed: list[InstalledAddonOut] = []
-        for record in self.installed_store.list():
-            out = await self._out(record)
+        for out in await self._outs():
             if out.update_available:
                 changed.append(out)
                 self._publish(

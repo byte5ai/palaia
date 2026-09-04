@@ -203,12 +203,14 @@ See [§8](#8-accepted-risks-and-open-gaps).
 | Upstream credentials in plain text | Encrypted at rest under a Fernet key; never in `config.yaml`, never in a REST response, never in a log or an error message | `server/src/palaia_hub/upstream/secrets.py`, `server/tests/upstream/test_secret_never_leaks.py` |
 | A read path appearing on the secret store | No response model in the package has a field a value could be placed in; `/api/secrets` is write-only by construction | `server/src/palaia_hub/upstream/api.py`, `server/tests/upstream/test_api.py` |
 | An unreachable or hostile upstream stalling the hub | Probing is background-only; a `stdio` child is reaped at shutdown | `server/src/palaia_hub/upstream/monitor.py`, `server/tests/upstream/test_down_upstream.py` |
+| A client's own hub credential (its `plt_` token or OAuth JWT) reaching an upstream (A5 learning A4's token) | fastmcp's proxy forwards the inbound `Authorization` header by default; the hub switches that off on every HTTP upstream transport, so an upstream receives exactly the header its `auth:` names and nothing the client sent | `server/src/palaia_hub/upstream/service.py`, `server/tests/upstream/test_http_upstream.py` |
 
 ### 7.2 Marketplace installs (B5)
 
 | Threat | Mitigation as built | Where |
 |---|---|---|
-| A tampered curated index | The index is signed; verification happens before any entry is used, with a last-good fallback | `server/src/palaia_hub/market/curated.py`, `server/tests/market/test_curated.py` |
+| A tampered curated index | The index is signed; verification happens before any entry is used, with a last-good fallback. The public key is pinned in code and may be replaced only in the owner-only `config.yaml` (`market.public_key`), never over REST | `server/src/palaia_hub/market/curated.py`, `server/tests/market/test_curated.py` |
+| The index host used to slow or stall the marketplace (one bounded fetch per installed add-on per page load) | Every fetch outcome, success or failure, is cached on disk with a TTL; one API call resolves all installed add-ons against a single fetch | `server/src/palaia_hub/market/curated.py`, `server/tests/market/test_curated_wiring.py` |
 | Installing something other than what was reviewed | Installs pin an image digest and record it | `server/src/palaia_hub/market/install.py`, `server/tests/market/test_install.py` |
 | Container escape / host access | The container runs as a non-root user with no added capabilities; see `v3/deploy/` | `v3/deploy/docker-compose.yml` |
 

@@ -59,6 +59,12 @@ gateway:
 For an API key in a custom header, set `header: X-API-Key` and
 `value_template: "{secret}"`.
 
+The header palaia sends an `http` server is **only** the one its `auth:`
+names: the connecting client's own credential (its palaia `plt_` token or
+OAuth JWT) and its other request headers are never forwarded to an external
+server, with or without an `auth:` block (issue #314 — fastmcp's proxy
+forwards them by default; palaia switches that off).
+
 ### The store
 
 - `<home>/secrets.sqlite3` — values encrypted with Fernet, file mode `0600`.

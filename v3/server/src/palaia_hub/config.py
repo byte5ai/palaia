@@ -8,6 +8,8 @@ naming the file, the offending key, and how to fix it.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import ipaddress
 import os
 import warnings
@@ -314,11 +316,16 @@ curator:
   # endpoint:
 
 # The marketplace's curated add-on index (MASTERPLAN §5.3): where to fetch
-# palaia's signed, curated list of add-ons from. The signature's public key
-# is pinned in code, never here — changing this URL alone cannot make the
-# hub trust a different signer. null uses the built-in default URL.
+# palaia's signed, curated list of add-ons from, and the Ed25519 public key
+# (raw 32 bytes, base64) the document must be signed with. null uses the
+# built-in defaults. Set both when you publish your own signed index (see
+# v3/tools/README.md); until then the hub serves its bundled starter index.
+# Changing index_url alone cannot make the hub trust a different signer —
+# public_key is the trust anchor, which is why it lives only in this
+# owner-only file and can never be set over the dashboard or REST.
 market:
   index_url: null
+  public_key: null
 
 # SPEC-501: which release stream this hub tracks, and where it is running.
 # Neither is meant to be hand-edited on a normal install — the container
@@ -397,7 +404,7 @@ class RecallSettings(BaseModel):
 
 
 class GitHubIdpSettings(BaseModel):
-    """"Sign in with GitHub" (SPEC-204). Zero scopes are ever requested —
+    """ "Sign in with GitHub" (SPEC-204). Zero scopes are ever requested —
     the token is used once to read the signed-in username, then discarded.
     """
 
@@ -731,9 +738,7 @@ class CuratorSettings(BaseModel):
 
     enabled: bool = False
     #: The command that runs one curation session. See the class docstring.
-    runner_command: list[str] = Field(
-        default_factory=lambda: list(_DEFAULT_CURATOR_COMMAND)
-    )
+    runner_command: list[str] = Field(default_factory=lambda: list(_DEFAULT_CURATOR_COMMAND))
     #: Seconds a single session may take before it is killed.
     session_timeout: float = Field(default=300.0, gt=0.0, le=3600.0)
     #: Seconds to wait after an ``inbox.captured`` event, so a burst of
@@ -762,21 +767,45 @@ class CuratorSettings(BaseModel):
 class MarketSettings(BaseModel):
     """The marketplace's curated-index source (SPEC-303 deliverable #2).
 
-    Only the index *URL* is configurable — the Ed25519 public key it must
-    verify against is pinned in code
-    (``palaia_hub.market.curated.DEFAULT_PUBLIC_KEY_B64``), never here.
-    A configurable trust anchor would let a config-file edit alone make
-    the hub trust an attacker's index; the URL merely says where to look
-    for a document that still has to carry a valid signature from the
-    one key this hub ships pinned to.
+    Both the index *URL* and the Ed25519 *public key* the document must
+    verify against are configurable here — and **only** here. The key is
+    the trust anchor, so it is deliberately reachable through nothing but
+    this owner-only (``0600``) file: no REST route, no dashboard control
+    and no environment of a marketplace add-on can move it, and a
+    ``config.yaml`` edit already implies control of the host. ``None`` for
+    either means the package defaults
+    (``palaia_hub.market.curated.DEFAULT_INDEX_URL`` /
+    ``DEFAULT_PUBLIC_KEY_B64``); kept optional rather than defaulted here
+    so each default lives in exactly one place. See ``v3/tools/README.md``
+    for publishing an index of your own (issue #321).
     """
 
     model_config = ConfigDict(extra="forbid")
 
     #: ``None`` means "use palaia_hub.market.curated.DEFAULT_INDEX_URL".
-    #: Kept optional (rather than defaulting here) so the default lives in
-    #: exactly one place.
     index_url: str | None = None
+    #: The raw 32-byte Ed25519 public key, base64. ``None`` means "use
+    #: palaia_hub.market.curated.DEFAULT_PUBLIC_KEY_B64".
+    public_key: str | None = None
+
+    @model_validator(mode="after")
+    def _check_public_key(self) -> MarketSettings:
+        if self.public_key is None:
+            return self
+        try:
+            raw = base64.b64decode(self.public_key, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError(
+                "market.public_key is not valid base64. Fix: paste the public key "
+                "exactly as `sign_market_index.py gen-key` printed it."
+            ) from exc
+        if len(raw) != 32:
+            raise ValueError(
+                f"market.public_key decodes to {len(raw)} bytes, not the 32 of a raw "
+                "Ed25519 public key. Fix: paste the public key exactly as "
+                "`sign_market_index.py gen-key` printed it."
+            )
+        return self
 
 
 class HubConfig(BaseModel):

@@ -16,7 +16,7 @@ from typing import Any
 
 from ..registry.client import RegistryClient, RegistryOfflineError
 from ..registry.models import RegistryServer
-from .curated import CuratedIndexClient
+from .curated import CuratedIndexClient, CuratedIndexResult
 from .manual import ManualEntryStore
 from .models import ManualEntryCreate, MarketEntry, Provenance, SourceLocator
 
@@ -131,22 +131,28 @@ class MarketService:
         if query:
             needle = query.lower()
             entries = [
-                e
-                for e in entries
-                if needle in e.name.lower() or needle in e.one_liner.lower()
+                e for e in entries if needle in e.name.lower() or needle in e.one_liner.lower()
             ]
 
         return MarketSearchResult(entries=tuple(entries), stale=stale, notes=notes)
 
-    async def get_entry(self, entry_id: str) -> MarketEntry | None:
+    async def get_entry(
+        self, entry_id: str, *, curated: CuratedIndexResult | None = None
+    ) -> MarketEntry | None:
         """Look up one entry by id, checking manual, then curated, then
         the registry (a REST-created override could in principle shadow a
-        registry id; checking manual first makes that deterministic)."""
+        registry id; checking manual first makes that deterministic).
+
+        ``curated`` lets a caller resolving *many* ids in one request
+        (``GET /api/market/installed``) hand over one already-fetched
+        index instead of asking the client once per id (issue #321).
+        """
         manual = self.manual_store.get(entry_id)
         if manual is not None:
             return manual
 
-        curated = await self.curated_client.fetch()
+        if curated is None:
+            curated = await self.curated_client.fetch()
         for entry in curated.entries:
             if entry.id == entry_id:
                 return entry
@@ -163,7 +169,7 @@ class MarketService:
         """Force a curated-index fetch and emit ``market.index.updated``
         (SPEC-303 deliverable #5) with the outcome, whether fresh or a
         refused/offline fallback — the event names both cases honestly."""
-        result = await self.curated_client.fetch()
+        result = await self.curated_client.fetch(force=True)
         self.publish(
             "market.index.updated",
             {

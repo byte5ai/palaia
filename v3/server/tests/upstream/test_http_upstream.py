@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import pytest
 from fastmcp import Client
+from fastmcp.server.http import set_http_request
+from starlette.requests import Request
 
 from palaia_hub.gateway.config import GatewayConfig, ProfileConfig, VaultMountConfig
 from palaia_hub.gateway.dynamic import DynamicGateway
@@ -34,9 +36,7 @@ def _gateway_config(upstream: UpstreamConfig) -> GatewayConfig:
     )
 
 
-async def _started_gateway(
-    upstream: UpstreamConfig, service: UpstreamService
-) -> DynamicGateway:
+async def _started_gateway(upstream: UpstreamConfig, service: UpstreamService) -> DynamicGateway:
     gateway = DynamicGateway(
         _gateway_config(upstream),
         {"work": FakeVaultService()},
@@ -191,4 +191,99 @@ async def test_a_missing_secret_is_reported_by_name_not_by_crashing(
         assert status.up is False
         assert "never-entered" in status.detail
     finally:
+        await service.aclose()
+
+
+# ------------------------------------------------ inbound headers (issue #314)
+
+
+def _inbound_request(headers: dict[str, str]) -> Request:
+    """A Starlette request carrying ``headers``, standing in for the HTTP
+    request a real MCP client made to the hub."""
+    scope = {
+        "type": "http",
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/mcp",
+        "raw_path": b"/mcp",
+        "query_string": b"",
+        "headers": [(k.lower().encode("latin-1"), v.encode("latin-1")) for k, v in headers.items()],
+        "client": ("127.0.0.1", 5555),
+        "server": ("127.0.0.1", 8420),
+        "root_path": "",
+    }
+    return Request(scope)
+
+
+async def _upstream_headers_seen(
+    gateway: DynamicGateway, inbound: dict[str, str]
+) -> dict[str, str]:
+    """Call the fixture's ``headers`` tool through the profile while the hub
+    believes ``inbound`` is the current client request.
+
+    fastmcp's proxy reads the inbound request through
+    ``fastmcp.server.dependencies.get_http_headers`` — a ContextVar that a
+    real deployment sets per HTTP request and that the in-memory transport
+    used here leaves unset. Setting it around the client's lifetime is
+    exactly what a real ``Authorization: Bearer plt_…`` call looks like to
+    the proxy, minus the socket.
+    """
+    with set_http_request(_inbound_request(inbound)):
+        async with Client(gateway.profile_servers["default"]) as client:
+            result = await client.call_tool("fixture_headers", {})
+    seen = result.structured_content or {}
+    if "result" in seen and isinstance(seen["result"], dict):
+        seen = seen["result"]
+    return {str(k).lower(): str(v) for k, v in seen.items()}
+
+
+async def test_a_clients_authorization_header_is_not_forwarded_to_an_upstream(
+    http_upstream: HttpUpstream,
+) -> None:
+    """Issue #314: an upstream with no ``auth:`` must not receive the
+    connecting client's own palaia credential (its ``plt_`` token or OAuth
+    JWT), nor any other header the client sent to the hub."""
+    upstream = UpstreamConfig(
+        key="fixture",
+        kind="http",
+        display_name="Fixture server",
+        url=http_upstream.url,
+    )
+    service = UpstreamService([upstream])
+    gateway = await _started_gateway(upstream, service)
+    try:
+        seen = await _upstream_headers_seen(
+            gateway,
+            {"Authorization": "Bearer inbound-secret", "X-Palaia-Client": "leaky-client"},
+        )
+        assert seen, "the fixture reported no headers at all"
+        assert "authorization" not in seen
+        assert "x-palaia-client" not in seen
+        assert "inbound-secret" not in " ".join(seen.values())
+    finally:
+        await gateway.aclose()
+        await service.aclose()
+
+
+async def test_a_configured_auth_header_still_reaches_the_upstream(
+    http_upstream: HttpUpstream, secret_store: SecretStore
+) -> None:
+    """The counterpart of the test above: switching off header forwarding
+    must not take the *configured* credential with it."""
+    secret_store.put("fixture-token", FIXTURE_BEARER_TOKEN)
+    upstream = UpstreamConfig(
+        key="fixture",
+        kind="http",
+        display_name="Fixture server",
+        url=http_upstream.url,
+        auth=UpstreamAuthConfig(secret_name="fixture-token"),
+    )
+    service = UpstreamService([upstream], secret_store=secret_store)
+    gateway = await _started_gateway(upstream, service)
+    try:
+        seen = await _upstream_headers_seen(gateway, {"Authorization": "Bearer inbound-secret"})
+        assert seen.get("authorization") == f"Bearer {FIXTURE_BEARER_TOKEN}"
+    finally:
+        await gateway.aclose()
         await service.aclose()
