@@ -45,3 +45,11 @@ def test_write_actions_require_write_scope() -> None:
 
 def test_unknown_action_fails_closed_to_write() -> None:
     assert required_scope_for_action("work", "some_future_action") == "vault:work:write"
+
+
+def test_capture_is_a_write_and_inbox_status_a_read() -> None:
+    """Issue #323: the two SPEC-207 tools are classified like their peers."""
+    from palaia_hub.auth.scopes import required_scope_for_action
+
+    assert required_scope_for_action("work", "capture") == "vault:work:write"
+    assert required_scope_for_action("work", "inbox_status") == "vault:work:read"

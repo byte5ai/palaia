@@ -304,9 +304,7 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
     @server.tool(
         name="edit",
         description=desc("Update an existing note's body and/or tags."),
-        annotations=ToolAnnotations(
-            readOnlyHint=False, destructiveHint=True, idempotentHint=False
-        ),
+        annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False),
     )
     async def edit(
         permalink: str,
@@ -325,9 +323,7 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
     @server.tool(
         name="move",
         description=desc("Move a note to a different folder. Its permalink never changes."),
-        annotations=ToolAnnotations(
-            readOnlyHint=False, destructiveHint=True, idempotentHint=True
-        ),
+        annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=True),
     )
     async def move(permalink: str, folder: FolderParam = "") -> ToolResult:
         if (err := scope_error("move")) is not None:
@@ -341,9 +337,7 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
     @server.tool(
         name="delete",
         description=desc("Delete a note by permalink. Irreversible outside git history."),
-        annotations=ToolAnnotations(
-            readOnlyHint=False, destructiveHint=True, idempotentHint=True
-        ),
+        annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=True),
     )
     async def delete(permalink: str) -> ToolResult:
         if (err := scope_error("delete")) is not None:
@@ -495,6 +489,8 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         content: str | None = None,
         source: str | None = None,
     ) -> ToolResult:
+        if (err := scope_error("capture")) is not None:
+            return err
         missing = missing_capture_fields(
             what_it_concerns=what_it_concerns, why_keep=why_keep, content=content
         )
@@ -529,6 +525,8 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True),
     )
     async def inbox_status() -> ToolResult:
+        if (err := scope_error("inbox_status")) is not None:
+            return err
         status = await service.inbox_status()
         text = f"{status.count} uncurated capture(s)"
         if status.oldest_age_seconds is not None:
@@ -567,9 +565,7 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
             "or by editing the note directly. Only valid on a proposal "
             "whose status is currently 'proposed'."
         ),
-        annotations=ToolAnnotations(
-            readOnlyHint=False, destructiveHint=True, idempotentHint=False
-        ),
+        annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False),
     )
     async def review_decide(
         permalink: str,
