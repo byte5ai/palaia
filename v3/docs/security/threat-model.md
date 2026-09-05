@@ -103,16 +103,17 @@ scoping). *Proven by* `server/tests/modes/test_policy.py`,
 ## 4. B1 — the MCP surface
 
 **What is mounted.** One catch-all mount (`/mcp`, rebuilt in place as
-profiles change) plus five hub-wide tool families with their own mount
-paths: `/mcp/stash`, `/mcp/directory`, `/mcp/messenger`, `/mcp/hub`,
-`/mcp/market`, `/mcp/team`. Their tool families are
-`memory_tools`, `stash_tools`, `directory_tools` and `messenger_tools`
-under `server/src/palaia_hub/gateway/`, plus the MCP Apps in
+profiles change; each profile under it carries its own verifier) plus six
+hub-wide servers with their own mount paths: `/mcp/stash`, `/mcp/directory`,
+`/mcp/messenger`, `/mcp/hub`, `/mcp/market`, `/mcp/team`, which share one
+hub-wide verifier (issue #313). The tool families are `memory_tools`,
+`stash_tools`, `directory_tools` and `messenger_tools` under
+`server/src/palaia_hub/gateway/`, plus the MCP Apps in
 `server/src/palaia_hub/gateway/apps/`.
 
 | Threat | Mitigation as built | Where |
 |---|---|---|
-| Unauthenticated tool call | Every mounted profile carries a verifier; the hub **refuses to start** an MCP endpoint with auth off in `cloud`/`open` | `server/src/palaia_hub/auth/policy.py`, `server/tests/auth/test_app_auth_policy.py` |
+| Unauthenticated tool call on a profile mount | Every profile mounted under `/mcp` carries its own verifier (`plt_` tokens of that profile, or an OAuth JWT for its audience); the hub **refuses to start** an MCP endpoint with auth off in `cloud`/`open` | `server/src/palaia_hub/auth/policy.py`, `server/tests/auth/test_app_auth_policy.py` |
 | Unauthenticated call on a hub-wide mount (`/mcp/stash`, `/mcp/directory`, `/mcp/messenger`, `/mcp/hub`, `/mcp/market`, `/mcp/team`) | The six hub-level servers share one verifier accepting any live `plt_` token of this hub or an OAuth JWT for any of its profiles; the same start-time refusal applies to them in `cloud`/`open` (issue #313). What a token may then do there is decided by its hub-level scopes inside each tool | `server/src/palaia_hub/oauth/verifier.py` (`build_hub_auth`), `server/src/palaia_hub/auth/policy.py` (`check_hub_mount_auth_policy`), `server/tests/test_hub_mount_auth_spec313.py` |
 | A profile switched to `semantic_routing` losing its verifier | The router served in its place carries the profile's own `auth`; a cloud/open mount that would come up unauthenticated is refused *before* anything is mounted or recorded (issue #315) | `server/src/palaia_hub/gateway/semantic_routing.py`, `server/src/palaia_hub/gateway/dynamic.py`, `server/tests/gateway/test_dynamic.py` |
 | A token reaching a vault it was not scoped to | Per-token, per-profile scopes checked inside the gateway, not at the edge | `server/src/palaia_hub/auth/scopes.py`, `server/tests/auth/test_scopes.py` |
@@ -182,8 +183,8 @@ See [§8](#8-accepted-risks-and-open-gaps).
 | Threat | Mitigation as built | Where |
 |---|---|---|
 | Silent authorization of a signed-in owner (a crafted `/authorize` link naming an attacker's client) | Nothing is minted on a `GET`: the owner sees who is asking, the redirect target and the scopes, and only a `POST` carrying the session's double-submit CSRF token issues a code; denying sends the client `access_denied` (issue #328) | `server/src/palaia_hub/oauth/routes.py`, `server/tests/oauth/test_flow_e2e.py` |
-| Authorization-code interception | PKCE is required on every authorization request; codes are one-time and short-lived | `server/src/palaia_hub/oauth/pkce.py`, `server/src/palaia_hub/oauth/service.py`, `server/tests/oauth/test_authorize.py` |
-| Token forgery | ES256, asymmetric; the private key never leaves `<home>/oauth/signing-key.pem`; the resource side verifies with fastmcp's own `JWTVerifier` | `server/src/palaia_hub/oauth/keys.py`, `server/src/palaia_hub/oauth/verifier.py`, `server/tests/oauth/test_keys.py` |
+| Authorization-code interception | PKCE is required on every authorization request; codes are one-time and short-lived | `server/src/palaia_hub/oauth/pkce.py`, `server/src/palaia_hub/oauth/service.py`, `server/tests/oauth/test_cimd_and_pkce.py`, `server/tests/oauth/test_token_endpoint.py::test_pkce_is_mandatory` |
+| Token forgery | ES256, asymmetric; the private key never leaves `<home>/oauth/signing-key.pem`; the resource side verifies with fastmcp's own `JWTVerifier` | `server/src/palaia_hub/oauth/keys.py`, `server/src/palaia_hub/oauth/verifier.py`, `server/tests/oauth/test_keys_and_files.py` |
 | Password brute force | argon2id, a per-account failed-attempt lockout, and one identical failure message for every reason | `server/src/palaia_hub/oauth/login.py`, `server/tests/oauth/test_login.py` |
 | Probing whether a hub is set up | A constant-time miss when no owner account exists | `server/src/palaia_hub/auth/hashing.py`, `server/tests/oauth/test_login.py` |
 | Login CSRF (signing the victim into the attacker's session) | A double-submit token on the login form itself | `server/src/palaia_hub/oauth/login.py`, `server/tests/oauth/test_login.py` |
@@ -193,7 +194,7 @@ See [§8](#8-accepted-risks-and-open-gaps).
 | Open redirect with a fresh session attached | `next` is refused unless it is a local dashboard path or the authorization endpoint | `server/src/palaia_hub/oauth/routes.py`, `server/tests/oauth/test_login.py` |
 | Credential spraying | The failed-attempt limiter covers `/oauth/token`, `/oauth/login`, `/oauth/register`, `/oauth/revoke` and `/oauth/logout` in `cloud`/`open` | `server/src/palaia_hub/modes/rate_limit.py`, `server/tests/modes/test_rate_limit.py` |
 | Credentials in logs | No handler in the OAuth package logs a request line, query string or form body; a redaction filter masks every credential shape as a second line of defense | `server/src/palaia_hub/logging.py`, `server/tests/oauth/test_redaction.py`, `server/tests/security/test_no_credentials_in_logs.py` |
-| A stale grant living forever | Refresh grants and login sessions are pruned on a schedule and on demand | `server/src/palaia_hub/oauth/store.py`, `server/tests/oauth/test_store.py` |
+| A stale grant living forever | Refresh grants and login sessions are pruned on a schedule and on demand; an expired token, code or session is refused before that | `server/src/palaia_hub/oauth/store.py`, `server/tests/oauth/test_clients.py`, `server/tests/oauth/test_refresh_rotation.py`, `server/tests/oauth/test_login.py::test_an_expired_session_is_not_accepted` |
 
 ---
 
