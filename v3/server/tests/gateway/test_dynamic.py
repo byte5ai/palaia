@@ -26,6 +26,7 @@ from palaia_hub.gateway.dynamic import DynamicGateway
 from palaia_hub.gateway.fake_vault import FakeVaultService
 from palaia_hub.stash.service import StashService
 from palaia_hub.stash.store import StashStore
+from palaia_hub.upstream.models import UpstreamConfig
 
 pytestmark = pytest.mark.anyio
 
@@ -441,5 +442,50 @@ async def test_update_vault_identity_unknown_key_raises() -> None:
 
     with pytest.raises(GatewayConfigError):
         await gateway.update_vault_identity(VaultMountConfig(key="ghost", name="ghost"))
+
+    await gateway.aclose()
+
+
+async def test_set_profile_upstreams_keeps_every_other_profile_field() -> None:
+    """Issue #324: connecting an external server to a profile must not reset
+    its hidden tools, team flags or routing mode."""
+    config = GatewayConfig(
+        vaults=[VaultMountConfig(key="work", name="work")],
+        profiles=[
+            ProfileConfig(
+                path="default",
+                label="Desk",
+                vaults=["work"],
+                stash=True,
+                directory=True,
+                messenger=True,
+                hidden_tools=["work_memory_delete"],
+            )
+        ],
+    )
+    gateway = DynamicGateway(config, {"work": FakeVaultService()})
+    await gateway.start()
+    await gateway.register_upstream(
+        UpstreamConfig(key="fx", kind="http", display_name="Fixture", url="http://127.0.0.1:9/mcp")
+    )
+
+    await gateway.set_profile_upstreams("default", ["fx"])
+
+    profile = next(p for p in gateway.config.profiles if p.path == "default")
+    assert profile.upstreams == ["fx"]
+    assert profile.label == "Desk"
+    assert profile.stash and profile.directory and profile.messenger
+    assert profile.hidden_tools == ["work_memory_delete"]
+    async with Client(gateway.profile_servers["default"]) as client:
+        names = {t.name for t in await client.list_tools()}
+    assert "work_memory_delete" not in names  # hidden_tools still applied after the change
+
+    await gateway.set_profile_upstreams("default", [])
+    profile = next(p for p in gateway.config.profiles if p.path == "default")
+    assert profile.upstreams == []
+    assert profile.hidden_tools == ["work_memory_delete"]
+
+    with pytest.raises(GatewayConfigError):
+        await gateway.set_profile_upstreams("nope", ["fx"])
 
     await gateway.aclose()

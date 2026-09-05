@@ -590,14 +590,9 @@ class InstallService:
                 raise HTTPException(status_code=404, detail=f"no profile at path {path!r}")
             if key in current.upstreams:
                 continue
-            await self.dynamic_gateway.upsert_profile(
-                path,
-                list(current.vaults),
-                label=current.label,
-                stash=current.stash,
-                directory=current.directory,
-                upstreams=[*current.upstreams, key],
-            )
+            # Issue #324: only the upstream list changes; every other profile
+            # field (hidden_tools, messenger, semantic_routing, ...) is kept.
+            await self.dynamic_gateway.set_profile_upstreams(path, [*current.upstreams, key])
 
     def _persist(self) -> None:
         persist_gateway_settings(

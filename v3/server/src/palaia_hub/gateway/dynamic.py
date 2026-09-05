@@ -478,6 +478,38 @@ class DynamicGateway:
             await self._request_mount(new_profile)
         check_gateway_auth_policy(self._mode, self._profile_servers)
 
+    async def set_profile_upstreams(self, path: str, upstreams: Sequence[str]) -> None:
+        """Replace one existing profile's ``upstreams`` and nothing else.
+
+        The external-server REST surface and the marketplace install flow
+        used to rebuild the whole profile through :meth:`upsert_profile`
+        with only the fields they happened to know about, silently resetting
+        ``hidden_tools``, ``messenger``, ``directory`` and
+        ``semantic_routing`` to their defaults — live and, via the
+        settings snapshot, in ``config.yaml`` (issue #324). This carries
+        every other field of the current profile through unchanged.
+
+        Raises:
+            GatewayConfigError: no profile is mounted at ``path``.
+        """
+        current = next((p for p in self._config.profiles if p.path == path), None)
+        if current is None:
+            raise GatewayConfigError(
+                f"no profile at path {path!r}. Fix: create the profile first, then "
+                "connect the external server to it."
+            )
+        await self.upsert_profile(
+            path,
+            list(current.vaults),
+            label=current.label,
+            stash=current.stash,
+            directory=current.directory,
+            messenger=current.messenger,
+            hidden_tools=list(current.hidden_tools),
+            semantic_routing=current.semantic_routing,
+            upstreams=list(upstreams),
+        )
+
     async def update_vault_identity(self, vault: VaultMountConfig) -> None:
         """Replace one already-mounted vault's identity (SPEC-305
         deliverable #1's inline rename): its display ``name``, ``purpose``,

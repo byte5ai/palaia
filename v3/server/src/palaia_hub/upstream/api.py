@@ -198,9 +198,7 @@ def build_secrets_router(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if on_secret_changed is not None:
             await on_secret_changed(name)
-        return SecretOut(
-            name=info.name, created_at=info.created_at, updated_at=info.updated_at
-        )
+        return SecretOut(name=info.name, created_at=info.created_at, updated_at=info.updated_at)
 
     @router.delete("/api/secrets/{name}", status_code=204)
     async def delete_secret(name: str) -> None:
@@ -250,9 +248,7 @@ def build_upstreams_router(
 
     def _profiles_mounting(key: str) -> list[str]:
         return sorted(
-            profile.path
-            for profile in dynamic_gateway.config.profiles
-            if key in profile.upstreams
+            profile.path for profile in dynamic_gateway.config.profiles if key in profile.upstreams
         )
 
     def _out(key: str) -> UpstreamOut:
@@ -285,9 +281,7 @@ def build_upstreams_router(
         # The shared live-then-persisted snapshot (settings_bridge): a
         # hand-built copy here once dropped hidden_tools/semantic_routing
         # from every profile on any upstream edit or secret rotation.
-        persist_gateway_settings(
-            config_path, snapshot_gateway_settings(dynamic_gateway, config)
-        )
+        persist_gateway_settings(config_path, snapshot_gateway_settings(dynamic_gateway, config))
 
     def _publish(event: str, data: dict[str, object]) -> None:
         if event_bus is not None:
@@ -305,31 +299,21 @@ def build_upstreams_router(
                         "that session could exfiltrate them."
                     ),
                 )
-            current = next(
-                (p for p in dynamic_gateway.config.profiles if p.path == path), None
-            )
+            current = next((p for p in dynamic_gateway.config.profiles if p.path == path), None)
             if current is None:
                 raise HTTPException(status_code=404, detail=f"no profile at path {path!r}")
             if key in current.upstreams:
                 continue
-            await dynamic_gateway.upsert_profile(
-                path,
-                list(current.vaults),
-                label=current.label,
-                stash=current.stash,
-                upstreams=[*current.upstreams, key],
-            )
+            # Issue #324: only the upstream list changes; hidden_tools,
+            # messenger, directory and semantic_routing stay as they are.
+            await dynamic_gateway.set_profile_upstreams(path, [*current.upstreams, key])
 
     async def _unmount_from(key: str, keep: list[str]) -> None:
         """Make exactly ``keep`` mount ``key`` — remove it everywhere else."""
         for profile in list(dynamic_gateway.config.profiles):
             if key in profile.upstreams and profile.path not in keep:
-                await dynamic_gateway.upsert_profile(
-                    profile.path,
-                    list(profile.vaults),
-                    label=profile.label,
-                    stash=profile.stash,
-                    upstreams=[k for k in profile.upstreams if k != key],
+                await dynamic_gateway.set_profile_upstreams(
+                    profile.path, [k for k in profile.upstreams if k != key]
                 )
 
     @router.get("/api/gateway/upstreams", response_model=list[UpstreamOut])
