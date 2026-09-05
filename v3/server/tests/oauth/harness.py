@@ -13,9 +13,12 @@ the real ``fastmcp`` auth path a connector would hit.
 
 from __future__ import annotations
 
+import html
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI
 
 from palaia_hub.app import create_app
@@ -112,9 +115,7 @@ def build_harness(
 ) -> Harness:
     """Assemble the app, the authorization server, and the resource side."""
     clock = Clock()
-    oauth_settings = settings or OAuthSettings(
-        enabled=True, issuer=ISSUER, profiles=list(profiles)
-    )
+    oauth_settings = settings or OAuthSettings(enabled=True, issuer=ISSUER, profiles=list(profiles))
     config = HubConfig(mode=mode, host="127.0.0.1", oauth=oauth_settings)  # type: ignore[arg-type]
 
     store = OAuthStore(home)
@@ -176,3 +177,42 @@ def build_harness(
         event_bus=event_bus,
         profiles=profiles,
     )
+
+
+# ------------------------------------------------------- consent (issue #328)
+
+_HIDDEN_INPUT_RE = re.compile(r'<input type="hidden" name="([^"]+)" value="([^"]*)">')
+
+
+def is_consent_page(response: httpx.Response) -> bool:
+    """Is ``response`` the consent page ``GET /oauth/authorize`` renders?"""
+    return response.status_code == 200 and 'name="decision"' in response.text
+
+
+async def approve_consent(
+    http: httpx.AsyncClient, page: httpx.Response, *, decision: str = "allow"
+) -> httpx.Response:
+    """Answer the consent page the way a browser would: echo its hidden fields
+    and the session's CSRF cookie in one POST. Returns the POST response (a 303
+    to the client's redirect URI on success)."""
+    assert is_consent_page(page), (page.status_code, page.text[:300])
+    fields = {
+        html.unescape(name): html.unescape(value)
+        for name, value in _HIDDEN_INPUT_RE.findall(page.text)
+    }
+    fields["csrf_token"] = http.cookies["palaia_oauth_csrf"]
+    fields["decision"] = decision
+    return await http.post("/oauth/authorize", data=fields)
+
+
+async def authorize_with_consent(
+    http: httpx.AsyncClient, path: str, *, params: dict[str, str]
+) -> httpx.Response:
+    """``GET /oauth/authorize`` and, when the owner is signed in, approve the
+    consent page — one call for the tests that only care about the code. A
+    response that is not the consent page (the sign-in hop, an error page)
+    is returned as is for the caller to assert on."""
+    page = await http.get(path, params=params)
+    if not is_consent_page(page):
+        return page
+    return await approve_consent(http, page)

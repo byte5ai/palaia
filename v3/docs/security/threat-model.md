@@ -181,6 +181,7 @@ See [§8](#8-accepted-risks-and-open-gaps).
 
 | Threat | Mitigation as built | Where |
 |---|---|---|
+| Silent authorization of a signed-in owner (a crafted `/authorize` link naming an attacker's client) | Nothing is minted on a `GET`: the owner sees who is asking, the redirect target and the scopes, and only a `POST` carrying the session's double-submit CSRF token issues a code; denying sends the client `access_denied` (issue #328) | `server/src/palaia_hub/oauth/routes.py`, `server/tests/oauth/test_flow_e2e.py` |
 | Authorization-code interception | PKCE is required on every authorization request; codes are one-time and short-lived | `server/src/palaia_hub/oauth/pkce.py`, `server/src/palaia_hub/oauth/service.py`, `server/tests/oauth/test_authorize.py` |
 | Token forgery | ES256, asymmetric; the private key never leaves `<home>/oauth/signing-key.pem`; the resource side verifies with fastmcp's own `JWTVerifier` | `server/src/palaia_hub/oauth/keys.py`, `server/src/palaia_hub/oauth/verifier.py`, `server/tests/oauth/test_keys.py` |
 | Password brute force | argon2id, a per-account failed-attempt lockout, and one identical failure message for every reason | `server/src/palaia_hub/oauth/login.py`, `server/tests/oauth/test_login.py` |

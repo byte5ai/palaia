@@ -24,7 +24,14 @@ from palaia_hub.logging import REDACTED, redact
 from palaia_hub.oauth import provision_machine_client
 from palaia_hub.oauth.pkce import challenge_for
 
-from .harness import CIMD_CLIENT_ID, CIMD_REDIRECT_URI, OWNER_PASSWORD, OWNER_USERNAME, Harness
+from .harness import (
+    CIMD_CLIENT_ID,
+    CIMD_REDIRECT_URI,
+    OWNER_PASSWORD,
+    OWNER_USERNAME,
+    Harness,
+    authorize_with_consent,
+)
 
 BASE_URL = "https://testserver"
 VERIFIER = "redaction-test-code-verifier-with-enough-entropy-ab"
@@ -56,7 +63,8 @@ async def test_a_complete_flow_logs_no_credential(
                 },
             )
             session = http.cookies["palaia_oauth_session"]
-            authorize = await http.get(
+            authorize = await authorize_with_consent(
+                http,
                 "/oauth/authorize",
                 params={
                     "response_type": "code",

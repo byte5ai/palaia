@@ -26,7 +26,14 @@ import pytest
 
 from palaia_hub.oauth.pkce import challenge_for
 
-from .harness import CIMD_CLIENT_ID, CIMD_REDIRECT_URI, OWNER_PASSWORD, OWNER_USERNAME, Harness
+from .harness import (
+    CIMD_CLIENT_ID,
+    CIMD_REDIRECT_URI,
+    OWNER_PASSWORD,
+    OWNER_USERNAME,
+    Harness,
+    authorize_with_consent,
+)
 
 BASE_URL = "https://testserver"
 CONNECTORS = 6
@@ -59,7 +66,8 @@ async def _sign_in(http: httpx.AsyncClient) -> None:
 async def _one_grant(harness: Harness, http: httpx.AsyncClient, index: int) -> str:
     """Run the code flow once; return the grant's first refresh token."""
     verifier = f"connector-{index}-verifier-padded-to-the-minimum-length"
-    authorize = await http.get(
+    authorize = await authorize_with_consent(
+        http,
         "/oauth/authorize",
         params={
             "response_type": "code",
@@ -118,9 +126,7 @@ async def test_six_connectors_fanned_out_over_three_surfaces_each(harness: Harne
     async with harness.app.router.lifespan_context(harness.app):
         async with _http(harness) as http:
             await _sign_in(http)
-            refresh_tokens = [
-                await _one_grant(harness, http, index) for index in range(CONNECTORS)
-            ]
+            refresh_tokens = [await _one_grant(harness, http, index) for index in range(CONNECTORS)]
 
             async def refresh(token: str) -> httpx.Response:
                 return await http.post(
@@ -131,11 +137,7 @@ async def test_six_connectors_fanned_out_over_three_surfaces_each(harness: Harne
             # Each connector's stored refresh token, presented from three
             # surfaces at the same moment — the exact shape of the incident.
             responses = await asyncio.gather(
-                *[
-                    refresh(token)
-                    for token in refresh_tokens
-                    for _ in range(SURFACES_PER_CONNECTOR)
-                ]
+                *[refresh(token) for token in refresh_tokens for _ in range(SURFACES_PER_CONNECTOR)]
             )
 
             statuses = sorted({response.status_code for response in responses})
@@ -219,7 +221,8 @@ async def test_concurrent_code_redemption_yields_exactly_one_winner(
     async with harness.app.router.lifespan_context(harness.app):
         async with _http(harness) as http:
             await _sign_in(http)
-            authorize = await http.get(
+            authorize = await authorize_with_consent(
+                http,
                 "/oauth/authorize",
                 params={
                     "response_type": "code",

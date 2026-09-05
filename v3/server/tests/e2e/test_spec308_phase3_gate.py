@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import html
 import json
 import os
 import re
@@ -286,6 +287,24 @@ def _challenge_for(verifier: str) -> str:
     return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
 
+def _approve_consent(client: httpx.Client, base_url: str, page: httpx.Response) -> httpx.Response:
+    """Issue #328: `GET /oauth/authorize` renders a consent page; a browser
+    user clicks Allow. Echo its hidden fields plus the session's CSRF cookie."""
+    assert page.status_code == 200 and 'name="decision"' in page.text, (
+        page.status_code,
+        page.text[:300],
+    )
+    fields = {
+        html.unescape(name): html.unescape(value)
+        for name, value in re.findall(
+            r'<input type="hidden" name="([^"]+)" value="([^"]*)">', page.text
+        )
+    }
+    fields["csrf_token"] = client.cookies["palaia_oauth_csrf"]
+    fields["decision"] = "allow"
+    return client.post(f"{base_url}/oauth/authorize", data=fields)
+
+
 def _csrf_and_sign_in(client: httpx.Client, base_url: str) -> None:
     login_form = client.get(f"{base_url}/oauth/login")
     match = re.search(r'name="csrf_token"\s+value="([^"]+)"', login_form.text)
@@ -342,6 +361,7 @@ def _get_real_access_token(base_url: str, profile: str) -> str:
             "resource": resource_metadata["resource"],
         },
     )
+    authorized = _approve_consent(client, "", authorized)
     assert authorized.status_code == 303, authorized.text
     code = parse_qs(urlsplit(authorized.headers["location"]).query)["code"][0]
 

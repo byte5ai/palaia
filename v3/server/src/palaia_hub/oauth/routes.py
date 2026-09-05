@@ -53,7 +53,9 @@ from .service import (
     REVOKE_PATH,
     TOKEN_PATH,
     AuthorizationServer,
+    AuthorizeOutcome,
     AuthorizeRedirect,
+    ConsentRequired,
     LoginRequired,
 )
 
@@ -126,8 +128,7 @@ def _is_safe_next(next_url: str) -> bool:
     if not path.startswith("/") or path.startswith("//"):
         return False
     return not any(
-        path == prefix.rstrip("/") or path.startswith(prefix)
-        for prefix in _NEVER_NEXT_PREFIXES
+        path == prefix.rstrip("/") or path.startswith(prefix) for prefix in _NEVER_NEXT_PREFIXES
     )
 
 
@@ -145,9 +146,7 @@ def _set_cookie(
     )
 
 
-def _start_session(
-    target: str, *, session: str, max_age: int, secure: bool
-) -> RedirectResponse:
+def _start_session(target: str, *, session: str, max_age: int, secure: bool) -> RedirectResponse:
     """Redirect to ``target`` carrying a fresh session and its CSRF token.
 
     Both doors (password, provider) end here, so the pair is always set
@@ -214,9 +213,33 @@ def build_oauth_router(server: AuthorizationServer) -> APIRouter:
 
     # ------------------------------------------------------------- authorize
 
+    def _login_hop(outcome: LoginRequired) -> Response:
+        # One door only (MASTERPLAN §5.5): with an IdP configured, there
+        # is exactly one way in, so this goes straight to it rather than
+        # through an interstitial page offering a password door that
+        # does not exist.
+        start = IDP_START_PATH if server.idp_configured else LOGIN_PATH
+        location = f"{start}?next={_quote(outcome.next_url)}"
+        return RedirectResponse(location, status_code=303, headers=NO_STORE)
+
+    def _authorize_outcome(outcome: AuthorizeOutcome, request: Request) -> Response:
+        if isinstance(outcome, LoginRequired):
+            return _login_hop(outcome)
+        if isinstance(outcome, ConsentRequired):
+            # Issue #328: nothing is minted on a GET. The page's form echoes
+            # the reviewed request and the session's CSRF token; only the
+            # POST below issues a code.
+            return HTMLResponse(
+                _consent_page(outcome, csrf=request.cookies.get(CSRF_COOKIE, "")),
+                headers=NO_STORE,
+            )
+        assert isinstance(outcome, AuthorizeRedirect)  # noqa: S101 - exhaustive union
+        return RedirectResponse(outcome.location, status_code=303, headers=NO_STORE)
+
     @router.get(AUTHORIZE_PATH)
     async def authorize(request: Request) -> Response:
-        """The authorization endpoint (code flow, PKCE mandatory)."""
+        """The authorization endpoint (code flow, PKCE mandatory): validate,
+        then ask the signed-in owner (issue #328)."""
         params = dict(request.query_params)
         session = request.cookies.get(SESSION_COOKIE)
         try:
@@ -225,16 +248,42 @@ def build_oauth_router(server: AuthorizationServer) -> APIRouter:
             # Pre-redirect-validation failure: RFC 6749 §4.1.2.1 says show the
             # user an error rather than redirecting to an unvalidated URI.
             return _authorize_error_page(exc)
-        if isinstance(outcome, LoginRequired):
-            # One door only (MASTERPLAN §5.5): with an IdP configured, there
-            # is exactly one way in, so this goes straight to it rather than
-            # through an interstitial page offering a password door that
-            # does not exist.
-            start = IDP_START_PATH if server.idp_configured else LOGIN_PATH
-            location = f"{start}?next={_quote(outcome.next_url)}"
-            return RedirectResponse(location, status_code=303, headers=NO_STORE)
-        assert isinstance(outcome, AuthorizeRedirect)  # noqa: S101 - exhaustive union
-        return RedirectResponse(outcome.location, status_code=303, headers=NO_STORE)
+        return _authorize_outcome(outcome, request)
+
+    @router.post(AUTHORIZE_PATH)
+    async def authorize_decide(request: Request) -> Response:
+        """The owner's answer to the consent page (issue #328).
+
+        Double-submit CSRF: the ``csrf_token`` field must equal the session's
+        CSRF cookie, which only a page served from this origin can read — a
+        cross-site form post cannot supply it, so a crafted link can still
+        only *show* the page, never answer it.
+        """
+        form = dict(await request.form())
+        submitted = str(form.get(CSRF_FIELD, "") or "")
+        cookie_csrf = request.cookies.get(CSRF_COOKIE, "")
+        if not cookie_csrf or not submitted or not compare_digest(submitted, cookie_csrf):
+            return _authorize_error_page(
+                OAuthError(
+                    "invalid_request",
+                    "This answer could not be confirmed as coming from the consent "
+                    "page in your own browser session. Fix: reopen the connect link "
+                    "from your AI tool and answer again.",
+                    status_code=403,
+                )
+            )
+        decision = str(form.get("decision", "") or "")
+        params = {
+            k: v
+            for k, v in form.items()
+            if isinstance(v, str) and k not in (CSRF_FIELD, "decision")
+        }
+        session = request.cookies.get(SESSION_COOKIE)
+        try:
+            outcome = await server.authorize(params, session=session, decision=decision)
+        except OAuthError as exc:
+            return _authorize_error_page(exc)
+        return _authorize_outcome(outcome, request)
 
     # ----------------------------------------------------------------- token
 
@@ -459,9 +508,7 @@ def _login_failure(next_url: str, message: str, *, secure: bool) -> Response:
     """
     csrf = new_csrf_token()
     response = HTMLResponse(
-        _login_page(
-            next_url=next_url if _is_safe_next(next_url) else "", csrf=csrf, error=message
-        ),
+        _login_page(next_url=next_url if _is_safe_next(next_url) else "", csrf=csrf, error=message),
         status_code=401,
         headers=NO_STORE,
     )
@@ -482,6 +529,59 @@ def _authorize_error_page(exc: OAuthError) -> Response:
         ),
         status_code=exc.status_code,
         headers=NO_STORE,
+    )
+
+
+def _describe_scope(scope: str) -> str:
+    """One plain-language line per scope, for the consent page (issue #328)."""
+    parts = scope.split(":")
+    if len(parts) == 3 and parts[0] == "vault":
+        verb = "Read" if parts[2] == "read" else "Save into"
+        return f"{verb} the \u201c{parts[1]}\u201d memory"
+    if len(parts) == 2:
+        family, permission = parts
+        subject = {
+            "stash": "the shared scratch space",
+            "directory": "the session directory",
+            "messenger": "the messenger",
+        }.get(family, family)
+        verb = {"read": "Read", "write": "Change", "send": "Send through"}.get(
+            permission, permission.capitalize()
+        )
+        return f"{verb} {subject}"
+    return scope
+
+
+def _consent_page(outcome: ConsentRequired, *, csrf: str) -> str:
+    hidden = "".join(
+        f'<input type="hidden" name="{html.escape(name)}" value="{html.escape(value)}">'
+        for name, value in outcome.params.items()
+    )
+    scope_items = (
+        "".join(
+            f"<li>{html.escape(_describe_scope(scope))} <code>{html.escape(scope)}</code></li>"
+            for scope in outcome.scopes
+        )
+        or "<li>Nothing specific — the tool asked for no permissions.</li>"
+    )
+    target = urlsplit(outcome.redirect_uri)
+    where = html.escape(f"{target.scheme}://{target.netloc}")
+    return _PAGE_TEMPLATE.format(
+        title="Allow this AI tool?",
+        body=(
+            "<h1>Allow this AI tool?</h1>"
+            f"<p><strong>{html.escape(outcome.client_name)}</strong> wants to use your palaia "
+            f"hub. If you allow it, it may:</p>"
+            f"<ul>{scope_items}</ul>"
+            f"<p class='hint'>After you allow, your browser is sent back to <code>{where}</code>. "
+            "If you did not just start connecting a tool, deny this.</p>"
+            f'<form method="post" action="{html.escape(AUTHORIZE_PATH)}">'
+            f"{hidden}"
+            f'<input type="hidden" name="{CSRF_FIELD}" value="{html.escape(csrf)}">'
+            '<button type="submit" name="decision" value="allow" autofocus>Allow</button> '
+            '<button type="submit" name="decision" value="deny">Deny</button>'
+            "</form>"
+        ),
     )
 
 

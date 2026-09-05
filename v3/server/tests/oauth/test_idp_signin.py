@@ -34,6 +34,7 @@ from .harness import (
     ISSUER,
     PROFILES,
     Harness,
+    approve_consent,
     build_harness,
 )
 
@@ -145,8 +146,9 @@ async def test_full_github_shaped_flow_signs_in_and_continues_authorize(
             assert callback.status_code == 303, callback.text
             assert "palaia_oauth_session" in http.cookies
 
-            # The session is real: /oauth/authorize now issues a code.
-            resumed = await http.get(callback.headers["location"])
+            # The session is real: /oauth/authorize now shows the consent page,
+            # and approving it issues the code (issue #328).
+            resumed = await approve_consent(http, await http.get(callback.headers["location"]))
             assert resumed.status_code == 303, resumed.text
             resumed_query = parse_qs(urlsplit(resumed.headers["location"]).query)
             assert "error" not in resumed_query, resumed_query
@@ -161,9 +163,7 @@ async def test_the_provider_token_is_never_persisted(tmp_path: Path) -> None:
     harness = _github_harness(tmp_path)
     try:
         async with _http(harness) as http:
-            start = await http.get(
-                "/oauth/idp/start?next=" + "%2Foauth%2Fauthorize%3Fx%3D1"
-            )
+            start = await http.get("/oauth/idp/start?next=" + "%2Foauth%2Fauthorize%3Fx%3D1")
             state = _state_from_start_redirect(start)
             callback = await http.get(f"/oauth/idp/callback?code=the-code&state={state}")
             assert callback.status_code == 303, callback.text
@@ -260,9 +260,7 @@ async def test_a_provider_error_is_rejected(tmp_path: Path) -> None:
         async with _http(harness) as http:
             start = await http.get("/oauth/idp/start?next=%2Foauth%2Fauthorize%3Fx%3D1")
             state = _state_from_start_redirect(start)
-            response = await http.get(
-                f"/oauth/idp/callback?error=access_denied&state={state}"
-            )
+            response = await http.get(f"/oauth/idp/callback?error=access_denied&state={state}")
             assert response.status_code != 303
             assert "palaia_oauth_session" not in http.cookies
     finally:
