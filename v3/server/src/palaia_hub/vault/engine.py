@@ -4,7 +4,11 @@ Every mutating call here is **synchronous write-through**: it returns only
 after the note's bytes and its directory entry are on disk (tmp + fsync +
 atomic rename, see :mod:`.atomic`) and the change is a git commit. There is
 no accepted-but-unwritten state and no background materialization — the
-explicit anti-goal from MASTERPLAN §5.1.
+explicit anti-goal from MASTERPLAN §5.1. The one failure between those two
+steps — the files are written, the commit is refused (another git process
+holds the index lock) — raises :class:`~.errors.UncommittedWriteError`, still
+publishes the change events, and is committed by the next successful
+operation or a retry of the same write (issue #333).
 
 Identity lives in the permalink, never in the filename (format spec §3.1):
 :meth:`VaultEngine.move_note` keeps a note's permalink, and only
@@ -21,12 +25,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from . import frontmatter as fm
 from . import permalink as pl
@@ -41,10 +45,13 @@ from .atomic import (
 from .errors import (
     AmbiguousReferenceError,
     ChecksumConflictError,
+    GitError,
     InvalidPathError,
+    MalformedFrontmatterError,
     NoteExistsError,
     NoteNotFoundError,
     PermalinkConflictError,
+    UncommittedWriteError,
     VaultError,
     VaultFormatVersionError,
     VaultNotFoundError,
@@ -236,6 +243,9 @@ class VaultEngine:
         self._tables = _Lookups()
         self._snapshot: _CatalogSnapshot = _EMPTY_SNAPSHOT
         self._deferring_publish = False
+        # Writes that reached disk but whose commit failed (issue #333):
+        # path -> (message, attribution), committed at the next opportunity.
+        self._uncommitted: dict[str, tuple[str, Attribution]] = {}
         self._opened = False
         self._purpose: str | None = None
         self._format_version = VAULT_FORMAT_VERSION
@@ -812,6 +822,8 @@ class VaultEngine:
         exists = target.exists()
         existing: Note | None = self._read_note_sync(relative) if exists else None
 
+        if existing is not None:
+            self._refuse_malformed(existing)
         if must_create and exists:
             raise NoteExistsError(
                 f"note {relative!r} already exists in vault {self.name!r}. "
@@ -880,9 +892,12 @@ class VaultEngine:
         resolved_body = body if body is not None else (existing.body if existing else "")
         text = fm.render(merged, resolved_body)
         if existing is not None and text == existing.text:
-            # Nothing changed: no write, no empty commit.
+            # Nothing changed: no write, no empty commit — unless this very
+            # content is still waiting for its commit (issue #333): then the
+            # retry is what commits it.
+            commit = self._recover_uncommitted(only=relative)
             return (
-                WriteResult(note=existing, commit=None, created=False, operation=operation),
+                WriteResult(note=existing, commit=commit, created=False, operation=operation),
                 [],
             )
         if existing is not None and not caller_set_modified:
@@ -903,16 +918,6 @@ class VaultEngine:
                 mtime_ns=target.stat().st_mtime_ns,
             )
         )
-        commit = self.git.commit_paths(
-            [relative],
-            build_commit_message(
-                attribution,
-                summary or f"{'write' if not exists else 'edit'} {resolved_permalink}",
-                operation=operation,
-                permalinks=[resolved_permalink],
-            ),
-            attribution,
-        )
         event: ChangeEvent = (
             NoteCreated(
                 vault=self.name,
@@ -929,10 +934,91 @@ class VaultEngine:
                 previous_checksum=existing.checksum if existing else None,
             )
         )
+        commit = self._commit_changes(
+            [relative],
+            build_commit_message(
+                attribution,
+                summary or f"{'write' if not exists else 'edit'} {resolved_permalink}",
+                operation=operation,
+                permalinks=[resolved_permalink],
+            ),
+            attribution,
+            events=[event],
+        )
         return (
             WriteResult(note=note, commit=commit, created=not exists, operation=operation),
             [event],
         )
+
+    def _refuse_malformed(self, note: Note) -> None:
+        """Never rebuild frontmatter from an empty parse (issue #335).
+
+        A fence that is present but unparseable parses to ``{}``; rendering
+        that back would replace the user's YAML block — custom keys, a
+        half-typed edit — with the engine's identity keys alone.
+        """
+        if not note.malformed_frontmatter:
+            return
+        raise MalformedFrontmatterError(
+            f"note {note.path!r} in vault {self.name!r} has frontmatter that does not "
+            f"parse as YAML, so the engine refuses to rewrite it (it would lose the "
+            f"original block). Fix: repair the frontmatter between the '---' fences in "
+            f"that file with your editor, then retry."
+        )
+
+    def _commit_changes(
+        self,
+        paths: Sequence[str],
+        message: str,
+        attribution: Attribution,
+        *,
+        events: Sequence[ChangeEvent],
+    ) -> str | None:
+        """Commit ``paths``; on failure remember them and raise (issue #333).
+
+        The files are already on disk and in the catalog when this runs. A
+        commit that fails (an ``index.lock`` held by another git process is
+        the usual reason) must not turn into a silent divergence: the paths
+        are queued with their message and attribution, and the next
+        successful engine operation — or a retry of the same write — commits
+        them first. The change events travel on the exception so
+        :meth:`_locked` can still publish them: the index reflects disk.
+        """
+        try:
+            return self.git.commit_paths(paths, message, attribution)
+        except GitError as exc:
+            for path in paths:
+                self._uncommitted[path] = (message, attribution)
+            raise UncommittedWriteError(
+                f"{exc}. The change is on disk and will be committed by the next "
+                f"successful write to this vault. Fix: release the git lock (close the "
+                f"other git process or remove a stale .git/index.lock) and retry.",
+                events=events,
+            ) from exc
+
+    def _recover_uncommitted(self, *, only: str | None = None) -> str | None:
+        """Commit writes whose commit failed earlier; return the last sha.
+
+        With ``only``, just that path (a retry of the same write); otherwise
+        everything queued, grouped by the original message so history reads
+        as if the commits had succeeded the first time.
+        """
+        if not self._uncommitted:
+            return None
+        if only is not None:
+            pending = {only: self._uncommitted[only]} if only in self._uncommitted else {}
+        else:
+            pending = dict(self._uncommitted)
+        groups: dict[tuple[str, Attribution], list[str]] = {}
+        for path, key in pending.items():
+            groups.setdefault(key, []).append(path)
+        commit: str | None = None
+        for (message, attribution), paths in groups.items():
+            commit = self.git.commit_paths(paths, message, attribution)
+            for path in paths:
+                self._uncommitted.pop(path, None)
+            logger.info("committed %d earlier write(s) whose commit had failed", len(paths))
+        return commit
 
     def _resolve_write_permalink(
         self,
@@ -1023,7 +1109,14 @@ class VaultEngine:
                 mtime_ns=target.stat().st_mtime_ns,
             )
         )
-        commit = self.git.commit_paths(
+        event = NoteMoved(
+            vault=self.name,
+            path=destination,
+            previous_path=relative,
+            permalink=note.permalink,
+            checksum=note.checksum,
+        )
+        commit = self._commit_changes(
             [relative, destination],
             build_commit_message(
                 attribution,
@@ -1032,13 +1125,7 @@ class VaultEngine:
                 permalinks=[note.permalink] if note.permalink else [],
             ),
             attribution,
-        )
-        event = NoteMoved(
-            vault=self.name,
-            path=destination,
-            previous_path=relative,
-            permalink=note.permalink,
-            checksum=note.checksum,
+            events=[event],
         )
         return WriteResult(note=note, commit=commit, operation="move"), [event]
 
@@ -1067,7 +1154,12 @@ class VaultEngine:
         self._sweep_external_edits()
         durable_unlink(target)
         self._catalog_drop(relative)
-        commit = self.git.commit_paths(
+        event = NoteDeleted(
+            vault=self.name,
+            path=relative,
+            permalink=entry.permalink if entry else None,
+        )
+        commit = self._commit_changes(
             [relative],
             build_commit_message(
                 attribution,
@@ -1076,11 +1168,7 @@ class VaultEngine:
                 permalinks=[entry.permalink] if entry and entry.permalink else [],
             ),
             attribution,
-        )
-        event = NoteDeleted(
-            vault=self.name,
-            path=relative,
-            permalink=entry.permalink if entry else None,
+            events=[event],
         )
         return WriteResult(note=None, commit=commit, operation="delete"), [event]
 
@@ -1121,6 +1209,7 @@ class VaultEngine:
         summary: str | None,
     ) -> tuple[RenameResult, list[ChangeEvent]]:
         note = self._read_note_sync(relative)
+        self._refuse_malformed(note)
         old_title = note.title
         old_permalink = note.permalink
         self._reject_volatile("title", new_title)
@@ -1190,19 +1279,9 @@ class VaultEngine:
         )
         changed.extend(rewritten)
 
-        commit = self.git.commit_paths(
-            changed,
-            build_commit_message(
-                attribution,
-                summary or f"rename {old_permalink or old_title} -> {minted}",
-                operation="rename",
-                permalinks=[minted],
-            ),
-            attribution,
-        )
         result = RenameResult(
             note=renamed,
-            commit=commit,
+            commit=None,
             old_title=old_title,
             old_permalink=old_permalink,
             rewritten=rewritten,
@@ -1218,7 +1297,18 @@ class VaultEngine:
                 rewritten_links=result.rewritten_links,
             )
         ]
-        return result, events
+        commit = self._commit_changes(
+            changed,
+            build_commit_message(
+                attribution,
+                summary or f"rename {old_permalink or old_title} -> {minted}",
+                operation="rename",
+                permalinks=[minted],
+            ),
+            attribution,
+            events=events,
+        )
+        return replace(result, commit=commit), events
 
     def _rewrite_backlinks(
         self,
@@ -1287,6 +1377,9 @@ class VaultEngine:
         """
         if not self.commit_external_edits or not self.git.initialized:
             return None
+        # Engine writes whose commit failed earlier are committed first, with
+        # their own message and attribution — they are not external edits.
+        self._recover_uncommitted()
         dirty = self.git.dirty_paths()
         if not dirty:
             return None
@@ -1429,6 +1522,14 @@ class VaultEngine:
         events: list[ChangeEvent] = []
         for entry in missing:
             note = self._read_note_sync(entry.path)
+            if note.malformed_frontmatter:
+                # Its permalink is "missing" only because the block did not
+                # parse; rewriting it would destroy the block (issue #335).
+                logger.warning(
+                    "not assigning a permalink to %s: its frontmatter does not parse",
+                    entry.path,
+                )
+                continue
             minted = pl.make_unique(pl.mint(entry.path, note.title), taken)
             taken.add(minted)
             updated = dict(note.frontmatter)
@@ -1451,7 +1552,9 @@ class VaultEngine:
                     previous_checksum=note.checksum,
                 )
             )
-        self.git.commit_paths(
+        if not changed:
+            return [], []
+        self._commit_changes(
             changed,
             build_commit_message(
                 attribution,
@@ -1460,6 +1563,7 @@ class VaultEngine:
                 permalinks=assigned,
             ),
             attribution,
+            events=events,
         )
         return assigned, events
 
@@ -1484,8 +1588,15 @@ class VaultEngine:
             with self.catalog_batch():
                 return operation()
 
-        async with self._lock:
-            result, events = await asyncio.to_thread(run)
+        try:
+            async with self._lock:
+                result, events = await asyncio.to_thread(run)
+        except UncommittedWriteError as exc:
+            # The files changed even though the commit did not (issue #333):
+            # subscribers — the index above all — must learn about it.
+            if self.bus is not None and exc.events:
+                await self.bus.publish_all(cast("list[ChangeEvent]", list(exc.events)))
+            raise
         if self.bus is not None and events:
             await self.bus.publish_all(events)
         return result

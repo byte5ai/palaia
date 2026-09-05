@@ -6,6 +6,8 @@ which vault-relative path, and what to do instead.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 
 class VaultError(RuntimeError):
     """Base class for every vault-engine failure."""
@@ -65,3 +67,28 @@ class VolatileNameError(VaultError):
 
 class GitError(VaultError):
     """A git operation on the vault repository failed."""
+
+
+class UncommittedWriteError(GitError):
+    """The change reached disk, but its git commit failed (issue #333).
+
+    The files are exactly what the caller asked for and the engine's catalog
+    already reflects them; only the commit is missing. The engine remembers
+    the paths and commits them — with the original message and attribution —
+    at the start of its next successful operation, or when the same write is
+    retried. :attr:`events` are the change events the operation would have
+    published; the engine publishes them anyway, so the index reflects disk.
+    """
+
+    def __init__(self, message: str, *, events: Sequence[object] = ()) -> None:
+        super().__init__(message)
+        self.events = tuple(events)
+
+
+class MalformedFrontmatterError(VaultError):
+    """The note's frontmatter fence is present but unparseable (issue #335).
+
+    Re-rendering such a note from the empty parse would silently discard the
+    user's original YAML block, so every write that rebuilds frontmatter is
+    refused until the file is repaired outside the engine.
+    """

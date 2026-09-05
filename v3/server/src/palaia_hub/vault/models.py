@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -49,7 +50,9 @@ class Attribution:
     @property
     def prefix(self) -> str:
         """``agent/client/origin`` with ``-`` for unknown components."""
-        return f"{self.agent or '-'}/{self.client or '-'}/{self.origin}"
+        agent = git_safe(self.agent or "") or "-"
+        client = git_safe(self.client or "") or "-"
+        return f"{agent}/{client}/{git_safe(self.origin) or '-'}"
 
     def subject(self, summary: str) -> str:
         """Build the commit subject: ``agent/client/origin: summary``."""
@@ -71,12 +74,30 @@ class Attribution:
         return origin
 
     def git_author(self) -> tuple[str, str]:
-        """Return the ``(name, email)`` used as the commit author."""
+        """Return the ``(name, email)`` used as the commit author.
+
+        The identity strings come from the connected client (issue #333):
+        control characters and angle brackets are stripped, because git
+        rejects an author name containing them and the write would then
+        reach disk without its commit.
+        """
         if self.human:
             return "human", "human@palaia.local"
-        name = self.agent or self.client or self.provider or "palaia-hub"
-        local = name.replace(" ", "-").lower()
+        name = git_safe(self.agent or self.client or self.provider or "") or "palaia-hub"
+        local = re.sub(r"[^a-z0-9._-]+", "-", name.lower()).strip("-") or "palaia-hub"
         return name, f"{local}@palaia.local"
+
+
+_GIT_UNSAFE = re.compile(r"[\x00-\x1f\x7f<>]")
+
+
+def git_safe(value: str) -> str:
+    """``value`` with everything git refuses in an identity or trailer removed.
+
+    Newlines would otherwise turn one caller-supplied field into extra commit
+    trailers (or a failed commit); ``<`` and ``>`` delimit the author email.
+    """
+    return " ".join(_GIT_UNSAFE.sub(" ", value).split())
 
 
 #: Default attribution for engine-initiated writes with no caller identity.
@@ -111,7 +132,7 @@ def build_commit_message(
         ("Session", attribution.session),
     ):
         if value:
-            lines.append(f"{TRAILER_PREFIX}{key}: {value}")
+            lines.append(f"{TRAILER_PREFIX}{key}: {git_safe(value)}")
     return "\n".join(lines) + "\n"
 
 
