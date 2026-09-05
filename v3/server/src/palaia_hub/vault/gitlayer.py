@@ -129,7 +129,12 @@ class GitRepo:
         read_only: bool = False,
     ) -> subprocess.CompletedProcess[str]:
         command = ["git", "-C", str(self.root), *args]
-        full_env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+        # GIT_LITERAL_PATHSPECS: every path this layer passes is an exact
+        # file name, never a pattern. Without it git reads a leading ':' as
+        # pathspec magic even after `--` (`git add -A -- ':todo.md'` →
+        # "did not match any files"), and one such file created in an
+        # editor would fail the sweep at the start of every write (#334).
+        full_env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_LITERAL_PATHSPECS": "1"}
         if read_only:
             # Keep read-only queries from taking the index lock at all.
             full_env["GIT_OPTIONAL_LOCKS"] = "0"
