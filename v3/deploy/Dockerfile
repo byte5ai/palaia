@@ -70,7 +70,16 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends nginx-light curl gettext-base \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd --system --create-home --home-dir /home/palaia --shell /usr/sbin/nologin palaia
+# A fixed uid/gid, never "whatever the base image hands out next" (issue
+# #329): the app-store packages under stores/ bind-mount a host directory
+# onto /data, and a bind mount keeps the host's ownership — so every package
+# declares `user: "1000:1000"` and its SUBMIT.md says what to chown. 1000 is
+# the conventional first non-system uid, the one Umbrel and Runtipi app
+# packages commonly run as. Changing this number breaks every existing
+# bind-mount install, so treat it as part of the image's contract.
+RUN groupadd --system --gid 1000 palaia \
+    && useradd --system --uid 1000 --gid palaia --create-home --home-dir /home/palaia \
+       --shell /usr/sbin/nologin palaia
 
 # Hub venv from stage 2 (already built at this exact path — see the
 # UV_PROJECT_ENVIRONMENT note above).
@@ -89,7 +98,10 @@ RUN chmod +x /opt/palaia/entrypoint.sh \
 
 # Data directory for PALAIA_HOME (mounted as a volume in compose/the
 # one-liner). Owned by the non-root user up front so first run doesn't hit
-# a permission error on a freshly created bind mount / named volume.
+# a permission error on a freshly created named volume (Docker copies the
+# image's ownership into a new named volume). A *bind* mount keeps the
+# host directory's ownership instead — that is what the fixed uid above
+# and the `user:` line in every store package are for.
 RUN mkdir -p /data && chown palaia:palaia /data
 
 # SPEC-501: which release stream this exact image belongs to. Baked at

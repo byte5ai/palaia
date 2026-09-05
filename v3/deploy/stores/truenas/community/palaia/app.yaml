@@ -21,11 +21,15 @@ app_version: "0.1.0"
 version: "1"
 human_version: "0.1.0_1"
 capabilities: []
-# The image creates its own non-root `palaia` user (`useradd --system`,
-# v3/deploy/Dockerfile) rather than running as a fixed uid/gid — see this
-# package's SUBMIT.md for how to read the real uid back before filling
-# this in.
-run_as_context: []
+# The image runs as its own non-root `palaia` user, pinned to uid/gid 1000
+# (v3/deploy/Dockerfile, issue #329) — the same pair ix_values.yaml feeds
+# the compose template's `user:`.
+run_as_context:
+  - description: palaia runs as the image's own non-root user.
+    gid: 1000
+    group_name: palaia
+    uid: 1000
+    user_name: palaia
 host_mounts: []
 annotations:
   min_scale_version: "24.04.0"

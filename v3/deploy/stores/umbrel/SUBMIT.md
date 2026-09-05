@@ -34,6 +34,20 @@ Umbrel does not publish a standalone schema document — the shipped apps
 5. Open the PR. Fill in `submission:` in `umbrel-app.yml` with its URL
    once opened (a manifest field their tooling reads back).
 
+## Data directory ownership
+
+The container runs as uid/gid `1000:1000` (pinned in `v3/deploy/Dockerfile`,
+issue #329), and `docker-compose.yml` says so with `user: "1000:1000"`.
+`${APP_DATA_DIR}/data` is a bind mount, so it keeps whatever ownership the
+host gives it — on Umbrel that is the same `1000:1000` (inferred from
+Umbrel's own app packages, which run as that pair for the same reason; not
+verified on a live Umbrel here). If the first boot logs a `PermissionError`
+under `/data`, fix the ownership once on the host:
+
+```bash
+sudo chown -R 1000:1000 "${APP_DATA_DIR}/data"
+```
+
 ## Faster alternative: a Community App Store
 
 Umbrel also supports third-party app stores added by URL, no PR or review

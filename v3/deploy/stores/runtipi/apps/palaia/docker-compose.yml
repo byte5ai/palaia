@@ -1,6 +1,10 @@
 services:
   hub:
     image: ghcr.io/byte5ai/palaia-hub:stable
+    # The image's own non-root user, pinned to 1000:1000 (v3/deploy/Dockerfile,
+    # issue #329) — the ownership Runtipi gives ${APP_DATA_DIR}, so the bind
+    # mount below is writable on first boot.
+    user: "1000:1000"
     environment:
       - PALAIA_MODE=locked
       - PALAIA_DEPLOYMENT=runtipi

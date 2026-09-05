@@ -252,7 +252,7 @@ same container:
 
 | Flag | What it does | Why it is safe here |
 |---|---|---|
-| `USER palaia` (in the image) | The hub, nginx and the mDNS announcer all run as an unprivileged system user | Already true before this pass; listed for completeness |
+| `USER palaia` (in the image) | The hub, nginx and the mDNS announcer all run as an unprivileged system user, pinned to uid/gid `1000:1000` so a bind-mounted `/data` can be chowned to a known number (issue #329) | Already true before this pass; listed for completeness |
 | `--security-opt no-new-privileges:true` | No process inside can gain privileges through a setuid binary | Nothing in the image is setuid, and nothing a user installs later should be able to become root |
 | `--cap-drop ALL` | Every Linux capability is removed | The hub binds 8421 and nginx binds 8420 — both above 1024, so not even `NET_BIND_SERVICE` is needed |
 | `--read-only` plus `--tmpfs /tmp --tmpfs /run` | The image's own filesystem cannot be modified at runtime | Everything written at runtime goes to `/data` (the volume) or `/tmp/nginx` (rendered config, temp paths, pid — see `entrypoint.sh` and `nginx.conf.template`); logs go to stdout/stderr |

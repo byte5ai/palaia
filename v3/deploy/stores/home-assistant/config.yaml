@@ -23,7 +23,10 @@ boot: auto
 # v3/deploy/README.md.
 host_network: true
 # No `map:` entry: HA gives every add-on its own persistent `/data`
-# automatically (see EVALUATION.md) — nothing to opt into.
+# automatically (see EVALUATION.md) — nothing to opt into. That directory
+# is root-owned and this image runs as uid 1000 with no root step, so the
+# first start is expected to fail with a PermissionError until the add-on
+# gets its own entrypoint — EVALUATION.md, "What doesn't" (issue #329).
 #
 # `PALAIA_MODE` is intentionally static here, not wired to the `mode`
 # option below — HA's `environment:` values are fixed at install time,

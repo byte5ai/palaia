@@ -31,6 +31,24 @@ just a smaller one — add more locales in the PR if you want them).
    must produce a `dist/index.json` with no errors before a PR is opened.
 5. Open the PR.
 
+## Data directory ownership
+
+The container runs as uid/gid `1000:1000` (pinned in `v3/deploy/Dockerfile`,
+issue #329), and `docker-compose.yml` says so with `user: "1000:1000"`.
+`/DATA/AppData/$AppID/data` is a bind mount; CasaOS creates it as root when
+the app first starts, so the non-root process inside cannot write to it
+(the container drops every capability and has no root step that could
+chown). Until CasaOS itself sets the ownership — check its current
+behaviour when you validate the listing — the one-time fix on the host is:
+
+```bash
+sudo chown -R 1000:1000 /DATA/AppData/palaia/data
+```
+
+(`$AppID` resolves to this app's `name`, `palaia`.) Put this line in the
+listing's description or the PR notes so a user hitting `PermissionError`
+on first boot finds it.
+
 ## Faster alternative: a third-party store
 
 CasaOS also loads app stores by URL, no PR needed. Publishing this same

@@ -37,6 +37,19 @@ against a real instance before announcing the store publicly.
    this inline, so it is flagged here instead; the placeholder values are
    simply "2025-08-24", not a lie about permanence.
 
+## Data directory ownership
+
+The container runs as uid/gid `1000:1000` (pinned in `v3/deploy/Dockerfile`,
+issue #329), and `docker-compose.yml` says so with `user: "1000:1000"`.
+`${APP_DATA_DIR}/data` is a bind mount, so it keeps the host's ownership —
+Runtipi's own app data is commonly `1000:1000` (inferred from its app-store
+convention; not verified on a live Runtipi here). If the first boot logs a
+`PermissionError` under `/data`, fix the ownership once on the host:
+
+```bash
+sudo chown -R 1000:1000 "${APP_DATA_DIR}/data"
+```
+
 ## What to update before every release
 
 `version` in `config.json` and the image tag in `docker-compose.yml`

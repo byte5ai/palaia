@@ -33,6 +33,16 @@ docs, and what to update on every release.
   of showing the compose helper a store user has no use for (SPEC-501
   deliverable #4 — see `update_guidance` in
   `v3/server/src/palaia_hub/update.py`).
+- **Runs as uid/gid `1000:1000`**: `v3/deploy/Dockerfile` pins the image's
+  non-root user to that pair (issue #329), and every package declares it
+  (`user: "1000:1000"` in the compose files; `run_as_context` for TrueNAS).
+  Named volumes take the image's ownership automatically; the bind mounts
+  these stores use keep the *host's* — so each `SUBMIT.md` carries the
+  one-line `chown -R 1000:1000 <data dir>` a user needs if the first boot
+  logs a `PermissionError` under `/data`. Home Assistant is the exception:
+  the Supervisor hands add-ons a root-owned `/data` and offers no way to run
+  one as another user, so that package cannot start this image today — see
+  `home-assistant/EVALUATION.md`.
 - **Jargon-free copy**: every description/tagline a store actually shows
   a browsing user avoids palaia's own internal vocabulary (checked
   against `palaia_addon_sdk.jargon`'s shared blocklist in
@@ -44,6 +54,24 @@ docs, and what to update on every release.
   (`v3/tools/build-mcpb/generate_icon.py` — see that script's docstring
   for why it's hand-built PNG bytes rather than a design asset checked in
   as a binary from elsewhere).
+
+## First boot on a bind mount (owner check, issue #329)
+
+None of this can be exercised here (no store host, no docker daemon), so
+the uid fix is verified mechanically only —
+`server/tests/deploy/test_container_uid.py` pins the Dockerfile's uid/gid
+and every package's `user:` declaration, and the docker smoke test asserts
+the running container's uid on CI. Whether a *real* first boot on each
+platform's bind mount succeeds is a one-time owner check; record the result
+here so the packages are not submitted on an assumption.
+
+| Platform | Data directory as mounted | First boot writes `/data`? | Checked on |
+|---|---|---|---|
+| Umbrel | `${APP_DATA_DIR}/data` | not yet run | — |
+| CasaOS | `/DATA/AppData/palaia/data` | not yet run (expected to need the `chown` in its `SUBMIT.md`) | — |
+| Runtipi | `${APP_DATA_DIR}/data` | not yet run | — |
+| TrueNAS SCALE | the dataset picked at install | not yet run | — |
+| Home Assistant | Supervisor-provided `/data` | expected to fail — root-owned, no `user:` option (see `home-assistant/EVALUATION.md`) | — |
 
 ## Validation
 

@@ -6,6 +6,10 @@ services:
       PALAIA_MODE: locked
       PALAIA_DEPLOYMENT: casaos
     image: ghcr.io/byte5ai/palaia-hub:stable
+    # The image's own non-root user, pinned to 1000:1000 (v3/deploy/Dockerfile,
+    # issue #329). The bind mount below must be owned by that uid — see
+    # SUBMIT.md, "Data directory ownership".
+    user: "1000:1000"
     network_mode: bridge
     ports:
       - target: 8420

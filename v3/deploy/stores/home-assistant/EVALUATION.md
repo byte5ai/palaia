@@ -38,6 +38,19 @@ maintain alongside the real one.
 
 ## What doesn't (stated honestly, matching this SPEC's own instruction)
 
+- **The Supervisor's `/data` is root-owned and the image is not root
+  (issue #329).** The add-on model has no `user:` option: the Supervisor
+  creates each add-on's `/data` as root and expects the add-on to run as
+  root inside. This image runs as its own uid/gid `1000:1000` (pinned in
+  `v3/deploy/Dockerfile`) from the first instruction of its entrypoint and
+  never has root, so it cannot `chown` its way in — its first start is
+  expected to fail with a `PermissionError` under `/data` (inferred from
+  how the Supervisor provisions add-on data; not run on a real Home
+  Assistant here). Closing this needs an add-on-specific entrypoint that
+  starts as root, fixes `/data`'s ownership and drops to `palaia` — a
+  second image, which is exactly what this evaluation set out not to
+  maintain. Until that decision is made, this package is a working
+  evaluation, not a shippable add-on.
 - **mDNS (`http://palaia.local`) has the exact same limitation documented
   for the plain compose deployment** (`v3/deploy/README.md`'s "mDNS"
   section) — Docker's default bridge network does not forward multicast
