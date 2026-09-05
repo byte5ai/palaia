@@ -84,6 +84,14 @@ export function renderSynologyPage() {
     "This is the same file the [Install it](/install/) page's Compose option uses — nothing Synology-specific " +
       "has been changed, so it stays correct as that file does.",
     "",
+    // Issue #326: the compose file pins the `stable` channel, which the release
+    // workflow only creates on the final tag. server/tests/test_version_drift.py
+    // requires this note exactly while VERSION carries a pre-release suffix.
+    "<!-- rc-channel-note -->",
+    "> **Release candidate:** until `3.0.0` is final there is no `stable` image yet. Before you paste the",
+    "> file above, change its `image:` line from `ghcr.io/byte5ai/palaia-hub:stable` to",
+    "> `ghcr.io/byte5ai/palaia-hub:beta`.",
+    "",
     "## About that shared folder, and where your memory actually lives",
     "",
     "The folder you picked two steps ago holds the project's own compose file — it is not where palaia keeps " +

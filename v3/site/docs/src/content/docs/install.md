@@ -21,6 +21,11 @@ docker run -d --name palaia-hub \
   ghcr.io/byte5ai/palaia-hub:stable
 ```
 
+<!-- rc-channel-note -->
+> **Release candidate:** until `3.0.0` is final there is no `stable` image yet. Where a
+> command or file on this page says `ghcr.io/byte5ai/palaia-hub:stable`, use
+> `ghcr.io/byte5ai/palaia-hub:beta` for now.
+
 The five extra flags close off what a non-root container process could
 otherwise still reach — nothing about the install changes if you leave
 them off, they simply make the container harder to escape from if

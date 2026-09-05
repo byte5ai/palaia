@@ -40,6 +40,8 @@ Container Manager's next step asks how you want to provide the project's setup. 
 # `docker compose down -v` discards it.
 services:
   hub:
+    # rc-channel-note — release candidate: the `stable` tag is created by the
+    # final 3.0.0 release only. Until then, use `:beta` here.
     image: ghcr.io/byte5ai/palaia-hub:stable
     container_name: palaia-hub
     ports:
@@ -100,6 +102,11 @@ volumes:
 ```
 
 This is the same file the [Install it](/install/) page's Compose option uses — nothing Synology-specific has been changed, so it stays correct as that file does.
+
+<!-- rc-channel-note -->
+> **Release candidate:** until `3.0.0` is final there is no `stable` image yet. Before you paste the
+> file above, change its `image:` line from `ghcr.io/byte5ai/palaia-hub:stable` to
+> `ghcr.io/byte5ai/palaia-hub:beta`.
 
 ## About that shared folder, and where your memory actually lives
 

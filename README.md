@@ -89,6 +89,10 @@ in the dashboard.
 | Umbrel, CasaOS, Runtipi, TrueNAS SCALE | [Packages are ready](v3/deploy/stores/); until they are in the official catalogs, use the command above |
 | Docker Compose or Portainer | [`docker-compose.yml`](v3/deploy/docker-compose.yml) |
 
+<!-- rc-channel-note -->
+> **Release candidate:** the files and packages in this table pin `ghcr.io/byte5ai/palaia-hub:stable`,
+> which does not exist until `3.0.0` is final. Until then, change `:stable` to `:beta` in whatever you use.
+
 Stuck? See [Your first shared memory](v3/site/docs/src/content/docs/first-shared-memory.md)
 for a walkthrough with screenshots, or [troubleshooting](v3/site/docs/src/content/docs/troubleshooting.md).
 

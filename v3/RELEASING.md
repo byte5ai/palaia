@@ -60,6 +60,12 @@ whoever holds it.
 - [ ] Bump `v3/VERSION` from `3.0.0-rc1` to `3.0.0` (the only file to
       edit — `server/tests/test_version_drift.py` fails loudly if any
       other artifact disagrees; fix forward until it's green again).
+- [ ] Remove every `rc-channel-note` (the "until 3.0.0 is final, use `:beta`"
+      notes in the install docs, `deploy/README.md`, `deploy/docker-compose.yml`,
+      the root README and the generated Synology page — regenerate it with
+      `npm run gen:synology`). `server/tests/test_version_drift.py` requires
+      the notes while `VERSION` is a pre-release and refuses them once it is
+      not, so a forgotten one fails CI rather than shipping.
 - [ ] Add a `## 3.0.0` section to `v3/CHANGELOG.md` — if nothing
       user-visible changed since `rc1` beyond the version bump itself, say
       so in one line rather than duplicating the `rc1` section.

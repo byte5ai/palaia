@@ -77,9 +77,9 @@ def test_mcpb_personalized_download_reads_the_server_version_not_a_literal() -> 
     if this ever regresses to a hardcoded literal, every personalized
     download would silently drift from ``v3/VERSION`` without any of the
     other checks in this file noticing."""
-    routes_source = (
-        V3_ROOT / "server" / "src" / "palaia_hub" / "mcpb" / "routes.py"
-    ).read_text(encoding="utf-8")
+    routes_source = (V3_ROOT / "server" / "src" / "palaia_hub" / "mcpb" / "routes.py").read_text(
+        encoding="utf-8"
+    )
     assert "from .. import __version__" in routes_source
     assert "version=__version__" in routes_source
 
@@ -105,15 +105,43 @@ def test_mcpb_build_script_never_hardcodes_a_release_version() -> None:
     `VERSION`-file fallback is what fires) produced
     `palaia@3.0.0-rc1` / `palaia-3.0.0-rc1.mcpb`, matching `v3/VERSION` —
     see this SPEC's PR description for the full `npm run build` transcript."""
-    build_source = (
-        V3_ROOT / "tools" / "build-mcpb" / "build.mjs"
-    ).read_text(encoding="utf-8")
+    build_source = (V3_ROOT / "tools" / "build-mcpb" / "build.mjs").read_text(encoding="utf-8")
     assert "readRepoVersion()" in build_source
-    assert 'version || process.env.PALAIA_VERSION || readRepoVersion()' in build_source
+    assert "version || process.env.PALAIA_VERSION || readRepoVersion()" in build_source
     # The only literal-looking fallback left is the "file genuinely
     # missing" case inside readRepoVersion() itself — never a stand-in
     # for a real release version.
     assert '"0.0.0-dev"' in build_source
+
+
+#: Every install path that pins the `stable` channel tag carries a note
+#: telling a release-candidate reader to use `beta` instead (issue #326).
+#: The generated Synology page is included: its generator emits the note.
+_RC_CHANNEL_NOTE_FILES = (
+    "deploy/README.md",
+    "deploy/docker-compose.yml",
+    "docs/how-it-works.md",
+    "site/docs/src/content/docs/install.md",
+    "site/docs/src/content/docs/install-synology.md",
+    "site/docs/src/content/docs/backup-restore.md",
+    "../README.md",
+)
+
+
+def test_rc_channel_notes_exist_exactly_while_version_is_a_prerelease() -> None:
+    """During an RC the `stable` image does not exist (the release workflow
+    only creates it on the final tag), yet every install path pins it —
+    so each carries an `rc-channel-note` pointing at `beta`. The note must
+    be present while `VERSION` is a pre-release and gone once it is not:
+    RELEASING.md §3 lists removing them, and this is what enforces it."""
+    prerelease = "-" in _read_version_file()
+    for relative in _RC_CHANNEL_NOTE_FILES:
+        text = (V3_ROOT / relative).read_text(encoding="utf-8")
+        present = "rc-channel-note" in text
+        assert present is prerelease, (
+            f"{relative}: rc-channel-note {'missing' if prerelease else 'still present'} "
+            f"for VERSION {_read_version_file()!r} — see RELEASING.md §3"
+        )
 
 
 def test_compose_pins_the_stable_channel_tag_not_a_literal_version() -> None:
