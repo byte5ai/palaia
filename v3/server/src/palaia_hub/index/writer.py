@@ -20,6 +20,15 @@ criterion. Deleting the target puts them back to NULL.
 reinsert: notes are matched by path and chunks by ``(seq, fingerprint)``, so a
 reindex of an unchanged vault leaves every vector in place. Editing one
 paragraph re-embeds one chunk.
+
+**A rebuild owns the connection's transaction.** Between ``begin`` and
+``finish`` every commit on the database joins the rebuild (see
+:meth:`~.db.IndexDatabase.commit`), and :class:`~.service.VaultIndex` holds
+back incremental change events until the rebuild is over, then replays them
+(issue #332). ``finish`` therefore never deletes a note that was written
+during the rebuild — that note was not indexed yet — and a failure inside the
+rebuild rolls the whole thing back (:meth:`IndexWriter.abort`), leaving the
+previous index intact.
 """
 
 from __future__ import annotations
@@ -108,9 +117,7 @@ class IndexWriter:
         """Start a full rebuild: one transaction for the whole vault."""
         with self._db.lock:
             self._rebuild_seen = set()
-            if self._db.conn.in_transaction:  # pragma: no cover - defensive
-                self._db.conn.commit()
-            self._db.conn.execute("BEGIN IMMEDIATE")
+            self._db.begin_rebuild()
 
     def emit(self, note: Note) -> None:
         """Index one note as part of the in-flight rebuild."""
@@ -131,16 +138,19 @@ class IndexWriter:
             ]
             for path in stale:
                 self._delete_note(path)
-            self._db.conn.commit()
+            orphans = self.sweep_orphan_vectors()
+            self._db.end_rebuild(commit=True)
             self._rebuild_seen = None
             if stale:
                 logger.debug("rebuild dropped %d stale note(s)", len(stale))
+            if orphans:
+                logger.debug("rebuild dropped %d orphan vector(s)", orphans)
 
     def abort(self) -> None:
         """Roll back an in-flight rebuild (a half-index is never committed)."""
         with self._db.lock:
             if self._rebuild_seen is not None:
-                self._db.conn.rollback()
+                self._db.end_rebuild(commit=False)
                 self._rebuild_seen = None
 
     # -------------------------------------------------------- incremental API
@@ -149,13 +159,13 @@ class IndexWriter:
         """Index (or re-index) one note and commit."""
         with self._db.lock:
             self._index_note(note)
-            self._db.conn.commit()
+            self._db.commit()
 
     def delete_note(self, path: str) -> bool:
         """Remove one note from the index; returns whether it was present."""
         with self._db.lock:
             removed = self._delete_note(path)
-            self._db.conn.commit()
+            self._db.commit()
         return removed
 
     def move_note(self, previous_path: str, note: Note) -> None:
@@ -164,7 +174,27 @@ class IndexWriter:
             if previous_path != note.path:
                 self._delete_note(previous_path)
             self._index_note(note)
-            self._db.conn.commit()
+            self._db.commit()
+
+    def sweep_orphan_vectors(self) -> int:
+        """Delete vectors whose chunk no longer exists; return how many.
+
+        A chunk deleted while its text was out being embedded used to get its
+        vector inserted anyway (issue #336) — the worker now checks before it
+        inserts, and this sweep (run by every rebuild) cleans up anything that
+        slipped through, so orphans cannot accumulate and crowd KNN results.
+        The caller holds the lock; the caller commits.
+        """
+        if not self._db.has_vec_table():
+            return 0
+        try:
+            cursor = self._db.conn.execute(
+                "DELETE FROM vec_chunks WHERE rowid NOT IN (SELECT id FROM chunks)"
+            )
+        except sqlite3.Error:  # pragma: no cover - vec table vanished
+            logger.debug("could not sweep orphan vectors", exc_info=True)
+            return 0
+        return int(cursor.rowcount or 0)
 
     # ------------------------------------------------------------- IndexView
 

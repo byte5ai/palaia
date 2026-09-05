@@ -30,6 +30,7 @@ import contextlib
 import logging
 import time
 from collections.abc import Callable, Iterator, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from palaia_hub.events.schema import HubEventHook
@@ -69,6 +70,18 @@ _WORKER_POLL_SECONDS = 2.0
 #: A chunk that fails this many times is parked as ``failed`` instead of
 #: spinning the worker forever on the same input.
 _MAX_EMBED_ATTEMPTS = 3
+
+
+@dataclass(frozen=True, slots=True)
+class _Claim:
+    """One pending chunk as the embed worker claimed it — id, text, and the
+    fingerprint of that text, which is what lets the worker tell afterwards
+    whether the chunk it is about to mark ``ready`` is still the one it
+    embedded (issue #336)."""
+
+    chunk_id: int
+    text: str
+    fingerprint: str
 
 
 class VaultIndex:
@@ -116,6 +129,12 @@ class VaultIndex:
         self._wake = asyncio.Event()
         self._closing = False
         self._last_indexed_at = 0.0
+        # Issue #332: a rebuild is one transaction over the shared connection,
+        # so change events arriving while it runs are held here and replayed
+        # once it has committed (or rolled back) — never applied into it.
+        self._rebuild_lock = asyncio.Lock()
+        self._rebuilding = False
+        self._deferred: list[ChangeEvent] = []
         #: SPEC-201's ``index.reindexed``/``index.embed_backlog_drained``/
         #: ``doctor.finding`` hook point — see :data:`HubEventHook`. ``None``
         #: (the default) keeps this class's behavior identical to before
@@ -180,7 +199,23 @@ class VaultIndex:
         no-op reindex is cheap enough to use as the response to any event the
         index cannot interpret precisely.
         """
-        count = await self._engine.reindex(self.writer)
+        async with self._rebuild_lock:
+            self._rebuilding = True
+            try:
+                count = await self._engine.reindex(self.writer)
+            finally:
+                self._rebuilding = False
+                deferred, self._deferred = self._deferred, []
+            # Whatever changed while the rebuild ran is applied on top of it
+            # now — a note written mid-rebuild is indexed, not dropped as
+            # "stale" by finish(), because finish() never saw it (#332).
+            for event in deferred:
+                try:
+                    await self.apply_event(event)
+                except Exception:  # noqa: BLE001 - one bad replay must not lose the rest
+                    logger.exception(
+                        "deferred index update failed", extra={"event": type(event).__name__}
+                    )
         self._last_indexed_at = time.monotonic()
         self._wake.set()
         logger.debug("reindexed %d note(s) of vault %s", count, self._engine.name)
@@ -208,6 +243,9 @@ class VaultIndex:
 
     async def apply_event(self, event: ChangeEvent) -> None:
         """Apply one change event (public so tests can drive it directly)."""
+        if self._rebuilding:
+            self._deferred.append(event)
+            return
         if isinstance(event, NoteDeleted):
             await asyncio.to_thread(self.writer.delete_note, event.path)
         elif isinstance(event, NoteMoved):
@@ -348,17 +386,14 @@ class VaultIndex:
                 "vector table unavailable (%s); backlog left pending", self.db.vectors.reason
             )
             return 0
-        texts = [text for _, text in rows]
+        texts = [claim.text for claim in rows]
         try:
             vectors = await asyncio.to_thread(embedder.embed, texts)
         except Exception as exc:  # noqa: BLE001 - backend-specific failures
             logger.warning("embedding batch failed: %s", exc)
-            await asyncio.to_thread(self._record_failures, [chunk_id for chunk_id, _ in rows])
+            await asyncio.to_thread(self._record_failures, rows)
             return 0
-        await asyncio.to_thread(
-            self._store_vectors, [chunk_id for chunk_id, _ in rows], vectors
-        )
-        return len(rows)
+        return await asyncio.to_thread(self._store_vectors, rows, vectors)
 
     async def drain_embeddings(self, *, timeout: float = 120.0) -> int:
         """Embed everything pending (test/CLI helper); returns chunks embedded."""
@@ -372,42 +407,62 @@ class VaultIndex:
         self._emit_backlog_drained_if_empty(total)
         return total
 
-    def _claim_batch(self) -> list[tuple[int, str]]:
+    def _claim_batch(self) -> list[_Claim]:
         with self.db.lock:
             rows = self.db.conn.execute(
-                "SELECT id, text FROM chunks WHERE state = 'pending' "
+                "SELECT id, text, fingerprint FROM chunks WHERE state = 'pending' "
                 "ORDER BY id LIMIT ?",
                 (self._embedding.batch_size,),
             ).fetchall()
-        return [(int(row["id"]), str(row["text"])) for row in rows]
+        return [_Claim(int(row["id"]), str(row["text"]), str(row["fingerprint"])) for row in rows]
 
-    def _store_vectors(self, chunk_ids: Sequence[int], vectors: Sequence[Sequence[float]]) -> None:
+    def _store_vectors(self, claims: Sequence[_Claim], vectors: Sequence[Sequence[float]]) -> int:
+        """Store each vector for the chunk it was computed from; return the count.
+
+        Embedding takes seconds, and the chunk can change underneath (issue
+        #336): an edit rewrites its text and fingerprint and resets it to
+        ``pending``; a delete removes the row. The ``UPDATE`` therefore names
+        the fingerprint the text was claimed with, and only a chunk that
+        still matches gets the vector — a changed one stays ``pending`` for
+        the next batch, a vanished one gets no orphan vector.
+        """
         import sqlite_vec
 
+        stored = 0
         with self.db.lock:
             conn = self.db.conn
-            for chunk_id, vector in zip(chunk_ids, vectors, strict=True):
-                conn.execute("DELETE FROM vec_chunks WHERE rowid = ?", (chunk_id,))
+            for claim, vector in zip(claims, vectors, strict=True):
+                cursor = conn.execute(
+                    "UPDATE chunks SET state = 'ready', attempts = 0 "
+                    "WHERE id = ? AND fingerprint = ? AND state = 'pending'",
+                    (claim.chunk_id, claim.fingerprint),
+                )
+                if cursor.rowcount != 1:
+                    logger.debug(
+                        "chunk %s changed or vanished while embedding; vector dropped",
+                        claim.chunk_id,
+                    )
+                    continue
+                conn.execute("DELETE FROM vec_chunks WHERE rowid = ?", (claim.chunk_id,))
                 conn.execute(
                     "INSERT INTO vec_chunks(rowid, embedding) VALUES (?, ?)",
-                    (chunk_id, sqlite_vec.serialize_float32(list(vector))),
+                    (claim.chunk_id, sqlite_vec.serialize_float32(list(vector))),
                 )
-                conn.execute(
-                    "UPDATE chunks SET state = 'ready', attempts = 0 WHERE id = ?", (chunk_id,)
-                )
-            conn.commit()
+                stored += 1
+            self.db.commit()
+        return stored
 
-    def _record_failures(self, chunk_ids: Sequence[int]) -> None:
+    def _record_failures(self, claims: Sequence[_Claim]) -> None:
         with self.db.lock:
             conn = self.db.conn
-            for chunk_id in chunk_ids:
+            for claim in claims:
                 conn.execute(
                     "UPDATE chunks SET attempts = attempts + 1, "
                     "state = CASE WHEN attempts + 1 >= ? THEN 'failed' ELSE 'pending' END "
-                    "WHERE id = ?",
-                    (_MAX_EMBED_ATTEMPTS, chunk_id),
+                    "WHERE id = ? AND fingerprint = ? AND state = 'pending'",
+                    (_MAX_EMBED_ATTEMPTS, claim.chunk_id, claim.fingerprint),
                 )
-            conn.commit()
+            self.db.commit()
 
     # ----------------------------------------------------------------- status
 

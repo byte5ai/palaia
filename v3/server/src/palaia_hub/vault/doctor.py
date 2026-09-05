@@ -27,7 +27,7 @@ from typing import Literal, Protocol, runtime_checkable
 from . import permalink as pl
 from .atomic import TEMP_SUFFIX, sweep_temp_files
 from .engine import VaultEngine
-from .errors import AmbiguousReferenceError, VaultError
+from .errors import AmbiguousReferenceError, NoteNotFoundError, VaultError
 from .links import iter_links
 from .models import MANIFEST_PATH, VAULT_FORMAT_VERSION, Note
 
@@ -508,9 +508,23 @@ class VaultDoctor:
         engine = self.engine
         sink.begin(engine.name)
         count = 0
-        for path in sorted(engine.catalog):
-            sink.emit(engine.read_note_at(path))
-            count += 1
+        try:
+            for path in sorted(engine.catalog):
+                try:
+                    note = engine.read_note_at(path)
+                except NoteNotFoundError:
+                    # Deleted between the catalog snapshot and this read: the
+                    # delete's own event removes it from the index (#332).
+                    continue
+                sink.emit(note)
+                count += 1
+        except BaseException:
+            # A sink that can roll back gets the chance to — a half-built
+            # index must never be committed by whoever writes next (#332).
+            abort = getattr(sink, "abort", None)
+            if callable(abort):
+                abort()
+            raise
         sink.finish()
         return count
 

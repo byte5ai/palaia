@@ -429,7 +429,7 @@ class GraphReader:
                 ".last_access",
                 values,
             )
-            self._db.conn.commit()
+            self._db.commit()
 
 
 def _row_to_observation(row: sqlite3.Row) -> IndexedObservation:

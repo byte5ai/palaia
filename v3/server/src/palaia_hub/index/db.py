@@ -82,6 +82,7 @@ class IndexDatabase:
         self.lock = threading.RLock()
         self._conn: sqlite3.Connection | None = None
         self.vectors = VectorSupport(False, "not opened yet")
+        self._rebuilding = False
 
     # ------------------------------------------------------------- lifecycle
 
@@ -189,10 +190,47 @@ class IndexDatabase:
         would then fail with "cannot start a transaction within a transaction".
         """
         with self.lock:
-            self.conn.execute(
-                "INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)", (key, value)
-            )
-            self.conn.commit()
+            self.conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)", (key, value))
+            self.commit()
+
+    # ------------------------------------------------------------ transactions
+
+    def commit(self) -> None:
+        """Commit — unless a rebuild transaction is open (issue #332).
+
+        A full rebuild is one ``BEGIN IMMEDIATE`` … ``COMMIT`` so a crash
+        can never leave half an index behind. Every other writer on this
+        connection — the embed worker storing vectors, recall recording an
+        access, the metadata setter — used to call ``conn.commit()`` on its
+        own, which committed whatever part of the rebuild had run so far.
+        While a rebuild is open their rows join its transaction and land (or
+        roll back) with it; outside one this is an ordinary commit.
+        """
+        if self._rebuilding:
+            return
+        self.conn.commit()
+
+    @property
+    def rebuilding(self) -> bool:
+        """True while a rebuild transaction is open."""
+        return self._rebuilding
+
+    def begin_rebuild(self) -> None:
+        """Open the rebuild transaction (the writer's ``begin``)."""
+        with self.lock:
+            if self.conn.in_transaction:  # pragma: no cover - defensive
+                self.conn.commit()
+            self.conn.execute("BEGIN IMMEDIATE")
+            self._rebuilding = True
+
+    def end_rebuild(self, *, commit: bool) -> None:
+        """Close the rebuild transaction: commit it whole, or roll it back."""
+        with self.lock:
+            self._rebuilding = False
+            if commit:
+                self.conn.commit()
+            else:
+                self.conn.rollback()
 
     # -------------------------------------------------------------- vec table
 
@@ -222,7 +260,7 @@ class IndexDatabase:
                 self.conn.execute("UPDATE chunks SET state='pending', attempts=0")
             self.conn.execute(VEC_TABLE_SQL.format(dim=dim))
             self.meta_set("vec_dim", str(dim))
-            self.conn.commit()
+            self.commit()
         return True
 
 
