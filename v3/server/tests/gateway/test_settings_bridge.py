@@ -46,9 +46,7 @@ def test_apply_vault_overrides_overlays_matching_keys() -> None:
     ]
     settings = GatewaySettings(
         vaults=[
-            GatewayVaultSettings(
-                key="work", name="Work Notes", tool_renames={"search": "find"}
-            )
+            GatewayVaultSettings(key="work", name="Work Notes", tool_renames={"search": "find"})
         ]
     )
 
@@ -114,9 +112,7 @@ def test_resolve_profiles_include_pending_keeps_the_full_declared_shape() -> Non
         profiles=[GatewayProfileSettings(path="alpha", vaults=["work", "ghost"])]
     )
 
-    profiles = resolve_profiles(
-        settings, ["work"], default_profile="default", include_pending=True
-    )
+    profiles = resolve_profiles(settings, ["work"], default_profile="default", include_pending=True)
 
     assert profiles == [ProfileConfig(path="alpha", vaults=["work", "ghost"])]
 
@@ -219,3 +215,57 @@ def test_render_gateway_section_empty_settings_is_valid_yaml() -> None:
     # "no external servers connected", which is every hub until someone
     # connects one.
     assert parsed == {"gateway": {"vaults": [], "profiles": [], "upstreams": []}}
+
+
+# ------------------------------------------------ issue #325: live vault identities
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
+
+@pytest.mark.anyio
+async def test_snapshot_takes_vault_identities_from_the_live_gateway() -> None:
+    """A vault renamed at runtime (`update_vault_identity`) must survive the
+    next upstream edit or add-on install, which persist through this
+    snapshot; an override pre-declared for a vault that is not mounted yet
+    is carried through untouched (#273)."""
+    from palaia_hub.gateway.config import GatewayConfig
+    from palaia_hub.gateway.dynamic import DynamicGateway
+    from palaia_hub.gateway.fake_vault import FakeVaultService
+    from palaia_hub.gateway.settings_bridge import snapshot_gateway_settings
+
+    gateway = DynamicGateway(
+        GatewayConfig(
+            vaults=[VaultMountConfig(key="work", name="work")],
+            profiles=[ProfileConfig(path="default", vaults=["work"])],
+        ),
+        {"work": FakeVaultService()},
+    )
+    await gateway.start()
+    try:
+        await gateway.update_vault_identity(
+            VaultMountConfig(
+                key="work", name="Renamed", purpose="Renamed.", tool_renames={"search": "find"}
+            )
+        )
+        config = HubConfig(
+            gateway={
+                "vaults": [
+                    {"key": "work", "name": "Stale startup name"},
+                    {"key": "pending", "name": "Not created yet"},
+                ]
+            }
+        )
+
+        snapshot = snapshot_gateway_settings(gateway, config)
+    finally:
+        await gateway.aclose()
+
+    by_key = {v.key: v for v in snapshot.vaults}
+    assert by_key["work"].name == "Renamed"
+    assert by_key["work"].purpose == "Renamed."
+    assert by_key["work"].tool_renames == {"search": "find"}
+    assert by_key["pending"].name == "Not created yet"
+    assert [p.path for p in snapshot.profiles] == ["default"]
