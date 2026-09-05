@@ -495,12 +495,17 @@ class VaultDoctor:
         The rebuild-from-files path SPEC-104's "index is disposable" acceptance
         criterion depends on: notes are read from disk (never from the
         catalog's cached state) in stable path order.
+
+        The catalog rebuild goes through :meth:`VaultEngine.refresh`, which
+        holds the engine's write lock — a rebuild never races a write that is
+        landing at the same moment (issue #331). The walk itself then reads a
+        published snapshot, so it cannot observe a half-applied catalog.
         """
+        await self.engine.refresh()
         return await asyncio.to_thread(self._reindex_sync, sink)
 
     def _reindex_sync(self, sink: ReindexSink) -> int:
         engine = self.engine
-        engine.refresh_now()
         sink.begin(engine.name)
         count = 0
         for path in sorted(engine.catalog):

@@ -236,9 +236,18 @@ class VaultWatcher:
             # run in a worker thread while requests keep being served, and an
             # engine write cannot interleave with the catalog updates.
             async with self.engine.lock:
-                events = await asyncio.to_thread(self.process_batch, merged)
+                events = await asyncio.to_thread(self._process_batch_as_one_snapshot, merged)
             if events and self.bus is not None:
                 await self.bus.publish_all(events)
+
+    def _process_batch_as_one_snapshot(
+        self, raw: Iterable[tuple[Change, str]]
+    ) -> list[ChangeEvent]:
+        """`process_batch` under the engine's `catalog_batch`: readers see a
+        batch of external changes land as one new catalog, not one entry at a
+        time (issue #331)."""
+        with self.engine.catalog_batch():
+            return self.process_batch(raw)
 
     async def _coalesce(
         self,
@@ -374,7 +383,7 @@ class VaultWatcher:
         # is the only place their content still exists.
         vanished: dict[str, list[str]] = {}
         for relative in deleted:
-            entry = self.engine.catalog.get(relative)
+            entry = self.engine.known_entry(relative)
             if entry is None:
                 continue
             vanished.setdefault(entry.checksum, []).append(relative)
@@ -396,7 +405,7 @@ class VaultWatcher:
                 vanished.pop(checksum, None)
             added.remove(relative)
             deleted.remove(previous)
-            old_entry = self.engine.catalog.get(previous)
+            old_entry = self.engine.known_entry(previous)
             permalink = old_entry.permalink if old_entry else None
             self.engine.observe_external_change(previous, deleted=True)
             self.engine.observe_external_change(relative, permalink=permalink)
@@ -416,7 +425,10 @@ class VaultWatcher:
     def _creations(self, added: list[str]) -> list[ChangeEvent]:
         events: list[ChangeEvent] = []
         for relative in added:
-            known = self.engine.catalog.get(relative)
+            # The writer's view, not the readers' snapshot: inside one batch a
+            # file can be reported twice (its folder expanded, then itself),
+            # and the second report must see the first one's catalog entry.
+            known = self.engine.known_entry(relative)
             entry = self.engine.observe_external_change(relative)
             if entry is None:
                 continue
@@ -437,7 +449,7 @@ class VaultWatcher:
     def _modifications(self, modified: list[str]) -> list[ChangeEvent]:
         events: list[ChangeEvent] = []
         for relative in dict.fromkeys(modified):
-            known = self.engine.catalog.get(relative)
+            known = self.engine.known_entry(relative)
             entry = self.engine.observe_external_change(relative)
             if entry is None:
                 continue

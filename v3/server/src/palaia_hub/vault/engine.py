@@ -21,9 +21,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from . import frontmatter as fm
@@ -120,19 +122,33 @@ class _Lookups:
     Rebuilding these per write would make every write O(vault size) — the
     same shape of mistake as staging the whole git index per commit, so they
     are updated entry by entry instead.
+
+    Title matches are tuples, never lists: a published
+    :class:`_CatalogSnapshot` shares them with the writer's own copy, so
+    nothing here is ever mutated in place once shared — :meth:`copy` can stay
+    shallow for exactly that reason.
     """
 
     __slots__ = ("by_alias", "by_permalink", "by_title")
 
-    def __init__(self) -> None:
-        self.by_permalink: dict[str, str] = {}
-        self.by_alias: dict[str, str] = {}
-        self.by_title: dict[str, list[str]] = {}
+    def __init__(
+        self,
+        by_permalink: dict[str, str] | None = None,
+        by_alias: dict[str, str] | None = None,
+        by_title: dict[str, tuple[str, ...]] | None = None,
+    ) -> None:
+        self.by_permalink: dict[str, str] = {} if by_permalink is None else by_permalink
+        self.by_alias: dict[str, str] = {} if by_alias is None else by_alias
+        self.by_title: dict[str, tuple[str, ...]] = {} if by_title is None else by_title
 
     @property
     def permalinks(self) -> Mapping[str, str]:
         """Every claimed permalink, mapped to the path claiming it."""
         return self.by_permalink
+
+    def copy(self) -> _Lookups:
+        """An independent copy the writer may keep mutating."""
+        return _Lookups(dict(self.by_permalink), dict(self.by_alias), dict(self.by_title))
 
     def add(self, entry: CatalogEntry) -> None:
         """Register one catalog entry. First claim of a key wins."""
@@ -140,9 +156,10 @@ class _Lookups:
             self.by_permalink.setdefault(entry.permalink, entry.path)
         for alias in entry.aliases:
             self.by_alias.setdefault(alias.lower(), entry.path)
-        paths = self.by_title.setdefault(entry.title.lower(), [])
+        key = entry.title.lower()
+        paths = self.by_title.get(key, ())
         if entry.path not in paths:
-            paths.append(entry.path)
+            self.by_title[key] = (*paths, entry.path)
 
     def remove(self, entry: CatalogEntry) -> None:
         """Unregister one catalog entry, keeping other notes' claims intact."""
@@ -154,9 +171,34 @@ class _Lookups:
         key = entry.title.lower()
         paths = self.by_title.get(key)
         if paths and entry.path in paths:
-            paths.remove(entry.path)
-            if not paths:
+            remaining = tuple(path for path in paths if path != entry.path)
+            if remaining:
+                self.by_title[key] = remaining
+            else:
                 del self.by_title[key]
+
+
+@dataclass(frozen=True, slots=True)
+class _CatalogSnapshot:
+    """What readers see of the catalog: one immutable, self-consistent view.
+
+    The catalog is read from the event-loop thread (:meth:`VaultEngine.resolve`
+    ahead of every edit, the gateway's listings, the dashboard) and from
+    worker threads of their own (the doctor, the curator, an index rebuild)
+    while *other* worker threads write it under the engine lock. Readers never
+    touch the writer's dicts: they take the current snapshot — one attribute
+    read, atomic under the interpreter — and work on that. A writer publishes
+    a fresh snapshot once its operation is done, so a reader sees the state
+    before an operation or the state after it, never a half-applied one, and
+    iterating a snapshot can never raise "dictionary changed size during
+    iteration" (issue #331).
+    """
+
+    entries: Mapping[str, CatalogEntry]
+    lookups: _Lookups
+
+
+_EMPTY_SNAPSHOT = _CatalogSnapshot(MappingProxyType({}), _Lookups())
 
 
 class VaultEngine:
@@ -188,8 +230,12 @@ class VaultEngine:
         self.git = GitRepo(self.root, policy)
         self.commit_external_edits = commit_external_edits
         self._lock = asyncio.Lock()
-        self._catalog: dict[str, CatalogEntry] = {}
-        self._lookups: _Lookups | None = None
+        # The writer's copy of the catalog: touched only under `_lock`, on a
+        # worker thread. Everyone else reads `_snapshot` (see _CatalogSnapshot).
+        self._entries: dict[str, CatalogEntry] = {}
+        self._tables = _Lookups()
+        self._snapshot: _CatalogSnapshot = _EMPTY_SNAPSHOT
+        self._deferring_publish = False
         self._opened = False
         self._purpose: str | None = None
         self._format_version = VAULT_FORMAT_VERSION
@@ -220,7 +266,7 @@ class VaultEngine:
             purpose=self._purpose,
             format_version=self._format_version,
             writable=self._writable,
-            note_count=len(self._catalog),
+            note_count=len(self._snapshot.entries),
         )
 
     # ---------------------------------------------------------------- lifecycle
@@ -355,8 +401,9 @@ class VaultEngine:
     async def close(self) -> None:
         """Release in-memory state. Files and git are already durable."""
         async with self._lock:
-            self._catalog.clear()
-            self._lookups = None
+            self._entries = {}
+            self._tables = _Lookups()
+            self._snapshot = _EMPTY_SNAPSHOT
             self._opened = False
 
     # ------------------------------------------------------------------ catalog
@@ -366,23 +413,22 @@ class VaultEngine:
         async with self._lock:
             return await asyncio.to_thread(self._refresh_sync)
 
-    def refresh_now(self) -> int:
-        """Blocking catalog rebuild, for callers already on a worker thread."""
-        return self._refresh_sync()
-
     def read_note_at(self, relative: str) -> Note:
         """Blocking read of the note at an exact vault-relative path."""
         return self._read_note_sync(relative)
 
     def _refresh_sync(self) -> int:
-        catalog: dict[str, CatalogEntry] = {}
+        entries: dict[str, CatalogEntry] = {}
+        tables = _Lookups()
         for path in self._iter_note_paths():
             entry = self._read_entry(path)
             if entry is not None:
-                catalog[entry.path] = entry
-        self._catalog = catalog
-        self._lookups = None
-        return len(catalog)
+                entries[entry.path] = entry
+                tables.add(entry)
+        self._entries = entries
+        self._tables = tables
+        self._publish_catalog()
+        return len(entries)
 
     def _iter_note_paths(self) -> list[Path]:
         found: list[Path] = []
@@ -430,32 +476,59 @@ class VaultEngine:
 
     @property
     def catalog(self) -> Mapping[str, CatalogEntry]:
-        """Read-only view of the identity catalog, keyed by vault-relative path."""
-        return self._catalog
+        """Read-only view of the identity catalog, keyed by vault-relative path.
 
-    def _lookup_tables(self) -> _Lookups:
-        cached = self._lookups
-        if cached is not None:
-            return cached
-        tables = _Lookups()
-        for entry in self._catalog.values():
-            tables.add(entry)
-        self._lookups = tables
-        return tables
+        An immutable snapshot: safe to iterate from any thread while writes
+        land, and never changed afterwards — read the property again for the
+        current state.
+        """
+        return self._snapshot.entries
+
+    def _publish_catalog(self) -> None:
+        """Replace the readers' snapshot with the writer's current state.
+
+        Every lock-holding operation ends with this. Inside
+        :meth:`catalog_batch` the publish waits for the block's end, so a loop
+        of updates copies the catalog once rather than once per entry.
+        """
+        if self._deferring_publish:
+            return
+        self._snapshot = _CatalogSnapshot(
+            MappingProxyType(dict(self._entries)), self._tables.copy()
+        )
+
+    @contextmanager
+    def catalog_batch(self) -> Iterator[None]:
+        """Publish one snapshot for many catalog updates.
+
+        For the lock holder only: the engine's own operations run inside one,
+        and :class:`~palaia_hub.vault.watcher.VaultWatcher` wraps each batch of
+        external changes it applies under :attr:`lock`. Readers keep the
+        previous snapshot until the block ends — also when it ends with an
+        exception, so what they see afterwards is exactly what the writer's
+        copy holds.
+        """
+        if self._deferring_publish:
+            yield
+            return
+        self._deferring_publish = True
+        try:
+            yield
+        finally:
+            self._deferring_publish = False
+            self._publish_catalog()
 
     def _catalog_put(self, entry: CatalogEntry) -> None:
-        tables = self._lookups
-        previous = self._catalog.get(entry.path)
-        self._catalog[entry.path] = entry
-        if tables is not None:
-            if previous is not None:
-                tables.remove(previous)
-            tables.add(entry)
+        previous = self._entries.get(entry.path)
+        self._entries[entry.path] = entry
+        if previous is not None:
+            self._tables.remove(previous)
+        self._tables.add(entry)
 
     def _catalog_drop(self, path: str) -> CatalogEntry | None:
-        entry = self._catalog.pop(path, None)
-        if entry is not None and self._lookups is not None:
-            self._lookups.remove(entry)
+        entry = self._entries.pop(path, None)
+        if entry is not None:
+            self._tables.remove(entry)
         return entry
 
     # --------------------------------------------------------------- resolution
@@ -519,7 +592,10 @@ class VaultEngine:
         )
 
     def _resolve_candidate(self, candidate: str) -> CatalogEntry | None:
-        tables = self._lookup_tables()
+        # One snapshot for the whole lookup: tables and entries agree with
+        # each other even while a write is publishing a newer state.
+        snapshot = self._snapshot
+        tables = snapshot.lookups
         path = tables.by_permalink.get(candidate)
         if path is None:
             path = tables.by_alias.get(candidate.lower())
@@ -533,18 +609,19 @@ class VaultEngine:
                     )
                 path = titles[0]
         if path is None:
-            path = self._resolve_by_path(candidate)
+            path = self._resolve_by_path(candidate, snapshot.entries)
         if path is None:
             return None
-        return self._catalog.get(path)
+        return snapshot.entries.get(path)
 
-    def _resolve_by_path(self, candidate: str) -> str | None:
+    @staticmethod
+    def _resolve_by_path(candidate: str, catalog: Mapping[str, CatalogEntry]) -> str | None:
         normalized = candidate if candidate.endswith(NOTE_SUFFIX) else candidate + NOTE_SUFFIX
         normalized = normalized.lstrip("/")
-        if normalized in self._catalog:
+        if normalized in catalog:
             return normalized
         matches = [
-            path for path in self._catalog if path == normalized or path.endswith("/" + normalized)
+            path for path in catalog if path == normalized or path.endswith("/" + normalized)
         ]
         if len(matches) > 1:
             raise AmbiguousReferenceError(
@@ -601,6 +678,7 @@ class VaultEngine:
                 f"directory {relative!r} does not exist in vault {self.name!r}. "
                 f"Fix: check the path, or create a note in it (parents are created)."
             )
+        catalog = self._snapshot.entries
         entries: list[DirEntry] = []
         for child in sorted(base.iterdir()):
             if child.name in IGNORED_DIRS or child.name.endswith(TEMP_SUFFIX):
@@ -609,7 +687,7 @@ class VaultEngine:
             if child.is_dir():
                 entries.append(DirEntry(path=rel, kind="dir"))
             elif child.name.endswith(NOTE_SUFFIX):
-                catalog_entry = self._catalog.get(rel)
+                catalog_entry = catalog.get(rel)
                 entries.append(
                     DirEntry(
                         path=rel,
@@ -864,8 +942,8 @@ class VaultEngine:
         merged: Mapping[str, Any],
         title: str,
     ) -> str:
-        tables = self._lookup_tables()
-        current = self._catalog.get(relative)
+        tables = self._tables
+        current = self._entries.get(relative)
         own = {current.permalink} if current and current.permalink else set()
 
         if requested is not None:
@@ -985,7 +1063,7 @@ class VaultEngine:
                 f"note {relative!r} does not exist in vault {self.name!r}. "
                 f"Fix: nothing to delete — refresh the catalog with engine.refresh()."
             )
-        entry = self._catalog.get(relative)
+        entry = self._entries.get(relative)
         self._sweep_external_edits()
         durable_unlink(target)
         self._catalog_drop(relative)
@@ -1047,7 +1125,7 @@ class VaultEngine:
         old_permalink = note.permalink
         self._reject_volatile("title", new_title)
 
-        tables = self._lookup_tables()
+        tables = self._tables
         if new_permalink is not None:
             if not pl.is_canonical(new_permalink):
                 raise VaultError(
@@ -1162,7 +1240,7 @@ class VaultEngine:
         # A path-shaped form must not shadow another note's permalink: if some
         # other entity owns that exact permalink, links using it mean *that*
         # note, not this one.
-        claims = self._lookup_tables().by_permalink
+        claims = self._tables.by_permalink
         permalink_forms = {
             form for form in permalink_forms if claims.get(form) in (None, *old_paths)
         }
@@ -1179,7 +1257,7 @@ class VaultEngine:
             return None
 
         rewritten: dict[str, int] = {}
-        for path in list(self._catalog):
+        for path in list(self._entries):
             if path == skip:
                 continue
             file_path = self.root / path
@@ -1239,23 +1317,43 @@ class VaultEngine:
         """Commit any external edits now, without writing anything else."""
         self._require_writable()
         async with self._lock:
-            return await asyncio.to_thread(self._sweep_external_edits)
+            return await asyncio.to_thread(self._sweep_and_publish)
+
+    def _sweep_and_publish(self) -> str | None:
+        with self.catalog_batch():
+            return self._sweep_external_edits()
 
     @property
     def lock(self) -> asyncio.Lock:
         """The engine's write lock, for the one other component that mutates
         the catalog: :class:`~palaia_hub.vault.watcher.VaultWatcher` holds it
-        while it applies a batch of external changes (in a worker thread), so
-        a batch never interleaves with an engine write — the catalog is
-        otherwise shared mutable state between the two (issue #331)."""
+        while it applies a batch of external changes (in a worker thread,
+        inside :meth:`catalog_batch`), so a batch never interleaves with an
+        engine write and readers see it land as one snapshot (issue #331)."""
         return self._lock
+
+    def known_entry(self, relative: str) -> CatalogEntry | None:
+        """The writer's current record of ``relative`` — for the lock holder.
+
+        Inside a :meth:`catalog_batch` this already reflects the batch's own
+        earlier updates, which :attr:`catalog` (the readers' snapshot) does
+        not show until the batch ends. The watcher needs exactly that view to
+        tell a repeat report of a file it just catalogued from a real change.
+        """
+        return self._entries.get(relative)
 
     def observe_external_change(
         self, relative: str, *, deleted: bool = False, permalink: str | None = None
     ) -> CatalogEntry | None:
-        """Update the catalog after an out-of-engine change (watcher callback)."""
+        """Update the catalog after an out-of-engine change (watcher callback).
+
+        The caller holds :attr:`lock`. Outside a :meth:`catalog_batch` each
+        call publishes on its own.
+        """
         if deleted:
-            return self._catalog_drop(relative)
+            dropped = self._catalog_drop(relative)
+            self._publish_catalog()
+            return dropped
         entry = self._read_entry(self.root / relative)
         if entry is None:
             return None
@@ -1270,6 +1368,7 @@ class VaultEngine:
                 mtime_ns=entry.mtime_ns,
             )
         self._catalog_put(entry)
+        self._publish_catalog()
         return entry
 
     # ------------------------------------------------------------ housekeeping
@@ -1320,11 +1419,11 @@ class VaultEngine:
     def _assign_missing_permalinks_sync(
         self, attribution: Attribution
     ) -> tuple[list[str], list[ChangeEvent]]:
-        missing = [entry for entry in self._catalog.values() if not entry.permalink]
+        missing = [entry for entry in self._entries.values() if not entry.permalink]
         if not missing:
             return [], []
         self._sweep_external_edits()
-        taken = set(self._lookup_tables().permalinks)
+        taken = set(self._tables.permalinks)
         assigned: list[str] = []
         changed: list[str] = []
         events: list[ChangeEvent] = []
@@ -1380,8 +1479,13 @@ class VaultEngine:
             )
 
     async def _locked(self, operation: Callable[[], tuple[T, list[ChangeEvent]]]) -> T:
+        def run() -> tuple[T, list[ChangeEvent]]:
+            # One published snapshot per operation, whatever it touched.
+            with self.catalog_batch():
+                return operation()
+
         async with self._lock:
-            result, events = await asyncio.to_thread(operation)
+            result, events = await asyncio.to_thread(run)
         if self.bus is not None and events:
             await self.bus.publish_all(events)
         return result
