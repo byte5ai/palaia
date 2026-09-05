@@ -13,6 +13,7 @@ import binascii
 import ipaddress
 import os
 import warnings
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal
 
@@ -983,6 +984,29 @@ def _read_env_values() -> dict[str, Any]:
         if env_name in os.environ:
             values[key] = os.environ[env_name]
     return values
+
+
+def apply_config_overrides(config: HubConfig, overrides: Mapping[str, object]) -> HubConfig:
+    """Return ``config`` with ``overrides`` applied *and re-validated* (issue #327).
+
+    ``model_copy(update=...)`` skips every validator, so ``palaia-hub serve
+    --host 0.0.0.0`` on a ``mode: cloud`` config used to start a hub the
+    policy in :meth:`HubConfig._check_operating_mode_policy` exists to
+    refuse — and ``deploy/entrypoint.sh`` takes exactly that path. Rebuilding
+    the model from its own dump plus the overrides runs the same checks
+    ``load_config`` runs; a refusal is a :class:`ConfigError` with the same
+    "Fix:" wording, attributed to the command line rather than a file.
+
+    Raises:
+        ConfigError: the merged configuration is invalid.
+    """
+    if not overrides:
+        return config
+    merged = {**config.model_dump(mode="json"), **overrides}
+    try:
+        return HubConfig.model_validate(merged)
+    except ValidationError as exc:
+        raise ConfigError(_format_validation_error(Path("<command line>"), exc)) from exc
 
 
 def _format_validation_error(path: Path, exc: ValidationError) -> str:

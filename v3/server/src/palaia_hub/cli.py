@@ -22,7 +22,7 @@ from .auth import TokenError, TokenStore
 from .auth.scopes import vault_scope
 from .backup import archive_filename, iter_archive_bytes
 from .compose_update import rewrite_compose_channel
-from .config import ConfigError, HubConfig, load_config, palaia_home
+from .config import ConfigError, HubConfig, apply_config_overrides, load_config, palaia_home
 from .curator import CURATOR_PROFILE_PATH, ApplyReport, CuratorRunReport, ProposalApplier
 from .curator.wiring import TOKEN_ENV, CuratorWiring, build_curator
 from .gateway.config import DEFAULT_GATEWAY_PROFILE, ProfileConfig, VaultMountConfig
@@ -225,7 +225,13 @@ def serve(host: str | None = None, port: int | None = None) -> None:
     if port is not None:
         overrides["port"] = port
     if overrides:
-        config = config.model_copy(update=overrides)
+        # Issue #327: `--host`/`--port` are subject to the same operating-mode
+        # policy as config.yaml — `model_copy(update=...)` skipped it.
+        try:
+            config = apply_config_overrides(config, overrides)
+        except ConfigError as exc:
+            print(f"palaia-hub: configuration error:\n{exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
 
     try:
         asyncio.run(_serve_async(config))
