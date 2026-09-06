@@ -45,6 +45,12 @@ logger = logging.getLogger("palaia_hub.index.search")
 #: the de-facto default in hybrid-search implementations.
 RRF_K = 60
 
+#: KNN over-fetch (issue #361): several chunks of one note may crowd the
+#: top-k, so the raw row count asked of sqlite-vec is ``limit`` times this
+#: factor, and never below the minimum.
+KNN_OVERFETCH_FACTOR = 8
+KNN_MIN_ROWS = 40
+
 #: Column weights for bm25(): a title match is worth much more than a body
 #: match, matching the linear-scan adapter's 1.0-vs-0.5 intuition but ranked
 #: rather than bucketed.
@@ -126,6 +132,28 @@ def _filter_clause(filters: SearchFilters, alias: str = "n") -> _Clause:
     if not parts:
         return _Clause("", ())
     return _Clause(" AND " + " AND ".join(parts), tuple(params))
+
+
+def _no_vectors_reason(
+    vectors_reason: str, query_embedding: Sequence[float] | None, filters: SearchFilters
+) -> str:
+    """Why a vector/hybrid query is being answered from full-text search.
+
+    The caller's own reason (embeddings disabled, backlog not started, the
+    query embedding failed) wins. Otherwise the KNN ran and found nothing:
+    with a filter that means no note *matching the filter* has a vector yet
+    — not that vectors as such are missing (issue #361).
+    """
+    if vectors_reason:
+        return vectors_reason
+    if query_embedding is None:
+        return "no vectors are ready yet — the embed backlog is still draining"
+    if _filter_clause(filters).sql:
+        return (
+            "none of the notes matching the filter has a vector yet — "
+            "answering from full-text search"
+        )
+    return "the vector search matched nothing — answering from full-text search"
 
 
 def _kind_clause(filters: SearchFilters, alias: str = "sr") -> _Clause:
@@ -265,23 +293,37 @@ class IndexSearch:
         import sqlite_vec
 
         filters = filters or SearchFilters()
-        where = _filter_clause(filters)
-        # Over-fetch: several chunks of one note may crowd the top-k, and
-        # filters are applied after the KNN (sqlite-vec has no join-aware
-        # pre-filter), so the raw k must be generous.
-        knn = max(limit * 8, 40)
+        # Over-fetch: several chunks of one note may crowd the top-k, so the
+        # raw k is generous.
+        knn = max(limit * KNN_OVERFETCH_FACTOR, KNN_MIN_ROWS)
+        serialized = sqlite_vec.serialize_float32(list(embedding))
+        inner = _filter_clause(filters, "n2")
+        if inner.sql:
+            # Issue #361: the filter is applied *inside* the KNN — sqlite-vec
+            # restricts the nearest-neighbour scan to `rowid IN (...)` — so a
+            # narrow scope/type filter cannot empty the result merely by
+            # dropping every over-fetched row after the fact.
+            knn_sql = (
+                "SELECT rowid, distance FROM vec_chunks WHERE embedding MATCH ? AND k = ? "
+                "AND rowid IN (SELECT c2.id FROM chunks c2 JOIN notes n2 ON n2.id = c2.note_id "
+                f"WHERE 1=1{inner.sql})"
+            )
+            params: tuple[Any, ...] = (serialized, knn, *inner.params)
+        else:
+            knn_sql = (
+                "SELECT rowid, distance FROM vec_chunks "
+                "WHERE embedding MATCH ? ORDER BY distance LIMIT ?"
+            )
+            params = (serialized, knn)
         sql = (
             "SELECT c.note_id AS note_id, c.ref AS ref, c.text AS chunk_text, v.distance AS dist, "
             "n.permalink AS permalink, n.path AS path, n.type AS type, n.tags AS tags, "
             "n.modified AS modified, n.title AS title "
-            "FROM (SELECT rowid, distance FROM vec_chunks "
-            "      WHERE embedding MATCH ? ORDER BY distance LIMIT ?) v "
+            f"FROM ({knn_sql}) v "
             "JOIN chunks c ON c.id = v.rowid "
             "JOIN notes n ON n.id = c.note_id "
-            f"WHERE 1=1{where.sql} "
             "ORDER BY v.distance, c.ref"
         )
-        params = (sqlite_vec.serialize_float32(list(embedding)), knn, *where.params)
         with self._db.lock:
             try:
                 rows = self._db.conn.execute(sql, params).fetchall()
@@ -413,9 +455,7 @@ class IndexSearch:
 
         if mode == "vector":
             if query_embedding is None or not vector_hits:
-                reason = vectors_reason or (
-                    "no vectors are ready yet — the embed backlog is still draining"
-                )
+                reason = _no_vectors_reason(vectors_reason, query_embedding, filters)
                 return SearchResults(
                     hits=tuple(self._degraded_fts(query, limit=limit, filters=filters)),
                     mode=mode,
@@ -434,8 +474,7 @@ class IndexSearch:
                 mode=mode,
                 effective_mode="fts",
                 degraded=True,
-                degraded_reason=vectors_reason
-                or "no vectors are ready yet — the embed backlog is still draining",
+                degraded_reason=_no_vectors_reason(vectors_reason, query_embedding, filters),
             )
         return SearchResults(
             hits=tuple(
@@ -449,7 +488,6 @@ class IndexSearch:
             mode=mode,
             effective_mode="hybrid",
         )
-
 
     def _degraded_fts(
         self, query: str, *, limit: int, filters: SearchFilters | None
