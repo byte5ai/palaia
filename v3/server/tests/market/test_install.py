@@ -450,3 +450,78 @@ async def test_container_install_surfaces_a_pull_failure_plainly(
         )
         assert response.status_code == 400
         assert "no such image" in response.json()["detail"]
+
+
+# ---------------------------------------- a failed install leaves nothing behind
+
+
+async def test_a_refused_profile_leaves_no_half_installed_upstream_behind(
+    tmp_path: Path, http_upstream: HttpUpstream
+) -> None:
+    """Issue #351: a profile the install cannot mount on used to surface
+    only after the upstream was registered — the installed list stayed
+    empty while a retry answered "already installed"."""
+    from palaia_hub.gateway.config import CURATOR_PROFILE_PATH
+
+    production = await _hub(tmp_path)
+    async with _running(production) as http:
+        entry_id = "acme.wrong-profile"
+        await _create_manual_remote(http, entry_id, http_upstream.url)
+
+        for profiles, status in ((["does-not-exist"], 404), ([CURATOR_PROFILE_PATH], 400)):
+            token = await _consent(http, entry_id)
+            refused = await http.post(
+                f"/api/market/entry/{entry_id}/install",
+                json={"consent_token": token, "profiles": profiles},
+            )
+            assert refused.status_code == status, refused.text
+            assert (await http.get("/api/market/installed")).json() == []
+            assert production.dynamic_gateway.config.upstreams == []
+            assert dict(production.upstream_service.configs) == {}
+
+        # Corrected, the very next attempt succeeds.
+        token = await _consent(http, entry_id)
+        ok = await http.post(
+            f"/api/market/entry/{entry_id}/install",
+            json={"consent_token": token, "profiles": ["default"]},
+        )
+        assert ok.status_code == 200, ok.text
+        assert ok.json()["profiles"] == ["default"]
+
+
+async def test_a_failure_after_registration_rolls_the_registration_back(
+    tmp_path: Path, http_upstream: HttpUpstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #351: nothing about an install is persisted until its record is
+    written, so nothing about it may survive in memory when that fails."""
+    production = await _hub(tmp_path)
+    async with _running(production) as http:
+        entry_id = "acme.disk-full"
+        await _create_manual_remote(http, entry_id, http_upstream.url)
+        service = production.install_service
+        assert service is not None
+
+        def _no_disk() -> None:
+            raise OSError("no space left on device")
+
+        monkeypatch.setattr(service, "_persist", _no_disk)
+        token = await _consent(http, entry_id)
+        with pytest.raises(OSError):
+            await http.post(
+                f"/api/market/entry/{entry_id}/install",
+                json={"consent_token": token, "profiles": ["default"]},
+            )
+
+        assert production.dynamic_gateway.config.upstreams == []
+        assert dict(production.upstream_service.configs) == {}
+        default = next(p for p in production.dynamic_gateway.config.profiles if p.path == "default")
+        assert default.upstreams == []
+        assert (await http.get("/api/market/installed")).json() == []
+
+        monkeypatch.undo()
+        token = await _consent(http, entry_id)
+        ok = await http.post(
+            f"/api/market/entry/{entry_id}/install",
+            json={"consent_token": token, "profiles": ["default"]},
+        )
+        assert ok.status_code == 200, ok.text

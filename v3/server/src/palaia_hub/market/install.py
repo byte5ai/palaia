@@ -573,6 +573,9 @@ class InstallService:
                 detail=f"{entry.name!r} is already installed. Uninstall it first, or update it.",
             )
         display_name = request.display_name or entry.name
+        # Issue #351: a bad profile path used to surface only after the
+        # upstream was registered, leaving an orphan behind. Check first.
+        self._check_profiles(request.profiles)
 
         try:
             plan = await _build_plan(
@@ -590,13 +593,20 @@ class InstallService:
             await self.dynamic_gateway.register_upstream(plan.upstream)
         except (UpstreamConflictError, ValidationError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        await self.upstream_service.register(plan.upstream)
         try:
+            await self.upstream_service.register(plan.upstream)
             await self._mount_on(key, request.profiles)
-        except GatewayConfigError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        await self.dynamic_gateway.refresh_upstreams([key])
-        self._persist()
+            await self.dynamic_gateway.refresh_upstreams([key])
+            self._persist()
+        except BaseException as exc:
+            # Issue #351: nothing about this install has been persisted yet,
+            # so nothing about it may stay in memory either — otherwise a
+            # retry answers "already installed" for an add-on the installed
+            # list does not show.
+            await self._forget_registration(key)
+            if isinstance(exc, GatewayConfigError):
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise
 
         record = InstalledAddonRecord(
             upstream_key=key,
@@ -618,7 +628,9 @@ class InstallService:
         )
         return await self._out(record)
 
-    async def _mount_on(self, key: str, profile_paths: list[str]) -> None:
+    def _check_profiles(self, profile_paths: list[str]) -> None:
+        """Refuse a profile list :meth:`_mount_on` would refuse — before
+        anything has been registered (issue #351)."""
         for path in profile_paths:
             if path == CURATOR_PROFILE_PATH:
                 raise HTTPException(
@@ -629,10 +641,29 @@ class InstallService:
                         "that session could exfiltrate them."
                     ),
                 )
+            if not any(p.path == path for p in self.dynamic_gateway.config.profiles):
+                raise HTTPException(status_code=404, detail=f"no profile at path {path!r}")
+
+    async def _forget_registration(self, key: str) -> None:
+        """Undo an in-memory registration whose install did not complete."""
+        try:
+            await self.dynamic_gateway.remove_upstream(key)
+        except KeyError:
+            pass
+        except Exception:  # noqa: BLE001 - best effort, the original error is what matters
+            logger.exception("could not roll back the gateway registration of %s", key)
+        try:
+            await self.upstream_service.unregister(key)
+        except Exception:  # noqa: BLE001 - best effort
+            logger.exception("could not roll back the upstream registration of %s", key)
+
+    async def _mount_on(self, key: str, profile_paths: list[str]) -> None:
+        self._check_profiles(profile_paths)
+        for path in profile_paths:
             current = next(
                 (p for p in self.dynamic_gateway.config.profiles if p.path == path), None
             )
-            if current is None:
+            if current is None:  # pragma: no cover - _check_profiles ran first
                 raise HTTPException(status_code=404, detail=f"no profile at path {path!r}")
             if key in current.upstreams:
                 continue
