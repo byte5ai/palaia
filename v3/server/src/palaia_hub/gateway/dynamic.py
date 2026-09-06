@@ -51,33 +51,27 @@ below):
   ``RuntimeError: Attempted to exit a cancel scope that isn't the current
   task's current cancel scope`` — found empirically while building this
   class; there is no public fastmcp/anyio flag to opt out of it, because
-  the rule is correct. The fix is structural: **one dedicated, long-lived
-  background task per** :class:`DynamicGateway` (started in :meth:`start`,
-  stopped in :meth:`aclose`) **owns every profile's lifespan enter *and*
-  exit**, via one :class:`~contextlib.AsyncExitStack` that never leaves
-  that task. :meth:`add_vault` only builds the new FastMCP app/server
-  (plain object construction — no anyio scope) in the caller's own task,
-  then hands the *already-built* app to the background task over a queue
-  and awaits a future it resolves; the background task does the actual
-  ``enter_async_context`` and the route-list swap, both from itself, then
-  resolves the caller's future. ``aclose()`` is the same pattern: it asks
-  the background task to stop, and that task closes its own exit stack —
-  every profile ever mounted, oldest first — from the one task that ever
-  touched any of them.
-- The **old** FastMCP app for a rebuilt profile is deliberately **not**
-  torn down synchronously at swap time (the route swap happens before the
-  old entry's removal from the exit stack's perspective — it stays
-  registered in the stack, to be exited at :meth:`aclose`). A request
-  already dispatched to it, or an open streamable-HTTP/SSE session against
-  it, keeps running against the old session manager for as long as it
-  naturally takes — tearing down a live session out from under an
-  in-flight request would be strictly worse than the small resource cost
-  of letting it finish. This is a deliberate, bounded leak: one retired
-  FastMCP session-manager task group per profile rebuild (no vault engine
-  or database handle — those are owned by the caller, not by this class),
-  held open until :meth:`aclose`, and profile rebuilds are a rare, human-
-  paced event (someone creating a vault through the wizard), never a
-  per-request occurrence.
+  the rule is correct. The fix is structural: **every mounted generation of
+  a profile has its own small owner task** (:class:`_Generation`) that
+  enters the lifespan, waits, and exits it — the same task both times.
+  :meth:`add_vault` only builds the new FastMCP app/server (plain object
+  construction — no anyio scope) in the caller's own task, then starts that
+  owner task and awaits its "entered" signal before swapping the route.
+- The **old** generation of a rebuilt profile is not torn down at swap time
+  either: a request already dispatched to it, or an open streamable-HTTP/SSE
+  session against it, keeps running against the old session manager for as
+  long as it naturally takes — tearing down a live session out from under
+  an in-flight request would be strictly worse. Requests are counted on the
+  way through each generation, and a retired generation closes itself the
+  moment its last in-flight request finishes (or immediately, when none
+  was) — issue #352. The previous design kept every retired generation
+  open until :meth:`aclose`, which was fine for the rare human-paced
+  rebuild it assumed but not for the rebuild-per-transition an upstream
+  flapping in and out of reach causes through
+  :class:`~palaia_hub.upstream.monitor.UpstreamHealthMonitor`. What a
+  retired generation holds is exactly its FastMCP session-manager task group
+  — no vault engine or database handle, those are the caller's — and it is
+  held only while a client is still using it.
 """
 
 from __future__ import annotations
@@ -86,15 +80,13 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import Callable, Mapping, Sequence
-from contextlib import AsyncExitStack
-from dataclasses import dataclass
 
 from fastmcp import FastMCP
 from fastmcp.server.auth import TokenVerifier
 from fastmcp.server.http import StarletteWithLifespan
 from fastmcp.server.middleware import Middleware
 from starlette.routing import Mount, Router
-from starlette.types import ASGIApp
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ..auth.policy import AuthPolicyError, check_gateway_auth_policy
 from ..directory.service import DirectoryService
@@ -113,35 +105,80 @@ from .vault_protocol import VaultService
 
 logger = logging.getLogger("palaia_hub.gateway.dynamic")
 
-#: Sentinel telling the background task to stop and close everything.
-_STOP = object()
 
+class _Generation:
+    """One mounted build of a profile: its ASGI app plus the task that owns
+    that app's lifespan (issue #352).
 
-@dataclass
-class _MountCommand:
-    """One "mount this profile" request to the background task."""
-
-    profile_path: str
-    server: FastMCP
-    asgi_app: StarletteWithLifespan
-    done: asyncio.Future[None]
-
-
-@dataclass
-class _UnmountCommand:
-    """One "drop this profile from the router" request to the background
-    task (SPEC-301's ``DELETE /api/gateway/profiles/{path}``).
-
-    Unlike :class:`_MountCommand`, there is no ASGI app to enter a lifespan
-    for — only a route to remove. The profile's already-entered lifespan
-    stays in the background task's exit stack regardless (the same
-    deliberate-leak rule the class docstring's "old FastMCP app" bullet
-    describes for a rebuild: an in-flight request or open session against
-    it keeps running until :meth:`DynamicGateway.aclose`).
+    The lifespan (FastMCP's streamable-HTTP session manager) is an anyio
+    task group and must be exited by the very task that entered it. One
+    owner task per generation is what lets a *retired* generation be closed
+    on its own: the earlier single exit stack could only unwind everything
+    at once, at shutdown, and therefore kept every retired generation alive
+    until then. Requests are counted on the way through :meth:`__call__`; a
+    retired generation closes itself once the last one has finished.
     """
 
-    profile_path: str
-    done: asyncio.Future[None]
+    def __init__(self, profile_path: str, server: FastMCP, asgi_app: StarletteWithLifespan) -> None:
+        self.profile_path = profile_path
+        self.server = server
+        self._app = asgi_app
+        self.in_flight = 0
+        self.retired = False
+        self.closed = asyncio.Event()
+        self._close_requested = asyncio.Event()
+        self._task: asyncio.Task[None] | None = None
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        self.in_flight += 1
+        try:
+            await self._app(scope, receive, send)
+        finally:
+            self.in_flight -= 1
+            if self.retired and self.in_flight == 0:
+                self._close_requested.set()
+
+    async def start(self) -> None:
+        """Enter the lifespan in this generation's own task; raises whatever
+        the lifespan's start-up raised, leaving nothing behind."""
+        started: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+        self._task = asyncio.create_task(
+            self._own_lifespan(started), name=f"palaia-gateway-profile-{self.profile_path}"
+        )
+        await started
+
+    async def _own_lifespan(self, started: asyncio.Future[None]) -> None:
+        try:
+            async with self._app.lifespan(self._app):
+                started.set_result(None)
+                await self._close_requested.wait()
+        except asyncio.CancelledError:
+            if not started.done():
+                started.cancel()
+            raise
+        except Exception as exc:
+            if not started.done():
+                started.set_exception(exc)
+            else:
+                logger.exception(
+                    "closing a retired generation of profile %r failed", self.profile_path
+                )
+        finally:
+            self.closed.set()
+
+    def retire(self) -> None:
+        """The route is gone: close as soon as no request is in flight."""
+        self.retired = True
+        if self.in_flight == 0:
+            self._close_requested.set()
+
+    async def close(self) -> None:
+        """Close now, in flight or not — gateway shutdown."""
+        self.retired = True
+        self._close_requested.set()
+        if self._task is not None:
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
 
 
 class DynamicGateway:
@@ -235,11 +272,12 @@ class DynamicGateway:
         self._profile_servers: dict[str, FastMCP] = {}
         self._lock = asyncio.Lock()
         # See the class docstring's "cancel-scope finding": every lifespan
-        # enter/exit happens inside `_lifecycle_task`, via `_queue`, never
+        # is entered and exited by its own generation's owner task, never
         # directly in the caller's own task.
-        self._queue: asyncio.Queue[_MountCommand | _UnmountCommand | object] = asyncio.Queue()
-        self._lifecycle_task: asyncio.Task[None] | None = None
-        self._stopped = asyncio.Event()
+        self._generations: dict[str, _Generation] = {}
+        #: Generations swapped out or unmounted while a request was still in
+        #: flight against them; each closes itself when idle (issue #352).
+        self._retired: set[_Generation] = set()
 
     @property
     def asgi_app(self) -> ASGIApp:
@@ -258,8 +296,7 @@ class DynamicGateway:
         return self._config
 
     async def start(self) -> None:
-        """Start the background lifecycle task and mount every configured profile."""
-        self._lifecycle_task = asyncio.create_task(self._lifecycle())
+        """Mount every configured profile."""
         async with self._lock:
             for profile in self._config.profiles:
                 await self._request_mount(profile)
@@ -656,8 +693,8 @@ class DynamicGateway:
 
     async def _request_mount(self, profile: ProfileConfig) -> None:
         """Build one profile's FastMCP app (plain construction — safe in the
-        caller's own task) and hand it to the lifecycle task to actually
-        mount. Caller holds ``self._lock``."""
+        caller's own task), start its generation's owner task, and swap the
+        route to it. Caller holds ``self._lock``."""
         auth = self._token_verifiers.get(profile.path)
         middleware = self._profile_middleware.get(profile.path, ())
         upstream_mounts = await self._upstream_mounts_for(profile)
@@ -678,77 +715,53 @@ class DynamicGateway:
         # here leaves the previous generation mounted and untouched.
         check_gateway_auth_policy(self._mode, {profile.path: server})
         asgi_app = server.http_app(path="/")
-        done: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-        await self._queue.put(_MountCommand(profile.path, server, asgi_app, done))
-        await done
+        generation = _Generation(profile.path, server, asgi_app)
+        # A lifespan that fails to start raises here, and nothing changed:
+        # the previous generation (if any) is still the one being served.
+        await generation.start()
+        new_mount = Mount(f"/{profile.path}", app=generation)
+        kept = [
+            route for route in self.router.routes if getattr(route, "path", None) != new_mount.path
+        ]
+        self.router.routes = [*kept, new_mount]  # atomic swap — see class docstring
+        previous = self._generations.get(profile.path)
+        self._generations[profile.path] = generation
         self._profile_servers[profile.path] = server
+        if previous is not None:
+            self._retire(previous)
 
     async def _request_unmount(self, path: str) -> None:
-        """Ask the lifecycle task to drop ``path`` from the router. Caller
-        holds ``self._lock``."""
-        done: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-        await self._queue.put(_UnmountCommand(path, done))
-        await done
+        """Drop ``path`` from the router; its generation closes once idle.
+        Caller holds ``self._lock``."""
+        target = f"/{path}"
+        self.router.routes = [
+            route for route in self.router.routes if getattr(route, "path", None) != target
+        ]
         self._profile_servers.pop(path, None)
+        generation = self._generations.pop(path, None)
+        if generation is not None:
+            self._retire(generation)
 
-    async def _lifecycle(self) -> None:
-        """The one task that ever enters or exits a profile's ASGI lifespan.
+    def _retire(self, generation: _Generation) -> None:
+        """No new request reaches ``generation`` any more; it closes itself
+        the moment its in-flight ones (if any) have finished."""
+        self._retired = {g for g in self._retired if not g.closed.is_set()}
+        self._retired.add(generation)
+        generation.retire()
 
-        Owns a single :class:`~contextlib.AsyncExitStack` for the whole
-        gateway's life: every generation of every profile ever mounted is
-        entered here and stays in this stack (even after being swapped out
-        of ``self.router.routes``, see the class docstring) until
-        :meth:`aclose` asks this task to stop, at which point ``async with
-        stack:`` unwinds everything, oldest first, from this same task.
-        """
-        async with AsyncExitStack() as stack:
-            while True:
-                item = await self._queue.get()
-                if item is _STOP:
-                    break
-                if isinstance(item, _UnmountCommand):
-                    # No lifespan to enter or exit here — its already-
-                    # entered generation (if any) stays in `stack`,
-                    # unwound only at `aclose`, same deliberate-leak rule
-                    # a rebuild's retired generation follows (class
-                    # docstring). Only the route disappears, atomically.
-                    target = f"/{item.profile_path}"
-                    self.router.routes = [
-                        route
-                        for route in self.router.routes
-                        if getattr(route, "path", None) != target
-                    ]
-                    if not item.done.done():
-                        item.done.set_result(None)
-                    continue
-                command = item
-                assert isinstance(command, _MountCommand)
-                try:
-                    await stack.enter_async_context(command.asgi_app.lifespan(command.asgi_app))
-                except Exception as exc:  # noqa: BLE001 - relayed to the waiting caller
-                    if not command.done.done():
-                        command.done.set_exception(exc)
-                    continue
-                new_mount = Mount(f"/{command.profile_path}", app=command.asgi_app)
-                kept = [
-                    route
-                    for route in self.router.routes
-                    if getattr(route, "path", None) != new_mount.path
-                ]
-                self.router.routes = [*kept, new_mount]  # atomic swap — see class docstring
-                if not command.done.done():
-                    command.done.set_result(None)
-        self._stopped.set()
+    @property
+    def retired_generations(self) -> int:
+        """How many swapped-out generations are still open, waiting for an
+        in-flight request to finish (issue #352). Zero on an idle gateway."""
+        return sum(1 for g in self._retired if not g.closed.is_set())
 
     async def aclose(self) -> None:
-        """Ask the lifecycle task to stop; it closes every mounted generation."""
-        if self._lifecycle_task is None:
-            return
-        await self._queue.put(_STOP)
-        await self._stopped.wait()
-        with contextlib.suppress(asyncio.CancelledError):
-            await self._lifecycle_task
-        self._lifecycle_task = None
+        """Close every generation — live or retired — each from its own owner task."""
+        generations = [*self._generations.values(), *self._retired]
+        self._generations.clear()
+        self._retired.clear()
+        if generations:
+            await asyncio.gather(*(generation.close() for generation in generations))
 
 
 __all__ = ["DynamicGateway"]
