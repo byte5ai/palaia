@@ -218,7 +218,8 @@ See [§8](#8-accepted-risks-and-open-gaps).
 | A tampered curated index | The index is signed; verification happens before any entry is used, with a last-good fallback. The public key is pinned in code and may be replaced only in the owner-only `config.yaml` (`market.public_key`), never over REST | `server/src/palaia_hub/market/curated.py`, `server/tests/market/test_curated.py` |
 | The index host used to slow or stall the marketplace (one bounded fetch per installed add-on per page load) | Every fetch outcome, success or failure, is cached on disk with a TTL; one API call resolves all installed add-ons against a single fetch | `server/src/palaia_hub/market/curated.py`, `server/tests/market/test_curated_wiring.py` |
 | Installing something other than what was reviewed | Installs pin an image digest and record it | `server/src/palaia_hub/market/install.py`, `server/tests/market/test_install.py` |
-| Container escape / host access | The container runs as a non-root user with no added capabilities; see `v3/deploy/` | `v3/deploy/docker-compose.yml` |
+| An add-on container reaching more than it declared | Every add-on container runs with all capabilities dropped, `no-new-privileges`, and memory and process ceilings; it has no network unless the manifest declares `network`, and a read-only root filesystem unless it declares `filesystem` (declared mounts stay writable) | `server/src/palaia_hub/market/docker_runtime.py`, `server/tests/market/test_docker_runtime.py` |
+| Container escape / host access | The hub's own container runs as a non-root user with no added capabilities; see `v3/deploy/` | `v3/deploy/docker-compose.yml` |
 
 Running third-party code on the user's machine is the largest residual risk
 in this document. See [§8](#8-accepted-risks-and-open-gaps).

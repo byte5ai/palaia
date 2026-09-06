@@ -77,6 +77,19 @@ uses:
 Every failure names the exact field and the fix — there's nothing to look
 up.
 
+Two of the permissions are enforced, not just displayed, when a hub runs a
+`container` add-on:
+
+| Permission declared | What the hub does |
+|---|---|
+| `network` missing | The container gets no network at all (`--network none`). |
+| `filesystem` missing | The container's root filesystem is read-only, with `/tmp` as scratch space; the folders declared as `"format": "path"` mounts stay writable. |
+| always | Every capability is dropped, `no-new-privileges` is set, and a memory and a process ceiling apply. |
+
+So declare `network` if your add-on talks to anything, and `filesystem` if it
+writes anywhere other than `/tmp` and its declared mounts — an add-on that
+needs more than it declared does not start, rather than quietly getting it.
+
 ### 4. `test`
 
 ```bash

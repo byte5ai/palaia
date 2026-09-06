@@ -49,8 +49,65 @@ def test_build_stdio_run_args_with_no_mounts_or_env() -> None:
     )
 
     assert run_args.args == [
-        "run", "--rm", "-i", "--name", "palaia-addon-tool", "ghcr.io/acme/tool:1.0.0",
+        "run",
+        "--rm",
+        "-i",
+        "--name",
+        "palaia-addon-tool",
+        *docker_runtime.HARDENING_ARGS,
+        "--network",
+        "none",
+        "--read-only",
+        "--tmpfs",
+        "/tmp",
+        "ghcr.io/acme/tool:1.0.0",
     ]
+
+
+# ------------------------------------------------------------ issue #350
+
+
+def _run(permissions: list[str], **overrides: object) -> list[str]:
+    kwargs: dict[str, object] = {
+        "container_name": "palaia-addon-tool",
+        "mounts": {},
+        "plain_env": {},
+        "secret_env_vars": [],
+        "permissions": permissions,
+    }
+    kwargs.update(overrides)
+    return docker_runtime.build_stdio_run_args("ghcr.io/acme/tool:1.0.0", **kwargs).args  # type: ignore[arg-type]
+
+
+def test_every_add_on_container_is_hardened_whatever_it_declared() -> None:
+    for permissions in ([], ["network", "filesystem", "memory-scope:write"]):
+        args = _run(permissions)
+        assert args[args.index("--cap-drop") + 1] == "ALL"
+        assert args[args.index("--security-opt") + 1] == "no-new-privileges:true"
+        assert args[args.index("--memory") + 1] == docker_runtime.DEFAULT_MEMORY_LIMIT
+        assert args[args.index("--pids-limit") + 1] == str(docker_runtime.DEFAULT_PIDS_LIMIT)
+        assert args[-1] == "ghcr.io/acme/tool:1.0.0", "the image stays last"
+
+
+def test_no_network_permission_means_no_network() -> None:
+    silent = _run([])
+    assert silent[silent.index("--network") + 1] == "none"
+
+    talking = _run(["network"])
+    assert "--network" not in talking
+
+
+def test_the_root_filesystem_is_read_only_unless_filesystem_was_declared() -> None:
+    sealed = _run([], mounts={"data_dir": "/srv/notes"})
+    assert "--read-only" in sealed
+    assert sealed[sealed.index("--tmpfs") + 1] == "/tmp"
+    # A declared mount is the add-on's own folder: it stays writable.
+    assert sealed[sealed.index("-v") + 1] == "/srv/notes:/srv/notes"
+
+    writable = _run(["filesystem"], mounts={"data_dir": "/srv/notes"})
+    assert "--read-only" not in writable
+    assert "--tmpfs" not in writable
+    assert writable[writable.index("-v") + 1] == "/srv/notes:/srv/notes"
 
 
 @pytest.mark.anyio

@@ -349,6 +349,7 @@ async def _resolve_container_plan(
         mounts=mounts,
         plain_env=env,
         secret_env_vars=list(env_secrets.keys()),
+        permissions=entry.permissions,
     )
     upstream = UpstreamConfig(
         key=key,
@@ -748,6 +749,7 @@ class InstallService:
             mounts=mounts,
             plain_env=plain_env,
             secret_env_vars=list(current.env_secrets.keys()),
+            permissions=entry.permissions,
         )
         # `model_copy` skips validators (same caveat SPEC-302's own
         # `PATCH /api/gateway/upstreams/{key}` documents) — re-construct so

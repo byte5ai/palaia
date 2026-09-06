@@ -20,6 +20,15 @@ whenever ``_is_session_dead()``), and
 container add-on is therefore respawned by the very next health probe —
 no extra supervision loop lives here.
 
+**An add-on runs with what it declared, and no more** (issue #350). Every
+container gets the hub's own posture — every capability dropped,
+``no-new-privileges``, a memory and a process ceiling — and two things
+follow from the manifest's ``permissions``: without ``network`` the
+container has no network at all (``--network none``); without
+``filesystem`` its root filesystem is read-only with ``/tmp`` as scratch
+space (its declared mounts stay writable either way). The consent screen
+shows the permissions; these flags are what makes them true.
+
 **No secret ever reaches an argument list.** ``docker run -e NAME`` with
 no ``=value`` forwards *docker's own process environment* variable
 ``NAME`` into the container — never the value on argv, which a process
@@ -36,11 +45,29 @@ from __future__ import annotations
 import asyncio
 import logging
 import shutil
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_PULL_TIMEOUT_SECONDS = 300.0
+
+#: Resource ceilings for one add-on container (issue #350): generous for an
+#: MCP server, far below "the whole host".
+DEFAULT_MEMORY_LIMIT = "1g"
+DEFAULT_PIDS_LIMIT = 512
+
+#: The flags every add-on container gets, permissions or not.
+HARDENING_ARGS: tuple[str, ...] = (
+    "--cap-drop",
+    "ALL",
+    "--security-opt",
+    "no-new-privileges:true",
+    "--memory",
+    DEFAULT_MEMORY_LIMIT,
+    "--pids-limit",
+    str(DEFAULT_PIDS_LIMIT),
+)
 DEFAULT_PROBE_TIMEOUT_SECONDS = 5.0
 DEFAULT_REMOVE_TIMEOUT_SECONDS = 30.0
 
@@ -105,6 +132,7 @@ def build_stdio_run_args(
     mounts: dict[str, str],
     plain_env: dict[str, str],
     secret_env_vars: list[str],
+    permissions: Sequence[str] = (),
 ) -> ContainerRunArgs:
     """The argv for ``docker run --rm -i`` backing one container add-on.
 
@@ -114,9 +142,14 @@ def build_stdio_run_args(
     ``"format": "path"`` is a mount; every other non-secret property is a
     plain environment variable, its name upper-cased). ``secret_env_vars``
     names environment variables whose value never appears here at all —
-    see the module docstring.
+    see the module docstring. ``permissions`` is the manifest's declared
+    list; see the module docstring for the flags it maps to (issue #350).
     """
-    args = ["run", "--rm", "-i", "--name", container_name]
+    args = ["run", "--rm", "-i", "--name", container_name, *HARDENING_ARGS]
+    if "network" not in permissions:
+        args += ["--network", "none"]
+    if "filesystem" not in permissions:
+        args += ["--read-only", "--tmpfs", "/tmp"]
     for host_path in mounts.values():
         args += ["-v", f"{host_path}:{host_path}"]
     for key, value in sorted(plain_env.items()):
@@ -204,9 +237,7 @@ async def ensure_image(image: str, *, timeout: float = DEFAULT_PULL_TIMEOUT_SECO
         await pull_image(image, timeout=timeout)
     except DockerError:
         if await image_present(image):
-            logger.warning(
-                "pulling %r failed; using the locally present image instead", image
-            )
+            logger.warning("pulling %r failed; using the locally present image instead", image)
             return
         raise
 
