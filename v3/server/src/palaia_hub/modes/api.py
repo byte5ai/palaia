@@ -132,6 +132,42 @@ def _nested_overrides(updates: dict[str, Any]) -> dict[str, Any]:
     return nested
 
 
+class _ConfiguredConfig:
+    """``config.yaml`` as last read, re-parsed only when the file changed.
+
+    ``GET /api/mode`` is polled by the dashboard; each poll used to re-parse
+    the YAML, re-validate it and re-chmod the file (issue #348). A ``stat``
+    per call is what it costs now: the parse runs on the first call, after a
+    change this router wrote, and whenever the file's mtime/size/inode moved
+    — so an edit made by hand while the hub runs is still picked up.
+    """
+
+    def __init__(self, home: Path) -> None:
+        self._home = home
+        self._path = config_file_path(home)
+        self._config: HubConfig | None = None
+        self._stamp: tuple[int, int, int] | None = None
+
+    def _fingerprint(self) -> tuple[int, int, int] | None:
+        try:
+            stat = self._path.stat()
+        except FileNotFoundError:
+            return None
+        return (stat.st_mtime_ns, stat.st_size, stat.st_ino)
+
+    def get(self) -> HubConfig:
+        stamp = self._fingerprint()
+        if self._config is None or stamp != self._stamp:
+            self._config = load_config(home=self._home)
+            self._stamp = self._fingerprint()
+        return self._config
+
+    def invalidate(self) -> None:
+        """The next :meth:`get` re-reads, whatever the stamp says."""
+        self._config = None
+        self._stamp = None
+
+
 def _status(active: HubConfig, configured: HubConfig) -> ModeStatusOut:
     return ModeStatusOut(
         active_mode=active.mode,
@@ -237,8 +273,10 @@ def build_modes_router(
 
     router = APIRouter(tags=["modes"])
 
+    cache = _ConfiguredConfig(home)
+
     def _configured() -> HubConfig:
-        return load_config(home=home)
+        return cache.get()
 
     @router.get("/api/mode", response_model=ModeStatusOut)
     async def get_mode() -> ModeStatusOut:
@@ -283,6 +321,7 @@ def build_modes_router(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         patch_config_values(path, updates)
+        cache.invalidate()
         audit.record(
             from_mode=current.mode,
             to_mode=candidate.mode,
