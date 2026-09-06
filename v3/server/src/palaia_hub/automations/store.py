@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import ValidationError
 
 from ..config import palaia_home
 from ..security.files import harden_file
@@ -98,15 +99,26 @@ class AutomationStore:
                 f"{path}: expected an 'automations:' list of records. Fix: "
                 f"correct the file, or delete it to start over."
             )
-        for item in raw["automations"]:
-            record = AutomationRecord.model_validate(item)
+        for index, item in enumerate(raw["automations"], start=1):
+            try:
+                record = AutomationRecord.model_validate(item)
+            except ValidationError as exc:
+                # A hand-edited file must fail with a message that names the
+                # record and the field, not a pydantic traceback at boot
+                # (issue #366).
+                problems = "; ".join(
+                    f"{'.'.join(str(part) for part in error['loc']) or '<record>'}: {error['msg']}"
+                    for error in exc.errors()
+                )
+                raise AutomationError(
+                    f"{path}: automation record #{index} is invalid ({problems}). Fix: "
+                    f"correct that record in the file, or remove it."
+                ) from exc
             self._records[record.id] = record
 
     def _save(self) -> None:
         self.home.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "automations": [r.model_dump(mode="json") for r in self._records.values()]
-        }
+        payload = {"automations": [r.model_dump(mode="json") for r in self._records.values()]}
         text = _HEADER + yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
         atomic_write_text(self.store_path, text)
         # SPEC-502: `atomic_write_text` already lands a 0600 file (its temp

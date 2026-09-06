@@ -32,6 +32,7 @@ from ..events.schema import Envelope
 from ..gateway.vault_protocol import VaultServiceError
 from ..gateway.wiring import EngineVaultService
 from ..notifications.store import NotificationStore
+from ..stash.models import StashError
 from ..stash.service import StashService
 from ..vault import VaultNotFoundError, VaultRegistry
 from . import conditions
@@ -83,6 +84,11 @@ HEARTBEAT_EVENT = "health"
 #: person set up, so the rest of that minute is dropped with one warning
 #: rather than filling the outbox (issues #338/#339).
 MAX_FIRES_PER_MINUTE = 60
+
+#: Failures that no retry can fix (issue #366): a stash value over its
+#: limit, an invalid namespace or key. Retrying them five times over half a
+#: minute only delays the honest answer.
+_PERMANENT_FAILURES: tuple[type[Exception], ...] = (StashError,)
 
 
 class ActionError(RuntimeError):
@@ -231,6 +237,9 @@ class AutomationDispatcher:
         attempt = row.attempts + 1
         try:
             await self._execute_as(automation.id, row.action_kind, row.rendered_action)
+        except _PERMANENT_FAILURES as exc:
+            self._fail(row, attempt, automation, error=str(exc), permanent=True)
+            return
         except (ActionError, VaultServiceError, VaultNotFoundError) as exc:
             self._fail(row, attempt, automation, error=str(exc))
             return
@@ -241,9 +250,15 @@ class AutomationDispatcher:
         self._emit_event("automation.fired", row, automation=automation)
 
     def _fail(
-        self, row: DeliveryRow, attempt: int, automation: AutomationRecord, *, error: str
+        self,
+        row: DeliveryRow,
+        attempt: int,
+        automation: AutomationRecord,
+        *,
+        error: str,
+        permanent: bool = False,
     ) -> None:
-        if attempt >= self._max_attempts:
+        if permanent or attempt >= self._max_attempts:
             logger.warning(
                 "automation %s delivery dead-lettered after %d attempt(s): %s",
                 row.automation_id,
@@ -377,7 +392,7 @@ class AutomationDispatcher:
         rendered = render_action(automation.action, envelope)
         try:
             await self._execute_as(automation.id, automation.action.kind, rendered)
-        except (ActionError, VaultServiceError, VaultNotFoundError) as exc:
+        except (ActionError, VaultServiceError, VaultNotFoundError, StashError) as exc:
             return self._outbox.record_resolved(
                 automation_id=automation.id,
                 event_id=envelope.id,
