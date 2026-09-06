@@ -293,6 +293,7 @@ async def build_production_app(
         messenger_store,
         directory_service,
         ref_validator=build_vault_ref_validator(indexes),
+        notifications=notification_store,
     )
 
     # SPEC-206: the curator gets its own profile over the same vaults —

@@ -98,6 +98,13 @@ the directory (`directory_list`/`directory_query`). An unknown or stale
 handle is refused — a stale session may already be gone, and a message to
 it would sit unread.
 
+`to: "owner"` reaches the hub's owner, who has no directory handle. The
+owner reads that inbox in the dashboard (`GET /api/messenger/inbox`, acked
+over `POST /api/messenger/inbox/{id}/ack`), and every message to it also
+raises a notification in the notification center — so a question the owner
+asked with `expects_reply` can be answered to the owner, not only into the
+thread. The owner cannot address `owner`.
+
 For `type: "broadcast"`, `to` is a small query grammar instead of a
 handle, resolved against the directory *at send time*:
 

@@ -162,7 +162,8 @@ def register_messenger_send_tool(server: FastMCP, service: MessengerService) -> 
             "Send one typed message to another session. type is 'request', "
             "'inform', 'question', 'handoff' or 'broadcast'. For everything "
             "but 'broadcast', to is a session handle from the directory — an "
-            "unknown or stale handle is refused. For 'broadcast', to is a "
+            "unknown or stale handle is refused — or 'owner' to reach the hub's "
+            "owner (who reads it in the dashboard). For 'broadcast', to is a "
             "directory query instead: '*' for every live session, "
             "'capability:<tag>' for a capability tag, or any substring of the "
             "scope you mean; it fans out to at most "
@@ -185,8 +186,9 @@ def register_messenger_send_tool(server: FastMCP, service: MessengerService) -> 
             Field(
                 validation_alias=AliasChoices("to", "recipient"),
                 description=(
-                    "The recipient's session handle — or, for type='broadcast', "
-                    "a directory query ('*', 'capability:<tag>', or a scope substring)."
+                    "The recipient's session handle, 'owner' for the hub's owner — or, "
+                    "for type='broadcast', a directory query ('*', 'capability:<tag>', "
+                    "or a scope substring)."
                 ),
             ),
         ],
