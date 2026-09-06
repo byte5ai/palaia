@@ -3,7 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ToastProvider } from "../components/Toast";
-import type { GatewayProfile, InstalledAddon, MarketEntry } from "../lib/api/client";
+import type { GatewayProfile, InstalledAddon, MarketEntry, PlanPreview } from "../lib/api/client";
 import { api } from "../lib/api/client";
 import { Marketplace } from "./Marketplace";
 
@@ -51,6 +51,19 @@ const MANUAL_SECRET_ENTRY: MarketEntry = {
   maintainer: "someone",
   verified: false,
   provenance: "manual",
+};
+
+const REGISTRY_ENTRY: MarketEntry = {
+  id: "acme.npm-tool",
+  name: "Community Tool",
+  one_liner: "A tool somebody published to the open registry.",
+  kind: "remote",
+  source: { type: "registry_ref", value: "io.example/npm-tool" },
+  config_schema: null,
+  permissions: [],
+  maintainer: "someone",
+  verified: false,
+  provenance: "registry",
 };
 
 const DEFAULT_PROFILE: GatewayProfile = {
@@ -144,7 +157,18 @@ describe("Marketplace screen (SPEC-304)", () => {
     vi.spyOn(api, "listInstalledAddons").mockResolvedValue([]);
     const consentSpy = vi
       .spyOn(api, "issueMarketConsent")
-      .mockResolvedValue({ token: "tok_abc123", expires_at: 9999999999 });
+      .mockResolvedValue({
+        token: "tok_abc123",
+        expires_at: 9999999999,
+        preview: {
+          kind: "http",
+          command: null,
+          args: [],
+          url: "https://tracker.example.com/mcp",
+          image: null,
+          plan_hash: "h1",
+        },
+      });
     const installSpy = vi.spyOn(api, "installMarketEntry").mockResolvedValue({
       upstream_key: "acme-tracker",
       entry_id: "acme.tracker",
@@ -177,6 +201,42 @@ describe("Marketplace screen (SPEC-304)", () => {
         }),
       ),
     );
+  });
+
+  it("shows the command a community listing would run before asking for consent", async () => {
+    vi.spyOn(api, "searchMarket").mockResolvedValue({
+      entries: [REGISTRY_ENTRY],
+      stale: false,
+      notes: {},
+    });
+    vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([DEFAULT_PROFILE]);
+    vi.spyOn(api, "listInstalledAddons").mockResolvedValue([]);
+    let resolvePlan: (plan: PlanPreview) => void = () => {};
+    const planSpy = vi.spyOn(api, "getMarketPlan").mockReturnValue(
+      new Promise<PlanPreview>((resolve) => {
+        resolvePlan = resolve;
+      }),
+    );
+
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: /details/i }));
+
+    // Until the hub has said what would run, there is nothing to consent to.
+    await waitFor(() => expect(planSpy).toHaveBeenCalledWith("acme.npm-tool"));
+    expect(screen.getByRole("button", { name: /install and connect/i })).toBeDisabled();
+
+    resolvePlan({
+      kind: "stdio",
+      command: "npx",
+      args: ["-y", "@acme/npm-tool@1.2.0"],
+      url: null,
+      image: null,
+      plan_hash: "h2",
+    });
+
+    const shown = await screen.findByTestId("install-plan");
+    expect(shown).toHaveTextContent("npx -y @acme/npm-tool@1.2.0");
+    expect(screen.getByRole("button", { name: /install and connect/i })).toBeEnabled();
   });
 
   it("hands off a skill entry to the Clients page instead of installing it", async () => {

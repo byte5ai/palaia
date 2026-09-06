@@ -50,13 +50,15 @@ key, upper-cased.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 import secrets as secrets_module
 import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -109,6 +111,9 @@ class MarketInstallError(RuntimeError):
 class _ConsentEntry:
     entry_id: str
     expires_at: float
+    #: Issue #349: the hash of what the owner was shown — command, address
+    #: or image. The install re-derives it and refuses a mismatch.
+    plan_hash: str = ""
     used: bool = False
 
 
@@ -127,15 +132,18 @@ class ConsentStore:
         self._ttl = ttl_seconds
         self._tokens: dict[str, _ConsentEntry] = {}
 
-    def issue(self, entry_id: str) -> tuple[str, float]:
+    def issue(self, entry_id: str, *, plan_hash: str = "") -> tuple[str, float]:
         token = secrets_module.token_urlsafe(24)
         expires_at = time.time() + self._ttl
-        self._tokens[token] = _ConsentEntry(entry_id=entry_id, expires_at=expires_at)
+        self._tokens[token] = _ConsentEntry(
+            entry_id=entry_id, expires_at=expires_at, plan_hash=plan_hash
+        )
         return token, expires_at
 
-    def consume(self, token: str, entry_id: str) -> None:
+    def consume(self, token: str, entry_id: str) -> str:
         """Raise :class:`MarketInstallError` unless ``token`` was issued for
-        ``entry_id``, is unused and unexpired — then mark it used."""
+        ``entry_id``, is unused and unexpired — then mark it used and return
+        the plan hash it was bound to (issue #349)."""
         entry = self._tokens.pop(token, None)
         if (
             entry is None
@@ -148,6 +156,7 @@ class ConsentStore:
                 "issued for a different entry. Fix: open the entry again and "
                 "confirm the consent screen before installing."
             )
+        return entry.plan_hash
 
 
 # ----------------------------------------------------------- config split
@@ -224,6 +233,14 @@ def _resolve_stdio_command(package: dict[str, Any]) -> tuple[str, list[str]]:
             f"palaia does not know how to run a {label!r} package yet — only npm "
             "(npx), pypi (uvx) and nuget (dnx) packages install automatically."
         )
+    if identifier.startswith("-") or ref.startswith("-") or any(c.isspace() for c in ref):
+        # Registry content is unverified: a "package name" of `--flag` would
+        # become an option to the package runner, not a package (issue #349).
+        raise MarketInstallError(
+            f"the registry lists {identifier!r} as the package to run, which is not a "
+            f"package name {runtime_hint} would accept. Fix: this listing cannot be "
+            "installed automatically; add the server by hand if you trust it."
+        )
     base_args = ["-y", ref] if runtime_hint == "npx" else [ref]
     extra_args = [
         str(arg.get("value"))
@@ -233,15 +250,23 @@ def _resolve_stdio_command(package: dict[str, Any]) -> tuple[str, list[str]]:
     return runtime_hint, [*base_args, *extra_args]
 
 
-async def _resolve_registry_ref_plan(
-    entry: MarketEntry,
-    config: dict[str, Any],
-    *,
-    key: str,
-    display_name: str,
-    market_service: MarketService,
-    secret_store: SecretStore,
-) -> InstallPlan:
+@dataclass(frozen=True, slots=True)
+class _RegistryTarget:
+    """What a ``registry_ref`` resolves to: a remote address, or a command."""
+
+    url: str | None = None
+    command: str | None = None
+    args: tuple[str, ...] = ()
+
+
+async def _resolve_registry_target(
+    entry: MarketEntry, *, market_service: MarketService
+) -> _RegistryTarget:
+    """Fetch the registry's ``server.json`` and derive what would run.
+
+    Shared by the consent preview and the install itself (issue #349), so
+    what the owner is shown is derived by the very code that installs it.
+    """
     registry_id = entry.source.value
     try:
         server = await market_service.registry_client.detail(registry_id)
@@ -257,9 +282,7 @@ async def _resolve_registry_ref_plan(
         url = str(remotes[0].get("url", ""))
         if not url:
             raise MarketInstallError(f"{entry.name!r}'s registry listing has no usable address.")
-        return _build_http_plan(
-            entry, config, key=key, display_name=display_name, url=url, secret_store=secret_store
-        )
+        return _RegistryTarget(url=url)
 
     packages = raw.get("packages") or []
     if not packages:
@@ -268,6 +291,29 @@ async def _resolve_registry_ref_plan(
             "package — palaia does not know how to install it yet."
         )
     command, args = _resolve_stdio_command(packages[0])
+    return _RegistryTarget(command=command, args=tuple(args))
+
+
+async def _resolve_registry_ref_plan(
+    entry: MarketEntry,
+    config: dict[str, Any],
+    *,
+    key: str,
+    display_name: str,
+    market_service: MarketService,
+    secret_store: SecretStore,
+) -> InstallPlan:
+    target = await _resolve_registry_target(entry, market_service=market_service)
+    if target.url is not None:
+        return _build_http_plan(
+            entry,
+            config,
+            key=key,
+            display_name=display_name,
+            url=target.url,
+            secret_store=secret_store,
+        )
+    command, args = target.command or "", list(target.args)
     plain, secret_values, _mounts = _split_config(entry.config_schema, config)
     env = {k.upper(): v for k, v in plain.items()}
     env_secrets: dict[str, str] = {}
@@ -463,11 +509,75 @@ def _derive_upstream_key(entry_id: str) -> str:
 # ------------------------------------------------------------------- REST
 
 
+class PlanPreview(BaseModel):
+    """What installing an entry would actually run or connect to (issue #349).
+
+    ``GET /api/market/entry/{id}/plan`` renders it on the consent screen;
+    the consent token is bound to ``plan_hash``, and the install re-derives
+    the same hash from the plan it built — a registry listing that changed
+    between the two is refused rather than run.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["stdio", "http", "container"]
+    #: For ``stdio``: the exact executable and arguments, e.g. ``npx`` and
+    #: ``["-y", "@acme/tool@1.2.0"]``.
+    command: str | None = None
+    args: list[str] = Field(default_factory=list)
+    #: For ``http``: the address the hub will connect to.
+    url: str | None = None
+    #: For ``container``: the image that will be pulled and run.
+    image: str | None = None
+    plan_hash: str
+
+
+def _plan_hash(
+    kind: str, *, command: str | None, args: Sequence[str], url: str | None, image: str | None
+) -> str:
+    canonical = json.dumps(
+        {"kind": kind, "command": command, "args": list(args), "url": url, "image": image},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:32]
+
+
+def _preview(kind: str, **fields: Any) -> PlanPreview:
+    command = fields.get("command")
+    args = list(fields.get("args") or [])
+    url = fields.get("url")
+    image = fields.get("image")
+    return PlanPreview(
+        kind=kind,  # type: ignore[arg-type]
+        command=command,
+        args=args,
+        url=url,
+        image=image,
+        plan_hash=_plan_hash(kind, command=command, args=args, url=url, image=image),
+    )
+
+
+def _plan_identity(plan: InstallPlan) -> str:
+    """The hash of what ``plan`` runs — the same function the preview used."""
+    if plan.image is not None:
+        return _plan_hash("container", command=None, args=(), url=None, image=plan.image)
+    upstream = plan.upstream
+    if upstream.kind == "stdio":
+        return _plan_hash(
+            "stdio", command=upstream.command, args=upstream.args, url=None, image=None
+        )
+    return _plan_hash("http", command=None, args=(), url=upstream.url, image=None)
+
+
 class ConsentTokenOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     token: str
     expires_at: float
+    #: Issue #349: what this token consents to — shown once more to the
+    #: owner, and the thing the install must still match.
+    preview: PlanPreview
 
 
 class InstallRequest(BaseModel):
@@ -548,12 +658,43 @@ class InstallService:
 
     # ---------------------------------------------------------- consent
 
-    async def issue_consent(self, entry_id: str) -> ConsentTokenOut:
+    async def _preview_for(self, entry: MarketEntry) -> PlanPreview:
+        """What installing ``entry`` would run — without installing, pulling
+        or storing anything (issue #349)."""
+        if entry.kind == "remote" and entry.source.type == "url":
+            return _preview("http", url=entry.source.value)
+        if entry.kind == "remote" and entry.source.type == "registry_ref":
+            target = await _resolve_registry_target(entry, market_service=self.market_service)
+            if target.url is not None:
+                return _preview("http", url=target.url)
+            return _preview("stdio", command=target.command, args=target.args)
+        if entry.kind == "container":
+            if not entry.source.value:
+                raise MarketInstallError(f"{entry.name!r} has no image declared to install.")
+            return _preview("container", image=entry.source.value)
+        if entry.kind == "remote":
+            raise MarketInstallError(
+                f"a 'remote' entry cannot install from a {entry.source.type!r} source."
+            )
+        label = _KIND_LABELS.get(entry.kind, entry.kind)
+        raise MarketInstallError(
+            f"{entry.name!r} is {label} — install it from the connect page instead; "
+            "the marketplace only lists it here."
+        )
+
+    async def preview(self, entry_id: str) -> PlanPreview:
         entry = await self.market_service.get_entry(entry_id)
         if entry is None:
             raise HTTPException(status_code=404, detail=f"no marketplace entry {entry_id!r}")
-        token, expires_at = self.consent.issue(entry_id)
-        return ConsentTokenOut(token=token, expires_at=expires_at)
+        try:
+            return await self._preview_for(entry)
+        except MarketInstallError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    async def issue_consent(self, entry_id: str) -> ConsentTokenOut:
+        preview = await self.preview(entry_id)
+        token, expires_at = self.consent.issue(entry_id, plan_hash=preview.plan_hash)
+        return ConsentTokenOut(token=token, expires_at=expires_at, preview=preview)
 
     # ---------------------------------------------------------- install
 
@@ -562,7 +703,7 @@ class InstallService:
         if entry is None:
             raise HTTPException(status_code=404, detail=f"no marketplace entry {entry_id!r}")
         try:
-            self.consent.consume(request.consent_token, entry_id)
+            consented_hash = self.consent.consume(request.consent_token, entry_id)
         except MarketInstallError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -588,6 +729,14 @@ class InstallService:
             )
         except (MarketInstallError, docker_runtime.DockerError, SecretStoreError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if _plan_identity(plan) != consented_hash:
+            # Issue #349: the registry (or the entry) now says something
+            # else than what the owner reviewed and consented to.
+            raise HTTPException(
+                status_code=409,
+                detail=f"what {entry.name!r} would install changed since you reviewed it. "
+                "Fix: open the entry again, read the consent screen, and confirm again.",
+            )
 
         try:
             await self.dynamic_gateway.register_upstream(plan.upstream)
@@ -861,6 +1010,11 @@ class InstallService:
 
 def build_market_install_router(service: InstallService) -> APIRouter:
     router = APIRouter(prefix="/api/market", tags=["market"])
+
+    @router.get("/entry/{entry_id}/plan", response_model=PlanPreview)
+    async def plan_preview(entry_id: str) -> PlanPreview:
+        """What installing this entry would run — for the consent screen (#349)."""
+        return await service.preview(entry_id)
 
     @router.post("/entry/{entry_id}/consent", response_model=ConsentTokenOut)
     async def issue_consent(entry_id: str) -> ConsentTokenOut:

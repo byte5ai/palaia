@@ -424,9 +424,26 @@ export interface MarketSearchResult {
   notes: Record<string, string>;
 }
 
+/** What installing an entry would actually run or connect to (issue 349) —
+ * the consent screen shows it before asking, and the token the hub issues
+ * is bound to `plan_hash`: an install whose plan no longer matches is
+ * refused with a 409. */
+export interface PlanPreview {
+  kind: "stdio" | "http" | "container";
+  /** `stdio`: the exact executable and its arguments. */
+  command: string | null;
+  args: string[];
+  /** `http`: the address the hub will connect to. */
+  url: string | null;
+  /** `container`: the image that will be pulled and run. */
+  image: string | null;
+  plan_hash: string;
+}
+
 export interface ConsentToken {
   token: string;
   expires_at: number;
+  preview: PlanPreview;
 }
 
 export interface InstalledAddon {
@@ -916,6 +933,9 @@ export const api = {
     permissions?: string[];
     maintainer: string;
   }) => postJson<MarketEntry>("/api/market/manual", body),
+  /** What an install would run or connect to, derived before anything
+   * happens (issue 349) — the consent screen renders it. */
+  getMarketPlan: (entryId: string) => getJson<PlanPreview>(`/api/market/entry/${entryId}/plan`),
   /** The consent screen's own POST (SPEC-304 deliverable #3) — the token
    * it returns is what `installMarketEntry` below must be given; there is
    * no install path that skips this call. */

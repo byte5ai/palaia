@@ -35,6 +35,7 @@ import type {
   MarketEntry,
   MarketEntryKind,
   MarketProvenance,
+  PlanPreview,
 } from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
 import { InfoIcon, MarketplaceIcon, WarningIcon } from "../shell/icons";
@@ -88,8 +89,31 @@ function InstallPanel({
   );
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Issue 349: a community listing resolves to a command only at install
+  // time — show that command *before* asking for consent, derived by the
+  // same code that will run it. Addresses and images are already on the
+  // entry itself.
+  const needsPlan = entry.kind === "remote" && entry.source.type === "registry_ref";
+  const [plan, setPlan] = useState<PlanPreview | null>(null);
+  const [planError, setPlanError] = useState<string | null>(null);
   const mounts = declaredMounts(entry);
   const missing = missingRequiredFields(entry.config_schema, config);
+
+  useEffect(() => {
+    if (!needsPlan) return;
+    let cancelled = false;
+    api
+      .getMarketPlan(entry.id)
+      .then((preview) => {
+        if (!cancelled) setPlan(preview);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setPlanError(describeError(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [entry.id, needsPlan]);
 
   function toggleProfile(path: string, on: boolean) {
     setSelectedProfiles((prev) => {
@@ -145,6 +169,23 @@ function InstallPanel({
         {entry.kind === "container" ? (
           <p className="t-xs t-muted">Image: {entry.source.value}</p>
         ) : null}
+        {entry.kind === "remote" && entry.source.type === "url" ? (
+          <p className="t-xs t-muted">Connects to: {entry.source.value}</p>
+        ) : null}
+        {needsPlan && plan?.kind === "stdio" ? (
+          <p className="t-xs t-muted" data-testid="install-plan">
+            Runs on this machine: <code>{[plan.command, ...plan.args].join(" ")}</code>
+          </p>
+        ) : null}
+        {needsPlan && plan?.kind === "http" ? (
+          <p className="t-xs t-muted" data-testid="install-plan">
+            Connects to: {plan.url}
+          </p>
+        ) : null}
+        {needsPlan && !plan && !planError ? (
+          <p className="t-xs t-muted">Looking up what it would run…</p>
+        ) : null}
+        {planError ? <p className="field__error">{planError}</p> : null}
         {mounts.length > 0 ? (
           <p className="t-xs t-muted">Folders it will read and write: {mounts.join(", ")}</p>
         ) : null}
@@ -174,7 +215,7 @@ function InstallPanel({
         <Button
           variant="primary"
           onClick={install}
-          disabled={installing || missing.length > 0}
+          disabled={installing || missing.length > 0 || (needsPlan && !plan)}
         >
           {installing ? "Installing…" : "Install and connect"}
         </Button>
