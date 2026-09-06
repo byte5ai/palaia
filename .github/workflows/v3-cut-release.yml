@@ -1,7 +1,8 @@
 # Cuts a v3 release from the dispatched ref: creates the `v3.<version>` tag
 # and the GitHub release (pre-release for `rc`/`beta` versions) from the
 # committed notes file, then dispatches the `v3 hub image` workflow on that
-# tag so the container images publish. Exists because release cuts are done
+# tag so the container images publish, and the `v3 Pi appliance image`
+# workflow so the .img.xz lands on the release. Exists because release cuts are done
 # by an agent session whose git access blocks tag pushes — the repo's own
 # Actions token does what the session cannot (v3/RELEASING.md §3).
 #
@@ -24,7 +25,7 @@ on:
 
 permissions:
   contents: write # create the tag + release
-  actions: write # dispatch the v3 hub image workflow on the new tag
+  actions: write # dispatch the hub image + Pi appliance image workflows on the new tag
 
 jobs:
   cut:
@@ -97,4 +98,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh workflow run v3-release.yml --ref "${{ steps.guard.outputs.tag }}" \
+            --repo "${GITHUB_REPOSITORY}"
+
+      - name: Dispatch the Pi appliance image build on the new tag
+        # Same suppression as above: v3-pi-image.yml's own `push: tags:`
+        # trigger never fires for a tag this token created, so without this
+        # step a release ships with no appliance image (issue #341). The
+        # release already exists two steps up, so that workflow attaches the
+        # .img.xz + .sha256 to it directly.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run v3-pi-image.yml --ref "${{ steps.guard.outputs.tag }}" \
             --repo "${GITHUB_REPOSITORY}"

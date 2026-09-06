@@ -85,7 +85,11 @@ whoever holds it.
       tag-parsing strips exactly `refs/tags/v3.` and keeps the rest, so
       the tag really is `v3.` + `v3/VERSION`'s content), publishes the
       GitHub release from `v3/docs/release-notes/<version>.md` (which must
-      exist — write it first), and dispatches the image build on the tag.
+      exist — write it first), and dispatches both image builds on the tag:
+      `v3-release.yml` (the hub container image) and `v3-pi-image.yml` (the
+      Raspberry Pi appliance image, attached to the release as
+      `.img.xz` + `.sha256`). Neither would run on its own — a tag created
+      by the workflow's token does not fire their `push: tags:` triggers.
       This is the step that actually publishes — nothing before it does.
       (A plain `git tag v3.3.0.0 && git push origin v3.3.0.0` by someone
       with tag-push rights creates the same tag, but then the GitHub
@@ -102,6 +106,11 @@ whoever holds it.
       health smoke, checks the 400MB image budget, and scans for
       secrets. **[OWNER]**: if any of these fail, this is not a "release
       anyway" situation — fix and re-tag.
+- [ ] Watch `v3-pi-image.yml`'s run too (it takes longer — a real OS image
+      is built twice for the reproducibility check): when it is green, the
+      release carries `palaia-appliance-*.img.xz` and its `.sha256`, which
+      is what `deploy/pi-image/README.md` and `BOOT-TEST.md` tell people to
+      flash. A release without that asset is not finished.
 
 ## 4. After the tag: what becomes reachable
 

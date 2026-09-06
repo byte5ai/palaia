@@ -6,7 +6,9 @@ name: v3 Pi appliance image
 # a double-build reproducibility check, xz -9 compression) and can take a
 # while; see v3/deploy/pi-image/README.md. Manual dispatch, or the same
 # v3.* release tag v3-release.yml already reacts to (see that workflow's
-# own comment on why tag pushes have no `paths` filter).
+# own comment on why tag pushes have no `paths` filter). A release cut by
+# v3-cut-release.yml dispatches this workflow explicitly on the new tag —
+# a tag created with the Actions token does not fire `push: tags:` (#341).
 on:
   workflow_dispatch: {}
   push:
@@ -75,7 +77,7 @@ jobs:
             gh release upload "${tag}" /tmp/pi-image-build/out/*.img.xz /tmp/pi-image-build/out/*.img.xz.sha256 \
               --repo "${GITHUB_REPOSITORY}" --clobber
           else
-            echo "::notice::No GitHub release exists yet for tag ${tag} (see v3/RELEASING.md — release creation is an owner step, not automated). The image is attached as a workflow artifact instead; re-run this workflow (workflow_dispatch, ref=${tag}) once the release exists to attach it there too."
+            echo "::notice::No GitHub release exists yet for tag ${tag}. v3-cut-release.yml creates the release before it dispatches this workflow (v3/RELEASING.md §3), so this happens only when the tag was pushed by hand. The image is attached as a workflow artifact instead; re-run this workflow (workflow_dispatch, ref=${tag}) once the release exists to attach it there too."
           fi
 
       - name: Summary

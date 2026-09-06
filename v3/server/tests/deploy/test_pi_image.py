@@ -201,6 +201,27 @@ def test_workflow_is_dispatch_and_tag_only_never_pr() -> None:
     )
 
 
+def test_the_release_cut_dispatches_the_pi_image_build_on_the_new_tag() -> None:
+    """Issue #341: a tag created with the Actions token does not fire this
+    workflow's `push: tags:` trigger, so v3-cut-release.yml must dispatch it
+    explicitly — otherwise a release ships with no appliance image."""
+    workflows = Path(__file__).resolve().parents[4] / ".github" / "workflows"
+    cut = (workflows / "v3-cut-release.yml").read_text(encoding="utf-8")
+    assert "gh workflow run v3-pi-image.yml --ref" in cut, (
+        "v3-cut-release.yml no longer dispatches the Pi appliance image build"
+    )
+    # Ordered after the release exists, so the image attaches to it.
+    assert cut.index("gh release create") < cut.index("gh workflow run v3-pi-image.yml")
+    assert "actions: write" in cut
+
+    pi = (workflows / "v3-pi-image.yml").read_text(encoding="utf-8")
+    assert "release creation is an owner step" not in pi, (
+        "stale: the release is created by v3-cut-release.yml since #305"
+    )
+    releasing = (Path(__file__).resolve().parents[3] / "RELEASING.md").read_text(encoding="utf-8")
+    assert "v3-pi-image.yml" in releasing
+
+
 def test_readme_states_a_size_budget_matching_build_sh() -> None:
     readme = (PI_IMAGE_ROOT / "README.md").read_text(encoding="utf-8")
     build_sh = (PI_IMAGE_ROOT / "build.sh").read_text(encoding="utf-8")
