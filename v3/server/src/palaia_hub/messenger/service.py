@@ -447,18 +447,29 @@ class MessengerService:
     # -- read ------------------------------------------------------------
 
     async def check(self, handle: str, session_secret: str) -> CheckResult:
-        """Every new envelope for ``handle``, marked delivered.
+        """Every envelope for ``handle`` that is not acked yet.
 
-        Fires ``message.received`` per envelope — metadata only, which is
-        the SPEC's contract test: the body reaches the recipient through
-        this call's *result*, and never travels the bus.
+        New ones are marked delivered; ones delivered by an earlier call and
+        still unacked come back again (at-least-once, issue #340), listed in
+        ``redelivered`` so a client can tell a repeat from news. Fires
+        ``message.received`` once per envelope, on the call that first
+        delivers it — metadata only, which is the SPEC's contract test: the
+        body reaches the recipient through this call's *result*, and never
+        travels the bus.
         """
         await self._authenticate(handle, session_secret)
-        items, expired = await asyncio.to_thread(self._store.check, handle)
+        items, expired, newly_delivered = await asyncio.to_thread(self._store.check, handle)
         self._emit_expired(expired)
         for item in items:
-            self._emit("message.received", EnvelopeMetadata.of(item).model_dump())
-        return CheckResult(handle=handle, envelopes=[item.envelope for item in items])
+            if item.envelope.id in newly_delivered:
+                self._emit("message.received", EnvelopeMetadata.of(item).model_dump())
+        return CheckResult(
+            handle=handle,
+            envelopes=[item.envelope for item in items],
+            redelivered=[
+                item.envelope.id for item in items if item.envelope.id not in newly_delivered
+            ],
+        )
 
     async def ack(self, handle: str, session_secret: str, envelope_id: str) -> AckResult:
         """Close one envelope in the caller's own inbox."""

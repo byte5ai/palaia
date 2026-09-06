@@ -148,14 +148,31 @@ def test_a_ref_without_the_memory_scheme_is_refused(store: MessengerStore) -> No
 
 def test_check_returns_pending_and_marks_delivered(store: MessengerStore) -> None:
     _send(store, to="b")
-    items, _ = store.check("b")
+    items, _, newly = store.check("b")
     assert [item.state for item in items] == ["delivered"]
     assert items[0].delivered_at is not None
+    assert newly == {items[0].envelope.id}
 
 
-def test_check_twice_returns_nothing_the_second_time(store: MessengerStore) -> None:
+def test_check_returns_an_unacked_envelope_again_until_it_is_acked(
+    store: MessengerStore,
+) -> None:
+    """Issue #340: the state flips to delivered before the tool result
+    reaches the client, so a lost response must not lose the message.
+    `check` is at-least-once; only `ack` removes an envelope from it."""
     _send(store, to="b")
-    assert len(store.check("b")[0]) == 1
+    first, _, newly_first = store.check("b")
+    assert len(first) == 1
+    envelope_id = first[0].envelope.id
+    assert newly_first == {envelope_id}
+
+    second, _, newly_second = store.check("b")
+    assert [item.envelope.id for item in second] == [envelope_id]
+    assert second[0].state == "delivered"
+    assert second[0].delivered_at == first[0].delivered_at, "redelivery keeps the first time"
+    assert newly_second == set(), "a repeat is not news"
+
+    store.ack(envelope_id, "b")
     assert store.check("b")[0] == []
 
 
@@ -205,9 +222,7 @@ def test_broadcast_fans_out_one_envelope_per_recipient(store: MessengerStore) ->
 # -- TTL expiry ---------------------------------------------------------------
 
 
-def test_an_unchecked_envelope_past_expires_at_is_gone(
-    store: MessengerStore, clock: Clock
-) -> None:
+def test_an_unchecked_envelope_past_expires_at_is_gone(store: MessengerStore, clock: Clock) -> None:
     items, _ = _send(store, to="b", ttl_seconds=60)
     envelope_id = items[0].envelope.id
     clock.advance(61)
@@ -228,9 +243,7 @@ def test_expiry_metadata_never_carries_a_body(store: MessengerStore, clock: Cloc
     assert dumped["body_bytes"] == len("secret plan")
 
 
-def test_expiry_is_reported_once_then_the_row_is_gone(
-    store: MessengerStore, clock: Clock
-) -> None:
+def test_expiry_is_reported_once_then_the_row_is_gone(store: MessengerStore, clock: Clock) -> None:
     _send(store, to="b", ttl_seconds=60)
     clock.advance(61)
     assert len(store.sweep()) == 1
@@ -249,7 +262,7 @@ def test_every_read_sweeps_so_expiry_needs_no_background_task(
 ) -> None:
     _send(store, to="b", ttl_seconds=60)
     clock.advance(61)
-    _, expired = store.check("b")
+    _, expired, _ = store.check("b")
     assert len(expired) == 1
 
 

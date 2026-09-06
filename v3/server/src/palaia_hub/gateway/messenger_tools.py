@@ -295,14 +295,16 @@ def build_messenger_server(
     @server.tool(
         name="messenger_check",
         description=desc(
-            "Collect every new envelope addressed to YOUR handle and mark it "
-            "delivered. Requires your own handle and session_secret — this "
-            "never reads another session's inbox. Delivery is pull: call this "
-            "periodically (a heartbeat is a good moment). Already-delivered "
-            "envelopes are not returned again; re-read one with "
-            "messenger_thread on its id. The text summary is compact on "
-            "purpose — bodies are in the structured result, and the text "
-            "shows one only when a single envelope arrived."
+            "Collect every envelope addressed to YOUR handle that you have "
+            "not acked yet: new ones are marked delivered, and ones an earlier "
+            "check already returned come back again until you messenger_ack "
+            "them (their ids are listed under `redelivered`), so a lost "
+            "response never loses a message. Requires your own handle and "
+            "session_secret — this never reads another session's inbox. "
+            "Delivery is pull: call this periodically (a heartbeat is a good "
+            "moment), and ack what you have dealt with. The text summary is "
+            "compact on purpose — bodies are in the structured result, and "
+            "the text shows one only when a single envelope arrived."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=False, destructiveHint=False, idempotentHint=False

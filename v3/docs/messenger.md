@@ -116,8 +116,13 @@ sent nothing.
 ## 6. Checking, replying, and threads
 
 Delivery is pull, by design: a session calls `messenger_check` to collect
-whatever has arrived for its own handle, marking each item delivered so it
-is not handed over twice. An empty result is a normal result, not a
+whatever has arrived for its own handle. New items are marked delivered;
+items an earlier check already returned and nobody acked since come back
+again, listed under `redelivered` — at-least-once, because the hub marks
+a message delivered before its reply reaches the client, and a reply lost
+to a timeout must not lose the message with it. Only `messenger_ack`
+takes a message out of what `messenger_check` returns, so a session that
+acts on a message should ack it. An empty result is a normal result, not a
 failure — most checks, for most sessions, most of the time, will be empty.
 
 When `expects_reply` is `true`, the receiving session is expected to

@@ -248,13 +248,17 @@ class SendResult(BaseModel):
 
 
 class CheckResult(BaseModel):
-    """``messenger_check``'s result: the caller's own new envelopes, now
-    marked delivered."""
+    """``messenger_check``'s result: every envelope in the caller's own inbox
+    that is not acked yet — the new ones now marked delivered, plus the ones
+    an earlier check already delivered (issue #340)."""
 
     model_config = ConfigDict(extra="forbid")
 
     handle: str
     envelopes: list[Envelope]
+    #: Ids in ``envelopes`` that an earlier ``check`` already returned and
+    #: nobody acked since. Empty on a first read.
+    redelivered: list[str] = Field(default_factory=list)
 
 
 class AckResult(BaseModel):

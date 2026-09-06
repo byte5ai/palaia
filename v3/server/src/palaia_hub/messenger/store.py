@@ -266,34 +266,40 @@ class MessengerStore:
 
     def check(
         self, recipient: str, *, now: float | None = None
-    ) -> tuple[list[InboxItem], list[EnvelopeMetadata]]:
-        """Every ``pending`` envelope for ``recipient``, marked ``delivered``.
+    ) -> tuple[list[InboxItem], list[EnvelopeMetadata], set[str]]:
+        """Every envelope for ``recipient`` not yet acked, oldest first.
 
-        Returns ``(items, expired)``, the items carrying their *new*
-        (delivered) state — so the caller's ``message.received`` event and
-        the caller's own returned envelope agree. Calling this twice returns
-        nothing the second time: ``delivered`` is what "already announced"
-        means, and re-announcing would double every automation downstream.
+        ``pending`` rows are marked ``delivered`` on the way out; rows already
+        ``delivered`` but not ``acked`` come back again — at-least-once, not
+        at-most-once (issue #340): the state flips and commits *before* the
+        tool result travels to the client, so a lost response used to make
+        the message permanently invisible to its recipient. Only ``ack``
+        removes an envelope from what ``check`` returns.
+
+        Returns ``(items, expired, newly_delivered)`` — the ids that changed
+        state on this call, so the caller announces ``message.received``
+        once per envelope rather than on every re-read.
         """
         current = self._now(now)
         with self._lock:
             expired = self._sweep_locked(current)
             rows = self._conn.execute(
                 "SELECT rowid AS seq, * FROM messenger_envelopes "
-                "WHERE recipient = ? AND state = 'pending' "
+                "WHERE recipient = ? AND state IN ('pending', 'delivered') "
                 "ORDER BY created_at ASC, seq ASC",
                 (recipient,),
             ).fetchall()
             ids = [row["id"] for row in rows]
-            if ids:
+            newly_delivered = {row["id"] for row in rows if row["state"] == "pending"}
+            if newly_delivered:
                 self._conn.executemany(
                     "UPDATE messenger_envelopes SET state = 'delivered', delivered_at = ? "
                     "WHERE id = ?",
-                    [(current, envelope_id) for envelope_id in ids],
+                    [(current, envelope_id) for envelope_id in newly_delivered],
                 )
                 self._conn.commit()
             items = [_row_to_item(row) for row in self._rows_by_ids_locked(ids)]
-        return items, expired
+        return items, expired, newly_delivered
 
     def ack(
         self, envelope_id: str, recipient: str, *, now: float | None = None

@@ -36,9 +36,7 @@ pytestmark = pytest.mark.anyio
 async def _register(
     directory: DirectoryService, *, scope: str = "", capabilities: list[str] | None = None
 ) -> tuple[str, str]:
-    result = await directory.register(
-        scope=scope, capabilities=capabilities or [], ttl_seconds=60
-    )
+    result = await directory.register(scope=scope, capabilities=capabilities or [], ttl_seconds=60)
     return result.session.handle, result.session_secret
 
 
@@ -287,7 +285,7 @@ async def test_a_ref_that_resolves_is_carried(
 async def test_a_ref_in_a_vault_the_sender_cannot_read_is_refused(
     store: MessengerStore, directory: DirectoryService
 ) -> None:
-    """"validated to resolve in a vault the sender can read" — a note that
+    """ "validated to resolve in a vault the sender can read" — a note that
     exists in a vault outside the caller's scopes is as unusable as one that
     does not exist, and the error must not become an oracle for it."""
     service = MessengerService(
@@ -354,8 +352,7 @@ async def test_broadcast_delivers_to_every_scope_match(
 ) -> None:
     a_handle, a_secret = await _register(directory, scope="reviewing billing")
     matches = [
-        await _register(directory, scope="refactoring the billing service")
-        for _ in range(3)
+        await _register(directory, scope="refactoring the billing service") for _ in range(3)
     ]
     await _register(directory, scope="writing docs")
 
@@ -408,8 +405,7 @@ async def test_broadcast_caps_at_twenty_recipients_and_sends_nothing_over_it(
     is worse than none."""
     a_handle, a_secret = await _register(directory, scope="sender")
     peers = [
-        await _register(directory, scope="team alpha")
-        for _ in range(MAX_BROADCAST_RECIPIENTS + 1)
+        await _register(directory, scope="team alpha") for _ in range(MAX_BROADCAST_RECIPIENTS + 1)
     ]
     with pytest.raises(BroadcastError) as excinfo:
         await service.send(
@@ -431,10 +427,7 @@ async def test_broadcast_at_exactly_twenty_is_delivered(
     service: MessengerService, directory: DirectoryService
 ) -> None:
     a_handle, a_secret = await _register(directory, scope="sender")
-    peers = [
-        await _register(directory, scope="team beta")
-        for _ in range(MAX_BROADCAST_RECIPIENTS)
-    ]
+    peers = [await _register(directory, scope="team beta") for _ in range(MAX_BROADCAST_RECIPIENTS)]
     sent = await service.send(
         sender=a_handle,
         session_secret=a_secret,
@@ -568,6 +561,43 @@ async def test_message_received_fires_once_not_on_every_check(
     await service.check(b_handle, b_secret)
     await service.check(b_handle, b_secret)
     assert len([1 for name, _ in events if name == "message.received"]) == 1
+
+
+async def test_check_redelivers_an_unacked_envelope_and_says_so(
+    service: MessengerService,
+    directory: DirectoryService,
+    events: list[tuple[str, dict[str, Any]]],
+) -> None:
+    """Issue #340: the recipient's tool response can be lost after the hub
+    marked the envelope delivered. `check` is at-least-once — the envelope
+    comes back, flagged as a repeat, until the recipient acks it."""
+    a_handle, a_secret = await _register(directory)
+    b_handle, b_secret = await _register(directory)
+    sent = await service.send(
+        sender=a_handle,
+        session_secret=a_secret,
+        message_type="handoff",
+        to=b_handle,
+        subject="take over the deploy",
+        body="the runbook is in memory://work/deploy",
+    )
+    envelope_id = sent.envelopes[0].id
+
+    first = await service.check(b_handle, b_secret)
+    assert [e.id for e in first.envelopes] == [envelope_id]
+    assert first.redelivered == []
+
+    # The response was lost; the recipient asks again.
+    second = await service.check(b_handle, b_secret)
+    assert [e.id for e in second.envelopes] == [envelope_id]
+    assert second.envelopes[0].body == "the runbook is in memory://work/deploy"
+    assert second.redelivered == [envelope_id]
+    # Announced once, not on every re-read.
+    assert len([1 for name, _ in events if name == "message.received"]) == 1
+
+    await service.ack(b_handle, b_secret, envelope_id)
+    third = await service.check(b_handle, b_secret)
+    assert third.envelopes == [] and third.redelivered == []
 
 
 async def test_message_expired_fires_for_an_unchecked_envelope(
