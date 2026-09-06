@@ -67,6 +67,27 @@ from .models import (
 
 #: Default TTL applied when a caller does not specify one at registration.
 DEFAULT_TTL_SECONDS = 300.0
+
+#: Bounds for a session's ``ttl_seconds`` (issue #363). Below the minimum a
+#: row would be pruned by the very next call — ``register`` would hand back a
+#: handle that no longer exists; above the maximum a row would never go
+#: stale and never be pruned, polluting the directory for good.
+MIN_TTL_SECONDS = 30.0
+MAX_TTL_SECONDS = 24 * 60 * 60.0
+
+
+def clamp_ttl(ttl_seconds: float) -> float:
+    """``ttl_seconds`` forced into ``[MIN_TTL_SECONDS, MAX_TTL_SECONDS]``;
+    anything that is not a finite number becomes the default."""
+    try:
+        value = float(ttl_seconds)
+    except (TypeError, ValueError):
+        return DEFAULT_TTL_SECONDS
+    if value != value or value in (float("inf"), float("-inf")):
+        return DEFAULT_TTL_SECONDS
+    return min(max(value, MIN_TTL_SECONDS), MAX_TTL_SECONDS)
+
+
 #: A session past this multiple of its own TTL, counted from its last
 #: heartbeat, is pruned (hard-deleted) rather than merely shown ``stale``.
 PRUNE_TTL_MULTIPLIER = 5.0
@@ -232,6 +253,7 @@ class DirectoryStore:
         """Register a new session. Returns
         ``(record, session_secret, newly_stale_handles)``."""
         current = self._now(now)
+        ttl_seconds = clamp_ttl(ttl_seconds)
         handle = new_secret()[:HANDLE_CHARS]
         secret = new_secret()
         with self._lock:
@@ -282,8 +304,7 @@ class DirectoryStore:
                 raise SessionNotFoundError(f"no session registered at handle {handle!r}")
             self._check_secret_locked(row, session_secret)
             self._conn.execute(
-                "UPDATE session_registry SET last_seen_at = ?, stale_notified = 0 "
-                "WHERE handle = ?",
+                "UPDATE session_registry SET last_seen_at = ?, stale_notified = 0 WHERE handle = ?",
                 (current, handle),
             )
             self._conn.commit()
@@ -395,9 +416,7 @@ class DirectoryStore:
             self._conn.commit()
         return True, [h for h in newly_stale if h != handle]
 
-    def admin_deregister(
-        self, handle: str, *, now: float | None = None
-    ) -> tuple[bool, list[str]]:
+    def admin_deregister(self, handle: str, *, now: float | None = None) -> tuple[bool, list[str]]:
         """Owner control: remove a session's row with no secret required
         (SPEC-405 deliverable #2 — "deregister a stale session").
 
@@ -475,7 +494,10 @@ class DirectoryStore:
 __all__ = [
     "DEFAULT_TTL_SECONDS",
     "HANDLE_CHARS",
+    "MAX_TTL_SECONDS",
+    "MIN_TTL_SECONDS",
     "PRUNE_TTL_MULTIPLIER",
     "DirectoryError",
     "DirectoryStore",
+    "clamp_ttl",
 ]

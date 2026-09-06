@@ -50,7 +50,7 @@ from starlette.types import ASGIApp
 from ..auth.enforcement import missing_directory_scope_error
 from ..directory.models import DirectoryError, ReportedStatus, SessionStatus
 from ..directory.service import DirectoryService
-from ..directory.store import DEFAULT_TTL_SECONDS
+from ..directory.store import DEFAULT_TTL_SECONDS, MAX_TTL_SECONDS, MIN_TTL_SECONDS
 
 DIRECTORY_TOOL_ACTIONS: tuple[str, ...] = (
     "directory_register",
@@ -126,7 +126,8 @@ def build_directory_server(
             "for every later heartbeat/update/deregister on this handle). "
             "ttl_seconds controls how long this session may go without a "
             "heartbeat before showing as stale to others (default "
-            f"{DEFAULT_TTL_SECONDS:.0f}s)."
+            f"{DEFAULT_TTL_SECONDS:.0f}s; values outside {MIN_TTL_SECONDS:.0f}s to "
+            f"{MAX_TTL_SECONDS:.0f}s are clamped to that range)."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=False, destructiveHint=False, idempotentHint=False
@@ -149,7 +150,14 @@ def build_directory_server(
             list[str] | None, Field(description="Free-text capability tags this session offers.")
         ] = None,
         ttl_seconds: Annotated[
-            float, Field(description="Seconds without a heartbeat before this session goes stale.")
+            float,
+            Field(
+                description=(
+                    "Seconds without a heartbeat before this session goes stale "
+                    f"({MIN_TTL_SECONDS:.0f} to {MAX_TTL_SECONDS:.0f}; out-of-range values "
+                    "are clamped)."
+                )
+            ),
         ] = DEFAULT_TTL_SECONDS,
     ) -> ToolResult:
         if (err := _scope_error("directory_register")) is not None:
