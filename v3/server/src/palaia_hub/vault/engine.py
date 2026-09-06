@@ -98,12 +98,27 @@ T = TypeVar("T")
 
 MEMORY_SCHEME = "memory://"
 
+#: Marks a ``.gitignore`` that already carries the editor-state rules below
+#: (issue #359). Once present, the file is the owner's: a rule they remove
+#: on purpose is not re-added.
+GITIGNORE_MARKER = "# palaia gitignore v2"
+
+#: Editor state and editor trash are never vault content (``IGNORED_DIRS``)
+#: and must not ride along in "external edits" commits either — Obsidian
+#: rewrites ``.obsidian/workspace.json`` on nearly every interaction.
+GITIGNORE_EDITOR_STATE = (
+    "# editor state and editor trash: never vault content\n"
+    ".obsidian/\n"
+    ".trash/\n"
+    f"{GITIGNORE_MARKER}\n"
+)
+
 GITIGNORE_BLOCK = (
     "# palaia engine-private storage: rebuildable index/state, never vault content\n"
     ".palaia/\n"
     "# in-flight atomic writes\n"
     f"*{TEMP_SUFFIX}\n"
-)
+) + GITIGNORE_EDITOR_STATE
 
 
 @dataclass(frozen=True, slots=True)
@@ -364,6 +379,9 @@ class VaultEngine:
         current = path.read_text(encoding="utf-8")
         if ".palaia/" not in current:
             atomic_write_text(path, current.rstrip("\n") + "\n\n" + GITIGNORE_BLOCK)
+        elif GITIGNORE_MARKER not in current:
+            # A vault from before issue #359: add the editor-state rules once.
+            atomic_write_text(path, current.rstrip("\n") + "\n\n" + GITIGNORE_EDITOR_STATE)
 
     def _ensure_manifest(self, purpose: str | None) -> None:
         path = self.root / MANIFEST_PATH
@@ -1411,7 +1429,11 @@ class VaultEngine:
         # Engine writes whose commit failed earlier are committed first, with
         # their own message and attribution — they are not external edits.
         self._recover_uncommitted()
-        dirty = self.git.dirty_paths()
+        # Editor state (`.obsidian/`), editor trash and engine storage are not
+        # vault content whatever the vault's `.gitignore` says (issue #359).
+        dirty = [
+            path for path in self.git.dirty_paths() if path.split("/", 1)[0] not in IGNORED_DIRS
+        ]
         if not dirty:
             return None
         for path in dirty:
