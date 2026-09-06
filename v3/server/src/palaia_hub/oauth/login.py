@@ -51,6 +51,9 @@ logger = logging.getLogger("palaia_hub.oauth.login")
 
 SESSION_COOKIE = "palaia_oauth_session"
 CSRF_COOKIE = "palaia_oauth_csrf"
+#: Issue #345: binds an identity-provider sign-in to the browser that
+#: started it. Set on ``/oauth/idp/start``, required back on the callback.
+IDP_NONCE_COOKIE = "palaia_oauth_idp"
 CSRF_FIELD = "csrf_token"
 #: The request header the double-submit token is echoed in by anything that
 #: is not an HTML form — the dashboard's API client, and the sign-out call.

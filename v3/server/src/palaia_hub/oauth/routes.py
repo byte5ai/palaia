@@ -41,12 +41,20 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from .errors import OAuthError
-from .login import CSRF_COOKIE, CSRF_FIELD, CSRF_HEADER, SESSION_COOKIE, new_csrf_token
+from .login import (
+    CSRF_COOKIE,
+    CSRF_FIELD,
+    CSRF_HEADER,
+    IDP_NONCE_COOKIE,
+    SESSION_COOKIE,
+    new_csrf_token,
+)
 from .models import ClientInfo
 from .service import (
     AUTHORIZE_PATH,
     IDP_CALLBACK_PATH,
     IDP_START_PATH,
+    IDP_STATE_TTL_SECONDS,
     JWKS_PATH,
     LOGIN_PATH,
     REGISTER_PATH,
@@ -426,24 +434,42 @@ def build_oauth_router(server: AuthorizationServer) -> APIRouter:
                         "this sign-in link is invalid. Fix: start from the sign-in page.",
                     )
                 )
-            location = await server.start_idp_signin(next_url)
-            return RedirectResponse(location, status_code=303, headers=NO_STORE)
+            # Issue #345: the browser that starts the sign-in is the only one
+            # that may finish it — a nonce cookie here, its hash on the ticket.
+            nonce = new_csrf_token()
+            location = await server.start_idp_signin(next_url, browser_nonce=nonce)
+            response = RedirectResponse(location, status_code=303, headers=NO_STORE)
+            _set_cookie(
+                response,
+                IDP_NONCE_COOKIE,
+                nonce,
+                secure=secure_cookies,
+                max_age=IDP_STATE_TTL_SECONDS,
+            )
+            return response
 
         @router.get(IDP_CALLBACK_PATH)
         async def idp_callback(request: Request) -> Response:
             """The provider sends the browser back here with ``code``/``state``."""
             params = dict(request.query_params)
+            nonce = request.cookies.get(IDP_NONCE_COOKIE, "")
             try:
-                session, expires_at, next_url = await server.finish_idp_signin(params)
+                session, expires_at, next_url = await server.finish_idp_signin(
+                    params, browser_nonce=nonce
+                )
             except OAuthError as exc:
-                return _authorize_error_page(exc)
+                failure = _authorize_error_page(exc)
+                failure.delete_cookie(IDP_NONCE_COOKIE, path="/")
+                return failure
             target = next_url if _is_safe_next(next_url) else "/"
-            return _start_session(
+            response = _start_session(
                 target,
                 session=session,
                 max_age=max(0, expires_at - server.now()),
                 secure=secure_cookies,
             )
+            response.delete_cookie(IDP_NONCE_COOKIE, path="/")
+            return response
 
     @router.post(LOGOUT_PATH)
     async def logout(request: Request) -> Response:

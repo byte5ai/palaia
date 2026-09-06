@@ -396,7 +396,9 @@ all four:
   prototype): **grace-windowed refresh rotation** instead of strict single-use —
   claude.ai fans one connector out over web, phone and desktop, and concurrent
   refreshes must converge instead of tearing the grant down (strict rotation caused
-  daily re-logins); **registered-client garbage collection** — every reconnect
+  daily re-logins) — bounded since #346: a spent token replayed *after* its window,
+  or more than a handful of times inside it, revokes the grant family (RFC 9700
+  §4.14.2); **registered-client garbage collection** — every reconnect
   registers a fresh client and nothing cleans them up unless you do; **resource
   indicators are resolved against the configured canonical audience, never minted
   verbatim** — clients disagree about trailing path segments, and a verbatim `aud`

@@ -201,6 +201,46 @@ async def test_a_replayed_state_is_rejected_single_use(tmp_path: Path) -> None:
 
 
 @pytest.mark.anyio
+async def test_the_callback_must_arrive_in_the_browser_that_started_the_sign_in(
+    tmp_path: Path,
+) -> None:
+    """Issue #345: login CSRF through the provider. An attacker completes
+    their own provider leg and hands the victim the callback link; the
+    victim's browser never received the nonce cookie `start` set, so the
+    valid `state` signs nobody in."""
+    harness = _github_harness(tmp_path)
+    async with harness.app.router.lifespan_context(harness.app):
+        async with _http(harness) as attacker:
+            start = await attacker.get("/oauth/idp/start?next=%2Foauth%2Fauthorize%3Fx%3D1")
+            state = _state_from_start_redirect(start)
+            assert "palaia_oauth_idp" in attacker.cookies, "start must bind the browser"
+
+            async with _http(harness) as victim:
+                response = await victim.get(f"/oauth/idp/callback?code=the-code&state={state}")
+                assert response.status_code == 400
+                assert "palaia_oauth_session" not in victim.cookies
+
+            # The ticket was consumed by that attempt: it does not work for
+            # the attacker afterwards either.
+            replay = await attacker.get(f"/oauth/idp/callback?code=the-code&state={state}")
+            assert replay.status_code == 400
+            assert "palaia_oauth_session" not in attacker.cookies
+
+
+@pytest.mark.anyio
+async def test_the_nonce_cookie_is_cleared_once_the_sign_in_finishes(tmp_path: Path) -> None:
+    harness = _github_harness(tmp_path)
+    async with harness.app.router.lifespan_context(harness.app):
+        async with _http(harness) as http:
+            start = await http.get("/oauth/idp/start?next=%2Foauth%2Fauthorize%3Fx%3D1")
+            state = _state_from_start_redirect(start)
+            callback = await http.get(f"/oauth/idp/callback?code=the-code&state={state}")
+            assert callback.status_code == 303
+            assert "palaia_oauth_session" in http.cookies
+            assert "palaia_oauth_idp" not in http.cookies, "a finished ticket leaves no nonce"
+
+
+@pytest.mark.anyio
 async def test_a_mismatched_state_is_rejected(tmp_path: Path) -> None:
     harness = _github_harness(tmp_path)
     try:
