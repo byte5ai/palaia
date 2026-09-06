@@ -150,6 +150,12 @@ call that registration ever makes. Two different sessions can hold tokens
 with identical scopes and still be unable to read each other's messages;
 that is the property this design exists to guarantee.
 
+A session that stops heartbeating disappears from the directory after five
+of its TTLs, but its handle and secret keep working for `messenger_check`
+and `messenger_ack` for another seven days — as long as any message it was
+sent can live — and a heartbeat brings the session back. Nobody can send it
+anything new in between: an unlisted session is an unknown recipient.
+
 ## 8. Push adapters (beyond polling)
 
 Pull (`messenger_check`) is the universal baseline — nothing about it

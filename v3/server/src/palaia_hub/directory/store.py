@@ -89,8 +89,19 @@ def clamp_ttl(ttl_seconds: float) -> float:
 
 
 #: A session past this multiple of its own TTL, counted from its last
-#: heartbeat, is pruned (hard-deleted) rather than merely shown ``stale``.
+#: heartbeat, is pruned — it disappears from every listing and can no
+#: longer be addressed — rather than merely shown ``stale``.
 PRUNE_TTL_MULTIPLIER = 5.0
+
+#: How long a pruned session's row is kept as a tombstone before it is
+#: deleted for good (issue #364). While the tombstone stands, the session's
+#: own handle + secret still :meth:`DirectoryStore.verify` — so it can still
+#: read (and ack) the mail that was addressed to it — and a heartbeat brings
+#: it back. Matches the longest TTL the messenger grants an envelope
+#: (``palaia_hub.messenger.models.MAX_TTL_SECONDS``, seven days): once
+#: every envelope it could have been sent has expired, nothing is lost by
+#: forgetting the row.
+TOMBSTONE_SECONDS = 7 * 24 * 60 * 60.0
 #: Characters trimmed off ``new_secret()``'s URL-safe output for a
 #: handle — short enough to type/read in a message, long enough that two
 #: independently registered sessions colliding is not a practical concern
@@ -111,10 +122,17 @@ CREATE TABLE IF NOT EXISTS session_registry (
     registered_at REAL NOT NULL,
     last_seen_at REAL NOT NULL,
     ttl_seconds REAL NOT NULL,
-    stale_notified INTEGER NOT NULL DEFAULT 0
+    stale_notified INTEGER NOT NULL DEFAULT 0,
+    pruned_at REAL
 );
 CREATE INDEX IF NOT EXISTS idx_session_last_seen_at ON session_registry(last_seen_at);
 """
+
+#: Columns added after the first release, applied to a database created
+#: before them (``CREATE TABLE IF NOT EXISTS`` leaves an existing table alone).
+_MIGRATIONS: tuple[tuple[str, str], ...] = (
+    ("pruned_at", "ALTER TABLE session_registry ADD COLUMN pruned_at REAL"),
+)
 
 
 def _effective_status(
@@ -172,6 +190,12 @@ class DirectoryStore:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.executescript(_SCHEMA_SQL)
+        present = {
+            str(row["name"]) for row in self._conn.execute("PRAGMA table_info(session_registry)")
+        }
+        for column, statement in _MIGRATIONS:
+            if column not in present:
+                self._conn.execute(statement)
         self._conn.commit()
         # SPEC-502: this database holds every session's hashed secret and
         # the roster of what each agent is doing. It, and its write-ahead
@@ -189,17 +213,24 @@ class DirectoryStore:
         return now if now is not None else self.clock()
 
     def _sweep_locked(self, now: float) -> list[str]:
-        """Prune hard-expired rows; return handles newly crossing into
+        """Prune hard-expired rows into tombstones, delete tombstones past
+        :data:`TOMBSTONE_SECONDS`, and return handles newly crossing into
         ``stale`` since the last sweep (for the caller to emit
         ``session.stale`` events on — each handle is returned at most once,
         ever, because this also flips ``stale_notified``)."""
         rows = self._conn.execute(
-            "SELECT handle, last_seen_at, ttl_seconds, stale_notified FROM session_registry"
+            "SELECT handle, last_seen_at, ttl_seconds, stale_notified, pruned_at "
+            "FROM session_registry"
         ).fetchall()
         newly_stale: list[str] = []
         to_prune: list[str] = []
+        to_delete: list[str] = []
         to_mark_stale: list[str] = []
         for row in rows:
+            if row["pruned_at"] is not None:
+                if now - row["pruned_at"] > TOMBSTONE_SECONDS:
+                    to_delete.append(row["handle"])
+                continue
             age = now - row["last_seen_at"]
             if age > row["ttl_seconds"] * PRUNE_TTL_MULTIPLIER:
                 to_prune.append(row["handle"])
@@ -207,27 +238,41 @@ class DirectoryStore:
                 to_mark_stale.append(row["handle"])
                 newly_stale.append(row["handle"])
         if to_prune:
+            # A tombstone, not a deletion (issue #364): the handle stays
+            # taken, the secret still verifies, the row is hidden from every
+            # listing — and the mail addressed to it stays readable.
             self._conn.executemany(
-                "DELETE FROM session_registry WHERE handle = ?", [(h,) for h in to_prune]
+                "UPDATE session_registry SET pruned_at = ? WHERE handle = ?",
+                [(now, h) for h in to_prune],
+            )
+        if to_delete:
+            self._conn.executemany(
+                "DELETE FROM session_registry WHERE handle = ?", [(h,) for h in to_delete]
             )
         if to_mark_stale:
             self._conn.executemany(
                 "UPDATE session_registry SET stale_notified = 1 WHERE handle = ?",
                 [(h,) for h in to_mark_stale],
             )
-        if to_prune or to_mark_stale:
+        if to_prune or to_delete or to_mark_stale:
             self._conn.commit()
         return newly_stale
 
-    def _get_row_locked(self, handle: str) -> sqlite3.Row | None:
+    def _get_row_locked(self, handle: str, *, include_pruned: bool = False) -> sqlite3.Row | None:
         # `fetchone()` types as `Any` in typeshed (the row factory's actual
         # return type is not tracked statically) — `cast` states what we
         # know to be true at runtime (``row_factory = sqlite3.Row`` is set
         # in ``__init__``) rather than declaring this method `Any` and
         # losing the type at every call site.
-        row = self._conn.execute(
-            "SELECT * FROM session_registry WHERE handle = ?", (handle,)
-        ).fetchone()
+        #
+        # A pruned session's tombstone (issue #364) is visible only to the
+        # calls that carry its own secret — verify, heartbeat, update,
+        # deregister — and to register's handle-collision check. Addressing
+        # it as a peer (`get`, `list`, `query`) finds nothing.
+        sql = "SELECT * FROM session_registry WHERE handle = ?"
+        if not include_pruned:
+            sql += " AND pruned_at IS NULL"
+        row = self._conn.execute(sql, (handle,)).fetchone()
         return cast("sqlite3.Row | None", row)
 
     def _check_secret_locked(self, row: sqlite3.Row, session_secret: str) -> None:
@@ -261,7 +306,7 @@ class DirectoryStore:
             # A handle collision is astronomically unlikely (see
             # HANDLE_CHARS's docstring) but checked anyway rather than
             # trusting entropy alone against a PRIMARY KEY constraint.
-            while self._get_row_locked(handle) is not None:
+            while self._get_row_locked(handle, include_pruned=True) is not None:
                 handle = new_secret()[:HANDLE_CHARS]
             self._conn.execute(
                 "INSERT INTO session_registry "
@@ -299,12 +344,16 @@ class DirectoryStore:
         current = self._now(now)
         with self._lock:
             newly_stale = self._sweep_locked(current)
-            row = self._get_row_locked(handle)
+            row = self._get_row_locked(handle, include_pruned=True)
             if row is None:
                 raise SessionNotFoundError(f"no session registered at handle {handle!r}")
             self._check_secret_locked(row, session_secret)
+            # A pruned session that comes back with its own secret is back
+            # (issue #364): its handle, and the mail addressed to it, are its
+            # own again.
             self._conn.execute(
-                "UPDATE session_registry SET last_seen_at = ?, stale_notified = 0 WHERE handle = ?",
+                "UPDATE session_registry SET last_seen_at = ?, stale_notified = 0, "
+                "pruned_at = NULL WHERE handle = ?",
                 (current, handle),
             )
             self._conn.commit()
@@ -329,7 +378,7 @@ class DirectoryStore:
         current = self._now(now)
         with self._lock:
             newly_stale = self._sweep_locked(current)
-            row = self._get_row_locked(handle)
+            row = self._get_row_locked(handle, include_pruned=True)
             if row is None:
                 raise SessionNotFoundError(f"no session registered at handle {handle!r}")
             self._check_secret_locked(row, session_secret)
@@ -342,8 +391,8 @@ class DirectoryStore:
             )
             self._conn.execute(
                 "UPDATE session_registry SET scope = ?, reported_status = ?, "
-                "capabilities_json = ?, last_seen_at = ?, stale_notified = 0 "
-                "WHERE handle = ?",
+                "capabilities_json = ?, last_seen_at = ?, stale_notified = 0, "
+                "pruned_at = NULL WHERE handle = ?",
                 (new_scope, new_status, new_capabilities, current, handle),
             )
             self._conn.commit()
@@ -366,11 +415,17 @@ class DirectoryStore:
         :class:`SessionNotFoundError`/:class:`SessionSecretMismatchError`
         the mutating methods do, so a caller cannot tell "guessing a secret"
         apart from "unknown handle" by which error it gets.
+
+        A *pruned* session still verifies for :data:`TOMBSTONE_SECONDS`
+        (issue #364): the messenger keeps envelopes for up to seven days, and
+        the session they were addressed to must be able to read them even
+        after a long silence — without that, mail to a session that missed
+        five heartbeats was lost for good.
         """
         current = self._now(now)
         with self._lock:
             newly_stale = self._sweep_locked(current)
-            row = self._get_row_locked(handle)
+            row = self._get_row_locked(handle, include_pruned=True)
             if row is None:
                 raise SessionNotFoundError(f"no session registered at handle {handle!r}")
             self._check_secret_locked(row, session_secret)
@@ -408,7 +463,7 @@ class DirectoryStore:
         current = self._now(now)
         with self._lock:
             newly_stale = self._sweep_locked(current)
-            row = self._get_row_locked(handle)
+            row = self._get_row_locked(handle, include_pruned=True)
             if row is None:
                 return False, newly_stale
             self._check_secret_locked(row, session_secret)
@@ -432,7 +487,7 @@ class DirectoryStore:
         current = self._now(now)
         with self._lock:
             newly_stale = self._sweep_locked(current)
-            row = self._get_row_locked(handle)
+            row = self._get_row_locked(handle, include_pruned=True)
             if row is None:
                 return False, newly_stale
             self._conn.execute("DELETE FROM session_registry WHERE handle = ?", (handle,))
@@ -479,7 +534,7 @@ class DirectoryStore:
         with self._lock:
             newly_stale = self._sweep_locked(current)
             rows = self._conn.execute(
-                "SELECT * FROM session_registry ORDER BY registered_at DESC"
+                "SELECT * FROM session_registry WHERE pruned_at IS NULL ORDER BY registered_at DESC"
             ).fetchall()
             records = [_row_to_record(r, now=current) for r in rows]
         if status is not None:
@@ -497,6 +552,7 @@ __all__ = [
     "MAX_TTL_SECONDS",
     "MIN_TTL_SECONDS",
     "PRUNE_TTL_MULTIPLIER",
+    "TOMBSTONE_SECONDS",
     "DirectoryError",
     "DirectoryStore",
     "clamp_ttl",
