@@ -43,6 +43,7 @@ from palaia_hub.vault import (
     NoteDeleted,
     NoteModified,
     NoteMoved,
+    NoteNotFoundError,
     VaultDoctor,
     VaultEngine,
 )
@@ -135,6 +136,12 @@ class VaultIndex:
         self._rebuild_lock = asyncio.Lock()
         self._rebuilding = False
         self._deferred: list[ChangeEvent] = []
+        # Issue #356: one event is applied at a time. The engine publishes
+        # after it has released its own lock, so two writers' events can
+        # reach the index in either order and, worse, interleave here: a
+        # modify's read-then-write around a delete's write put the deleted
+        # note back into the index. Serialising the apply closes that.
+        self._apply_lock = asyncio.Lock()
         #: SPEC-201's ``index.reindexed``/``index.embed_backlog_drained``/
         #: ``doctor.finding`` hook point — see :data:`HubEventHook`. ``None``
         #: (the default) keeps this class's behavior identical to before
@@ -200,7 +207,11 @@ class VaultIndex:
         index cannot interpret precisely.
         """
         async with self._rebuild_lock:
-            self._rebuilding = True
+            async with self._apply_lock:
+                # Nothing is mid-apply once this is set (issue #356): an
+                # update that had already passed the check below cannot
+                # land its write inside the rebuild's transaction.
+                self._rebuilding = True
             try:
                 count = await self._engine.reindex(self.writer)
             finally:
@@ -243,25 +254,34 @@ class VaultIndex:
 
     async def apply_event(self, event: ChangeEvent) -> None:
         """Apply one change event (public so tests can drive it directly)."""
-        if self._rebuilding:
-            self._deferred.append(event)
-            return
-        if isinstance(event, NoteDeleted):
-            await asyncio.to_thread(self.writer.delete_note, event.path)
-        elif isinstance(event, NoteMoved):
-            note = await self._engine.read_note(event.path)
-            await asyncio.to_thread(self.writer.move_note, event.previous_path, note)
-        elif isinstance(event, (NoteCreated, NoteModified)):
-            note = await self._engine.read_note(event.path)
-            await asyncio.to_thread(self.writer.upsert_note, note)
-        elif isinstance(event, EntityRenamed):
+        if isinstance(event, EntityRenamed):
             # A rename rewrote inbound links vault-wide under a single event.
             await self.reindex()
-        else:  # pragma: no cover - the union is closed today
-            logger.debug("ignoring unknown event %s", type(event).__name__)
             return
-        self._last_indexed_at = time.monotonic()
-        self._wake.set()
+        async with self._apply_lock:
+            if self._rebuilding:
+                self._deferred.append(event)
+                return
+            if isinstance(event, NoteDeleted):
+                await asyncio.to_thread(self.writer.delete_note, event.path)
+            elif isinstance(event, NoteMoved):
+                note = await self._engine.read_note(event.path)
+                await asyncio.to_thread(self.writer.move_note, event.previous_path, note)
+            elif isinstance(event, (NoteCreated, NoteModified)):
+                try:
+                    note = await self._engine.read_note(event.path)
+                except NoteNotFoundError:
+                    # The note is gone already: a later delete overtook this
+                    # event (issue #356). The index must agree with the disk,
+                    # not with the event's age.
+                    await asyncio.to_thread(self.writer.delete_note, event.path)
+                else:
+                    await asyncio.to_thread(self.writer.upsert_note, note)
+            else:  # pragma: no cover - the union is closed today
+                logger.debug("ignoring unknown event %s", type(event).__name__)
+                return
+            self._last_indexed_at = time.monotonic()
+            self._wake.set()
 
     # ----------------------------------------------------------------- search
 
