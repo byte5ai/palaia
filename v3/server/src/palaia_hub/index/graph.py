@@ -203,7 +203,9 @@ class GraphReader:
 
     # The four resolution tiers of format spec §3.2, each returning *every*
     # match so the caller can report ambiguity with candidates listed rather
-    # than silently picking one.
+    # than silently picking one. Case folding uses `py_lower` (registered by
+    # IndexDatabase), not SQLite's ASCII-only lower(), so "Über uns" resolves
+    # from "über uns" exactly as it does through the engine (issue #360).
 
     def by_permalink(self, candidate: str) -> list[str]:
         with self._db.lock:
@@ -217,7 +219,7 @@ class GraphReader:
         with self._db.lock:
             rows = self._db.conn.execute(
                 "SELECT DISTINCT n.permalink FROM notes n, json_each(n.aliases) a "
-                "WHERE lower(a.value) = ? ORDER BY n.permalink",
+                "WHERE py_lower(a.value) = ? ORDER BY n.permalink",
                 (candidate.lower(),),
             ).fetchall()
         return [str(row["permalink"]) for row in rows]
@@ -225,7 +227,7 @@ class GraphReader:
     def by_title(self, candidate: str) -> list[str]:
         with self._db.lock:
             rows = self._db.conn.execute(
-                "SELECT DISTINCT permalink FROM notes WHERE lower(title) = ? ORDER BY permalink",
+                "SELECT DISTINCT permalink FROM notes WHERE py_lower(title) = ? ORDER BY permalink",
                 (candidate.strip().lower(),),
             ).fetchall()
         return [str(row["permalink"]) for row in rows]

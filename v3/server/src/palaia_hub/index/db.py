@@ -32,6 +32,13 @@ from .schema import (
     VEC_TABLE_SQL,
 )
 
+
+def _py_lower(value: object) -> str | None:
+    """``lower()`` with Python's Unicode case mapping — what the engine's own
+    resolver uses on both sides of its comparison (issue #360)."""
+    return value.lower() if isinstance(value, str) else None
+
+
 logger = logging.getLogger("palaia_hub.index.db")
 
 #: Where a vault's index lives: inside the engine-private, gitignored,
@@ -121,6 +128,10 @@ class IndexDatabase:
     def _open_once(self, *, force_create: bool = False) -> str | None:
         conn = sqlite3.connect(self.path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
+        # SQLite's own lower() folds ASCII only (lower('ÜBER') is 'ÜBER'), so
+        # title/alias resolution through the index disagreed with the
+        # engine's Python-side resolver on any non-ASCII name (issue #360).
+        conn.create_function("py_lower", 1, _py_lower, deterministic=True)
         try:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
