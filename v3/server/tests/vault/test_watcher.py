@@ -395,8 +395,12 @@ async def test_a_folder_dropped_into_the_vault_arrives_as_one_pass(
         staging = tmp_path / "staging"
         staging.mkdir()
         for i in range(60):
+            # Identified notes: a drop of notes *without* a permalink also
+            # triggers identity assignment (issue #358), which is its own
+            # pass and is covered by ``test_watcher_identity.py``.
             (staging / f"note-{i:02d}.md").write_text(
-                f"---\ntitle: Note {i}\n---\nbody {i}\n", encoding="utf-8"
+                f"---\ntitle: Note {i}\npermalink: notes/dropped/note-{i:02d}\n---\nbody {i}\n",
+                encoding="utf-8",
             )
         import shutil
 

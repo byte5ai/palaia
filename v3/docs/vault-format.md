@@ -132,7 +132,10 @@ Canonical form is a writer duty, never a read requirement.
   Only an explicit identity rename (§4.2) mints a new permalink.
 - Assignment: the engine slugifies the title and prefixes the folder path.
   Files arriving without a permalink (imports, hand-created notes) get one
-  assigned at first index via an attributed write-back commit.
+  assigned at first index via an attributed write-back commit — at hub start
+  for notes that arrived while it was down, and as soon as the vault watcher
+  sees a note arrive while it runs. Notes whose frontmatter does not parse,
+  or that are not UTF-8, are left alone (the doctor reports them).
 - A user-supplied permalink violating the charset is **kept verbatim**
   (identity is never silently rewritten) with warning `permalink-noncanonical`;
   the doctor offers canonicalization through the rename machinery (§4.2), so

@@ -27,6 +27,7 @@ from watchfiles import Change, awatch
 
 from .atomic import TEMP_SUFFIX, sha256_file
 from .engine import VaultEngine
+from .errors import VaultError
 from .events import (
     ChangeEvent,
     EventBus,
@@ -75,6 +76,8 @@ class WatcherStats:
     #: Raw watchfiles batches that were folded into an earlier one because
     #: something big was landing (see :data:`DEFAULT_COALESCE_THRESHOLD`).
     coalesced: int = 0
+    #: Permalinks minted for notes that arrived without one (issue #358).
+    permalinks_assigned: int = 0
     per_kind: dict[str, int] = field(default_factory=dict)
 
     def record(self, event: ChangeEvent) -> None:
@@ -82,6 +85,11 @@ class WatcherStats:
         self.events += 1
         name = type(event).__name__
         self.per_kind[name] = self.per_kind.get(name, 0) + 1
+
+
+def _lacks_identity(event: ChangeEvent) -> bool:
+    """A note event for a note that has no permalink (issue #358)."""
+    return isinstance(event, (NoteCreated, NoteModified, NoteMoved)) and event.permalink is None
 
 
 def is_vault_content(root: Path, path: Path) -> bool:
@@ -161,6 +169,9 @@ class VaultWatcher:
         self._ready.clear()
         self._task = asyncio.create_task(self._run(), name=f"vault-watcher:{self.engine.name}")
         await self._ready.wait()
+        # "Assigned by the engine on first index" (format spec §3.1): notes
+        # that arrived while no watcher was running get their identity now.
+        await self.adopt_unidentified_notes()
 
     async def stop(self) -> None:
         """Stop watching and wait for the task to finish.
@@ -239,6 +250,33 @@ class VaultWatcher:
                 events = await asyncio.to_thread(self._process_batch_as_one_snapshot, merged)
             if events and self.bus is not None:
                 await self.bus.publish_all(events)
+            if any(_lacks_identity(event) for event in events):
+                await self.adopt_unidentified_notes()
+
+    async def adopt_unidentified_notes(self) -> list[str]:
+        """Mint a permalink for every note that has none (issue #358).
+
+        Format spec §3.1 promises that a note created outside the engine —
+        in Obsidian, by an import — gets its identity "on first index via a
+        write-back commit". The engine had the operation; nothing called it,
+        so such notes stayed keyed by path and lost their relations on the
+        next external rename. The watcher is the component that sees notes
+        arrive, so it is the one that asks. Malformed (issue #335) and
+        non-UTF-8 (issue #355) notes are left alone by the engine itself.
+        """
+        try:
+            assigned = await self.engine.assign_missing_permalinks()
+        except VaultError as exc:
+            # A read-only vault (format version ahead of this engine) or a
+            # commit that cannot be made: identity waits, nothing else stops.
+            logger.warning("not assigning permalinks in vault %s: %s", self.engine.name, exc)
+            return []
+        if assigned:
+            self.stats.permalinks_assigned += len(assigned)
+            logger.info(
+                "assigned permalinks to %d note(s) in vault %s", len(assigned), self.engine.name
+            )
+        return assigned
 
     def _process_batch_as_one_snapshot(
         self, raw: Iterable[tuple[Change, str]]

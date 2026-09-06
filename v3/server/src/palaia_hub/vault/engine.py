@@ -1561,6 +1561,12 @@ class VaultEngine:
                     entry.path,
                 )
                 continue
+            if note.undecodable:
+                # Rewriting it would persist U+FFFD over its bytes (issue #355).
+                logger.warning(
+                    "not assigning a permalink to %s: the file is not valid UTF-8", entry.path
+                )
+                continue
             minted = pl.make_unique(pl.mint(entry.path, note.title), taken)
             taken.add(minted)
             updated = dict(note.frontmatter)
