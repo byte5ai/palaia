@@ -348,17 +348,15 @@ class VaultIndex:
                 "vector table unavailable (%s); backlog left pending", self.db.vectors.reason
             )
             return 0
-        texts = [text for _, text in rows]
+        claims = [(chunk_id, fingerprint) for chunk_id, fingerprint, _ in rows]
+        texts = [text for _, _, text in rows]
         try:
             vectors = await asyncio.to_thread(embedder.embed, texts)
         except Exception as exc:  # noqa: BLE001 - backend-specific failures
             logger.warning("embedding batch failed: %s", exc)
-            await asyncio.to_thread(self._record_failures, [chunk_id for chunk_id, _ in rows])
+            await asyncio.to_thread(self._record_failures, claims)
             return 0
-        await asyncio.to_thread(
-            self._store_vectors, [chunk_id for chunk_id, _ in rows], vectors
-        )
-        return len(rows)
+        return await asyncio.to_thread(self._store_vectors, claims, vectors)
 
     async def drain_embeddings(self, *, timeout: float = 120.0) -> int:
         """Embed everything pending (test/CLI helper); returns chunks embedded."""
@@ -372,40 +370,53 @@ class VaultIndex:
         self._emit_backlog_drained_if_empty(total)
         return total
 
-    def _claim_batch(self) -> list[tuple[int, str]]:
+    def _claim_batch(self) -> list[tuple[int, str, str]]:
         with self.db.lock:
             rows = self.db.conn.execute(
-                "SELECT id, text FROM chunks WHERE state = 'pending' "
+                "SELECT id, fingerprint, text FROM chunks WHERE state = 'pending' "
                 "ORDER BY id LIMIT ?",
                 (self._embedding.batch_size,),
             ).fetchall()
-        return [(int(row["id"]), str(row["text"])) for row in rows]
+        return [
+            (int(row["id"]), str(row["fingerprint"]), str(row["text"]))
+            for row in rows
+        ]
 
-    def _store_vectors(self, chunk_ids: Sequence[int], vectors: Sequence[Sequence[float]]) -> None:
+    def _store_vectors(
+        self, claims: Sequence[tuple[int, str]], vectors: Sequence[Sequence[float]]
+    ) -> int:
         import sqlite_vec
 
+        stored = 0
         with self.db.lock:
             conn = self.db.conn
-            for chunk_id, vector in zip(chunk_ids, vectors, strict=True):
+            for (chunk_id, fingerprint), vector in zip(claims, vectors, strict=True):
+                updated = conn.execute(
+                    "UPDATE chunks SET state = 'ready', attempts = 0 "
+                    "WHERE id = ? AND fingerprint = ? AND state = 'pending'",
+                    (chunk_id, fingerprint),
+                )
+                if updated.rowcount != 1:
+                    logger.debug("skipping stale embedding claim for chunk %s", chunk_id)
+                    continue
                 conn.execute("DELETE FROM vec_chunks WHERE rowid = ?", (chunk_id,))
                 conn.execute(
                     "INSERT INTO vec_chunks(rowid, embedding) VALUES (?, ?)",
                     (chunk_id, sqlite_vec.serialize_float32(list(vector))),
                 )
-                conn.execute(
-                    "UPDATE chunks SET state = 'ready', attempts = 0 WHERE id = ?", (chunk_id,)
-                )
+                stored += 1
             conn.commit()
+        return stored
 
-    def _record_failures(self, chunk_ids: Sequence[int]) -> None:
+    def _record_failures(self, claims: Sequence[tuple[int, str]]) -> None:
         with self.db.lock:
             conn = self.db.conn
-            for chunk_id in chunk_ids:
+            for chunk_id, fingerprint in claims:
                 conn.execute(
                     "UPDATE chunks SET attempts = attempts + 1, "
                     "state = CASE WHEN attempts + 1 >= ? THEN 'failed' ELSE 'pending' END "
-                    "WHERE id = ?",
-                    (_MAX_EMBED_ATTEMPTS, chunk_id),
+                    "WHERE id = ? AND fingerprint = ? AND state = 'pending'",
+                    (_MAX_EMBED_ATTEMPTS, chunk_id, fingerprint),
                 )
             conn.commit()
 

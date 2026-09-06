@@ -9,6 +9,9 @@ in ``test_hybrid_relevance.py``.
 
 from __future__ import annotations
 
+import asyncio
+import threading
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +25,21 @@ pytestmark = pytest.mark.anyio
 
 def _stub_config(**kwargs: Any) -> EmbeddingConfig:
     return EmbeddingConfig(enabled=True, model="stub/hashed-bow", **kwargs)
+
+
+class BlockingStubEmbedder(StubEmbedder):
+    """Pause one batch so a vault change can race its storage step."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = threading.Event()
+        self.release = threading.Event()
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        self.started.set()
+        if not self.release.wait(5):
+            raise RuntimeError("test embedder was not released")
+        return super().embed(texts)
 
 
 # ------------------------------------------------------------------- chunking
@@ -183,6 +201,86 @@ async def test_editing_a_note_only_re_embeds_its_changed_chunks(
     assert pending, "the changed tail must be re-embedded"
     assert ready, "unchanged chunks must keep their vectors"
     assert len(pending) < len(chunks_before)
+
+
+async def test_edit_during_embedding_does_not_store_a_stale_vector(
+    golden_work_vault: Path, open_index: Any
+) -> None:
+    embedder = BlockingStubEmbedder()
+    engine, index = await open_index(
+        golden_work_vault,
+        embedding=_stub_config(),
+        embedder=embedder,
+        build=False,
+    )
+    await engine.write_note("notes/race", body="original text", title="Race")
+
+    embedding = asyncio.create_task(index.embed_next_batch())
+    assert await asyncio.to_thread(embedder.started.wait, 5)
+    with index.db.lock:
+        claimed = index.db.conn.execute(
+            "SELECT id, fingerprint FROM chunks WHERE ref = ?", ("notes/race",)
+        ).fetchone()
+
+    current = await engine.read_note("notes/race")
+    await engine.edit_note(
+        "notes/race", body="replacement text", expected_checksum=current.checksum
+    )
+    with index.db.lock:
+        changed = index.db.conn.execute(
+            "SELECT id, fingerprint, state FROM chunks WHERE ref = ?", ("notes/race",)
+        ).fetchone()
+    assert changed["id"] == claimed["id"]
+    assert changed["fingerprint"] != claimed["fingerprint"]
+    assert changed["state"] == "pending"
+
+    embedder.release.set()
+    assert await embedding == 0
+    with index.db.lock:
+        final = index.db.conn.execute(
+            "SELECT fingerprint, state FROM chunks WHERE ref = ?", ("notes/race",)
+        ).fetchone()
+        vectors = index.db.conn.execute(
+            "SELECT count(*) AS n FROM vec_chunks WHERE rowid = ?", (claimed["id"],)
+        ).fetchone()["n"]
+    assert final["fingerprint"] == changed["fingerprint"]
+    assert final["state"] == "pending"
+    assert vectors == 0
+
+
+async def test_delete_during_embedding_does_not_leave_an_orphan_vector(
+    golden_work_vault: Path, open_index: Any
+) -> None:
+    embedder = BlockingStubEmbedder()
+    engine, index = await open_index(
+        golden_work_vault,
+        embedding=_stub_config(),
+        embedder=embedder,
+        build=False,
+    )
+    await engine.write_note("notes/race", body="original text", title="Race")
+
+    embedding = asyncio.create_task(index.embed_next_batch())
+    assert await asyncio.to_thread(embedder.started.wait, 5)
+    with index.db.lock:
+        claimed = index.db.conn.execute(
+            "SELECT id FROM chunks WHERE ref = ?", ("notes/race",)
+        ).fetchone()
+
+    note = await engine.read_note("notes/race")
+    await engine.delete_note("notes/race")
+    embedder.release.set()
+    assert await embedding == 0
+    with index.db.lock:
+        chunks = index.db.conn.execute(
+            "SELECT count(*) AS n FROM chunks WHERE id = ?", (claimed["id"],)
+        ).fetchone()["n"]
+        vectors = index.db.conn.execute(
+            "SELECT count(*) AS n FROM vec_chunks WHERE rowid = ?", (claimed["id"],)
+        ).fetchone()["n"]
+    assert note.path == "notes/race.md"
+    assert chunks == 0
+    assert vectors == 0
 
 
 async def test_reindex_preserves_ready_vectors(
