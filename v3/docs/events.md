@@ -218,9 +218,10 @@ owner-only writes land. What SPEC-405 actually adds:
 ## 4. Outbound webhooks
 
 Configured per hook: a target `url`, an event-name filter (`["*"]` for
-everything, or an explicit list of event names), and a secret minted at
-creation time and never shown again. Every event whose name matches a
-hook's filter is delivered:
+every event except the `health` heartbeat — name it to receive it — or an
+explicit list of event names), and a secret minted at creation time and
+never shown again. Every event whose name matches a hook's filter is
+delivered:
 
 - **Signed.** `X-Palaia-Signature: sha256=<hex hmac>` over the raw JSON
   body, keyed by the hook's secret (`palaia_hub.hooks.signing`).
@@ -265,9 +266,10 @@ alongside it.
 ## 6. Notes on scope
 
 - `health` is a hub-internal heartbeat, not part of the v1 vocabulary a
-  webhook can filter on (a webhook that requests `"*"` still receives it,
-  since it travels the same bus — a filter naming it explicitly also
-  works, it is simply not documented as a *meaningful* automation trigger).
+  webhook or automation means by "every event": a `"*"` filter or trigger
+  does **not** match it (it fires every 15 seconds and describes nothing
+  that happened — a wildcard hook used to bank ~5,760 outbox rows a day on
+  it). A filter or trigger naming `health` explicitly still receives it.
 - Inbound webhooks remain out of scope (SPEC-201/307 Non-goals). The
   session and messenger events that SPEC-201 listed as "later phases" have
   since arrived — `session.*` with SPEC-402 (§3.6) and `message.*` with
@@ -287,8 +289,8 @@ shared model the wrong shape).
 ### 7.1 Trigger
 
 Any v1 event name (§3), including the curator's and stash's, or `"*"` for
-every event. **Never** an `automation.*` event (§7.4) — refused at create
-time with a plain-language error.
+every event except the `health` heartbeat (§6). **Never** an `automation.*`
+event (§7.4) — refused at create time with a plain-language error.
 
 ### 7.2 Condition grammar
 
@@ -346,6 +348,26 @@ kind of event. A create/update call is refused outright if the trigger
 event starts with `automation.`; independently, the dispatcher's runtime
 match never fires on an `automation.*` event even for a `"*"` trigger.
 Both are tested.
+
+**And its actions' consequences never feed back.** A `memory_write` lands
+a note, which publishes `memory.entry.created`; a `stash_set` publishes
+`stash.set`. Those events are caused by an automation, and no automation
+fires on them — not the one that acted, not another one with a `"*"` or
+matching trigger — so a "log every note" recipe cannot write a note about
+its own note forever. The dispatcher knows which automation is acting
+while its action runs and skips whatever the action publishes.
+
+**Ceiling.** On top of both guards, one automation fires at most 60 times
+per minute; further matches within that minute are dropped with one
+warning in the log. Hitting it means the trigger or condition is too
+broad for what a person set up.
+
+**Retention.** The per-automation delivery log keeps resolved rows
+(delivered, dead, test-fired) for 30 days and at most the newest 1000 per
+automation; pending rows are never pruned. `GET
+/api/automations/{id}/deliveries` returns one page, newest first —
+`?limit=` (default 100, max 500) and `?before=<id>` (the last id of the
+previous page) walk further back. Webhook outboxes prune the same way.
 
 ### 7.6 Test-fire
 

@@ -32,6 +32,14 @@ from ..security.files import harden_sqlite_database
 
 OUTBOX_RELATIVE_PATH = "automations_outbox.sqlite3"
 
+#: Retention for resolved rows — delivered, dead, test-fired. A pending row
+#: is never pruned. The per-automation log stays a useful window into recent
+#: behaviour without the file growing for the life of the hub (issue #339).
+RETENTION_PER_AUTOMATION = 1000
+RETENTION_MAX_AGE_SECONDS = 30 * 24 * 3600.0
+#: The most rows one ``GET …/deliveries`` page returns.
+MAX_PAGE = 500
+
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS deliveries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -219,15 +227,85 @@ class AutomationOutbox:
             )
             self._conn.commit()
 
+    def prune(
+        self,
+        *,
+        keep_per_automation: int = RETENTION_PER_AUTOMATION,
+        max_age_seconds: float = RETENTION_MAX_AGE_SECONDS,
+        now: float | None = None,
+    ) -> int:
+        """Delete resolved rows past retention; return how many went.
+
+        Two bounds, either is enough: rows older than ``max_age_seconds``,
+        and per automation everything beyond the newest ``keep_per_automation``
+        resolved rows. ``pending`` rows are never touched — they are work
+        still owed, not history.
+        """
+        current = time.time() if now is None else now
+        cutoff = (
+            datetime.fromtimestamp(current - max_age_seconds, UTC)
+            .isoformat(timespec="seconds")
+            .replace("+00:00", "Z")
+        )
+        removed = 0
+        with self._lock:
+            cursor = self._conn.execute(
+                "DELETE FROM deliveries WHERE status != 'pending' AND created_at < ?",
+                (cutoff,),
+            )
+            removed += int(cursor.rowcount or 0)
+            crowded = self._conn.execute(
+                "SELECT automation_id FROM deliveries WHERE status != 'pending' "
+                "GROUP BY automation_id HAVING COUNT(*) > ?",
+                (keep_per_automation,),
+            ).fetchall()
+            for row in crowded:
+                cursor = self._conn.execute(
+                    "DELETE FROM deliveries WHERE automation_id = ? AND status != 'pending' "
+                    "AND id NOT IN (SELECT id FROM deliveries WHERE automation_id = ? "
+                    "AND status != 'pending' ORDER BY id DESC LIMIT ?)",
+                    (row["automation_id"], row["automation_id"], keep_per_automation),
+                )
+                removed += int(cursor.rowcount or 0)
+            self._conn.commit()
+        return removed
+
     # ----------------------------------------------------------------- queries
 
-    def list_for_automation(self, automation_id: str) -> list[DeliveryRow]:
+    def list_for_automation(
+        self, automation_id: str, *, limit: int = 100, before_id: int | None = None
+    ) -> list[DeliveryRow]:
+        """Newest first, one page: at most ``limit`` rows, older than
+        ``before_id`` when given (pass the last id of the previous page)."""
+        limit = max(1, min(int(limit), MAX_PAGE))
         with self._lock:
-            rows = self._conn.execute(
-                "SELECT * FROM deliveries WHERE automation_id = ? ORDER BY id DESC",
-                (automation_id,),
-            ).fetchall()
+            if before_id is None:
+                rows = self._conn.execute(
+                    "SELECT * FROM deliveries WHERE automation_id = ? ORDER BY id DESC LIMIT ?",
+                    (automation_id, limit),
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    "SELECT * FROM deliveries WHERE automation_id = ? AND id < ? "
+                    "ORDER BY id DESC LIMIT ?",
+                    (automation_id, before_id, limit),
+                ).fetchall()
         return [_row_to_delivery(row) for row in rows]
+
+    def count_recent(self, automation_id: str, *, window_seconds: float) -> int:
+        """Rows created for ``automation_id`` within the last ``window_seconds``
+        (the dispatcher's per-automation rate limit, issue #338)."""
+        cutoff = (
+            datetime.fromtimestamp(time.time() - window_seconds, UTC)
+            .isoformat(timespec="seconds")
+            .replace("+00:00", "Z")
+        )
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COUNT(*) AS n FROM deliveries WHERE automation_id = ? AND created_at >= ?",
+                (automation_id, cutoff),
+            ).fetchone()
+        return int(row["n"])
 
     def count_pending(self, automation_id: str | None = None) -> int:
         with self._lock:
@@ -249,4 +327,11 @@ class AutomationOutbox:
         return [_row_to_delivery(row) for row in rows]
 
 
-__all__ = ["OUTBOX_RELATIVE_PATH", "AutomationOutbox", "DeliveryRow"]
+__all__ = [
+    "MAX_PAGE",
+    "OUTBOX_RELATIVE_PATH",
+    "RETENTION_MAX_AGE_SECONDS",
+    "RETENTION_PER_AUTOMATION",
+    "AutomationOutbox",
+    "DeliveryRow",
+]

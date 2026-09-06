@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 
 import httpx
 
@@ -129,10 +130,20 @@ class HookDispatcher:
             logger.info("hook delivery failed (attempt %d), retrying: %s", attempt, error)
             self._outbox.mark_retry(row_id, delay_seconds=_backoff_seconds(attempt), error=error)
 
-    async def run_forever(self, *, poll_seconds: float = 2.0) -> None:
-        """The background task :mod:`palaia_hub.app` starts in its lifespan."""
+    async def run_forever(
+        self, *, poll_seconds: float = 2.0, prune_every_seconds: float = 300.0
+    ) -> None:
+        """The background task :mod:`palaia_hub.app` starts in its lifespan.
+
+        Also prunes the outbox's resolved rows on a slow cadence (issue
+        #339) — once at start, then every ``prune_every_seconds``.
+        """
+        last_prune = float("-inf")
         while True:
             try:
+                if time.monotonic() - last_prune >= prune_every_seconds:
+                    self._outbox.prune()
+                    last_prune = time.monotonic()
                 delivered_any = await self.deliver_due()
                 if not delivered_any:
                     await asyncio.sleep(poll_seconds)

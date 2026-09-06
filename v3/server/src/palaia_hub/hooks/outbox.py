@@ -30,6 +30,13 @@ from ..security.files import harden_sqlite_database
 
 OUTBOX_RELATIVE_PATH = "hooks_outbox.sqlite3"
 
+#: Retention for resolved rows (delivered or dead). Pending rows are never
+#: pruned. Same reasoning as the automations outbox (issue #339).
+RETENTION_PER_HOOK = 1000
+RETENTION_MAX_AGE_SECONDS = 30 * 24 * 3600.0
+#: The most rows one dead-letter listing returns.
+MAX_PAGE = 500
+
 DeliveryStatus = str  # "pending" | "delivered" | "dead"
 
 _SCHEMA_SQL = """
@@ -169,18 +176,64 @@ class HookOutbox:
             )
             self._conn.commit()
 
+    def prune(
+        self,
+        *,
+        keep_per_hook: int = RETENTION_PER_HOOK,
+        max_age_seconds: float = RETENTION_MAX_AGE_SECONDS,
+        now: float | None = None,
+    ) -> int:
+        """Delete resolved rows past retention; return how many went.
+
+        Rows older than ``max_age_seconds``, and per hook everything beyond
+        the newest ``keep_per_hook`` resolved rows. ``pending`` rows are work
+        still owed and are never touched.
+        """
+        current = time.time() if now is None else now
+        cutoff = (
+            datetime.fromtimestamp(current - max_age_seconds, UTC)
+            .isoformat(timespec="seconds")
+            .replace("+00:00", "Z")
+        )
+        removed = 0
+        with self._lock:
+            cursor = self._conn.execute(
+                "DELETE FROM deliveries WHERE status != 'pending' AND created_at < ?",
+                (cutoff,),
+            )
+            removed += int(cursor.rowcount or 0)
+            crowded = self._conn.execute(
+                "SELECT hook_id FROM deliveries WHERE status != 'pending' "
+                "GROUP BY hook_id HAVING COUNT(*) > ?",
+                (keep_per_hook,),
+            ).fetchall()
+            for row in crowded:
+                cursor = self._conn.execute(
+                    "DELETE FROM deliveries WHERE hook_id = ? AND status != 'pending' "
+                    "AND id NOT IN (SELECT id FROM deliveries WHERE hook_id = ? "
+                    "AND status != 'pending' ORDER BY id DESC LIMIT ?)",
+                    (row["hook_id"], row["hook_id"], keep_per_hook),
+                )
+                removed += int(cursor.rowcount or 0)
+            self._conn.commit()
+        return removed
+
     # ----------------------------------------------------------------- queries
 
-    def list_dead_letters(self, hook_id: str | None = None) -> list[OutboxRow]:
+    def list_dead_letters(self, hook_id: str | None = None, *, limit: int = 200) -> list[OutboxRow]:
+        """Dead-lettered rows, oldest first, at most ``limit`` of them."""
+        limit = max(1, min(int(limit), MAX_PAGE))
         with self._lock:
             if hook_id is None:
                 rows = self._conn.execute(
-                    "SELECT * FROM deliveries WHERE status = 'dead' ORDER BY id"
+                    "SELECT * FROM deliveries WHERE status = 'dead' ORDER BY id LIMIT ?",
+                    (limit,),
                 ).fetchall()
             else:
                 rows = self._conn.execute(
-                    "SELECT * FROM deliveries WHERE status = 'dead' AND hook_id = ? ORDER BY id",
-                    (hook_id,),
+                    "SELECT * FROM deliveries WHERE status = 'dead' AND hook_id = ? "
+                    "ORDER BY id LIMIT ?",
+                    (hook_id, limit),
                 ).fetchall()
         return [_row_to_outbox_row(row) for row in rows]
 
@@ -208,4 +261,11 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-__all__ = ["OUTBOX_RELATIVE_PATH", "HookOutbox", "OutboxRow"]
+__all__ = [
+    "MAX_PAGE",
+    "OUTBOX_RELATIVE_PATH",
+    "RETENTION_MAX_AGE_SECONDS",
+    "RETENTION_PER_HOOK",
+    "HookOutbox",
+    "OutboxRow",
+]
