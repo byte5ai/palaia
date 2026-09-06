@@ -68,16 +68,28 @@ _ENV_KEYS = (
     "deployment",
 )
 
-DEFAULT_CONFIG_TEMPLATE = """\
+#: The template's header names the env-overridable keys from ``_ENV_KEYS``
+#: itself (issue #370): the file used to promise an override for *every*
+#: setting, including nested ones no ``PALAIA_*`` variable has ever read.
+_ENV_OVERRIDE_NOTE = (
+    "# These top-level settings may also be overridden by an environment\n"
+    "# variable named PALAIA_<SETTING> (e.g. PALAIA_MODE=cloud), which takes\n"
+    "# precedence over whatever is written here:\n"
+    + "".join(f"#   {key} -> {_ENV_PREFIX}{key.upper()}\n" for key in _ENV_KEYS)
+    + "# Every other setting is read from this file only.\n"
+)
+
+DEFAULT_CONFIG_TEMPLATE = (
+    """\
 # palaia hub configuration
 #
 # Generated automatically on first run. Edit freely — invalid values are
 # rejected at startup with a message naming this file, the offending key,
 # and a fix.
 #
-# Every setting below may also be overridden by an environment variable
-# named PALAIA_<SETTING> (e.g. PALAIA_MODE=cloud), which takes precedence
-# over whatever is written here.
+"""
+    + _ENV_OVERRIDE_NOTE
+    + """\
 
 # Operating mode: locked | cloud | open
 #   locked (default) - MCP + dashboard reachable only over VPN/tailnet
@@ -342,6 +354,7 @@ market:
 channel: edge
 deployment: unknown
 """
+)
 
 
 class ConfigError(RuntimeError):
@@ -1023,11 +1036,16 @@ def _format_validation_error(path: Path, exc: ValidationError) -> str:
             # suffix below would only make its message confusing.
             lines.append(f"{path}: {msg.removeprefix('Value error, ')}")
             continue
-        env_name = f"{_ENV_PREFIX}{loc.upper()}"
-        lines.append(
-            f"{path}: key '{loc}' — {msg}. "
-            f"Fix: correct '{loc}' in {path}, or override it via {env_name}."
-        )
+        if loc in _ENV_KEYS:
+            env_name = f"{_ENV_PREFIX}{loc.upper()}"
+            lines.append(
+                f"{path}: key '{loc}' — {msg}. "
+                f"Fix: correct '{loc}' in {path}, or override it via {env_name}."
+            )
+        else:
+            # Issue #370: a nested key ("oauth.access_token_ttl") has no env
+            # override; suggesting PALAIA_OAUTH.ACCESS_TOKEN_TTL was a lie.
+            lines.append(f"{path}: key '{loc}' — {msg}. Fix: correct '{loc}' in {path}.")
     return "\n".join(lines)
 
 

@@ -384,3 +384,27 @@ def test_a_negative_graceful_shutdown_timeout_is_rejected(tmp_path: Path) -> Non
 
     assert "graceful_shutdown_timeout" in str(excinfo.value)
     assert "Fix:" in str(excinfo.value)
+
+
+def test_a_nested_key_error_does_not_invent_an_env_override(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("recall:\n  recency_weight: -1\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_config(home=tmp_path)
+
+    message = str(excinfo.value)
+    assert "recall.recency_weight" in message
+    assert "PALAIA_" not in message, "no PALAIA_RECALL.RECENCY_WEIGHT exists, so none is suggested"
+    assert "Fix:" in message
+
+
+def test_the_generated_template_lists_exactly_the_env_overridable_keys(tmp_path: Path) -> None:
+    from palaia_hub.config import _ENV_KEYS
+
+    load_config(home=tmp_path)
+    text = (tmp_path / "config.yaml").read_text(encoding="utf-8")
+
+    assert "Every setting below may also be overridden" not in text
+    for key in _ENV_KEYS:
+        assert f"{key} -> PALAIA_{key.upper()}" in text
+    assert "Every other setting is read from this file only." in text
