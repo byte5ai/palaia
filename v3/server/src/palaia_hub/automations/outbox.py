@@ -218,6 +218,16 @@ class AutomationOutbox:
             )
             self._conn.commit()
 
+    def defer(self, row_id: int, *, delay_seconds: float, note: str) -> None:
+        """Look at a pending row again later *without* counting an attempt
+        (issue #367) — nothing was tried, the automation is merely disabled."""
+        with self._lock:
+            self._conn.execute(
+                "UPDATE deliveries SET next_attempt_at = ?, last_error = ? WHERE id = ?",
+                (time.time() + delay_seconds, note, row_id),
+            )
+            self._conn.commit()
+
     def mark_dead(self, row_id: int, *, error: str) -> None:
         with self._lock:
             self._conn.execute(

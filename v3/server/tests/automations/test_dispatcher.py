@@ -288,7 +288,7 @@ async def test_deleted_automation_dead_letters_a_pending_delivery(tmp_path: Path
 
     row = outbox.all_rows()[0]
     assert row.status == "dead"
-    assert "removed or disabled" in row.last_error
+    assert "removed" in row.last_error
 
 
 # ---------------------------------------------------------------- test-fire

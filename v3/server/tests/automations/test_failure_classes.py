@@ -22,6 +22,7 @@ from palaia_hub.automations.models import NotificationAction, StashSetAction
 from palaia_hub.automations.outbox import AutomationOutbox
 from palaia_hub.automations.store import AutomationError, AutomationStore
 from palaia_hub.events.schema import Envelope
+from palaia_hub.notifications.store import NotificationStore
 from palaia_hub.stash.models import StashError
 from palaia_hub.stash.service import StashService
 from palaia_hub.stash.store import StashStore
@@ -33,6 +34,7 @@ def _build(
     tmp_path: Path,
     *,
     stash_service: StashService | None = None,
+    notification_store: NotificationStore | None = None,
     max_attempts: int = 5,
 ) -> tuple[AutomationStore, AutomationOutbox, AutomationDispatcher, list[tuple[str, dict]]]:
     store = AutomationStore(tmp_path / "store")
@@ -42,6 +44,7 @@ def _build(
         store,
         outbox,
         stash_service=stash_service,
+        notification_store=notification_store,
         emit=lambda name, data: emitted.append((name, data)),
         max_attempts=max_attempts,
     )
@@ -124,3 +127,55 @@ def test_a_malformed_record_in_the_yaml_is_a_plain_error_naming_it(tmp_path: Pat
     assert "trigger_event" in message
     assert "Fix:" in message
     assert str(path) in message
+
+
+# ------------------------------------------------------------------ issue #367
+
+
+async def test_a_disabled_automations_deliveries_wait_and_run_when_re_enabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(dispatcher_module, "DISABLED_RECHECK_SECONDS", 0.0)
+    notifications = NotificationStore(tmp_path / "notifications.sqlite3")
+    store, outbox, dispatcher, emitted = _build(tmp_path, notification_store=notifications)
+    created = store.create(
+        name="x", trigger_event="hub.started", action=NotificationAction(title_template="x")
+    )
+    dispatcher.on_event(Envelope(event="hub.started", data={}, origin="hub"))
+    store.set_enabled(created.id, False)
+
+    await dispatcher.deliver_due()
+
+    row = outbox.all_rows()[0]
+    assert row.status == "pending"
+    assert row.attempts == 0, "waiting is not an attempt"
+    assert "disabled" in row.last_error
+    assert not any(name == "automation.failed" for name, _ in emitted)
+
+    store.set_enabled(created.id, True)
+    await dispatcher.deliver_due()
+
+    assert outbox.all_rows()[0].status == "delivered"
+    assert len(notifications.list()) == 1
+    notifications.close()
+
+
+async def test_a_delivery_left_disabled_for_a_week_is_dead_lettered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(dispatcher_module, "DISABLED_DEAD_LETTER_SECONDS", -1.0)
+    notifications = NotificationStore(tmp_path / "notifications.sqlite3")
+    store, outbox, dispatcher, emitted = _build(tmp_path, notification_store=notifications)
+    created = store.create(
+        name="x", trigger_event="hub.started", action=NotificationAction(title_template="x")
+    )
+    dispatcher.on_event(Envelope(event="hub.started", data={}, origin="hub"))
+    store.set_enabled(created.id, False)
+
+    await dispatcher.deliver_due()
+
+    row = outbox.all_rows()[0]
+    assert row.status == "dead"
+    assert "disabled" in row.last_error
+    assert any(name == "automation.failed" for name, _ in emitted)
+    notifications.close()

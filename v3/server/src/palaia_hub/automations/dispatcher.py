@@ -26,6 +26,7 @@ import logging
 import time
 import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
 from ..events.schema import Envelope
@@ -85,6 +86,15 @@ HEARTBEAT_EVENT = "health"
 #: rather than filling the outbox (issues #338/#339).
 MAX_FIRES_PER_MINUTE = 60
 
+#: A delivery whose automation is *disabled* is not dead, merely waiting
+#: (issue #367): it is looked at again after this long, and delivered the
+#: moment the automation is enabled again.
+DISABLED_RECHECK_SECONDS = 60.0
+
+#: ...unless the automation stays disabled for this long — then the queued
+#: delivery is stale enough to dead-letter rather than keep forever.
+DISABLED_DEAD_LETTER_SECONDS = 7 * 24 * 3600.0
+
 #: Failures that no retry can fix (issue #366): a stash value over its
 #: limit, an invalid namespace or key. Retrying them five times over half a
 #: minute only delays the honest answer.
@@ -94,6 +104,15 @@ _PERMANENT_FAILURES: tuple[type[Exception], ...] = (StashError,)
 class ActionError(RuntimeError):
     """A rendered action could not be executed. Always a plain-language
     message — never a bare exception repr."""
+
+
+def _age_seconds(created_at: str) -> float:
+    """Seconds since an outbox row's ISO ``created_at``; 0 when unparsable."""
+    try:
+        created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+    except ValueError:
+        return 0.0
+    return max(0.0, (datetime.now(UTC) - created).total_seconds())
 
 
 def _backoff_seconds(attempt: int) -> float:
@@ -230,9 +249,24 @@ class AutomationDispatcher:
 
     async def _attempt(self, row: DeliveryRow) -> None:
         automation = self._store.get(row.automation_id)
-        if automation is None or not automation.enabled:
-            self._outbox.mark_dead(row.id, error="automation was removed or disabled")
-            self._emit_event("automation.failed", row, error="automation was removed or disabled")
+        if automation is None:
+            self._outbox.mark_dead(row.id, error="automation was removed")
+            self._emit_event("automation.failed", row, error="automation was removed")
+            return
+        if not automation.enabled:
+            # Disabled is not deleted (issue #367): the delivery waits, and
+            # runs when the automation is switched back on — unless it has
+            # been waiting so long that running it would be a surprise.
+            if _age_seconds(row.created_at) > DISABLED_DEAD_LETTER_SECONDS:
+                error = "automation stayed disabled for more than 7 days"
+                self._outbox.mark_dead(row.id, error=error)
+                self._emit_event("automation.failed", row, automation=automation, error=error)
+            else:
+                self._outbox.defer(
+                    row.id,
+                    delay_seconds=DISABLED_RECHECK_SECONDS,
+                    note="automation is disabled; will run when it is enabled again",
+                )
             return
         attempt = row.attempts + 1
         try:
