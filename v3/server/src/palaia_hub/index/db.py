@@ -121,10 +121,19 @@ class IndexDatabase:
     def _open_once(self, *, force_create: bool = False) -> str | None:
         conn = sqlite3.connect(self.path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute("PRAGMA foreign_keys=ON")
-        conn.execute("PRAGMA busy_timeout=5000")
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.execute("PRAGMA busy_timeout=5000")
+        except sqlite3.DatabaseError as exc:
+            # A truncated or garbage file (power loss, a full disk) fails on
+            # the very first statement, before the schema probe below ever
+            # runs. Report it the same way, so open() drops and recreates
+            # the file instead of refusing to start the hub (issue #337).
+            conn.close()
+            self._conn = None
+            return f"unreadable database ({exc})"
         self._conn = conn
         self.vectors = _load_sqlite_vec(conn)
         if self.vectors.available:
