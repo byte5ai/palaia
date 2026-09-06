@@ -21,7 +21,7 @@ import uvicorn
 from .auth import TokenError, TokenStore
 from .auth.scopes import vault_scope
 from .backup import archive_filename, iter_archive_bytes
-from .compose_update import rewrite_compose_channel
+from .compose_update import DEFAULT_IMAGE, rewrite_compose_channel
 from .config import ConfigError, HubConfig, apply_config_overrides, load_config, palaia_home
 from .curator import CURATOR_PROFILE_PATH, ApplyReport, CuratorRunReport, ProposalApplier
 from .curator.wiring import TOKEN_ENV, CuratorWiring, build_curator
@@ -666,12 +666,23 @@ def _update_compose(channel: str | None, file_path: str) -> None:
         raise SystemExit(1)
     if channel is not None:
         text = path.read_text(encoding="utf-8")
-        new_text, changed = rewrite_compose_channel(text, channel)
-        if changed:
+        new_text, outcome = rewrite_compose_channel(text, channel)
+        if outcome == "changed":
             path.write_text(new_text, encoding="utf-8")
             print(f"Set the image channel to {channel!r} in {path}.")
-        else:
+        elif outcome == "already":
             print(f"{path} is already on the {channel!r} channel.")
+        else:
+            # Issue #371: this used to be reported as "already on the
+            # channel" while the file was left exactly as it was.
+            print(
+                f"palaia-hub: {path} has no `image: {DEFAULT_IMAGE}:<tag>` line, so nothing "
+                f"was changed. Fix: if your compose file pins the hub image under another "
+                f"name (a mirror registry, a custom build), set its tag to {channel!r} by "
+                f"hand, then run the two commands below.",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
     print("Now pull the new image and recreate the container:")
     print("  docker compose pull")
     print("  docker compose up -d")
