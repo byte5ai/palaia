@@ -332,7 +332,11 @@ export function Clients() {
           </div>
         ) : selected.kind === "guided" ? (
           <ConnectPanel
-            key={selected.id}
+            // Keyed by profile too (issue 373): the panel reads its
+            // `defaultProfile` once into state, so a picker change must
+            // remount it — otherwise a token issued after switching to
+            // `codex-only` still lands on `default`.
+            key={`${selected.id}:${selectedProfile}`}
             client={selected}
             defaultProfile={selectedProfile}
             onTokenIssued={(info) =>
