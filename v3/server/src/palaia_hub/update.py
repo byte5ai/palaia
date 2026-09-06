@@ -39,6 +39,8 @@ from typing import Literal
 
 import httpx
 
+from .security.bounded_fetch import ResponseTooLargeError, get_bounded
+
 Channel = Literal["edge", "beta", "stable"]
 UpdateState = Literal["up_to_date", "update_available", "cannot_check"]
 Deployment = Literal[
@@ -249,7 +251,16 @@ async def _get_registry_json(
     """One registry GET, decoded as a JSON object — every failure mode
     becomes a :class:`_CheckFailed` naming ``what`` was being fetched."""
     try:
-        response = await client.get(url, headers=headers, params=params, timeout=timeout_seconds)
+        response = await get_bounded(
+            client,
+            url,
+            headers=headers,
+            params=params,
+            timeout=timeout_seconds,
+            max_bytes=max_bytes,
+        )
+    except ResponseTooLargeError as exc:
+        raise _CheckFailed(f"{what} {exc}") from exc
     except httpx.TimeoutException as exc:
         raise _CheckFailed(f"timed out fetching {what} after {timeout_seconds:.0f}s") from exc
     except httpx.RequestError as exc:
@@ -258,10 +269,6 @@ async def _get_registry_json(
         raise _CheckFailed(not_found)
     if response.status_code >= 400:
         raise _CheckFailed(f"registry answered HTTP {response.status_code} for {what}")
-    if len(response.content) > max_bytes:
-        raise _CheckFailed(
-            f"{what} response too large ({len(response.content)} > {max_bytes} bytes)"
-        )
     try:
         document = response.json()
     except ValueError as exc:

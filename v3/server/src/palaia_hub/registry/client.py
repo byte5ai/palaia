@@ -32,6 +32,7 @@ from typing import Any
 import httpx
 
 from ..config import palaia_home
+from ..security.bounded_fetch import ResponseTooLargeError, get_bounded
 from .cache import DiskCache
 from .models import RegistrySearchResult, RegistryServer
 
@@ -100,9 +101,15 @@ class RegistryClient:
             )
 
         try:
-            response = await self._client.get(
-                f"{self.base_url}{path}", params=params, timeout=self.timeout_seconds
+            response = await get_bounded(
+                self._client,
+                f"{self.base_url}{path}",
+                params=params,
+                timeout=self.timeout_seconds,
+                max_bytes=self.max_bytes,
             )
+        except ResponseTooLargeError as exc:
+            return self._fallback(cached, cache_key, str(exc))
         except httpx.TimeoutException:
             return self._fallback(cached, cache_key, f"timed out after {self.timeout_seconds:.0f}s")
         except httpx.RequestError as exc:
@@ -118,12 +125,6 @@ class RegistryClient:
         if response.status_code >= 400:
             return self._fallback(
                 cached, cache_key, f"registry answered HTTP {response.status_code}"
-            )
-
-        content_length = len(response.content)
-        if content_length > self.max_bytes:
-            return self._fallback(
-                cached, cache_key, f"response too large ({content_length} > {self.max_bytes} bytes)"
             )
 
         try:

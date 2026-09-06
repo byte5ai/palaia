@@ -49,6 +49,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from ..config import palaia_home
 from ..registry.cache import DiskCache
+from ..security.bounded_fetch import ResponseTooLargeError, get_bounded
 from ..security.files import harden_file
 from .models import MarketEntry, SourceLocator
 
@@ -330,7 +331,11 @@ class CuratedIndexClient:
 
     async def _download(self) -> dict[str, Any]:
         try:
-            response = await self._client.get(self.index_url, timeout=self.timeout_seconds)
+            response = await get_bounded(
+                self._client, self.index_url, timeout=self.timeout_seconds, max_bytes=self.max_bytes
+            )
+        except ResponseTooLargeError as exc:
+            raise _FetchFailure(f"index document too large ({exc})") from exc
         except httpx.TimeoutException as exc:
             raise _FetchFailure(f"timed out after {self.timeout_seconds:.0f}s") from exc
         except httpx.RequestError as exc:
@@ -338,10 +343,6 @@ class CuratedIndexClient:
 
         if response.status_code >= 400:
             raise _FetchFailure(f"index host answered HTTP {response.status_code}")
-        if len(response.content) > self.max_bytes:
-            raise _FetchFailure(
-                f"index document too large ({len(response.content)} > {self.max_bytes} bytes)"
-            )
         try:
             document = response.json()
         except ValueError as exc:
