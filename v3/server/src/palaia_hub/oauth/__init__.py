@@ -76,6 +76,7 @@ from .models import (
     PruneReport,
     RotationOutcome,
 )
+from .owner_api import build_owner_router
 from .resources import ResourceRegistry, normalize_issuer
 from .routes import build_oauth_router
 from .service import (
@@ -100,6 +101,7 @@ __all__ = [
     "IDP_CALLBACK_PATH",
     "IDP_START_PATH",
     "AuthorizationServer",
+    "build_owner_router",
     "AuthorizeRedirect",
     "CimdFetcher",
     "ClientInfo",

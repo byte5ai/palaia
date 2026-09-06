@@ -78,7 +78,7 @@ from .messenger.service import MessengerService
 from .messenger_api import build_messenger_router
 from .modes import ADMIN_PREFIX, AuthRateLimitMiddleware, ModeAuditLog, build_modes_router
 from .notifications import NotificationStore, build_notifications_router
-from .oauth import AuthorizationServer, build_oauth_router
+from .oauth import AuthorizationServer, build_oauth_router, build_owner_router
 from .oauth.login import SESSION_COOKIE
 from .oauth.verifier import build_hub_auth
 from .security import SecurityHeadersMiddleware
@@ -821,6 +821,9 @@ def create_app(
     # "/" last.
     if oauth_server is not None:
         app.include_router(build_oauth_router(oauth_server))
+        # Issue #342: the wizard's owner-account step. Creates the one owner
+        # while none exists (then 409), signs that browser in.
+        app.include_router(build_owner_router(oauth_server))
 
         @app.get("/api/session")
         async def session(request: Request) -> dict[str, Any]:

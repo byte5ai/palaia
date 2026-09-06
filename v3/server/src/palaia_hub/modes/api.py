@@ -266,8 +266,9 @@ def build_modes_router(
                 raise ModeChangeError(
                     "Fully public also needs a way for you to sign in to this "
                     "dashboard — it would otherwise be reachable from the "
-                    "internet by anyone. Fix: set your own password (run "
-                    "`palaia-hub oauth set-password`) or connect a sign-in "
+                    "internet by anyone. Fix: set your own password (the "
+                    "dashboard's first-run setup, or `palaia-hub oauth set-password`) "
+                    "or connect a sign-in "
                     "provider, and turn the sign-in server on with a public "
                     "address for it; then choose fully public again."
                 )

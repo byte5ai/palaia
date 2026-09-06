@@ -627,7 +627,8 @@ def _login_page(*, next_url: str, csrf: str, error: str) -> str:
             '<button type="submit">Sign in</button>'
             "</form>"
             "<p class='hint'>The hub's operator sets this password with "
-            "<code>palaia-hub oauth set-password</code>.</p>"
+            "<code>palaia-hub oauth set-password</code> — or, on a hub that has no "
+            "account yet, the dashboard's first-run setup creates it.</p>"
         ),
     )
 

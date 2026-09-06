@@ -49,6 +49,13 @@ export interface SignInInfo {
   sign_in_url?: string | null;
 }
 
+/** `GET`/`POST /api/auth/owner` (issue 342): whether the one owner account
+ * exists. Hand-written like `SignInInfo` — the generator's hub has no
+ * sign-in server, so the route is not in the committed schema. */
+export interface OwnerAccountState {
+  configured: boolean;
+}
+
 /**
  * `GET /api/update/check` (SPEC-501). Hand-written for the same reason as
  * `SignInInfo` above: the route returns `dict[str, Any]` (no Pydantic
@@ -771,6 +778,15 @@ export const api = {
 
   // ---- SPEC-504: the local-only first-run funnel ----
   funnelStatus: () => getJson<FunnelStatus>("/api/funnel/status"),
+
+  // ---- issue 342: the wizard's owner-account step ----
+  /** Whether this hub has its one owner account. 404 on a hub with no
+   * sign-in server at all — the wizard reads that as "nothing to set up". */
+  ownerAccount: () => getJson<OwnerAccountState>("/api/auth/owner"),
+  /** Create the owner account — accepted only while none exists (409
+   * after) — and sign this browser in with it. */
+  createOwnerAccount: (body: { username: string; password: string }) =>
+    postJson<OwnerAccountState>("/api/auth/owner", body),
 
   // ---- SPEC-305: the tool-profile editor ----
   listGatewayProfiles: () => getJson<GatewayProfile[]>("/api/gateway/profiles"),

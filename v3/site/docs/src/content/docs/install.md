@@ -40,7 +40,10 @@ Open `http://localhost:8420/` in your browser (or the machine's address, if
 you're installing on a home server and browsing from a laptop). A short
 first-run setup walks you through:
 
-1. **An administrator sign-in** for the dashboard.
+1. **An administrator sign-in** for the dashboard — a username and a
+   password you choose right there. (A hub started without its sign-in
+   server offers to switch it on first; that one change needs a restart of
+   the container, then the setup asks for your account.)
 2. **How far your memory reaches** — just this device and network, or the
    internet too (with sign-in required the moment it is). You can change
    this later; starting local is the safe default.

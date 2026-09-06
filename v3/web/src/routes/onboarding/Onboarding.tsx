@@ -15,15 +15,17 @@
  *   Clients page uses — issuing a token here is real, and (as of
  *   SPEC-210) so is the endpoint it names: the `default` profile the
  *   wizard's vault creation just mounted.
- * - Steps 1 (owner account) and 2 (access mode) are NOT wired to anything
- *   server-side yet: there is no local-account system (Phase 2,
- *   MASTERPLAN §5.5) and no REST endpoint to change `HubConfig.mode` at
- *   runtime. Both stay in this component's own state — step 1's fields
- *   say so inline; step 2 previews how step 4 gates clients without
- *   claiming to change the hub's real mode (shown, read-only, from
- *   `GET /api/info`). SPEC-203 (owner accounts)/SPEC-205 (mode switching)
- *   will wire these once merged — this component's own state is the seam
- *   they replace.
+ * - Step 1 (owner account) is real since issue 342: it creates the hub's
+ *   one owner account through `POST /api/auth/owner` (accepted only while
+ *   none exists) and signs this browser in with it. A hub whose sign-in
+ *   server is off (`oauth.enabled: false`, the default) is offered the
+ *   switch here too — `POST /api/mode` turns it on, one restart applies
+ *   it, and the step then shows the account form. A hub signing in
+ *   through an identity provider has nothing to set up here.
+ * - Step 2 (access mode) is still a preview: changing the hub's real mode
+ *   is the Access page's job (SPEC-205); this step previews how step 4
+ *   gates clients, showing the real current mode read-only from
+ *   `GET /api/info`.
  */
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -31,6 +33,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { ConnectPanel } from "../../components/ConnectPanel";
 import { Field, Input } from "../../components/Field";
 import { api } from "../../lib/api/client";
+import type { SignInInfo } from "../../lib/api/client";
 import type { HubMode } from "../../lib/clients";
 import { guidedClients } from "../../lib/clients";
 import { docsUrl } from "../../lib/docs";
@@ -74,6 +77,20 @@ const MODE_CARDS: { mode: HubMode; label: string; badge: string; when: string }[
   },
 ];
 
+/** What step 1 has to offer, once the hub has answered (issue 342). */
+type OwnerStep =
+  | { kind: "checking" }
+  /** No sign-in server: the step offers to turn it on. */
+  | { kind: "server-off" }
+  /** Sign-in server turned on this session; the hub needs a restart first. */
+  | { kind: "restart-pending" }
+  | { kind: "idp"; provider: string }
+  /** Password sign-in, no owner yet: the account form. */
+  | { kind: "form" }
+  | { kind: "configured" };
+
+const MIN_PASSWORD_LENGTH = 12;
+
 function StepRail({ step }: { step: number }) {
   return (
     <div className="steps">
@@ -100,8 +117,12 @@ export function Onboarding() {
   const [step, setStep] = useState(1);
   const [realMode, setRealMode] = useState<HubMode>("locked");
 
+  const [ownerStep, setOwnerStep] = useState<OwnerStep>({ kind: "checking" });
   const [ownerName, setOwnerName] = useState("");
-  const [ownerEmail, setOwnerEmail] = useState("");
+  const [ownerPassword, setOwnerPassword] = useState("");
+  const [ownerConfirm, setOwnerConfirm] = useState("");
+  const [ownerBusy, setOwnerBusy] = useState(false);
+  const [ownerError, setOwnerError] = useState<string | null>(null);
 
   const [previewMode, setPreviewMode] = useState<HubMode>("locked");
 
@@ -115,17 +136,64 @@ export function Onboarding() {
   const [clientId, setClientId] = useState(guidedClients()[0]!.id);
 
   useEffect(() => {
-    api
-      .info()
-      .then((info) => {
-        setRealMode(info.mode as HubMode);
-        setPreviewMode(info.mode as HubMode);
-      })
-      .catch(() => {
-        // no /api/info reachable yet — the wizard still works, it just
-        // cannot show the hub's real current mode in step 2
-      });
+    let cancelled = false;
+    const info = api.info().catch(() => null);
+    const owner = api.ownerAccount().catch(() => null);
+    Promise.all([info, owner]).then(([hubInfo, ownerState]) => {
+      if (cancelled) return;
+      if (hubInfo) {
+        setRealMode(hubInfo.mode as HubMode);
+        setPreviewMode(hubInfo.mode as HubMode);
+      }
+      const signIn = (hubInfo?.sign_in ?? null) as SignInInfo | null;
+      if (signIn?.method === "idp") {
+        setOwnerStep({ kind: "idp", provider: signIn.provider_name ?? "your sign-in provider" });
+      } else if (ownerState === null) {
+        // 404 (no sign-in server) or no hub reachable at all.
+        setOwnerStep({ kind: "server-off" });
+      } else {
+        setOwnerStep({ kind: ownerState.configured ? "configured" : "form" });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  async function createOwner() {
+    setOwnerBusy(true);
+    setOwnerError(null);
+    try {
+      await api.createOwnerAccount({ username: ownerName.trim(), password: ownerPassword });
+      setOwnerStep({ kind: "configured" });
+      setStep(2);
+    } catch (err) {
+      setOwnerError(describeApiError(err));
+    } finally {
+      setOwnerBusy(false);
+    }
+  }
+
+  async function turnOnSignIn() {
+    setOwnerBusy(true);
+    setOwnerError(null);
+    try {
+      const status = await api.changeMode({
+        oauth_enabled: true,
+        oauth_issuer: window.location.origin,
+      });
+      setOwnerStep({ kind: status.restart_required ? "restart-pending" : "form" });
+    } catch (err) {
+      setOwnerError(describeApiError(err));
+    } finally {
+      setOwnerBusy(false);
+    }
+  }
+
+  const ownerFormValid =
+    ownerName.trim().length > 0 &&
+    ownerPassword.length >= MIN_PASSWORD_LENGTH &&
+    ownerPassword === ownerConfirm;
 
   async function createVault() {
     setCreating(true);
@@ -174,32 +242,134 @@ export function Onboarding() {
                 <span className="badge">nothing installed on your clients yet</span>
               </div>
               <h2 className="wiz__title">Let's set up your hub.</h2>
-              <p className="t-lead">
-                A name and an email so the dashboard can greet you — real sign-in (GitHub, Google
-                or your company's OpenID Connect provider) is Phase 2 work and isn't built yet, so
-                nothing you type here leaves this browser tab.
-              </p>
-              <div className="card">
-                <div className="card__body stack stack--3">
-                  <Field label="Your name">
-                    <Input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="Christian" />
-                  </Field>
-                  <Field label="Email" hint="Not sent anywhere yet — there is nowhere for it to go.">
-                    <Input
-                      value={ownerEmail}
-                      onChange={(e) => setOwnerEmail(e.target.value)}
-                      placeholder="you@example.com"
-                    />
-                  </Field>
+              {ownerStep.kind === "form" ? (
+                <>
+                  <p className="t-lead">
+                    The account you sign in to this dashboard with. palaia has exactly one owner —
+                    AI tools connect with their own tokens, never with this password.
+                  </p>
+                  <form
+                    className="card"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (ownerFormValid && !ownerBusy) void createOwner();
+                    }}
+                  >
+                    <div className="card__body stack stack--3">
+                      <Field label="Username">
+                        <Input
+                          value={ownerName}
+                          onChange={(e) => setOwnerName(e.target.value)}
+                          placeholder="owner"
+                          autoComplete="username"
+                        />
+                      </Field>
+                      <Field
+                        label="Password"
+                        hint={`At least ${MIN_PASSWORD_LENGTH} characters — a passphrase, or one from your password manager. Changeable later where the hub runs (palaia-hub oauth set-password).`}
+                      >
+                        <Input
+                          type="password"
+                          value={ownerPassword}
+                          onChange={(e) => setOwnerPassword(e.target.value)}
+                          autoComplete="new-password"
+                        />
+                      </Field>
+                      <Field
+                        label="Repeat the password"
+                        error={
+                          ownerConfirm && ownerConfirm !== ownerPassword
+                            ? "The two passwords differ."
+                            : undefined
+                        }
+                      >
+                        <Input
+                          type="password"
+                          value={ownerConfirm}
+                          onChange={(e) => setOwnerConfirm(e.target.value)}
+                          autoComplete="new-password"
+                        />
+                      </Field>
+                      {ownerError ? <p className="field__error">{ownerError}</p> : null}
+                    </div>
+                  </form>
+                </>
+              ) : null}
+              {ownerStep.kind === "configured" ? (
+                <p className="t-lead">
+                  This hub already has its owner account. When the dashboard asks you to sign in,
+                  that is the account to use — to change its password, run{" "}
+                  <code>palaia-hub oauth set-password</code> where the hub runs.
+                </p>
+              ) : null}
+              {ownerStep.kind === "idp" ? (
+                <p className="t-lead">
+                  This hub signs you in through {ownerStep.provider}, so there is no password to
+                  set here — who may sign in is that provider's allow-list in the hub's
+                  configuration.
+                </p>
+              ) : null}
+              {ownerStep.kind === "server-off" ? (
+                <>
+                  <p className="t-lead">
+                    This hub is running without its sign-in server, so the dashboard is protected
+                    by your network alone. That is fine for a hub only your own devices reach —
+                    turn sign-in on now if other people share the network, or before you make the
+                    hub reachable from the internet.
+                  </p>
+                  {ownerError ? <p className="field__error">{ownerError}</p> : null}
+                  <div className="row" style={{ gap: 8 }}>
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => void turnOnSignIn()}
+                      disabled={ownerBusy}
+                    >
+                      {ownerBusy ? "Turning on…" : "Turn on sign-in"}
+                    </button>
+                  </div>
+                </>
+              ) : null}
+              {ownerStep.kind === "restart-pending" ? (
+                <div className="banner">
+                  <WarningIcon className="icon icon--sm" />
+                  <div>
+                    <p className="banner__title">Sign-in is switched on — one restart applies it</p>
+                    <p className="t-sm t-muted">
+                      Restart the hub (the container, or the service), then open this setup again:
+                      this step will ask for your account. Everything else below works without the
+                      restart.
+                    </p>
+                  </div>
                 </div>
-              </div>
+              ) : null}
+              {ownerStep.kind === "checking" ? (
+                <p className="t-lead t-muted">Checking how this hub signs you in…</p>
+              ) : null}
               <div className="wiz__foot">
                 <span className="t-meta">Step 1 of 4</span>
                 <span className="grow" style={{ textAlign: "right" }}>
-                  <button type="button" className="btn btn--primary btn--lg" onClick={() => setStep(2)}>
-                    Continue
-                    <ArrowRightIcon className="icon--sm" />
-                  </button>
+                  {ownerStep.kind === "form" ? (
+                    <button
+                      type="button"
+                      className="btn btn--primary btn--lg"
+                      onClick={() => void createOwner()}
+                      disabled={!ownerFormValid || ownerBusy}
+                    >
+                      {ownerBusy ? "Creating…" : "Create account"}
+                      <ArrowRightIcon className="icon--sm" />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn--primary btn--lg"
+                      onClick={() => setStep(2)}
+                      disabled={ownerStep.kind === "checking"}
+                    >
+                      Continue
+                      <ArrowRightIcon className="icon--sm" />
+                    </button>
+                  )}
                 </span>
               </div>
             </>
