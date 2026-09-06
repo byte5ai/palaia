@@ -358,3 +358,29 @@ def test_oauth_without_profiles_set_warns_nothing(tmp_path: Path) -> None:
         warnings.simplefilter("always")
         load_config(home=tmp_path)
     assert not any(issubclass(w.category, DeprecationWarning) for w in caught)
+
+
+# ------------------------------------------------------------ issues #369, #370
+
+
+@pytest.mark.parametrize("port", ["70000", "0", "-1"])
+def test_an_out_of_range_port_is_a_config_error_not_a_bind_crash(tmp_path: Path, port: str) -> None:
+    (tmp_path / "config.yaml").write_text(f"port: {port}\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_config(home=tmp_path)
+
+    message = str(excinfo.value)
+    assert "'port'" in message
+    assert "Fix:" in message
+    assert "PALAIA_PORT" in message, "port is env-overridable, so the override is offered"
+
+
+def test_a_negative_graceful_shutdown_timeout_is_rejected(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("graceful_shutdown_timeout: -5\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_config(home=tmp_path)
+
+    assert "graceful_shutdown_timeout" in str(excinfo.value)
+    assert "Fix:" in str(excinfo.value)

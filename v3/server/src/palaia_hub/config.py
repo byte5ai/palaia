@@ -816,10 +816,12 @@ class HubConfig(BaseModel):
 
     mode: Literal["locked", "cloud", "open"] = "locked"
     host: str = "127.0.0.1"
-    port: int = 8420
+    #: Issue #369: out of range used to pass validation and crash at bind
+    #: with a uvicorn traceback; now it is a config error naming the key.
+    port: int = Field(8420, ge=1, le=65535)
     log_level: Literal["debug", "info", "warning", "error"] = "info"
     log_format: Literal["human", "json"] = "human"
-    graceful_shutdown_timeout: float = 30.0
+    graceful_shutdown_timeout: float = Field(30.0, ge=0)
     auth_enabled: bool = True
     #: Which release stream this hub tracks (SPEC-501). Baked into the
     #: container image at build time (``PALAIA_CHANNEL``) from the GHCR tag
