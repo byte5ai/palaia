@@ -217,7 +217,12 @@ export function Home() {
               ? "Loading vaults…"
               : hasVaults
                 ? `${vaults.length} vault${vaults.length === 1 ? "" : "s"}, ${totalNotes} note${totalNotes === 1 ? "" : "s"} on disk.`
-                : "No vault exists yet — the onboarding wizard's third step creates one."}
+                : (
+                  <>
+                    No vault exists yet — <Link to="/onboarding">the setup wizard</Link> creates
+                    your first one in a minute.
+                  </>
+                )}
           </p>
         </div>
         <div className="verdict__aside">

@@ -22,10 +22,13 @@
  *   switch here too — `POST /api/mode` turns it on, one restart applies
  *   it, and the step then shows the account form. A hub signing in
  *   through an identity provider has nothing to set up here.
- * - Step 2 (access mode) is still a preview: changing the hub's real mode
- *   is the Access page's job (SPEC-205); this step previews how step 4
- *   gates clients, showing the real current mode read-only from
- *   `GET /api/info`.
+ * - Step 2 (access mode) is a preview by design: changing the hub's real
+ *   mode is the Access page's job (SPEC-205, linked from the step); this
+ *   step previews how step 4 gates clients, showing the real current mode
+ *   read-only from `GET /api/info`.
+ *
+ * Reachable from the Home and Explorer empty states (issue 372) — a hub
+ * with no vault yet points here instead of merely mentioning "the wizard".
  */
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -226,8 +229,8 @@ export function Onboarding() {
         <StepRail step={step} />
         <div className="stack stack--2" style={{ marginTop: "auto" }}>
           <p className="t-xs t-muted">
-            Takes about two minutes. Every answer is changeable later in Settings — nothing here
-            is a one-way door.
+            Takes about two minutes. Every answer is changeable later — vaults, clients and
+            access each have their own page. Nothing here is a one-way door.
           </p>
           <p className="t-xs t-subtle">No account on our servers, no telemetry. This hub is yours.</p>
         </div>
@@ -383,9 +386,9 @@ export function Onboarding() {
               </div>
               <h2 className="wiz__title">Who should be able to reach palaia?</h2>
               <p className="t-lead">
-                This previews which clients Step 4 can guide you through. Changing the hub's real
-                mode is a config-file/Settings action, not this wizard, yet — pick the one you
-                mean to use so the reasons in Step 4 line up.
+                This previews which clients Step 4 can guide you through. The hub's real mode is
+                changed on the <Link to="/exposure">Access page</Link>, with its checks and
+                self-test — pick here the one you mean to use so the reasons in Step 4 line up.
               </p>
               <div className="radiocards">
                 {MODE_CARDS.map((card) => (

@@ -41,6 +41,20 @@ describe("Onboarding wizard", () => {
     expect(screen.getByDisplayValue("work")).toBeInTheDocument();
   });
 
+  it("step 2 sends the real mode change to the Access page instead of calling it unbuilt", async () => {
+    render(
+      <MemoryRouter>
+        <Onboarding />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await continueButton());
+
+    expect(screen.getByRole("link", { name: /access page/i })).toHaveAttribute("href", "/exposure");
+    expect(screen.queryByText(/not this wizard, yet/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/changeable later in Settings/i)).not.toBeInTheDocument();
+  });
+
   it("Back returns to the previous step without losing its own state", async () => {
     render(
       <MemoryRouter>

@@ -75,8 +75,9 @@ export function Explorer() {
   if (vaults.length === 0 || !vaultKey) {
     return (
       <EmptyState mark={<ExplorerIcon className="icon--lg" />} title="No vault exists yet.">
-        The wizard's "first vault" step creates one — or an operator can register one directly
-        with the vault registry. Once a vault exists, its notes show up here automatically.
+        <Link to="/onboarding">The setup wizard</Link> creates your first one — or an operator
+        can register one directly with the vault registry. Once a vault exists, its notes show up
+        here automatically.
       </EmptyState>
     );
   }

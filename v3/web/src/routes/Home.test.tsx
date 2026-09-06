@@ -115,6 +115,23 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("Home — a hub without a vault points at the wizard (issue 372)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("links to the setup wizard instead of merely mentioning it", async () => {
+    mockApi({ funnel: NO_FUNNEL });
+    vi.spyOn(api, "listVaults").mockResolvedValue([]);
+
+    mount();
+
+    const link = await screen.findByRole("link", { name: /setup wizard/i });
+    expect(link).toHaveAttribute("href", "/onboarding");
+    expect(screen.queryByText(/third step/i)).not.toBeInTheDocument();
+  });
+});
+
 describe("Home — SPEC-504 first-memory celebration", () => {
   it("shows nothing extra before the first memory is recorded", async () => {
     mockApi({ funnel: NO_FUNNEL });
