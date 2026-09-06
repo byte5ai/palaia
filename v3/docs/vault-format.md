@@ -40,6 +40,11 @@
 - A **note** is one `.md` file (UTF-8, LF or CRLF accepted; engine writes LF).
   Non-Markdown files MAY live in the vault (attachments); they are indexed as
   opaque entities (path + metadata only), never parsed.
+  A file that is not valid UTF-8 is still listed, read and searched — with
+  U+FFFD where its bytes could not be decoded — but the engine refuses to
+  edit it rather than write those replacement characters back over the
+  original bytes; the doctor reports it as `not-utf8` with the conversion
+  to run. A rename still rewrites such a file's backlinks, byte-preserving.
 - **Folders are the human's**: any depth, any names, except the three reserved
   ones (`meta/`, `inbox/`, `review/`) which have the semantics defined here.
 - Layout guidance (not conformance): prefer topic folders; keep directories

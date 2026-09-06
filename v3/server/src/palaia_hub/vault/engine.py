@@ -37,6 +37,7 @@ from . import permalink as pl
 from .atomic import (
     TEMP_SUFFIX,
     atomic_move,
+    atomic_write_bytes,
     atomic_write_text,
     durable_unlink,
     sha256_bytes,
@@ -48,6 +49,7 @@ from .errors import (
     GitError,
     InvalidPathError,
     MalformedFrontmatterError,
+    NoteEncodingError,
     NoteExistsError,
     NoteNotFoundError,
     PermalinkConflictError,
@@ -660,7 +662,15 @@ class VaultEngine:
         return self._note_from_bytes(relative, data)
 
     def _note_from_bytes(self, relative: str, data: bytes) -> Note:
-        text = data.decode("utf-8", errors="replace")
+        try:
+            text = data.decode("utf-8")
+            undecodable = False
+        except UnicodeDecodeError:
+            # Still readable — with U+FFFD where the bytes were not UTF-8 —
+            # but flagged, so no write path ever persists the replacement
+            # characters over the original bytes (issue #355).
+            text = data.decode("utf-8", errors="replace")
+            undecodable = True
         parsed = fm.parse(text)
         title, _ = fm.string_value(parsed.frontmatter, "title")
         permalink, _ = fm.string_value(parsed.frontmatter, "permalink")
@@ -674,6 +684,7 @@ class VaultEngine:
             checksum=sha256_bytes(data),
             aliases=tuple(fm.string_list(parsed.frontmatter.get("aliases"))),
             malformed_frontmatter=parsed.malformed,
+            undecodable=undecodable,
         )
 
     async def list_dir(self, relative: str = ".") -> list[DirEntry]:
@@ -824,6 +835,7 @@ class VaultEngine:
 
         if existing is not None:
             self._refuse_malformed(existing)
+            self._refuse_undecodable(existing)
         if must_create and exists:
             raise NoteExistsError(
                 f"note {relative!r} already exists in vault {self.name!r}. "
@@ -948,6 +960,18 @@ class VaultEngine:
         return (
             WriteResult(note=note, commit=commit, created=not exists, operation=operation),
             [event],
+        )
+
+    def _refuse_undecodable(self, note: Note) -> None:
+        """Never write replacement characters over a note's original bytes
+        (issue #355)."""
+        if not note.undecodable:
+            return
+        raise NoteEncodingError(
+            f"note {note.path!r} in vault {self.name!r} is not valid UTF-8, so the engine "
+            f"refuses to rewrite it (the undecodable bytes would be replaced by U+FFFD for "
+            f"good). Fix: convert the file to UTF-8 with your editor, or "
+            f"`iconv -f latin1 -t utf-8`, then retry."
         )
 
     def _refuse_malformed(self, note: Note) -> None:
@@ -1352,14 +1376,21 @@ class VaultEngine:
                 continue
             file_path = self.root / path
             try:
-                text = file_path.read_text(encoding="utf-8")
+                raw = file_path.read_bytes()
             except OSError:  # pragma: no cover - vanished under us
                 continue
+            # `surrogateescape` round-trips bytes that are not UTF-8 exactly
+            # (issue #355): a Latin-1 note's links are rewritten like any
+            # other's, and every byte the rewrite did not touch is written
+            # back unchanged — a strict decode used to abort the rename
+            # half-way, after some backlinks were already on disk.
+            text = raw.decode("utf-8", errors="surrogateescape")
             new_text, count = rewrite_targets(text, resolve)
             if count == 0:
                 continue
-            atomic_write_text(file_path, new_text)
-            note = self._note_from_bytes(path, new_text.encode("utf-8"))
+            new_bytes = new_text.encode("utf-8", errors="surrogateescape")
+            atomic_write_bytes(file_path, new_bytes)
+            note = self._note_from_bytes(path, new_bytes)
             self._catalog_put(_entry_from_note(note, file_path))
             rewritten[path] = count
         return rewritten

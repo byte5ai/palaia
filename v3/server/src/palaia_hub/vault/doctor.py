@@ -103,6 +103,7 @@ class VaultDoctor:
         findings.extend(self._check_manifest())
         findings.extend(self._check_git())
         findings.extend(self._check_identity())
+        findings.extend(self._check_encoding())
         findings.extend(self._check_links())
         findings.extend(self._check_directory_sizes())
         findings.extend(self._check_temp_files())
@@ -273,6 +274,41 @@ class VaultDoctor:
                 )
         return findings
 
+    def _check_encoding(self) -> list[Finding]:
+        """Report notes whose bytes are not valid UTF-8 (issue #355).
+
+        The engine reads them with replacement characters and refuses to
+        edit them — this finding is where the owner learns why, and what to
+        do about it.
+        """
+        findings: list[Finding] = []
+        for path in sorted(self.engine.catalog):
+            try:
+                raw = (self.engine.root / path).read_bytes()
+            except OSError:  # pragma: no cover - vanished under us
+                continue
+            try:
+                raw.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                findings.append(
+                    Finding(
+                        code="not-utf8",
+                        severity="warning",
+                        detail=(
+                            f"{path} is not valid UTF-8 (byte {exc.start}: {exc.reason}); "
+                            "it is searchable with replacement characters but cannot be "
+                            "edited through palaia until it is converted."
+                        ),
+                        fix=(
+                            "Convert the file to UTF-8 with your editor, or "
+                            "`iconv -f latin1 -t utf-8 <file> > <file>.utf8 && mv <file>.utf8 "
+                            "<file>`."
+                        ),
+                        path=path,
+                    )
+                )
+        return findings
+
     def _check_links(self) -> list[Finding]:
         """Report unresolvable wikilinks, flagging likely partial renames.
 
@@ -292,9 +328,13 @@ class VaultDoctor:
 
         for path in sorted(engine.catalog):
             try:
-                text = (engine.root / path).read_text(encoding="utf-8")
+                raw = (engine.root / path).read_bytes()
             except OSError:  # pragma: no cover - vanished under us
                 continue
+            # Links are ASCII-delimited; a note that is not UTF-8 (reported
+            # by `_check_encoding`) is still scanned rather than crashing
+            # the whole verify (issue #355).
+            text = raw.decode("utf-8", errors="replace")
             seen: set[str] = set()
             for link in iter_links(text):
                 target = link.target
@@ -383,11 +423,7 @@ class VaultDoctor:
         return findings
 
     def _check_temp_files(self) -> list[Finding]:
-        leftovers = [
-            path
-            for path in self.engine.root.rglob(f"*{TEMP_SUFFIX}")
-            if path.is_file()
-        ]
+        leftovers = [path for path in self.engine.root.rglob(f"*{TEMP_SUFFIX}") if path.is_file()]
         if not leftovers:
             return []
         return [

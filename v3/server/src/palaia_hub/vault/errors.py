@@ -92,3 +92,13 @@ class MalformedFrontmatterError(VaultError):
     user's original YAML block, so every write that rebuilds frontmatter is
     refused until the file is repaired outside the engine.
     """
+
+
+class NoteEncodingError(VaultError):
+    """The note's bytes are not valid UTF-8 (issue #355).
+
+    The engine reads such a note with replacement characters so it can still
+    be listed and searched, but refuses to *rewrite* it: writing the decoded
+    text back would replace every undecodable byte with U+FFFD for good —
+    a Latin-1 note would lose its umlauts on its first edit.
+    """

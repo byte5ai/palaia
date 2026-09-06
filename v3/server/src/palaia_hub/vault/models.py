@@ -149,6 +149,10 @@ class Note:
     checksum: str
     aliases: tuple[str, ...] = ()
     malformed_frontmatter: bool = False
+    #: The file's bytes were not valid UTF-8 and ``text``/``body`` carry
+    #: U+FFFD where they could not be decoded (issue #355). Read-only: the
+    #: engine refuses to write such a note back.
+    undecodable: bool = False
 
 
 @dataclass(frozen=True, slots=True)
