@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import json
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +52,15 @@ class InstalledAddonRecord:
     #: container even after its upstream registry entry is already gone.
     container_name: str | None
     installed_at: float
+    #: The resolved container plan (issue #344): the bind mounts
+    #: (``{config field: host path}``) and the plain environment the
+    #: ``docker run`` was built with. A one-click update rebuilds the run
+    #: command from these, so it keeps the add-on's mounts and settings
+    #: instead of starting a bare container. Empty for other kinds and for
+    #: records written before this field existed (see ``install.update``
+    #: for how those recover them).
+    mounts: dict[str, str] = field(default_factory=dict)
+    plain_env: dict[str, str] = field(default_factory=dict)
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -64,6 +73,8 @@ class InstalledAddonRecord:
             "image": self.image,
             "container_name": self.container_name,
             "installed_at": self.installed_at,
+            "mounts": dict(self.mounts),
+            "plain_env": dict(self.plain_env),
         }
 
     @classmethod
@@ -78,6 +89,8 @@ class InstalledAddonRecord:
             image=data.get("image"),
             container_name=data.get("container_name"),
             installed_at=data["installed_at"],
+            mounts={str(k): str(v) for k, v in (data.get("mounts") or {}).items()},
+            plain_env={str(k): str(v) for k, v in (data.get("plain_env") or {}).items()},
         )
 
 
@@ -119,9 +132,7 @@ class InstalledAddonStore:
     def list(self) -> list[InstalledAddonRecord]:
         with self._lock:
             records = self._read_all()
-        return [
-            InstalledAddonRecord.from_json(records[key]) for key in sorted(records)
-        ]
+        return [InstalledAddonRecord.from_json(records[key]) for key in sorted(records)]
 
     def delete(self, upstream_key: str) -> bool:
         with self._lock:

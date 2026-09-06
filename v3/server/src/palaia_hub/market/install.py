@@ -53,8 +53,8 @@ import asyncio
 import logging
 import secrets as secrets_module
 import time
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -196,6 +196,11 @@ class InstallPlan:
     upstream: UpstreamConfig
     image: str | None = None
     container_name: str | None = None
+    #: A container's resolved mounts and plain environment (issue #344) —
+    #: persisted on the install record so an update can rebuild the exact
+    #: ``docker run`` with a new image.
+    mounts: dict[str, str] = field(default_factory=dict)
+    plain_env: dict[str, str] = field(default_factory=dict)
 
 
 def _resolve_stdio_command(package: dict[str, Any]) -> tuple[str, list[str]]:
@@ -354,11 +359,49 @@ async def _resolve_container_plan(
         env={},
         env_secrets=env_secrets,
     )
-    return InstallPlan(upstream=upstream, image=image, container_name=container_name)
+    return InstallPlan(
+        upstream=upstream,
+        image=image,
+        container_name=container_name,
+        mounts=mounts,
+        plain_env=env,
+    )
 
 
 def _container_name(key: str) -> str:
     return f"palaia-addon-{key}"
+
+
+def _plan_from_run_args(
+    args: Sequence[str], *, secret_env_vars: Iterable[str]
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Recover ``(mounts, plain_env)`` from a ``docker run`` argv this hub built.
+
+    For install records written before the plan was persisted (issue #344):
+    :func:`~palaia_hub.market.docker_runtime.build_stdio_run_args` emits
+    ``-v host:host`` per mount and ``-e KEY=value`` per plain variable
+    (``-e KEY`` alone is a secret, injected at start and never stored).
+    """
+    secrets = set(secret_env_vars)
+    mounts: dict[str, str] = {}
+    plain: dict[str, str] = {}
+    index = 0
+    while index < len(args) - 1:
+        flag, value = args[index], args[index + 1]
+        if flag == "-v":
+            host_path = value.split(":", 1)[0]
+            if host_path:
+                mounts[host_path] = host_path
+            index += 2
+            continue
+        if flag == "-e":
+            key, separator, plain_value = value.partition("=")
+            if separator and key not in secrets:
+                plain[key] = plain_value
+            index += 2
+            continue
+        index += 1
+    return mounts, plain
 
 
 async def _build_plan(
@@ -564,6 +607,8 @@ class InstallService:
             image=plan.image,
             container_name=plan.container_name,
             installed_at=time.time(),
+            mounts=plan.mounts,
+            plain_env=plan.plain_env,
         )
         self.installed_store.put(record)
         self._publish(
@@ -687,11 +732,21 @@ class InstallService:
             current = self.upstream_service.config(upstream_key)
         except UpstreamNotConfiguredError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        # Issue #344: the mounts and plain settings live in the run argv, not
+        # in `current.env` (which is empty by construction for a container
+        # add-on), so rebuilding from `env` alone started a bare container.
+        # Prefer the plan persisted at install time; a record from before
+        # that field existed recovers it from the argv this hub wrote.
+        mounts, plain_env = record.mounts, record.plain_env
+        if not mounts and not plain_env:
+            mounts, plain_env = _plan_from_run_args(
+                current.args, secret_env_vars=current.env_secrets.keys()
+            )
         run_args = docker_runtime.build_stdio_run_args(
             new_image,
             container_name=record.container_name or _container_name(upstream_key),
-            mounts={},
-            plain_env=current.env,
+            mounts=mounts,
+            plain_env=plain_env,
             secret_env_vars=list(current.env_secrets.keys()),
         )
         # `model_copy` skips validators (same caveat SPEC-302's own
@@ -717,6 +772,8 @@ class InstallService:
             image=new_image,
             container_name=record.container_name,
             installed_at=record.installed_at,
+            mounts=mounts,
+            plain_env=plain_env,
         )
         self.installed_store.put(new_record)
         self._publish(
