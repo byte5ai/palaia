@@ -1,6 +1,7 @@
 import { Outlet, useLocation, useMatches } from "react-router-dom";
 
 import { useEventStream } from "../lib/events";
+import { useHubMode } from "../lib/mode";
 import { initialsFor, useSession } from "../lib/session";
 import { NAV_GROUPS } from "./navConfig";
 import { Sidebar } from "./Sidebar";
@@ -33,6 +34,7 @@ function healthStateFrom(status: string | undefined, connection: string): Health
  * at all"). */
 export function AppShell() {
   const stream = useEventStream();
+  const mode = useHubMode();
   const { session, signOut } = useSession();
   const location = useLocation();
   const matches = useMatches();
@@ -41,7 +43,7 @@ export function AppShell() {
 
   return (
     <div className="app">
-      <Sidebar mode="locked" vaultChangeCount={stream.vaultChangeCount} />
+      <Sidebar mode={mode} vaultChangeCount={stream.vaultChangeCount} />
       <div className="main">
         <Topbar
           title={title}

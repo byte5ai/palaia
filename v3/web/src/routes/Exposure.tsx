@@ -32,6 +32,7 @@ import type {
   TunnelGuidance,
 } from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
+import { isHubMode, notifyModeChanged } from "../lib/mode";
 import { CheckIcon, CopyIcon, InfoIcon, WarningIcon } from "../shell/icons";
 
 type Mode = "locked" | "cloud" | "open";
@@ -112,6 +113,8 @@ export function Exposure() {
         auth_enabled: draftMode === "locked" ? requireSignIn : true,
       });
       setStatus(body);
+      // Issue issue 343: the shell's footer shows the mode the hub is *running*.
+      if (isHubMode(body.active_mode)) notifyModeChanged(body.active_mode);
       toast.show(
         body.restart_required
           ? "Saved. Restart the hub for this to take effect."

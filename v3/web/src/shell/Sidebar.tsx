@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
 
 import { api } from "../lib/api/client";
+import { type HubMode, MODE_LABEL } from "../lib/mode";
 import { __version__ } from "../version";
 import { NAV_GROUPS } from "./navConfig";
 
@@ -9,7 +10,9 @@ export function Sidebar({
   mode,
   vaultChangeCount,
 }: {
-  mode: "locked" | "cloud" | "open";
+  /** The hub's *running* access mode (issue 343) — `null` until known, so
+   * the footer never claims "Your network only" on a hub it has not asked. */
+  mode: HubMode | null;
   vaultChangeCount: number;
 }) {
   // SPEC-501 deliverable #5: the hub's own release channel, next to the
@@ -63,10 +66,10 @@ export function Sidebar({
         ))}
       </nav>
       <div className="sidebar__foot">
-        <div className="row t-xs t-muted" style={{ gap: 8 }}>
-          <span className="dot dot--ok" />
+        <div className="row t-xs t-muted" style={{ gap: 8 }} data-testid="access-mode">
+          <span className={["dot", mode ? MODE_DOT[mode] : ""].filter(Boolean).join(" ")} />
           <span>
-            <strong style={{ fontWeight: 600 }}>{MODE_LABEL[mode]}</strong>
+            <strong style={{ fontWeight: 600 }}>{mode ? MODE_LABEL[mode] : "…"}</strong>
           </span>
         </div>
         <div className="t-meta">
@@ -78,8 +81,10 @@ export function Sidebar({
   );
 }
 
-const MODE_LABEL: Record<"locked" | "cloud" | "open", string> = {
-  locked: "Your network only",
-  cloud: "Cloud",
-  open: "Open",
+/** Open puts this dashboard on the public internet — worth a warning
+ * colour every time the operator looks at the footer. */
+const MODE_DOT: Record<HubMode, string> = {
+  locked: "dot--ok",
+  cloud: "dot--ok",
+  open: "dot--warn",
 };
