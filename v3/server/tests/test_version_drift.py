@@ -215,3 +215,54 @@ def test_release_workflow_tag_derived_version_would_round_trip_this_rc() -> None
     channel = "beta" if is_prerelease else "stable"
     if version == "3.0.0-rc1":
         assert channel == "beta", f"{version!r} is an RC and must resolve to beta, not stable"
+
+
+# ---------------------------------------------------------------------------
+# Issue #388: the steps RELEASING.md §3 used to leave for the cut to
+# discover. Each is checked on the checkout, before any dispatch.
+# ---------------------------------------------------------------------------
+
+
+def test_release_notes_exist_for_this_version() -> None:
+    """`v3-cut-release.yml` publishes the GitHub release from
+    `docs/release-notes/<VERSION>.md` and fails without it — catch the
+    missing file here, on the PR, not at the dispatch."""
+    version = _read_version_file()
+    notes = V3_ROOT / "docs" / "release-notes" / f"{version}.md"
+    assert notes.is_file(), f"missing {notes.relative_to(V3_ROOT)} — RELEASING.md §3"
+    first_line = notes.read_text(encoding="utf-8").splitlines()[0]
+    assert first_line.startswith("# "), (
+        "the notes' first line is `# <title>` — the cut uses it as the release title"
+    )
+
+
+#: Wording that is true only while v3 has no final release. Allowed (not
+#: required) while VERSION is a pre-release; refused once it is not.
+_PRERELEASE_ONLY_WORDING = (
+    ("README.md", "release candidate"),
+    ("README.md", "Not yet tagged"),
+    ("SECURITY.md", "there is no released v3 yet"),
+)
+
+
+def test_release_candidate_wording_is_gone_once_version_is_final() -> None:
+    version = _read_version_file()
+    if "-" in version:
+        pytest.skip(f"VERSION {version!r} is a pre-release; the wording is allowed")
+    for relative, phrase in _PRERELEASE_ONLY_WORDING:
+        text = (V3_ROOT / relative).read_text(encoding="utf-8")
+        assert phrase not in text, (
+            f"{relative} still says {phrase!r} for the final VERSION {version!r} — RELEASING.md §3"
+        )
+
+
+def test_dry_run_script_never_hardcodes_a_release_version() -> None:
+    """`tools/release-dry-run.sh` reads `VERSION` and must never restate a
+    version in its own output — its closing line used to name `3.0.0-rc1`
+    for good. Comment lines may cite versions as examples."""
+    script = (V3_ROOT / "tools" / "release-dry-run.sh").read_text(encoding="utf-8")
+    code_lines = [line for line in script.splitlines() if not line.lstrip().startswith("#")]
+    offenders = [
+        line for line in code_lines if re.search(r"\b\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?\b", line)
+    ]
+    assert offenders == [], f"release-dry-run.sh hardcodes a version: {offenders}"

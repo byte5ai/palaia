@@ -85,4 +85,4 @@ print('sdk:', re.search(r'(?m)^version\s*=\s*\"([^\"]+)\"', text).group(1))
 "
 echo ""
 
-echo "== dry-run complete: 3.0.0-rc1's release plumbing checks out =="
+echo "== dry-run complete: ${VERSION}'s release plumbing checks out =="

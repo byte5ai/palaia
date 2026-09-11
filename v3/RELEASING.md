@@ -7,16 +7,18 @@ to act. Everything else is a command this repository already has, checked
 in `server/tests/`.
 
 This file describes going from `3.0.0-rc1` (SPEC-506) to the final
-`3.0.0`. It is not itself the gate decision — `v3/IMPLEMENTATION.md` §6's
-Phase-5 paragraph is a **draft**; the architect holds the gate. Do not
-start step 1 below until that paragraph is accepted, in writing, by
-whoever holds it.
+`3.0.0`. It is not itself the gate decision: `v3/IMPLEMENTATION.md` §6's
+Gate-P5 paragraph records the architect's verdict (held 2026-08-26,
+conditional on the two owner actions in §1 below). The Phase-4 paragraph
+above it still carries its "this paragraph is a draft" marker — that is
+the historical record of what SPEC-407 ran, not an open gate, and it does
+not block the cut (issue #388).
 
 ## 0. Prerequisite: the gate is held
 
-- [ ] **[OWNER]** `v3/IMPLEMENTATION.md` §6's Phase-5 paragraph is
-      reviewed and its "draft" marker removed (or replaced with the
-      architect's actual verdict).
+- [ ] **[OWNER]** Confirm `v3/IMPLEMENTATION.md` §6's Gate-P5 verdict
+      still stands — it is conditional on §1's two owner actions, so this
+      is a re-read, not a new decision.
 - [ ] `uv run pytest server/tests -q` green, `uv run ruff check server &&
       uv run mypy server/src` clean, `v3/web` and `v3/site/docs`'s own
       lint/typecheck/test/build all green — the state this SPEC's own PR
@@ -76,6 +78,18 @@ whoever holds it.
       counts for `3.0.0`. If nothing user-visible changed since `rc1`
       beyond the version bump itself, say so in one line rather than
       duplicating the `rc1` section.
+- [ ] Write `v3/docs/release-notes/3.0.0.md`. Its first line is
+      `# <release title>`; the cut workflow publishes the rest as the
+      GitHub release body (§3 below), and fails without the file.
+      `server/tests/test_version_drift.py` fails first, on the checkout,
+      while the notes for `VERSION` are missing.
+- [ ] Retire the release-candidate wording: `v3/README.md`'s status
+      paragraph ("release candidate", "Not yet tagged `3.0.0`") and
+      `v3/SECURITY.md`'s supported-versions row ("there is no released v3
+      yet"). `test_version_drift.py` refuses those phrases once `VERSION`
+      has no suffix. (The root README's `:beta` command and its "use
+      `:stable` once final" line are the `rc-channel-note` the step above
+      already covers.)
 - [ ] Run `v3/tools/release-dry-run.sh` once more against the bumped
       version — it re-runs the drift test, prints what the release
       workflow would tag/push, confirms the `CHANGELOG.md` section exists,
@@ -125,7 +139,14 @@ whoever holds it.
       — the one-liner, `deploy/install.sh`, and `deploy/docker-compose.yml`
       need no edits; they already pin the `stable` channel tag on
       purpose (`deploy/README.md`/`deploy/stores/README.md` — never a
-      literal version).
+      literal version). The same holds for `deploy/cloud-init.yaml`, the
+      Pi image (`deploy/pi-image/`: systemd unit, README, `BOOT-TEST.md`)
+      and the generated Synology page — all pin `:stable`. The Pi
+      appliance `.img.xz` itself is attached to the release by
+      `v3-pi-image.yml` (§3).
+- [ ] Check the GitHub release the cut workflow created: title from the
+      notes' first line, body from the rest, no pre-release badge for a
+      final version. Nothing to publish by hand — §3's dispatch did it.
 - [ ] **[OWNER]** Bump the *store package* version fields — these are the
       one place a literal version string does live, separate from the
       image tag: `truenas/community/palaia/app.yaml`'s `app_version`/
@@ -157,10 +178,6 @@ whoever holds it.
       (`palaia.local` is unrelated and needs no change here — that is the
       hub's own real mDNS self-advertisement, `deploy/README.md` §"Finding
       it on your network", not a placeholder.)
-- [ ] **[OWNER]** Publish the GitHub release notes from
-      `v3/CHANGELOG.md`'s new section (`gh release create v3.3.0.0
-      --notes-file ...` or the GitHub UI) — this repository has no
-      workflow step that does this automatically today.
 - [ ] **[OWNER]** Turn on whatever v2-sunset messaging
       `docs/migrate-from-v2.md`'s §2 dates call for, now that they are
       real dates rather than placeholders.
