@@ -4,12 +4,15 @@ A **signed JSON document**, fixed shape::
 
     {schema_version, generated_at, entries: [...], signature}
 
-fetched from a configurable URL and verified against a pinned Ed25519
-public key. The key is baked into the package
-(:data:`DEFAULT_PUBLIC_KEY_B64`) and may be replaced only through the
-owner-only ``config.yaml`` (``market.public_key``, SPEC-303 / issue #321)
-— never fetched, never settable over REST, because a trust anchor that a
-remote caller could move would defeat the point. ``signature`` is a
+fetched from a configured URL and verified against the Ed25519 public
+key configured next to it. Both live only in the owner-only ``config.yaml``
+(``market.index_url`` + ``market.public_key``, SPEC-303 / issues #321,
+#409) — never fetched, never settable over REST, because a trust anchor
+that a remote caller could move would defeat the point. **No index is
+configured by default**: palaia publishes no curated index for 3.0.0, so a
+hub without those two settings serves the add-ons bundled with the
+release (:func:`load_starter_index`) and says so, instead of asking a
+non-existent host once an hour. ``signature`` is a
 base64-encoded Ed25519 signature over the canonical JSON encoding
 (``json.dumps(..., sort_keys=True, separators=(",", ":"))``) of the
 document *without* the ``signature`` key itself.
@@ -55,19 +58,21 @@ from .models import MarketEntry, SourceLocator
 
 logger = logging.getLogger("palaia_hub.market.curated")
 
-#: The default pinned Ed25519 public key (raw 32 bytes, base64), baked
-#: into the package. It is the key the bundled **starter** index was
-#: signed with, and its private half was discarded right after that
-#: signing (see ``v3/tools/README.md`` and ``v3/tools/sign_market_index.py``)
-#: — so until whoever publishes the real palaia curated index mints a
-#: keypair, signs and publishes ``market-index.json`` at
-#: :data:`DEFAULT_INDEX_URL`, and either replaces this constant in a
-#: release or sets ``market.public_key`` in ``config.yaml``, no fetched
-#: document can verify and every hub serves the starter index (issue
-#: #321). The key is never fetched and never settable over REST.
-DEFAULT_PUBLIC_KEY_B64 = "xh8oKQEO/x7pfXrfqieqjkUc866ZcDPuCvkI3MhSN8k="
+#: Issue #409: there is no curated index URL by default. The old default
+#: named a domain that does not exist, and the key it was paired with had
+#: no private half anywhere — so every hub asked a dead host once an hour
+#: and could never have verified an answer. A hub that should follow a
+#: published index sets ``market.index_url`` *and* ``market.public_key``
+#: in ``config.yaml`` (``v3/tools/README.md`` walks through publishing one).
+DEFAULT_INDEX_URL: str | None = None
 
-DEFAULT_INDEX_URL = "https://index.palaia.dev/market-index.json"
+#: What the marketplace says when no index is configured — the honest
+#: state of a 3.0.0 hub, not a failure.
+NO_INDEX_NOTE = (
+    "No curated add-on index is configured for this hub, so the marketplace shows "
+    "the add-ons bundled with this release. An operator can point it at a published "
+    "index with `market.index_url` and `market.public_key` in config.yaml."
+)
 DEFAULT_TIMEOUT_SECONDS = 8.0
 DEFAULT_MAX_BYTES = 5 * 1024 * 1024
 #: How long a verified fetch is served from disk before the URL is asked
@@ -106,14 +111,20 @@ class CuratedIndexResult:
 
 
 def load_starter_index() -> dict[str, Any]:
-    """The small signed starter index shipped in the package (SPEC-303
-    deliverable #2's "ship a small starter index as a repo file") — a
-    fresh hub that has never fetched a real curated index, and can't
-    reach one right now, still has something real to browse rather than
-    an empty marketplace. See ``v3/tools/README.md`` for how it was
-    produced (and why its signing key was discarded afterward)."""
+    """The small starter index shipped in the package (SPEC-303 deliverable
+    #2's "ship a small starter index as a repo file") — what a hub with no
+    configured index browses, and what a hub whose index is unreachable
+    falls back to when it has no last-verified copy.
+
+    It is trusted the way the rest of the package is trusted (issue #409):
+    it ships inside the wheel/image, so tampering with it is tampering with
+    the code, and it carries no signature — the key its earlier signature
+    used had no private half anywhere, which made that signature a
+    formality. :func:`check_index_shape` still validates its structure."""
     data = importlib.resources.files("palaia_hub.market") / "data" / "starter-index.json"
-    return json.loads(data.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
+    document = json.loads(data.read_text(encoding="utf-8"))
+    check_index_shape(document)
+    return document  # type: ignore[no-any-return]
 
 
 def canonical_bytes(document: dict[str, Any]) -> bytes:
@@ -144,6 +155,24 @@ def _entry_from_raw(raw: dict[str, Any], *, provenance: str) -> MarketEntry:
     )
 
 
+def check_index_shape(document: dict[str, Any], *, signed: bool = False) -> None:
+    """Raise :class:`IndexVerificationError` unless ``document`` has the
+    index shape (and, with ``signed=True``, a signature to verify)."""
+    required = ["schema_version", "generated_at", "entries"]
+    if signed:
+        required.append("signature")
+    for key in required:
+        if key not in document:
+            raise IndexVerificationError(f"curated index document is missing '{key}'")
+    if document["schema_version"] != SCHEMA_VERSION:
+        raise IndexVerificationError(
+            f"curated index schema_version {document['schema_version']!r} is not "
+            f"the one this hub understands ({SCHEMA_VERSION})"
+        )
+    if not isinstance(document["entries"], list):
+        raise IndexVerificationError("curated index 'entries' is not a list")
+
+
 def verify_index_document(
     document: dict[str, Any],
     *,
@@ -152,14 +181,7 @@ def verify_index_document(
 ) -> None:
     """Raise :class:`IndexVerificationError` naming the exact reason, or
     return silently when the document is authentic and not a rollback."""
-    for key in ("schema_version", "generated_at", "entries", "signature"):
-        if key not in document:
-            raise IndexVerificationError(f"curated index document is missing '{key}'")
-    if document["schema_version"] != SCHEMA_VERSION:
-        raise IndexVerificationError(
-            f"curated index schema_version {document['schema_version']!r} is not "
-            f"the one this hub understands ({SCHEMA_VERSION})"
-        )
+    check_index_shape(document, signed=True)
     try:
         public_key = Ed25519PublicKey.from_public_bytes(base64.b64decode(public_key_b64))
         signature = base64.b64decode(document["signature"])
@@ -193,8 +215,12 @@ class CuratedIndexClient:
     and an on-disk TTL cache of every outcome.
 
     Args:
-        index_url: where the signed document lives.
-        public_key_b64: the Ed25519 public key it must verify against.
+        index_url: where the signed document lives — ``None`` (the default,
+            issue #409) means no index is followed: :meth:`fetch` serves the
+            bundled starter entries with :data:`NO_INDEX_NOTE` and never
+            touches the network.
+        public_key_b64: the Ed25519 public key it must verify against;
+            required whenever ``index_url`` is set.
         client: an ``httpx.AsyncClient`` to reuse (tests); one is created
             and owned otherwise.
         last_good_path: where the last *verified* document is kept.
@@ -212,8 +238,8 @@ class CuratedIndexClient:
     def __init__(
         self,
         *,
-        index_url: str = DEFAULT_INDEX_URL,
-        public_key_b64: str = DEFAULT_PUBLIC_KEY_B64,
+        index_url: str | None = DEFAULT_INDEX_URL,
+        public_key_b64: str | None = None,
         client: httpx.AsyncClient | None = None,
         last_good_path: Path | None = None,
         cache_dir: Path | None = None,
@@ -223,6 +249,11 @@ class CuratedIndexClient:
         max_bytes: int = DEFAULT_MAX_BYTES,
         clock: Callable[[], float] = time.time,
     ) -> None:
+        if index_url and not public_key_b64:
+            raise ValueError(
+                "a curated index URL needs the public key it is signed with (market.public_key) "
+                "— without it no document could ever verify. See v3/tools/README.md."
+            )
         self.index_url = index_url
         self.public_key_b64 = public_key_b64
         self._owns_client = client is None
@@ -286,6 +317,26 @@ class CuratedIndexClient:
     # ------------------------------------------------------------- results
 
     @staticmethod
+    def _bundled_result() -> CuratedIndexResult:
+        """No index configured (issue #409): the bundled entries, fresh — this
+        is the intended state, not a fallback, so ``stale`` is False and the
+        note explains it."""
+        try:
+            starter = load_starter_index()
+        except (FileNotFoundError, ModuleNotFoundError, IndexVerificationError) as exc:
+            logger.warning("bundled starter index unusable: %s", exc)
+            return CuratedIndexResult(
+                entries=(), generated_at="", stale=False, warning=NO_INDEX_NOTE
+            )
+        entries = tuple(_entry_from_raw(e, provenance="curated") for e in starter["entries"])
+        return CuratedIndexResult(
+            entries=entries,
+            generated_at=str(starter["generated_at"]),
+            stale=False,
+            warning=NO_INDEX_NOTE,
+        )
+
+    @staticmethod
     def _fresh_result(document: dict[str, Any]) -> CuratedIndexResult:
         entries = tuple(_entry_from_raw(e, provenance="curated") for e in document["entries"])
         return CuratedIndexResult(
@@ -299,9 +350,6 @@ class CuratedIndexClient:
         if last_good is None:
             try:
                 last_good = load_starter_index()
-                verify_index_document(
-                    last_good, public_key_b64=self.public_key_b64, known_generated_at=None
-                )
             except (FileNotFoundError, ModuleNotFoundError, IndexVerificationError):
                 logger.log(
                     log_level,
@@ -330,6 +378,7 @@ class CuratedIndexClient:
     # --------------------------------------------------------------- fetch
 
     async def _download(self) -> dict[str, Any]:
+        assert self.index_url is not None  # fetch() returns early otherwise
         try:
             response = await get_bounded(
                 self._client, self.index_url, timeout=self.timeout_seconds, max_bytes=self.max_bytes
@@ -360,6 +409,8 @@ class CuratedIndexClient:
                 refresh path, :meth:`MarketService.refresh_curated_index`).
                 The result still lands in the cache.
         """
+        if self.index_url is None or self.public_key_b64 is None:
+            return self._bundled_result()
         if not force:
             cached = self._from_cache()
             if cached is not None:
@@ -390,11 +441,12 @@ __all__ = [
     "CACHE_RELATIVE_PATH",
     "DEFAULT_FAILURE_TTL_SECONDS",
     "DEFAULT_INDEX_URL",
-    "DEFAULT_PUBLIC_KEY_B64",
     "DEFAULT_TTL_SECONDS",
+    "NO_INDEX_NOTE",
     "CuratedIndexClient",
     "CuratedIndexResult",
     "IndexVerificationError",
     "canonical_bytes",
+    "check_index_shape",
     "verify_index_document",
 ]

@@ -17,9 +17,9 @@ access token (the real ``claude`` CLI) and to ``mobile`` with a real
 newly-installed tool.
 
 **Why the curated index is signed with a throwaway key generated in this
-process**: :mod:`palaia_hub.market.curated`'s pinned
-``DEFAULT_PUBLIC_KEY_B64`` is deliberately not configurable — a real key
-only palaia's own real curated index holds the private half of. Proving
+process**: a hub follows a curated index only when ``market.index_url`` and
+``market.public_key`` are configured together (issue #409), and the private
+half of a real publisher's key belongs to that publisher alone. Proving
 "a curated-index entry installs" for real does not require *that* specific
 key; it requires the real verify-then-trust code path to run against a
 document that really is signed and really does verify, which a

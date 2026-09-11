@@ -60,9 +60,7 @@ class HttpUpstream:
 def http_upstream() -> Iterator[HttpUpstream]:
     """An unauthenticated fixture MCP server, in its own process."""
     port = _free_port()
-    process = subprocess.Popen(
-        [sys.executable, str(_UPSTREAM_HTTP_SERVER), "--port", str(port)]
-    )
+    process = subprocess.Popen([sys.executable, str(_UPSTREAM_HTTP_SERVER), "--port", str(port)])
     url = f"http://127.0.0.1:{port}/"
     deadline = time.time() + 30
     try:

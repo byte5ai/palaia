@@ -8,34 +8,42 @@ index, not by `palaia-hub` itself.
 
 The curated add-on index (MASTERPLAN §5.3, `palaia_hub.market.curated`) is
 a signed JSON document. The hub only ever holds the **public** half of
-the keypair (`palaia_hub.market.curated.DEFAULT_PUBLIC_KEY_B64`, baked
-into the source, or `market.public_key` in an owner's `config.yaml`) and
-refuses any document that doesn't verify against it.
+the keypair (`market.public_key` in an owner's `config.yaml`, set together
+with `market.index_url`) and refuses any fetched document that doesn't
+verify against it.
 
 **The private key is intentionally never in this repository.** A trust
 anchor that anyone with repo access could re-sign against is not a trust
 anchor — it would let a compromised contributor account (or a careless
 PR) silently redirect every hub's curated index. The key lives wherever
-whoever publishes `index.palaia.dev`'s real index keeps secrets (a
+whoever publishes the real index keeps secrets (a
 password manager, a KMS, a hardware key) — this script is only the tool
 that uses it locally to produce a signed document, then the private key
 goes back into storage.
 
-### Current state — read this first (issue #321)
+### Current state — read this first (issues #321, #409)
 
-**No hub can verify a fetched index today, so every hub serves the starter
-index.** The key pinned in `DEFAULT_PUBLIC_KEY_B64` is the one the bundled
-starter index was signed with, and its private half was discarded right
-after that signing (see the last paragraph of this section). Nothing
-published at `https://index.palaia.dev/market-index.json` can carry a
-signature that key accepts, so each hub's fetch is refused (or, while
-nothing is published there, fails to connect) and the hub falls back to
-`server/src/palaia_hub/market/data/starter-index.json`. Since #321 that
-failure is remembered on disk for five minutes
-(`palaia_hub.market.curated.DEFAULT_FAILURE_TTL_SECONDS`), so the
-marketplace pages stay fast; the *content* is still just the starter list.
+**palaia publishes no curated index for 3.0.0, and no hub looks for one by
+default.** `DEFAULT_INDEX_URL` is `None`: a hub with no `market.index_url`
+serves `server/src/palaia_hub/market/data/starter-index.json` — the
+add-ons bundled with the release — and the marketplace page says exactly
+that. The starter index carries no signature: it ships inside the package,
+so it is trusted the way the code is, and the key its old signature used
+had no private half anywhere (it was discarded after signing), which made
+that signature a formality rather than a check. Only a *fetched* index is
+signature-verified.
 
-Turning the real index on is an **owner action**, done once, in this order:
+Two things in the starter index are the owner's to confirm before 3.0.0
+ships them as "bundled add-ons": the container entries point at
+`ghcr.io/palaia/addon-fetch:1.0.0` and `ghcr.io/palaia/addon-filesystem:1.0.0`,
+which this repository's CI never pulls — check they exist and are yours, or
+remove them (the skill entry that pointed at a non-existent
+`addons.` host is already gone).
+
+Publishing a real index is an **owner action**, done once, in this order.
+Where the index lives is also the owner's call — the natural place is next
+to the docs (`https://palaia.byte5.ai/market-index.json`, served by the
+palaia-homepage repo); the steps below say `<index-url>` for it.
 
 1. **Mint the real keypair** — on the publisher's own machine, never in CI
    and never inside this repository:
@@ -65,9 +73,8 @@ Turning the real index on is an **owner action**, done once, in this order:
    `generated_at` must be **later** than the previous published document's
    — a hub refuses an older one as a rollback.
 
-3. **Publish `market-index.json`** at
-   `https://index.palaia.dev/market-index.json` (the hub's
-   `DEFAULT_INDEX_URL`), over HTTPS, as plain static content. Every hub
+3. **Publish `market-index.json`** at `<index-url>`, over HTTPS, as plain
+   static content. Every hub
    re-fetches it at most once an hour
    (`DEFAULT_TTL_SECONDS`), and only after a hub has verified one document
    does it start enforcing the rollback check against it.
@@ -78,7 +85,7 @@ Turning the real index on is an **owner action**, done once, in this order:
 
      ```yaml
      market:
-       index_url: https://index.palaia.dev/market-index.json   # or your own URL
+       index_url: <index-url>
        public_key: <the printed public key>
      ```
 
@@ -86,11 +93,11 @@ Turning the real index on is an **owner action**, done once, in this order:
      settable *only* in this owner-only file — no REST route or dashboard
      control can move a hub's trust anchor.
 
-   - **For every hub, permanently** — replace
-     `DEFAULT_PUBLIC_KEY_B64` in `server/src/palaia_hub/market/curated.py`
-     in a follow-up PR (a new key = a new hub release, deliberately, per that
-     constant's own docstring). Hubs that set `market.public_key`
-     themselves keep their own value.
+   - **For every hub, permanently** — make the URL and key the package
+     defaults (`DEFAULT_INDEX_URL` in
+     `server/src/palaia_hub/market/curated.py`, plus a default public key
+     next to it) in a follow-up PR: a new default = a new hub release,
+     deliberately. Hubs that set `market.*` themselves keep their values.
 
 Every later publish repeats steps 2–3 only. Rotating the key repeats all
 four (and, until the release with the new default is out, hubs that have

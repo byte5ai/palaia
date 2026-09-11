@@ -18,7 +18,6 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from palaia_hub.config import ConfigError, load_config
 from palaia_hub.market.curated import (
     DEFAULT_INDEX_URL,
-    DEFAULT_PUBLIC_KEY_B64,
     CuratedIndexClient,
 )
 from palaia_hub.market.installed_store import InstalledAddonRecord
@@ -93,6 +92,7 @@ async def _swap_in_curated_client(
     assert production.install_service is not None
     await production.install_service.market_service.curated_client.aclose()
     production.install_service.market_service.curated_client = CuratedIndexClient(
+        index_url="https://index.example.test/market-index.json",
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         public_key_b64=public_key_b64,
         last_good_path=home / "market_curated_index.json",
@@ -189,8 +189,9 @@ async def test_market_defaults_apply_when_the_section_is_absent(tmp_path: Path) 
     async with _running(production):
         assert production.install_service is not None
         curated = production.install_service.market_service.curated_client
-        assert curated.index_url == DEFAULT_INDEX_URL
-        assert curated.public_key_b64 == DEFAULT_PUBLIC_KEY_B64
+        # Issue #409: no index is followed by default, and there is no dead key.
+        assert curated.index_url is None and DEFAULT_INDEX_URL is None
+        assert curated.public_key_b64 is None
 
 
 def test_a_malformed_public_key_is_refused_with_the_key_named(tmp_path: Path) -> None:
@@ -206,12 +207,24 @@ def test_a_malformed_public_key_is_refused_with_the_key_named(tmp_path: Path) ->
 
 def test_a_public_key_of_the_wrong_length_is_refused(tmp_path: Path) -> None:
     (tmp_path / "config.yaml").write_text(
-        f"market:\n  public_key: {base64.b64encode(b'short').decode()}\n", encoding="utf-8"
+        "market:\n  index_url: https://index.example.test/market-index.json\n"
+        f"  public_key: {base64.b64encode(b'short').decode()}\n",
+        encoding="utf-8",
     )
     with pytest.raises(ConfigError) as excinfo:
         load_config(home=tmp_path)
     assert "32" in str(excinfo.value)
     assert "market.public_key" in str(excinfo.value)
+
+
+def test_a_url_without_a_key_is_a_config_error(tmp_path: Path) -> None:
+    """Issue #409: the two settings go together."""
+    (tmp_path / "config.yaml").write_text(
+        "market:\n  index_url: https://index.example.test/market-index.json\n", encoding="utf-8"
+    )
+    with pytest.raises(ConfigError) as excinfo:
+        load_config(home=tmp_path)
+    assert "go together" in str(excinfo.value)
 
 
 def test_the_generated_template_round_trips_the_market_defaults(tmp_path: Path) -> None:

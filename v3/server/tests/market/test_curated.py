@@ -40,6 +40,7 @@ async def test_a_validly_signed_document_is_accepted_fresh(
 
     async with _client_for(httpx.MockTransport(handler)) as http:
         client = CuratedIndexClient(
+            index_url="https://index.example.test/market-index.json",
             client=http,
             public_key_b64=public_key_b64,
             last_good_path=tmp_path / "last_good.json",
@@ -75,7 +76,10 @@ async def test_a_bad_signature_is_refused_and_falls_back(
     with caplog.at_level(logging.WARNING):
         async with _client_for(httpx.MockTransport(handler)) as http:
             client = CuratedIndexClient(
-                client=http, public_key_b64=public_key_b64, last_good_path=last_good_path
+                index_url="https://index.example.test/market-index.json",
+                client=http,
+                public_key_b64=public_key_b64,
+                last_good_path=last_good_path,
             )
             result = await client.fetch()
 
@@ -98,6 +102,7 @@ async def test_a_document_signed_with_the_wrong_key_is_refused(
 
     async with _client_for(httpx.MockTransport(handler)) as http:
         client = CuratedIndexClient(
+            index_url="https://index.example.test/market-index.json",
             client=http,
             public_key_b64=wrong_public_b64,
             last_good_path=tmp_path / "last_good.json",
@@ -106,7 +111,9 @@ async def test_a_document_signed_with_the_wrong_key_is_refused(
 
     assert result.stale is True
     assert "signature" in result.warning.lower()
-    assert result.entries == ()  # no last-good copy, and this key doesn't match the starter index
+    # No last-good copy: the bundled starter entries are the fallback (they
+    # are trusted as packaged, not by this key — issue #409).
+    assert [entry.id for entry in result.entries] == ["palaia.fetch", "palaia.filesystem"]
 
 
 @pytest.mark.anyio
@@ -127,7 +134,10 @@ async def test_a_downgraded_generated_at_is_refused_as_a_rollback(
 
     async with _client_for(httpx.MockTransport(handler)) as http:
         client = CuratedIndexClient(
-            client=http, public_key_b64=public_key_b64, last_good_path=last_good_path
+            index_url="https://index.example.test/market-index.json",
+            client=http,
+            public_key_b64=public_key_b64,
+            last_good_path=last_good_path,
         )
         result = await client.fetch()
 
@@ -150,7 +160,10 @@ async def test_offline_falls_back_to_the_last_verified_copy(
 
     async with _client_for(httpx.MockTransport(handler)) as http:
         client = CuratedIndexClient(
-            client=http, public_key_b64=public_key_b64, last_good_path=last_good_path
+            index_url="https://index.example.test/market-index.json",
+            client=http,
+            public_key_b64=public_key_b64,
+            last_good_path=last_good_path,
         )
         result = await client.fetch()
 
@@ -172,7 +185,10 @@ async def test_a_valid_document_is_written_as_the_new_last_good_copy(
 
     async with _client_for(httpx.MockTransport(handler)) as http:
         client = CuratedIndexClient(
-            client=http, public_key_b64=public_key_b64, last_good_path=last_good_path
+            index_url="https://index.example.test/market-index.json",
+            client=http,
+            public_key_b64=public_key_b64,
+            last_good_path=last_good_path,
         )
         await client.fetch()
 
@@ -219,6 +235,7 @@ def _cached_client(
     http: httpx.AsyncClient, tmp_path: Path, public_key_b64: str, clock: _Clock, **kwargs: Any
 ) -> CuratedIndexClient:
     return CuratedIndexClient(
+        index_url="https://index.example.test/market-index.json",
         client=http,
         public_key_b64=public_key_b64,
         last_good_path=tmp_path / "last_good.json",

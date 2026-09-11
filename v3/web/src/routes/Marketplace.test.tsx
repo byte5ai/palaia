@@ -33,7 +33,7 @@ const SKILL_ENTRY: MarketEntry = {
   name: "Memory Graph Viewer",
   one_liner: "A read-only viewer for the knowledge graph.",
   kind: "skill",
-  source: { type: "url", value: "https://addons.palaia.dev/viewer/SKILL.md" },
+  source: { type: "url", value: "https://addons.example.com/viewer/SKILL.md" },
   config_schema: null,
   permissions: ["memory-scope:read"],
   maintainer: "palaia",
@@ -438,5 +438,26 @@ describe("search requests (issue 384)", () => {
     const queries = search.mock.calls.map((call) => call[0]);
     expect(queries).toEqual(["", "abc"]);
     expect(mountSignal.aborted).toBe(true);
+  });
+});
+
+describe("what the marketplace says it is showing (issue 409)", () => {
+  it("shows the hub's own note when no curated index is configured", async () => {
+    vi.spyOn(api, "searchMarket").mockResolvedValue({
+      entries: [FETCH_ENTRY],
+      stale: false,
+      notes: { curated: "No curated add-on index is configured for this hub." },
+    });
+    vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([]);
+    vi.spyOn(api, "listInstalledAddons").mockResolvedValue([]);
+
+    mount();
+
+    expect(
+      await screen.findByText(/no curated add-on index is configured/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/could not reach every source/i),
+    ).not.toBeInTheDocument();
   });
 });

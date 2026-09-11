@@ -397,6 +397,7 @@ export function Marketplace() {
   const [source, setSource] = useState<MarketProvenance | "all">("all");
   const [entries, setEntries] = useState<MarketEntry[] | null>(null);
   const [stale, setStale] = useState(false);
+  const [notes, setNotes] = useState<Record<string, string>>({});
   const [profiles, setProfiles] = useState<GatewayProfile[]>([]);
   const [installed, setInstalled] = useState<InstalledAddon[] | null>(null);
 
@@ -423,6 +424,7 @@ export function Marketplace() {
         if (controller.signal.aborted) return;
         setEntries(result.entries);
         setStale(result.stale);
+        setNotes(result.notes ?? {});
       })
       .catch(() => {
         if (!controller.signal.aborted) setEntries([]);
@@ -490,6 +492,13 @@ export function Marketplace() {
             Showing the last copy palaia saved — it could not reach every source
             just now.
           </p>
+        </div>
+      ) : notes.curated ? (
+        // Issue 409: no curated index is published yet — say so, in the
+        // hub's own words, instead of implying a source that does not exist.
+        <div className="banner">
+          <InfoIcon className="icon icon--sm" />
+          <p className="t-sm t-muted">{notes.curated}</p>
         </div>
       ) : null}
 

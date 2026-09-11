@@ -125,6 +125,9 @@ class MarketService:
         if source in (None, "curated"):
             curated = await self.curated_client.fetch()
             entries.extend(curated.entries)
+            if curated.warning and not curated.stale:
+                # Issue #409: "no index configured" is a note, not staleness.
+                notes["curated"] = curated.warning
             if curated.stale:
                 stale = True
                 notes["curated"] = curated.warning or "serving last verified copy"

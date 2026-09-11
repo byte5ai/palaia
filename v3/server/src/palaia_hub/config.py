@@ -792,24 +792,31 @@ class MarketSettings(BaseModel):
     the trust anchor, so it is deliberately reachable through nothing but
     this owner-only (``0600``) file: no REST route, no dashboard control
     and no environment of a marketplace add-on can move it, and a
-    ``config.yaml`` edit already implies control of the host. ``None`` for
-    either means the package defaults
-    (``palaia_hub.market.curated.DEFAULT_INDEX_URL`` /
-    ``DEFAULT_PUBLIC_KEY_B64``); kept optional rather than defaulted here
-    so each default lives in exactly one place. See ``v3/tools/README.md``
-    for publishing an index of your own (issue #321).
+    ``config.yaml`` edit already implies control of the host.
+
+    Both unset (the default) means **no curated index**: palaia publishes
+    none for 3.0.0, and the marketplace shows the add-ons bundled with the
+    release and says so (issue #409). Set both to follow a published index;
+    one without the other is a configuration error, since a URL without its
+    key could never verify and a key without a URL does nothing. See
+    ``v3/tools/README.md`` for publishing an index of your own (issue #321).
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    #: ``None`` means "use palaia_hub.market.curated.DEFAULT_INDEX_URL".
+    #: Where the signed index lives; ``None`` = no curated index.
     index_url: str | None = None
-    #: The raw 32-byte Ed25519 public key, base64. ``None`` means "use
-    #: palaia_hub.market.curated.DEFAULT_PUBLIC_KEY_B64".
+    #: The raw 32-byte Ed25519 public key, base64, the index is signed with.
     public_key: str | None = None
 
     @model_validator(mode="after")
     def _check_public_key(self) -> MarketSettings:
+        if (self.index_url is None) != (self.public_key is None):
+            raise ValueError(
+                "market.index_url and market.public_key go together: a URL without the key "
+                "it is signed with could never verify, and a key without a URL does nothing. "
+                "Fix: set both (v3/tools/README.md), or neither for the bundled add-ons only."
+            )
         if self.public_key is None:
             return self
         try:

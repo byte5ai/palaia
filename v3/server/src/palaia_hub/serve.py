@@ -208,11 +208,11 @@ async def build_production_app(
     # manual entries. Always assembled (like `hook_store` above); it costs
     # nothing until a client actually calls `/api/market/*`, unlike the
     # curator, which runs a model.
-    market_kwargs: dict[str, Any] = {}
-    if config.market.index_url:
-        market_kwargs["index_url"] = config.market.index_url
-    if config.market.public_key:
-        market_kwargs["public_key_b64"] = config.market.public_key
+    # Both None by default (issue #409): no curated index, bundled entries.
+    market_kwargs: dict[str, Any] = {
+        "index_url": config.market.index_url,
+        "public_key_b64": config.market.public_key,
+    }
     market_service = MarketService(
         registry_client=RegistryClient(cache_dir=home / "registry_cache" if home else None),
         curated_client=CuratedIndexClient(
