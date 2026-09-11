@@ -49,10 +49,21 @@ directly — see `v3/justfile`).
 cd v3
 just setup   # uv sync --all-packages; npm ci in web/
 just test    # pytest + vitest
-just lint    # ruff, mypy, eslint, tsc
+just lint    # ruff check, mypy, eslint, tsc
+just fmt     # ruff format (Python) — see the note below
 just dev     # Vite dev server for the web app
 just build   # production build of the web app
 ```
+
+**Formatting is not enforced for 3.0.0** (issue #407). `ruff check` and
+`mypy` gate CI; `ruff format` does not, and about a fifth of the Python
+files would be rewritten by it. Reformatting everything right before a
+release would make the release diff unreadable, so the decision is: cut
+3.0.0 as is, then land one `ruff format server sdk` commit as the first
+change after it and add `ruff format --check` to CI and `just lint` in the
+same commit. Until then, format the files you touch (`just fmt` formats
+the whole tree; `uv run ruff format <file>` a single one) and expect
+mixed styles in files you did not.
 
 Equivalent raw commands, if you don't have `just`:
 

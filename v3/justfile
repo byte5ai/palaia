@@ -14,7 +14,12 @@ test:
     uv run pytest
     cd web && npm test
 
-# Run all linters/type checkers (ruff, mypy, eslint, tsc).
+# Format the Python tree. Not part of `lint` or CI for 3.0.0 — README.md
+# ("Formatting is not enforced") records the decision and when that changes.
+fmt:
+    uv run ruff format server sdk
+
+# Run all linters/type checkers (ruff check, mypy, eslint, tsc).
 lint:
     uv run ruff check .
     uv run mypy server/src
