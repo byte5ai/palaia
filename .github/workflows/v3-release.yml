@@ -41,7 +41,39 @@ env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/palaia-hub
 
 jobs:
+  changes:
+    # Issue #405: most pushes to `main` are docs-only, and each used to
+    # cost a full build + push + QEMU smoke (up to ten minutes cold). A
+    # `paths` filter cannot do this (it ANDs with the `tags` trigger — see
+    # the header), so the decision is made here: a branch push builds only
+    # when the diff since the previous head touches v3/ or this workflow;
+    # a tag push and a manual dispatch always build.
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.decide.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: decide
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          build=true
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF}" == refs/heads/* ]]; then
+            # A zero `before` is a new branch or a force-push: build.
+            if [[ -n "${BEFORE}" && "${BEFORE}" != 0000000000000000000000000000000000000000 ]] \
+               && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null \
+               && git diff --quiet "${BEFORE}" HEAD -- v3 .github/workflows/v3-release.yml; then
+              build=false
+              echo "no change under v3/ or to this workflow since ${BEFORE}; skipping the image build"
+            fi
+          fi
+          echo "build=${build}" >> "$GITHUB_OUTPUT"
+
   build-and-push:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

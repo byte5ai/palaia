@@ -374,3 +374,45 @@ def test_dependency_audits_report_into_the_job_summary() -> None:
     script = (_WORKFLOW_PATH.parents[1] / "scripts" / "report-audit.sh").read_text(encoding="utf-8")
     assert "GITHUB_STEP_SUMMARY" in script
     assert "::warning" in script
+
+
+# ---------------------------------------------------------------------------
+# Issue #405: CI/build time.
+# ---------------------------------------------------------------------------
+
+
+def test_every_uv_setup_in_ci_caches_its_environment() -> None:
+    workflow = yaml.safe_load(_CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    setups = [
+        step
+        for job in workflow["jobs"].values()
+        for step in job["steps"]
+        if step.get("uses", "").startswith("astral-sh/setup-uv")
+    ]
+    assert len(setups) >= 4
+    for step in setups:
+        assert step["with"]["enable-cache"] is True
+        assert step["with"]["cache-dependency-glob"].endswith("uv.lock")
+
+
+def test_a_docs_only_push_to_main_skips_the_image_build() -> None:
+    workflow = _load_workflow()
+    changes = workflow["jobs"]["changes"]
+    decide = next(s for s in changes["steps"] if s.get("id") == "decide")
+    assert "git diff --quiet" in decide["run"]
+    assert "v3 .github/workflows/v3-release.yml" in decide["run"]
+    build = workflow["jobs"]["build-and-push"]
+    assert build["needs"] == "changes"
+    assert build["if"] == "needs.changes.outputs.build == 'true'"
+
+
+def test_the_dockerfile_installs_dependencies_before_the_project_sources() -> None:
+    lines = (_V3_ROOT / "deploy" / "Dockerfile").read_text(encoding="utf-8").splitlines()
+    no_project = next(i for i, line in enumerate(lines) if "--no-install-project" in line)
+    sources = next(i for i, line in enumerate(lines) if line.startswith("COPY v3/server/ "))
+    full_sync = next(
+        i
+        for i, line in enumerate(lines)
+        if line.startswith("RUN uv sync") and "--no-install-project" not in line
+    )
+    assert no_project < sources < full_sync

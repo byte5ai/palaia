@@ -28,6 +28,10 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           version: "0.8.x"
+          # Issue #405: cache the resolved environment between runs instead
+          # of cold-resolving `uv sync` in every job.
+          enable-cache: true
+          cache-dependency-glob: "v3/uv.lock"
 
       - name: Set up Python
         run: uv python install 3.12
@@ -60,7 +64,9 @@ jobs:
         # SPEC-113's e2e scenario suite gets its own job below (dedicated
         # timeout + failure-artifact capture), so it is excluded here to
         # avoid running it twice on every push/PR.
-        run: uv run pytest --ignore=server/tests/e2e
+        # --durations: the slowest tests, in the log, so the ten-minute wall
+        # clock has names attached (issue #405).
+        run: uv run pytest --ignore=server/tests/e2e --durations=10
 
   sdk:
     # v3/sdk is its own uv project on purpose (independently installable,
@@ -78,6 +84,10 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           version: "0.8.x"
+          # Issue #405: cache the resolved environment between runs instead
+          # of cold-resolving `uv sync` in every job.
+          enable-cache: true
+          cache-dependency-glob: "v3/sdk/uv.lock"
 
       - name: Set up Python
         run: uv python install 3.12
@@ -107,6 +117,10 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           version: "0.8.x"
+          # Issue #405: cache the resolved environment between runs instead
+          # of cold-resolving `uv sync` in every job.
+          enable-cache: true
+          cache-dependency-glob: "v3/uv.lock"
 
       - name: Set up Python
         run: uv python install 3.12
@@ -236,6 +250,10 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           version: "0.8.x"
+          # Issue #405: cache the resolved environment between runs instead
+          # of cold-resolving `uv sync` in every job.
+          enable-cache: true
+          cache-dependency-glob: "v3/uv.lock"
 
       - name: Set up Python
         run: uv python install 3.12
@@ -248,6 +266,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          # Issue #405: the two `npm ci` below used to fetch cold every run.
+          cache: 'npm'
+          cache-dependency-path: |
+            v3/web/package-lock.json
+            v3/tools/build-mcpb/package-lock.json
 
       # Each audit still never fails the run (see above), but its findings
       # are no longer buried in a green job's log (issue #401): they go into

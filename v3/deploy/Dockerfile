@@ -50,14 +50,21 @@ RUN npm run build
 FROM python:3.12-slim AS hub-build
 COPY --from=ghcr.io/astral-sh/uv:0.8 /uv /uvx /usr/local/bin/
 WORKDIR /src
-COPY v3/pyproject.toml v3/uv.lock ./
-COPY v3/server/ ./server/
 # The venv's console-script shebangs and the python symlink embed the path
 # it was created at, so it must be built at the exact path the runtime
 # stage will copy it to (venvs aren't relocatable) — hence UV_PROJECT_ENVIRONMENT
 # rather than the workspace-default `.venv` under /src.
 # --no-dev: runtime image never needs pytest/ruff/mypy/httpx.
 ENV UV_PROJECT_ENVIRONMENT=/opt/palaia/venv
+# Two-step sync (issue #405): the dependency layer is built from the
+# manifests and the lockfile alone (`--no-install-project`), so an edit to
+# the hub's own sources — or its tests — re-installs only the project, not
+# every third-party wheel.
+COPY v3/pyproject.toml v3/uv.lock ./
+COPY v3/server/pyproject.toml ./server/pyproject.toml
+COPY v3/sdk/pyproject.toml ./sdk/pyproject.toml
+RUN uv sync --frozen --no-dev --no-editable --package palaia-hub --no-install-project
+COPY v3/server/ ./server/
 RUN uv sync --frozen --no-dev --no-editable --package palaia-hub
 # python-zeroconf for the mDNS announcer (see mdns_announce.py in the
 # runtime stage). Pure Python, no extra system deps — installed straight

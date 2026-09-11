@@ -20,6 +20,7 @@
 !v3/sdk
 
 v3/server/.venv
+v3/server/tests
 v3/sdk/.venv
 v3/server/**/__pycache__
 v3/server/**/*.pyc
