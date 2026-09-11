@@ -132,9 +132,30 @@ describe("Home — a hub without a vault points at the wizard (issue 372)", () =
   });
 });
 
-describe("Home — the inbox tile leads somewhere real (issue 375)", () => {
+describe("Home — honest about loading and failure (issue 378)", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("does not claim 'nothing to remember yet' while the vaults are still loading", () => {
+    mockApi({ funnel: NO_FUNNEL });
+    vi.spyOn(api, "listVaults").mockReturnValue(new Promise(() => {}));
+
+    mount();
+
+    expect(screen.queryByText(/nothing to remember yet/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/looking at your hub/i)).toBeInTheDocument();
+  });
+
+  it("says the hub needs a look when the vaults cannot be read, and the tiles say so too", async () => {
+    mockApi({ funnel: NO_FUNNEL });
+    vi.spyOn(api, "listVaults").mockRejectedValue(new Error("connection refused"));
+
+    mount();
+
+    expect(await screen.findByText(/the hub needs a look/i)).toBeInTheDocument();
+    expect(screen.queryByText(/nothing to remember yet/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/could not load/i).length).toBeGreaterThanOrEqual(3);
   });
 
   it("sends a waiting inbox to the explorer, where the captures are (issue 375)", async () => {

@@ -152,7 +152,7 @@ describe("Automations screen (SPEC-307)", () => {
  * `title` attribute. Scoped to exactly those control surfaces, same as
  * `Exposure.test.tsx`'s own lint.
  */
-describe("Automations screen — failures are shown, never swallowed (issues 376, 377)", () => {
+describe("Automations screen — failures are shown, never swallowed (issues 376, 377, 378)", () => {
   const ENABLED: AutomationInfo = {
     id: "a1",
     name: "notify me",
@@ -194,6 +194,20 @@ describe("Automations screen — failures are shown, never swallowed (issues 376
     fireEvent.click(await screen.findByRole("button", { name: /turn off/i }));
 
     expect(await screen.findByRole("status")).toHaveTextContent(/your sign-in changed/i);
+  });
+
+  it("says when the automations cannot be loaded, and retries on request", async () => {
+    vi.spyOn(api, "listHooks").mockRejectedValue(NOT_MOUNTED);
+    const list = vi
+      .spyOn(api, "listAutomations")
+      .mockRejectedValue(new ApiError("/api/automations", 500, { detail: "store is locked" }));
+
+    mount();
+
+    expect(await screen.findByText(/could not load your automations: store is locked/i)).toBeInTheDocument();
+    list.mockResolvedValue([ENABLED]);
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+    expect(await screen.findByText("notify me")).toBeInTheDocument();
   });
 });
 

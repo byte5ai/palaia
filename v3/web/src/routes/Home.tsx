@@ -11,6 +11,7 @@ import type {
 } from "../lib/api/client";
 import { api } from "../lib/api/client";
 import { docsUrl } from "../lib/docs";
+import { describeApiError } from "../lib/errors";
 import type { EventStreamState, VaultChangeEntry } from "../lib/events";
 import { CheckIcon, ClientsIcon, ExplorerIcon, WarningIcon } from "../shell/icons";
 
@@ -96,6 +97,9 @@ export function Home() {
   const stream = useOutletContext<EventStreamState>();
   const [info, setInfo] = useState<InfoResponse | null>(null);
   const [vaults, setVaults] = useState<VaultSummary[] | null>(null);
+  // Issue 378: a failed vault listing used to look like "nothing to
+  // remember yet" with two tiles stuck at "…".
+  const [vaultsError, setVaultsError] = useState<string | null>(null);
   const [inbox, setInbox] = useState<InboxAggregate | null>(null);
   const [tokens, setTokens] = useState<TokenInfo[] | null>(null);
   const [indexAggregate, setIndexAggregate] = useState<IndexAggregate | null>(null);
@@ -148,8 +152,8 @@ export function Home() {
         }
         setIndexAggregate({ totalReady, totalPending, totalFailed, allCaughtUp });
       })
-      .catch(() => {
-        if (!cancelled) setVaults([]);
+      .catch((err: unknown) => {
+        if (!cancelled) setVaultsError(describeApiError(err));
       });
     api
       .listTokens()
@@ -206,15 +210,19 @@ export function Home() {
           <h2 className="verdict__line">
             {stream.connection === "connecting"
               ? "Connecting to the hub…"
-              : !hasVaults
-                ? "Your hub is up. Nothing to remember yet."
-                : isHealthy
-                  ? "Everything is healthy."
-                  : "The hub needs a look."}
+              : vaultsError
+                ? "The hub needs a look."
+                : vaults === null
+                  ? "Looking at your hub…"
+                  : !hasVaults
+                    ? "Your hub is up. Nothing to remember yet."
+                    : isHealthy
+                      ? "Everything is healthy."
+                      : "The hub needs a look."}
           </h2>
           <p className="verdict__sub">
             {vaults === null
-              ? "Loading vaults…"
+              ? (vaultsError ?? "Loading vaults…")
               : hasVaults
                 ? `${vaults.length} vault${vaults.length === 1 ? "" : "s"}, ${totalNotes} note${totalNotes === 1 ? "" : "s"} on disk.`
                 : (
@@ -268,15 +276,17 @@ export function Home() {
         />
         <Tile
           label="Vaults"
-          metric={vaults?.length ?? "…"}
+          metric={vaults?.length ?? (vaultsError ? "—" : "…")}
           unit={vaults?.length === 1 ? "vault" : "vaults"}
-          sub={`${totalNotes} note${totalNotes === 1 ? "" : "s"}`}
+          sub={vaultsError ? "could not load" : `${totalNotes} note${totalNotes === 1 ? "" : "s"}`}
         />
         <Tile
           label="Semantic search"
           metric={
             indexAggregate === null
-              ? "…"
+              ? vaultsError
+                ? "—"
+                : "…"
               : indexAggregate.allCaughtUp
                 ? "caught up"
                 : `${indexAggregate.totalPending}`
@@ -284,7 +294,9 @@ export function Home() {
           unit={indexAggregate && !indexAggregate.allCaughtUp ? "embedding" : undefined}
           sub={
             indexAggregate === null
-              ? "loading…"
+              ? vaultsError
+                ? "could not load"
+                : "loading…"
               : indexAggregate.allCaughtUp
                 ? "searchable now — fully caught up"
                 : `searchable now — catching up (${indexAggregate.totalReady} of ` +
@@ -294,12 +306,14 @@ export function Home() {
         />
         <Tile
           label="Inbox"
-          metric={inbox?.count ?? "…"}
+          metric={inbox?.count ?? (vaultsError ? "—" : "…")}
           unit="waiting"
           sub={
-            inbox && inbox.oldestAgeSeconds != null
-              ? `oldest capture ${formatDuration(inbox.oldestAgeSeconds)} old`
-              : "nothing captured yet"
+            vaultsError
+              ? "could not load"
+              : inbox && inbox.oldestAgeSeconds != null
+                ? `oldest capture ${formatDuration(inbox.oldestAgeSeconds)} old`
+                : "nothing captured yet"
           }
           attention={Boolean(inbox && inbox.count > 0)}
           action={

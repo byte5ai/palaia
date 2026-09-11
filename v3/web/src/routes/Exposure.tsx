@@ -85,6 +85,8 @@ function copy(text: string, toast: ReturnType<typeof useToast>, what: string) {
 export function Exposure() {
   const toast = useToast();
   const [status, setStatus] = useState<ModeStatus | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [draftMode, setDraftMode] = useState<Mode>("locked");
   const [requireSignIn, setRequireSignIn] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -100,14 +102,16 @@ export function Exposure() {
         setDraftMode(body.configured_mode as Mode);
         setRequireSignIn(signInRequired(body));
       })
-      .catch(() => {
-        // No hub reachable — this page just stays on its loading state
-        // rather than guessing at a mode it does not actually know.
+      .catch((err: unknown) => {
+        // Issue 378: no hub reachable used to leave this page on its
+        // loading state for good. Say so, and offer to try again — never
+        // guess at a mode the hub did not report.
+        if (!cancelled) setLoadError(errorDetail(err));
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
 
   async function save() {
     setSaving(true);
@@ -136,8 +140,27 @@ export function Exposure() {
   if (!status) {
     return (
       <Card>
-        <CardBody>
-          <Waiting>Loading your current access mode…</Waiting>
+        <CardBody className="stack stack--2">
+          {loadError ? (
+            <>
+              <div className="banner banner--warn">
+                <WarningIcon className="icon icon--sm" />
+                <p className="t-sm t-muted">Could not load your current access mode: {loadError}</p>
+              </div>
+              <div className="row">
+                <Button
+                  onClick={() => {
+                    setLoadError(null);
+                    setAttempt((n) => n + 1);
+                  }}
+                >
+                  Try again
+                </Button>
+              </div>
+            </>
+          ) : (
+            <Waiting>Loading your current access mode…</Waiting>
+          )}
         </CardBody>
       </Card>
     );
@@ -406,6 +429,8 @@ function TunnelCard({ mode }: { mode: "cloud" | "open" }) {
 
 function ChecklistCard() {
   const [items, setItems] = useState<ChecklistItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -414,19 +439,38 @@ function ChecklistCard() {
       .then((body: ExposureStatus) => {
         if (!cancelled) setItems(body.checklist);
       })
-      .catch(() => {
-        // No hub reachable — the list just stays on its loading state.
+      .catch((err: unknown) => {
+        // Issue 378: "Checking…" forever told the operator nothing.
+        if (!cancelled) setError(errorDetail(err));
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
 
   return (
     <Card>
       <CardHead title="before you open the dashboard itself" />
       <CardBody className="stack stack--2">
-        {items === null ? (
+        {items === null && error ? (
+          <>
+            <div className="banner banner--warn">
+              <WarningIcon className="icon icon--sm" />
+              <p className="t-sm t-muted">Could not run the checks: {error}</p>
+            </div>
+            <div className="row">
+              <Button
+                size="sm"
+                onClick={() => {
+                  setError(null);
+                  setAttempt((n) => n + 1);
+                }}
+              >
+                Try again
+              </Button>
+            </div>
+          </>
+        ) : items === null ? (
           <Waiting>Checking…</Waiting>
         ) : (
           items.map((item) => (

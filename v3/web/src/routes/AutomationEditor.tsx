@@ -587,6 +587,7 @@ function AutomationRow({
 export function AutomationEditor() {
   const [automations, setAutomations] = useState<AutomationInfo[] | null>(null);
   const [available, setAvailable] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [prefill, setPrefill] = useState<Recipe | null>(null);
 
   function refresh() {
@@ -597,11 +598,37 @@ export function AutomationEditor() {
         setAvailable(true);
       })
       .catch((err) => {
-        if (err instanceof ApiError && err.status === 404) setAvailable(false);
+        if (err instanceof ApiError && err.status === 404) {
+          setAvailable(false);
+          return;
+        }
+        // Issue 378: any other failure left the count at "…" for good.
+        setLoadError(describeApiError(err));
       });
   }
 
   useEffect(refresh, []);
+
+  if (loadError && automations === null) {
+    return (
+      <Card>
+        <CardBody className="stack stack--2">
+          <p className="t-sm t-muted">Could not load your automations: {loadError}</p>
+          <div className="row">
+            <Button
+              size="sm"
+              onClick={() => {
+                setLoadError(null);
+                refresh();
+              }}
+            >
+              Try again
+            </Button>
+          </div>
+        </CardBody>
+      </Card>
+    );
+  }
 
   if (!available) {
     return (

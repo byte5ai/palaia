@@ -55,12 +55,26 @@ afterEach(() => {
 });
 
 describe("Exposure", () => {
-  it("stays on its loading state rather than guessing at an unknown mode", async () => {
-    vi.spyOn(api, "mode").mockRejectedValue(new Error("no hub in this test"));
+  it("says so and offers a retry when the mode cannot be loaded (issue 378)", async () => {
+    // It used to sit on "Loading your current access mode…" for good.
+    const mode = vi.spyOn(api, "mode").mockRejectedValue(new Error("no hub in this test"));
 
     mount();
 
-    expect(await screen.findByText(/loading your current access mode/i)).toBeInTheDocument();
+    expect(await screen.findByText(/could not load your current access mode/i)).toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup", { name: /access mode/i })).not.toBeInTheDocument();
+
+    mode.mockResolvedValue(OPEN_MODE_STATUS);
+    vi.spyOn(api, "exposure").mockResolvedValue(OPEN_EXPOSURE_STATUS);
+    vi.spyOn(api, "tunnelGuidance").mockResolvedValue({
+      kind: "tailscale",
+      config: "tailscale funnel 8420",
+      commands: [],
+      note: "",
+    } as never);
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+
+    expect(await screen.findByRole("radiogroup", { name: /access mode/i })).toBeInTheDocument();
   });
 
   it("renders the current mode, the tunnel guidance, and the hardening checklist", async () => {

@@ -1,9 +1,9 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { NoteSummary, VaultSummary } from "../lib/api/client";
-import { api } from "../lib/api/client";
+import { api, ApiError } from "../lib/api/client";
 import { Explorer } from "./Explorer";
 
 const WORK: VaultSummary = {
@@ -74,5 +74,32 @@ describe("Explorer", () => {
     expect(rows[0]).toHaveTextContent("A fresh capture");
     const badge = screen.getByText(/1 uncurated/i);
     expect(badge.closest("a")).toBeNull();
+  });
+
+  it("says when a note cannot be loaded instead of showing a skeleton forever (issue 378)", async () => {
+    vi.spyOn(api, "listVaults").mockResolvedValue([WORK]);
+    vi.spyOn(api, "listNotes").mockResolvedValue([note("projects/api", "API Gateway", "projects")]);
+    vi.spyOn(api, "inboxStatus").mockResolvedValue({
+      count: 0,
+      oldest_capture_id: null,
+      oldest_age_seconds: null,
+      last_capture_id: null,
+      last_captured_at: null,
+    });
+    vi.spyOn(api, "readNote").mockRejectedValue(
+      new ApiError("/api/vaults/work/notes/projects/api", 500, { detail: "the disk is on fire" }),
+    );
+    vi.spyOn(api, "noteGraph").mockRejectedValue(new Error("offline"));
+    vi.spyOn(api, "noteHistory").mockResolvedValue([]);
+
+    render(
+      <MemoryRouter>
+        <Explorer />
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /api gateway/i }));
+
+    expect(await screen.findByText(/could not load this note: the disk is on fire/i)).toBeInTheDocument();
+    expect(await screen.findByText(/could not load the graph/i)).toBeInTheDocument();
   });
 });

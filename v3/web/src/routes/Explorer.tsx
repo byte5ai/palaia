@@ -26,6 +26,7 @@ import { EmptyState } from "../components/EmptyState";
 import { Skeleton } from "../components/Skeleton";
 import type { LocalGraph, NoteRecord, NoteSummary, SearchHit, VaultSummary } from "../lib/api/client";
 import { api } from "../lib/api/client";
+import { describeApiError } from "../lib/errors";
 import { ExplorerIcon, SearchIcon, VaultsIcon } from "../shell/icons";
 
 interface FolderGroup {
@@ -112,16 +113,23 @@ function VaultView({
   onSwitchVault: (key: string) => void;
 }) {
   const [notes, setNotes] = useState<NoteSummary[] | null>(null);
+  const [notesError, setNotesError] = useState<string | null>(null);
   const [inboxCount, setInboxCount] = useState<number | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchHit[] | null>(null);
 
   useEffect(() => {
+    // `VaultView` is keyed by vault, so a switch remounts it with clean state.
     api
       .listNotes(vaultKey)
       .then(setNotes)
-      .catch(() => setNotes([]));
+      .catch((err: unknown) => {
+        // Issue 378: an empty tree that says "No folders yet" is not the
+        // same as a listing that failed.
+        setNotes([]);
+        setNotesError(describeApiError(err));
+      });
     api
       .inboxStatus(vaultKey)
       .then((status) => setInboxCount(status.count))
@@ -203,6 +211,11 @@ function VaultView({
               </div>
             ) : notes === null ? (
               <Skeleton height={200} />
+            ) : notesError ? (
+              <div className="empty" style={{ padding: "var(--space-6) var(--space-2)" }}>
+                <p className="t-sm t-muted">Could not load this vault's notes.</p>
+                <p className="t-xs t-subtle">{notesError}</p>
+              </div>
             ) : groups.length === 0 ? (
               <div className="empty" style={{ padding: "var(--space-6) var(--space-2)" }}>
                 <p className="t-sm t-muted">No folders yet.</p>
@@ -279,18 +292,28 @@ function NotePane({
   onSelect: (permalink: string) => void;
 }) {
   const [note, setNote] = useState<NoteRecord | null>(null);
+  const [noteError, setNoteError] = useState<string | null>(null);
   const [graph, setGraph] = useState<LocalGraph | null>(null);
+  const [graphError, setGraphError] = useState<string | null>(null);
   const [commits, setCommits] = useState<{ sha: string; subject: string }[] | null>(null);
 
   useEffect(() => {
+    // Issue 378: a failed read used to leave the skeleton up for good.
+    // (`NotePane` is keyed by permalink, so a new note starts clean.)
     api
       .readNote(vaultKey, permalink)
       .then(setNote)
-      .catch(() => setNote(null));
+      .catch((err: unknown) => {
+        setNote(null);
+        setNoteError(describeApiError(err));
+      });
     api
       .noteGraph(vaultKey, permalink)
       .then(setGraph)
-      .catch(() => setGraph(null));
+      .catch((err: unknown) => {
+        setGraph(null);
+        setGraphError(describeApiError(err));
+      });
     api
       .noteHistory(vaultKey, permalink)
       .then(setCommits)
@@ -308,7 +331,11 @@ function NotePane({
         </div>
         {note === null ? (
           <div className="pane__body">
-            <Skeleton height={200} />
+            {noteError ? (
+              <p className="t-sm t-muted">Could not load this note: {noteError}</p>
+            ) : (
+              <Skeleton height={200} />
+            )}
           </div>
         ) : (
           <article className="note scrollpane">
@@ -345,6 +372,8 @@ function NotePane({
                 <dt>permalink</dt>
                 <dd>{note.permalink}</dd>
               </dl>
+            ) : noteError ? (
+              <p className="t-xs t-subtle">Not available.</p>
             ) : (
               <Skeleton height={60} />
             )}
@@ -355,7 +384,11 @@ function NotePane({
               <span className="t-xs t-subtle">1 hop</span>
             </div>
             {graph === null ? (
-              <Skeleton height={60} />
+              graphError ? (
+                <p className="t-xs t-subtle">Could not load the graph: {graphError}</p>
+              ) : (
+                <Skeleton height={60} />
+              )
             ) : graph.outbound.length === 0 && graph.inbound.length === 0 ? (
               <p className="t-xs t-subtle">Nothing links to or from this note yet.</p>
             ) : (
