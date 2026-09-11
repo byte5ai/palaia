@@ -23,6 +23,14 @@ on:
           is tagged — this is the guard against dispatching the wrong ref.
         type: string
         required: true
+      redispatch_only:
+        description: >-
+          Recovery (issue #401): the tag and GitHub release already exist,
+          but one of the two image dispatches below failed. Re-runs only the
+          dispatches for the existing tag — the tag-novelty guard would
+          otherwise refuse the whole run, since a cut version is immutable.
+        type: boolean
+        default: false
 
 permissions:
   contents: write # create the tag + release
@@ -38,6 +46,7 @@ jobs:
         id: guard
         env:
           EXPECTED: ${{ inputs.expected_version }}
+          REDISPATCH_ONLY: ${{ inputs.redispatch_only }}
         run: |
           set -euo pipefail
           version="$(cat v3/VERSION)"
@@ -46,8 +55,23 @@ jobs:
             exit 1
           fi
           tag="v3.${version}"
+          if [[ "${REDISPATCH_ONLY}" == "true" ]]; then
+            # Recovery run (issue #401): the release exists; only the image
+            # dispatches are repeated. Nothing below is created again.
+            if ! git ls-remote --exit-code --tags origin "refs/tags/${tag}" > /dev/null; then
+              echo "redispatch_only was set but tag ${tag} does not exist — run a normal cut instead." >&2
+              exit 1
+            fi
+            {
+              echo "version=${version}"
+              echo "tag=${tag}"
+              echo "create=false"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if git ls-remote --exit-code --tags origin "refs/tags/${tag}" > /dev/null; then
             echo "Tag ${tag} already exists — a cut version is immutable; bump v3/VERSION instead." >&2
+            echo "(If the release exists and only an image dispatch failed, re-run with redispatch_only=true.)" >&2
             exit 1
           fi
           # The header is `## <version>` followed by a space or the end of the
@@ -82,18 +106,28 @@ jobs:
             echo "tag=${tag}"
             echo "title=${title}"
             echo "prerelease_flag=${prerelease_flag}"
+            echo "create=true"
           } >> "$GITHUB_OUTPUT"
 
       - name: Create tag + release
+        if: steps.guard.outputs.create == 'true'
+        # The title comes from the notes file's first line, i.e. from the
+        # repository — still, it reaches the shell through an environment
+        # variable rather than being pasted into the script (issue #401):
+        # a `"` or `$(` in a heading must not become shell syntax.
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.guard.outputs.tag }}
+          TITLE: ${{ steps.guard.outputs.title }}
+          PRERELEASE_FLAG: ${{ steps.guard.outputs.prerelease_flag }}
         run: |
           set -euo pipefail
-          gh release create "${{ steps.guard.outputs.tag }}" \
+          # shellcheck disable=SC2086 — the flag is either empty or --prerelease
+          gh release create "${TAG}" \
             --target "${GITHUB_SHA}" \
-            --title "${{ steps.guard.outputs.title }}" \
+            --title "${TITLE}" \
             --notes-file /tmp/release-body.md \
-            ${{ steps.guard.outputs.prerelease_flag }}
+            ${PRERELEASE_FLAG}
 
       - name: Dispatch image build on the new tag
         # A tag created with the workflow's own token does not fire the
@@ -101,11 +135,15 @@ jobs:
         # workflow runs caused by GITHUB_TOKEN pushes), so dispatch it
         # explicitly on the tag ref — its tag-derived version logic works
         # the same under workflow_dispatch.
+        #
+        # If this or the next step fails after the release exists, re-run
+        # the workflow with `redispatch_only: true` (issue #401) — the
+        # tag-novelty guard above would otherwise refuse the whole run.
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.guard.outputs.tag }}
         run: |
-          gh workflow run v3-release.yml --ref "${{ steps.guard.outputs.tag }}" \
-            --repo "${GITHUB_REPOSITORY}"
+          gh workflow run v3-release.yml --ref "${TAG}" --repo "${GITHUB_REPOSITORY}"
 
       - name: Dispatch the Pi appliance image build on the new tag
         # Same suppression as above: v3-pi-image.yml's own `push: tags:`
@@ -115,6 +153,6 @@ jobs:
         # .img.xz + .sha256 to it directly.
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.guard.outputs.tag }}
         run: |
-          gh workflow run v3-pi-image.yml --ref "${{ steps.guard.outputs.tag }}" \
-            --repo "${GITHUB_REPOSITORY}"
+          gh workflow run v3-pi-image.yml --ref "${TAG}" --repo "${GITHUB_REPOSITORY}"

@@ -14,8 +14,13 @@
 !v3/web
 !v3/clients
 !v3/deploy
+# server/pyproject.toml's dev group names the SDK through a `../sdk` path
+# source; uv resolves the lockfile's sources even with --no-dev, so the
+# (small) SDK tree rides along. Its own venv does not.
+!v3/sdk
 
 v3/server/.venv
+v3/sdk/.venv
 v3/server/**/__pycache__
 v3/server/**/*.pyc
 v3/server/.pytest_cache

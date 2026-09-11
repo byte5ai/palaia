@@ -323,3 +323,54 @@ def test_the_arm64_smoke_runs_under_the_documented_hardening_flags() -> None:
         "--tmpfs /tmp",
     ):
         assert flag in script, f"the arm64 smoke lacks {flag}"
+
+
+# ---------------------------------------------------------------------------
+# Issue #401: release-workflow robustness.
+# ---------------------------------------------------------------------------
+
+
+def _cut_workflow() -> dict:
+    return yaml.safe_load(_CUT_WORKFLOW_PATH.read_text(encoding="utf-8"))
+
+
+def test_the_release_title_reaches_the_shell_through_the_environment() -> None:
+    steps = _cut_workflow()["jobs"]["cut"]["steps"]
+    create = next(s for s in steps if s.get("name") == "Create tag + release")
+    assert "${{ steps.guard.outputs.title }}" not in create["run"]
+    assert create["env"]["TITLE"] == "${{ steps.guard.outputs.title }}"
+    assert '--title "${TITLE}"' in create["run"]
+    assert create["if"] == "steps.guard.outputs.create == 'true'"
+
+
+def test_the_cut_offers_a_redispatch_only_recovery() -> None:
+    workflow = _cut_workflow()
+    inputs = workflow[True]["workflow_dispatch"]["inputs"]
+    assert inputs["redispatch_only"]["type"] == "boolean"
+    assert inputs["redispatch_only"]["default"] is False
+    assert "redispatch_only=true" in _cut_guard_script()
+
+
+def test_ci_runs_the_sdk_tests_and_its_own_mypy() -> None:
+    workflow = yaml.safe_load(_CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    sdk = workflow["jobs"]["sdk"]
+    assert sdk["defaults"]["run"]["working-directory"] == "v3/sdk"
+    runs = [s.get("run", "") for s in sdk["steps"]]
+    assert any("uv run mypy src" in run for run in runs)
+    assert any("uv run pytest" in run for run in runs)
+
+
+def test_dependency_audits_report_into_the_job_summary() -> None:
+    workflow = yaml.safe_load(_CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    audits = [
+        s
+        for s in workflow["jobs"]["dependency-audit"]["steps"]
+        if "advisories" in s.get("name", "")
+    ]
+    assert len(audits) == 4
+    for step in audits:
+        assert step["continue-on-error"] is True, "reporting, not gating — by design"
+        assert "report-audit.sh" in step["run"]
+    script = (_WORKFLOW_PATH.parents[1] / "scripts" / "report-audit.sh").read_text(encoding="utf-8")
+    assert "GITHUB_STEP_SUMMARY" in script
+    assert "::warning" in script
