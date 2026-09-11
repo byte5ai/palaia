@@ -19,8 +19,8 @@
  * resetting the previous vault's/note's state by hand (the
  * `react-hooks/set-state-in-effect` rule this file used to trip).
  */
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { EmptyState } from "../components/EmptyState";
 import { Skeleton } from "../components/Skeleton";
@@ -118,6 +118,13 @@ function VaultView({
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchHit[] | null>(null);
+  // Issue 380: the topbar's search (and ⌘K) arrive here with `?focus=search`.
+  const [params] = useSearchParams();
+  const focusSearch = params.get("focus") === "search";
+  const searchInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (focusSearch) searchInput.current?.focus();
+  }, [focusSearch]);
 
   useEffect(() => {
     // `VaultView` is keyed by vault, so a switch remounts it with clean state.
@@ -169,6 +176,7 @@ function VaultView({
         <label className="searchbox">
           <SearchIcon className="icon--sm" />
           <input
+            ref={searchInput}
             value={query}
             onChange={(event) => runSearch(event.target.value)}
             placeholder={`Search ${vaultKey} — keywords, ${vault?.note_count ?? 0} notes`}

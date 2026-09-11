@@ -19,6 +19,14 @@ const HEALTH_DOT: Record<HealthState, string> = {
   connecting: "",
 };
 
+/** Issue 380: the badge used to be `badge--ok` whatever the state said. */
+const HEALTH_BADGE: Record<HealthState, string> = {
+  ok: "badge--ok",
+  warn: "badge--warn",
+  risk: "badge--risk",
+  connecting: "badge--info",
+};
+
 export function Topbar({
   title,
   subtitle,
@@ -26,6 +34,7 @@ export function Topbar({
   userInitials,
   signedInAs,
   onSignOut,
+  onSearch,
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
@@ -37,6 +46,10 @@ export function Topbar({
    * sign out of. */
   signedInAs?: string | null;
   onSignOut?: () => void;
+  /** Issue 380: what the search button (and ⌘K / Ctrl+K) does — the shell
+   * passes "go to the explorer's search box". Left off, the button is
+   * not rendered at all rather than rendered dead. */
+  onSearch?: () => void;
 }) {
   return (
     <header className="topbar">
@@ -45,14 +58,24 @@ export function Topbar({
         {subtitle ? <p className="page-sub">{subtitle}</p> : null}
       </div>
       <div className="row">
-        <button className="cmdk" type="button" aria-label="Search or jump to">
-          <SearchIcon className="icon--sm" />
-          <span>Search or jump to</span>
-          <span className="kbd" style={{ marginLeft: "auto" }}>
-            ⌘K
-          </span>
-        </button>
-        <span className="badge badge--ok" title={HEALTH_LABEL[health]}>
+        {onSearch ? (
+          <button
+            className="cmdk"
+            type="button"
+            aria-label="Search your memory"
+            onClick={onSearch}
+          >
+            <SearchIcon className="icon--sm" />
+            <span>Search your memory</span>
+            <span className="kbd" style={{ marginLeft: "auto" }}>
+              ⌘K
+            </span>
+          </button>
+        ) : null}
+        <span
+          className={`badge ${HEALTH_BADGE[health]}`}
+          title={HEALTH_LABEL[health]}
+        >
           <span
             className={["dot", HEALTH_DOT[health]].filter(Boolean).join(" ")}
           />

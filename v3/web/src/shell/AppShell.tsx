@@ -1,4 +1,5 @@
-import { Outlet, useLocation, useMatches } from "react-router-dom";
+import { useCallback, useEffect } from "react";
+import { Outlet, useLocation, useMatches, useNavigate } from "react-router-dom";
 
 import { useEventStream } from "../lib/events";
 import { useHubMode } from "../lib/mode";
@@ -7,6 +8,9 @@ import { NAV_GROUPS } from "./navConfig";
 import { Sidebar } from "./Sidebar";
 import { type HealthState, Topbar } from "./Topbar";
 import { UpdateBanner } from "./UpdateBanner";
+
+/** Where the topbar's search lands: the explorer, search box focused. */
+export const EXPLORER_SEARCH_PATH = "/explorer?focus=search";
 
 function currentPageTitle(pathname: string): string {
   for (const group of NAV_GROUPS) {
@@ -38,8 +42,24 @@ export function AppShell() {
   const { session, signOut } = useSession();
   const location = useLocation();
   const matches = useMatches();
+  const navigate = useNavigate();
   const title = currentPageTitle(location.pathname);
   const subtitle = matches.at(-1)?.handle as string | undefined;
+
+  // Issue 380: the topbar's search used to be a button with no handler.
+  // It, and ⌘K / Ctrl+K anywhere in the shell, open the explorer with its
+  // search box focused — the one full-text search the dashboard has.
+  const openSearch = useCallback(() => navigate(EXPLORER_SEARCH_PATH), [navigate]);
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        openSearch();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [openSearch]);
 
   return (
     <div className="app">
@@ -52,6 +72,7 @@ export function AppShell() {
           userInitials={initialsFor(session?.username ?? null)}
           signedInAs={session?.signed_in ? session.username : null}
           onSignOut={signOut}
+          onSearch={openSearch}
         />
         <div className="content">
           <UpdateBanner />
