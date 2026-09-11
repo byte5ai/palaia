@@ -58,8 +58,8 @@ always works.
 
 Ask the AI tool directly — a well-connected one tells you in one short
 line what it saved, right after saving it. To check independently, open
-your memory in the dashboard's explorer: brand-new saves show up in the
-vault's `inbox` folder first (listed at the top of the tree), before a quiet
+your memory in the dashboard's explorer: brand-new saves show up in its
+`inbox` folder first (listed at the top of the tree), before a quiet
 background step files them into a proper note — see [Your memory](/memory/) for what that step does. If
 something you expected to be saved isn't showing up anywhere, the tool
 likely didn't call the save action at all — [Connect your AI](/connect/)'s
