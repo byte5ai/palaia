@@ -6,7 +6,7 @@
 # says `dynamic_config: false` to match. Not validated on a live Runtipi
 # instance in this repository — SUBMIT.md names that as the owner's step.
 services:
-  palaia:
+  hub:
     image: ghcr.io/byte5ai/palaia-hub:stable
     container_name: palaia
     restart: unless-stopped

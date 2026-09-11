@@ -187,7 +187,7 @@ def test_runtipi_compose_pins_the_stable_channel_in_the_classic_format() -> None
     `x-runtipi` keys belong to the dynamic (JSON) format and must not appear
     next to `dynamic_config: false`."""
     data = _load_yaml(STORES_ROOT / "runtipi" / "apps" / "palaia" / "docker-compose.yml")
-    service = data["services"]["palaia"]
+    service = data["services"]["hub"]
     assert service["image"] == f"{PINNED_IMAGE}:{PINNED_CHANNEL}"
     assert "${APP_PORT}:8420" in service["ports"]
     assert "tipi_main_network" in service["networks"]

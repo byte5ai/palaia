@@ -10,6 +10,7 @@ stream the moment the received count crosses it.
 
 from __future__ import annotations
 
+import base64
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -120,7 +121,11 @@ async def test_the_curated_index_stops_reading_an_oversized_document(tmp_path: P
 
     async with _client(httpx.MockTransport(handler)) as http:
         client = CuratedIndexClient(
-            client=http, last_good_path=tmp_path / "last_good.json", max_bytes=4096
+            index_url="https://index.example.test/market-index.json",
+            public_key_b64=base64.b64encode(bytes(32)).decode(),
+            client=http,
+            last_good_path=tmp_path / "last_good.json",
+            max_bytes=4096,
         )
         with pytest.raises(_FetchFailure, match="too large"):
             await client._download()
