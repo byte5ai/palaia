@@ -59,7 +59,9 @@ describe("the sign-out control", () => {
     fireEvent.click(button);
 
     await waitFor(() => expect(api.signOut).toHaveBeenCalled());
-    expect(assign).toHaveBeenCalledWith("/oauth/login");
+    // Issue 381: the sign-in door is told where to come back to — the
+    // identity-provider start refuses a link with no `next` at all.
+    expect(assign).toHaveBeenCalledWith("/oauth/login?next=%2F");
   });
 
   it("stays away on a hub that asks nobody to sign in", async () => {

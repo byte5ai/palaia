@@ -53,7 +53,10 @@ export function useSession(): SessionView {
   }, []);
 
   const signOut = useCallback(async () => {
-    const target = session?.sign_in_url ?? "/";
+    // Issue 381: the identity-provider door refuses a start with no `next`
+    // ("this sign-in link is invalid"), so say where to come back to — Home.
+    const door = session?.sign_in_url ?? "/";
+    const target = door === "/" ? "/" : `${door}${door.includes("?") ? "&" : "?"}next=%2F`;
     try {
       await api.signOut();
     } finally {

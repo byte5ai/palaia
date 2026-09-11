@@ -178,6 +178,24 @@ async def test_the_provider_token_is_never_persisted(tmp_path: Path) -> None:
             assert FAKE_GITHUB_TOKEN.encode() not in sibling.read_bytes()
 
 
+@pytest.mark.anyio
+async def test_a_start_with_no_next_signs_in_and_lands_on_home(tmp_path: Path) -> None:
+    """Issue #381: the dashboard's sign-out sends the browser to the start
+    link with no ``next`` — that used to be refused as "this sign-in link
+    is invalid"; now it means "sign in, then Home"."""
+    harness = _github_harness(tmp_path)
+    try:
+        async with _http(harness) as http:
+            start = await http.get("/oauth/idp/start")
+            assert start.status_code == 303, start.text
+            state = _state_from_start_redirect(start)
+            callback = await http.get(f"/oauth/idp/callback?code=the-code&state={state}")
+            assert callback.status_code == 303, callback.text
+            assert callback.headers["location"] == "/"
+    finally:
+        harness.store.close()
+
+
 # ------------------------------------------------------------------ rejections
 
 

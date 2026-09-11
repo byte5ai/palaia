@@ -426,7 +426,9 @@ def build_oauth_router(server: AuthorizationServer) -> APIRouter:
         @router.get(IDP_START_PATH)
         async def idp_start(request: Request) -> Response:
             """Redirect the browser to the configured provider."""
-            next_url = request.query_params.get("next", "")
+            # Issue #381: a start with no `next` (the dashboard's sign-out
+            # lands here, and so does a bookmark) means "sign in, then Home".
+            next_url = request.query_params.get("next") or "/"
             if not _is_safe_next(next_url):
                 return _authorize_error_page(
                     OAuthError(
