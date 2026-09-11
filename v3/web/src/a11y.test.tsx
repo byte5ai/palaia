@@ -12,11 +12,35 @@
  * rendered-browser contrast check is a follow-up for a Playwright-backed
  * run once this SPEC has one.
  */
-import { render } from "@testing-library/react";
+import { render, waitFor } from "@testing-library/react";
 import axe from "axe-core";
+import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 
 import App from "./App";
+import { ToastProvider } from "./components";
+import { ThemeProvider } from "./lib/theme";
+import { routes } from "./routes";
+
+async function expectNoSeriousViolations(): Promise<void> {
+  const results = await axe.run(document.body, {
+    rules: { "color-contrast": { enabled: false } },
+  });
+  const seriousOrWorse = results.violations.filter(
+    (violation) => violation.impact === "critical" || violation.impact === "serious",
+  );
+  if (seriousOrWorse.length > 0) {
+    const details = seriousOrWorse
+      .map(
+        (violation) =>
+          `${violation.id} (${violation.impact}): ${violation.help}\n  ` +
+          violation.nodes.map((node) => node.html).join("\n  "),
+      )
+      .join("\n");
+    throw new Error(`axe-core found violations:\n${details}`);
+  }
+  expect(seriousOrWorse).toHaveLength(0);
+}
 
 describe("app shell accessibility", () => {
   afterEach(() => {
@@ -44,5 +68,46 @@ describe("app shell accessibility", () => {
     }
 
     expect(seriousOrWorse).toHaveLength(0);
+  });
+});
+
+/**
+ * Issue 383: the scan used to cover the shell and Home only; the screens
+ * with real forms — where an unlabelled select or a button pretending to be
+ * a radio hides — were never checked. No hub answers in jsdom, so each
+ * screen renders its no-data/empty state plus whatever form it always
+ * shows; that is exactly where the findings were.
+ */
+describe("feature screens accessibility (issue 383)", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it.each([
+    "/explorer",
+    "/clients",
+    "/automations",
+    "/marketplace",
+    "/agents",
+    "/tools",
+    "/exposure",
+    "/settings",
+    "/review-queue",
+    "/onboarding",
+    "/no-such-page",
+  ])("has no critical or serious axe-core violations at %s", async (path) => {
+    const router = createMemoryRouter(routes, { initialEntries: [path] });
+    render(
+      <ThemeProvider>
+        <ToastProvider>
+          <RouterProvider router={router} />
+        </ToastProvider>
+      </ThemeProvider>,
+    );
+    // Let the screen settle on its answered/failed state before scanning.
+    await waitFor(() => expect(document.body.textContent?.length ?? 0).toBeGreaterThan(0));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    await expectNoSeriousViolations();
   });
 });

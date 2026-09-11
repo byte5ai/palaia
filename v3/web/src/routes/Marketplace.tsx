@@ -404,11 +404,17 @@ export function Marketplace() {
         <input
           className="input"
           style={{ maxWidth: 280 }}
+          aria-label="Search add-ons"
           placeholder="Search add-ons…"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
-        <Segmented options={SOURCE_FILTERS} value={source} onChange={setSource} />
+        <Segmented
+          options={SOURCE_FILTERS}
+          value={source}
+          onChange={setSource}
+          ariaLabel="Where add-ons come from"
+        />
       </div>
 
       {stale ? (

@@ -390,10 +390,12 @@ export function Onboarding() {
                 changed on the <Link to="/exposure">Access page</Link>, with its checks and
                 self-test — pick here the one you mean to use so the reasons in Step 4 line up.
               </p>
-              <div className="radiocards">
+              <div className="radiocards" role="radiogroup" aria-label="Access mode to prepare for">
                 {MODE_CARDS.map((card) => (
                   <button
                     type="button"
+                    role="radio"
+                    aria-checked={previewMode === card.mode}
                     key={card.mode}
                     className={["radiocard", previewMode === card.mode ? "radiocard--on" : ""]
                       .filter(Boolean)
@@ -488,6 +490,8 @@ export function Onboarding() {
                     </div>
                     <button
                       type="button"
+                      role="switch"
+                      aria-checked={template}
                       className="switchrow"
                       style={{ textAlign: "left", cursor: "pointer" }}
                       onClick={() => setTemplate((v) => !v)}

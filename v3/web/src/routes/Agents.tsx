@@ -285,7 +285,12 @@ function RefPicker({ refs, onChange }: { refs: string[]; onChange: (refs: string
       <span className="field__label">Link a note (optional)</span>
       <div className="row" style={{ gap: 8 }}>
         {vaults.length > 1 ? (
-          <select className="input" value={vaultKey} onChange={(event) => setVaultKey(event.target.value)}>
+          <select
+            className="input"
+            aria-label="Vault to search"
+            value={vaultKey}
+            onChange={(event) => setVaultKey(event.target.value)}
+          >
             {vaults.map((vault) => (
               <option key={vault.key} value={vault.key}>
                 {vault.key}
@@ -295,6 +300,7 @@ function RefPicker({ refs, onChange }: { refs: string[]; onChange: (refs: string
         ) : null}
         <input
           className="input"
+          aria-label="Search notes to link"
           placeholder="Search notes to link…"
           value={query}
           onChange={(event) => setQuery(event.target.value)}

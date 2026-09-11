@@ -8,6 +8,7 @@
  * `Marketplace.tsx`'s install flow for why (the hub never echoes one
  * back either).
  */
+import { useId } from "react";
 import type { MarketConfigSchema } from "../lib/api/client";
 import { LabeledInput, SwitchRow } from "./Field";
 
@@ -36,6 +37,7 @@ export function ConfigSchemaForm({
   values: ConfigFormValues;
   onChange: (values: ConfigFormValues) => void;
 }) {
+  const formId = useId();
   const properties = schema?.properties ?? {};
   const required = new Set(schema?.required ?? []);
   const keys = Object.keys(properties);
@@ -68,13 +70,15 @@ export function ConfigSchemaForm({
         }
 
         if (prop.enum && prop.enum.length > 0) {
+          const selectId = `${formId}-${key}`;
           return (
             <div className="field" key={key}>
-              <span className="field__label">
+              <label className="field__label" htmlFor={selectId}>
                 {label}
                 {suffix}
-              </span>
+              </label>
               <select
+                id={selectId}
                 className="input"
                 value={typeof value === "string" ? value : ""}
                 onChange={(event) => setValue(key, event.target.value)}

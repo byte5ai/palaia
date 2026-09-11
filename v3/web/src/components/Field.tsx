@@ -1,22 +1,74 @@
-import { useId, type InputHTMLAttributes, type ReactNode } from "react";
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  useId,
+  type InputHTMLAttributes,
+  type ReactElement,
+  type ReactNode,
+} from "react";
+
+const CONTROL_TAGS = new Set(["input", "select", "textarea"]);
+
+/** Is `node` a form control this field should label — a native control
+ * element, or our own `Input` wrapper around one? */
+function isControl(node: unknown): node is ReactElement<{ id?: string }> {
+  if (!isValidElement(node)) return false;
+  return (
+    (typeof node.type === "string" && CONTROL_TAGS.has(node.type)) ||
+    node.type === Input
+  );
+}
 
 /** label + control + hint — hints explain *why*, not *what*
- * (system.md §2, Forms). */
+ * (system.md §2, Forms).
+ *
+ * The label is a real `<label htmlFor>` (issue 383): the first form control
+ * among `children` gets a generated id when it has none, so a screen
+ * reader announces the label with the control and clicking the label
+ * focuses it. Pass `controlId` when the control already carries an id.
+ */
 export function Field({
   label,
   hint,
   error,
   children,
+  controlId,
 }: {
   label: ReactNode;
   hint?: ReactNode;
   error?: ReactNode;
   children: ReactNode;
+  controlId?: string;
 }) {
+  const generated = useId();
+  const items = Children.toArray(children);
+  const controlIndex = items.findIndex(isControl);
+  const control =
+    controlIndex === -1
+      ? null
+      : (items[controlIndex] as ReactElement<{ id?: string }>);
+  const htmlFor = control
+    ? (control.props.id ?? controlId ?? generated)
+    : controlId;
+  const content =
+    control && !control.props.id
+      ? items.map((item, index) =>
+          index === controlIndex
+            ? cloneElement(control, { id: htmlFor, key: control.key ?? index })
+            : item,
+        )
+      : items;
   return (
     <div className="field">
-      <span className="field__label">{label}</span>
-      {children}
+      {htmlFor ? (
+        <label className="field__label" htmlFor={htmlFor}>
+          {label}
+        </label>
+      ) : (
+        <span className="field__label">{label}</span>
+      )}
+      {content}
       {error ? (
         <span className="field__error">{error}</span>
       ) : hint ? (
@@ -60,7 +112,7 @@ export function LabeledInput({
 }: { label: ReactNode; hint?: ReactNode; error?: ReactNode } & InputProps) {
   const id = useId();
   return (
-    <Field label={<label htmlFor={id}>{label}</label>} hint={hint} error={error}>
+    <Field label={label} hint={hint} error={error} controlId={id}>
       <Input id={id} {...inputProps} />
     </Field>
   );
@@ -85,12 +137,16 @@ export function SwitchRow({
         type="button"
         role="switch"
         aria-checked={checked}
-        className={["switch", checked ? "switch--on" : ""].filter(Boolean).join(" ")}
+        className={["switch", checked ? "switch--on" : ""]
+          .filter(Boolean)
+          .join(" ")}
         onClick={() => onChange(!checked)}
       />
       <span className="stack stack--2">
         <span className="field__label">{label}</span>
-        {consequence ? <span className="field__hint">{consequence}</span> : null}
+        {consequence ? (
+          <span className="field__hint">{consequence}</span>
+        ) : null}
       </span>
     </label>
   );
@@ -100,13 +156,16 @@ export function Segmented<T extends string>({
   options,
   value,
   onChange,
+  ariaLabel,
 }: {
   options: { value: T; label: ReactNode }[];
   value: T;
   onChange: (value: T) => void;
+  /** What this group of choices is, for a screen reader (issue 383). */
+  ariaLabel?: string;
 }) {
   return (
-    <div className="segmented" role="radiogroup">
+    <div className="segmented" role="radiogroup" aria-label={ariaLabel}>
       {options.map((option) => (
         <button
           key={option.value}

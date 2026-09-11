@@ -5,7 +5,7 @@
  * a label/heading/button/badge/option name) — see `Automations.test.tsx`'s
  * jargon lint, scoped to this editor's own controls.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import {
   Badge,
@@ -268,6 +268,7 @@ function ConditionEditor({
           >
             <select
               className="input"
+              aria-label="Which detail to check"
               value={isDataField ? "data" : clause.field}
               onChange={(e) =>
                 update(index, {
@@ -286,6 +287,7 @@ function ConditionEditor({
               <input
                 className="input"
                 style={{ width: 140 }}
+                aria-label="Name of the data field"
                 placeholder="data.severity"
                 value={clause.field}
                 onChange={(e) => update(index, { field: e.target.value })}
@@ -293,6 +295,7 @@ function ConditionEditor({
             ) : null}
             <select
               className="input"
+              aria-label="How to compare"
               value={clause.op}
               onChange={(e) =>
                 update(index, { op: e.target.value as ConditionClause["op"] })
@@ -307,6 +310,7 @@ function ConditionEditor({
             <input
               className="input"
               style={{ width: 140 }}
+              aria-label="Value to compare with"
               value={clause.value}
               onChange={(e) => update(index, { value: e.target.value })}
             />
@@ -332,6 +336,8 @@ function AutomationForm({
   prefill: Recipe | null;
   onCreated: () => void;
 }) {
+  const whenId = useId();
+  const thenId = useId();
   const [name, setName] = useState(prefill?.title ?? "");
   const [triggerEvent, setTriggerEvent] = useState(
     prefill?.trigger_event ?? TRIGGER_OPTIONS[0].value,
@@ -389,8 +395,11 @@ function AutomationForm({
           onChange={(e) => setName(e.target.value)}
         />
         <div className="stack stack--2">
-          <span className="field__label">When</span>
+          <label className="field__label" htmlFor={whenId}>
+            When
+          </label>
           <select
+            id={whenId}
             className="input"
             value={triggerEvent}
             onChange={(e) => setTriggerEvent(e.target.value)}
@@ -404,8 +413,11 @@ function AutomationForm({
         </div>
         <ConditionEditor condition={condition} onChange={setCondition} />
         <div className="stack stack--2">
-          <span className="field__label">Then</span>
+          <label className="field__label" htmlFor={thenId}>
+            Then
+          </label>
           <select
+            id={thenId}
             className="input"
             value={action.kind}
             onChange={(e) =>
