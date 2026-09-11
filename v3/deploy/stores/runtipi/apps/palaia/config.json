@@ -2,7 +2,7 @@
   "id": "palaia",
   "name": "palaia",
   "available": true,
-  "exposable": true,
+  "exposable": false,
   "dynamic_config": false,
   "port": 8420,
   "version": "0.1.0",

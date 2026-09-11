@@ -5,13 +5,18 @@ only current path is publishing your **own** custom app store that
 Runtipi users add by URL
 (https://runtipi.io/docs/guides/create-your-own-app-store,
 v3/research/mcp-landscape-2026.md §8). This directory is that store's one
-app, ready to publish as-is.
+app.
 
-`apps/palaia/config.json` and `docker-compose.yml` were written from
-Runtipi's own custom-app-store guide (field list + the `x-runtipi`
-compose convention); this was not cross-checked against a real Runtipi
-instance in this environment (no Runtipi install here), so validate it
-against a real instance before announcing the store publicly.
+**Status, in one sentence (issue #395):** written to Runtipi's classic app
+format from its custom-app-store guide — `config.json` with
+`dynamic_config: false`, a plain `docker-compose.yml` with `${APP_PORT}`,
+`${APP_DATA_DIR}` and `tipi_main_network` — and **not yet loaded into a
+real Runtipi instance** (none exists in this repository's environment).
+Step 5 below is where it is validated; until someone has done that, this
+is a well-grounded draft, not a published-and-working store. `exposable`
+is `false` on purpose: the app is reached on its Runtipi port on the LAN,
+and palaia's own Access page handles remote access (Tailscale,
+cloudflared), so no reverse-proxy labels are needed here.
 
 ## Steps
 
