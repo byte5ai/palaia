@@ -111,22 +111,22 @@ it left off.
 
 ## Support timeline
 
-<!-- DECISION NEEDED (owner): fill in real dates before this page ships
-     publicly. The structure below is fixed by this page's own plan; the dates are not.
-     Until filled in, treat every bracketed line as a placeholder, not a
-     commitment. -->
+<!-- Owner decision pending (v3/RELEASING.md §2): the three dates/policies
+     below are not decided yet, and this page says so in plain words rather
+     than showing a placeholder (issue #390). Replace each "not decided yet"
+     sentence with the real value when the owner sets it. -->
 
 - v2 is in **maintenance mode now**: no new features, hotfixes only
   (security, data loss, a broken release), landing on `v2-maintenance`.
-- **[DECISION: date]** — target date by which v3 reaches feature parity
-  with the items marked Missing above that the owner considers
-  release-blocking.
-- **[DECISION: date]** — earliest date v2 hotfixes are expected to stop.
-  Not before the parity date above, and not without advance notice on the
-  v2 README and in this document.
-- **[DECISION: policy]** — how much advance notice a support-ending change
-  gets (e.g., "at least N months," announced in the v2 README banner and
-  the project's release notes).
+- **Feature-parity target date: not decided yet.** No date has been set by
+  which v3 covers the items marked Missing above that the owner considers
+  release-blocking. Until one appears here, none is promised.
+- **When v2 hotfixes stop: not decided yet.** Whatever the date turns out
+  to be, it will not come before the parity date above, and not without
+  advance notice in the v2 README and in this document.
+- **How much advance notice a support-ending change gets: not decided
+  yet.** It will be announced here and in the v2 README banner first; the
+  length of that notice is the owner's call and has not been fixed.
 
 No entry in this list is enforced by anything in this repository; it is
 prose the owner is expected to fill in and keep current, not a promise the

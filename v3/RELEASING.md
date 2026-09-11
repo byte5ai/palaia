@@ -48,10 +48,12 @@ whoever holds it.
 
 ## 2. Owner decisions this repository left open on purpose
 
-- [ ] **[OWNER]** `v3/docs/migrate-from-v2.md` has three
-      `[DECISION: ...]` placeholders (feature-parity target date, earliest
-      v2-hotfix-stops date, advance-notice policy) — fill them in with
-      real dates/policy before this becomes the message v2 users see.
+- [ ] **[OWNER]** `v3/docs/migrate-from-v2.md`'s "Support timeline" says
+      "not decided yet" in three places (feature-parity target date,
+      earliest v2-hotfix-stops date, advance-notice policy — issue #390).
+      Replace each with the real date/policy before this becomes the
+      message v2 users see; the page is already linked from the root
+      README and the release notes, so it is public now.
 - [ ] **[OWNER]** Decide whether `3.0.0` ships alongside, or after,
       those v2-sunset dates going live on the docs site.
 
