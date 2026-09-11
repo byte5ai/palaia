@@ -239,3 +239,23 @@ def test_the_changelog_header_test_accepts_exactly_the_documented_forms(
         check=False,
     )
     assert (result.returncode == 0) is accepted
+
+
+# ---------------------------------------------------------------------------
+# Issue #392: the v3 CI's path filter. This file and `test_pi_image.py` pin
+# the v3 workflows' structure, but `v3-ci.yml` ran only for `v3/**` — a PR
+# editing just `.github/workflows/v3-*.yml` got no v3 CI at all.
+# ---------------------------------------------------------------------------
+
+_CI_WORKFLOW_PATH = _WORKFLOW_PATH.with_name("v3-ci.yml")
+
+
+@pytest.mark.parametrize("trigger", ["push", "pull_request"])
+def test_v3_ci_runs_for_changes_to_the_v3_workflow_files_themselves(trigger: str) -> None:
+    workflow = yaml.safe_load(_CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    paths = workflow[True][trigger]["paths"]
+    assert "v3/**" in paths
+    assert ".github/workflows/v3-*.yml" in paths, (
+        f"v3-ci.yml `{trigger}.paths` must include the v3 workflow files, or a PR "
+        "touching only them runs no v3 CI (issue #392)"
+    )

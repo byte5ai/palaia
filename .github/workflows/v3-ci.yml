@@ -3,10 +3,13 @@ name: v3 CI
 on:
   push:
     branches: [main]
-    paths: ['v3/**']
+    # The v3 workflow files count as v3 (issue #392): test_release_workflow.py
+    # and test_pi_image.py pin their structure, so a PR that edits only one
+    # of them must run this CI, not just the v2 one.
+    paths: ['v3/**', '.github/workflows/v3-*.yml']
   pull_request:
     branches: [main]
-    paths: ['v3/**']
+    paths: ['v3/**', '.github/workflows/v3-*.yml']
 
 defaults:
   run:
