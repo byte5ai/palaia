@@ -161,9 +161,7 @@ async def test_editing_a_note_only_re_embeds_its_changed_chunks(
     golden_work_vault: Path, open_index: Any
 ) -> None:
     embedder = StubEmbedder()
-    engine, index = await open_index(
-        golden_work_vault, embedding=_stub_config(), embedder=embedder
-    )
+    engine, index = await open_index(golden_work_vault, embedding=_stub_config(), embedder=embedder)
     long_body = "\n\n".join(f"Paragraph {n} about the vault engine. " * 20 for n in range(6))
     await engine.write_note(
         "notes/long.md", body=long_body + "\n", title="Long", frontmatter={"type": "note"}
@@ -185,13 +183,9 @@ async def test_editing_a_note_only_re_embeds_its_changed_chunks(
     assert len(pending) < len(chunks_before)
 
 
-async def test_reindex_preserves_ready_vectors(
-    golden_work_vault: Path, open_index: Any
-) -> None:
+async def test_reindex_preserves_ready_vectors(golden_work_vault: Path, open_index: Any) -> None:
     embedder = StubEmbedder()
-    _, index = await open_index(
-        golden_work_vault, embedding=_stub_config(), embedder=embedder
-    )
+    _, index = await open_index(golden_work_vault, embedding=_stub_config(), embedder=embedder)
     await index.drain_embeddings()
     ready_before = index.status().embeds.ready
     calls_before = embedder.calls
@@ -201,9 +195,7 @@ async def test_reindex_preserves_ready_vectors(
     assert embedder.calls == calls_before
 
 
-async def test_deleting_a_note_removes_its_chunks(
-    golden_work_vault: Path, open_index: Any
-) -> None:
+async def test_deleting_a_note_removes_its_chunks(golden_work_vault: Path, open_index: Any) -> None:
     engine, index = await open_index(
         golden_work_vault, embedding=_stub_config(), embedder=StubEmbedder()
     )
@@ -218,9 +210,7 @@ async def test_deleting_a_note_removes_its_chunks(
 async def test_disabled_embeddings_report_why_and_still_search(
     golden_work_vault: Path, open_index: Any
 ) -> None:
-    _, index = await open_index(
-        golden_work_vault, embedding=EmbeddingConfig(enabled=False)
-    )
+    _, index = await open_index(golden_work_vault, embedding=EmbeddingConfig(enabled=False))
     status = index.status()
     assert not status.embeds.enabled
     results = await index.search("API Gateway", mode="hybrid", limit=5)
@@ -254,3 +244,81 @@ def _chunk_rows(index: Any, permalink: str) -> list[Any]:
             "JOIN notes n ON n.id = c.note_id WHERE n.permalink = ? ORDER BY c.seq",
             (permalink,),
         ).fetchall()
+
+
+async def test_worker_warms_the_embedder_for_a_fully_embedded_index(
+    golden_work_vault: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #362: after a restart nothing is pending, yet the model loads in
+    the worker — not on the first hybrid query."""
+    import asyncio
+
+    from palaia_hub.index import VaultIndex
+    from palaia_hub.index import service as index_service
+    from palaia_hub.vault import EventBus, VaultEngine
+
+    db_path = tmp_path / "index.sqlite3"
+    engine = VaultEngine(golden_work_vault, "work", bus=EventBus())
+    await engine.open(purpose="warm-up test", create=True)
+    first = VaultIndex(
+        engine, path=db_path, embedding=_stub_config(batch_size=16), embedder=StubEmbedder()
+    )
+    await first.open(start_worker=False)
+    try:
+        await first.drain_embeddings()
+        assert first.status().embeds.pending == 0
+    finally:
+        await first.close()
+
+    builds = 0
+
+    def build(_config: EmbeddingConfig) -> StubEmbedder:
+        nonlocal builds
+        builds += 1
+        return StubEmbedder()
+
+    monkeypatch.setattr(index_service, "build_embedder", build)
+    reopened = VaultIndex(engine, path=db_path, embedding=_stub_config(batch_size=16))
+    await reopened.open(build=False)
+    try:
+        deadline = asyncio.get_running_loop().time() + 2.0
+        while builds == 0 and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.01)
+        assert builds == 1, "the worker never loaded the model"
+    finally:
+        await reopened.close()
+        await engine.close()
+
+
+async def test_a_failed_probe_is_retried_after_its_backoff(
+    golden_work_vault: Path, open_index: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #362: one transient model-load failure no longer disables
+    vectors for the process lifetime."""
+    from palaia_hub.index import EmbedderUnavailableError
+    from palaia_hub.index import service as index_service
+
+    attempts = 0
+
+    def build(_config: EmbeddingConfig) -> StubEmbedder:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise EmbedderUnavailableError("model download interrupted")
+        return StubEmbedder()
+
+    monkeypatch.setattr(index_service, "build_embedder", build)
+    _, index = await open_index(golden_work_vault, embedding=_stub_config())
+
+    assert await index.embed_next_batch() == 0
+    assert attempts == 1
+    assert "interrupted" in index.status().embeds.reason
+    # Inside the backoff window nothing re-probes.
+    assert await index.embed_next_batch() == 0
+    assert attempts == 1
+
+    index._embedder_retry_at = 0.0  # the backoff elapsed
+    assert await index.embed_next_batch() > 0
+    assert attempts == 2
+    assert index.status().embeds.reason == ""
+    assert index.status().embeds.available is True

@@ -72,6 +72,12 @@ _WORKER_POLL_SECONDS = 2.0
 #: spinning the worker forever on the same input.
 _MAX_EMBED_ATTEMPTS = 3
 
+#: Issue #362: a failed model probe (a first download that hit a network
+#: blip, a model server not up yet) is retried with capped exponential
+#: backoff instead of disabling vectors for the rest of the process.
+_EMBEDDER_RETRY_INITIAL_SECONDS = 1.0
+_EMBEDDER_RETRY_MAX_SECONDS = 60.0
+
 
 @dataclass(frozen=True, slots=True)
 class _Claim:
@@ -124,7 +130,12 @@ class VaultIndex:
         self._doctor = VaultDoctor(engine)
         self._embedder: Embedder | None = embedder
         self._embedder_failed = ""
-        self._embedder_probed = embedder is not None
+        # Issue #362: probes are serialised (a query and the worker must not
+        # both load the model) and a failure schedules a retry, never a
+        # permanent "unavailable".
+        self._embedder_lock = asyncio.Lock()
+        self._embedder_probe_attempts = 0
+        self._embedder_retry_at = 0.0
         self._unsubscribe: Callable[[], None] | None = None
         self._worker: asyncio.Task[None] | None = None
         self._wake = asyncio.Event()
@@ -339,27 +350,64 @@ class VaultIndex:
     # ------------------------------------------------------------- embeddings
 
     async def _ensure_embedder(self) -> Embedder | None:
+        """The embedder, loading it on first use; ``None`` while unavailable.
+
+        A failed load is remembered only until its backoff expires (issue
+        #362): the next caller after that retries, and a success clears the
+        degraded status the search path reports meanwhile.
+        """
         if self._embedder is not None:
             return self._embedder
-        if self._embedder_probed:
+        if time.monotonic() < self._embedder_retry_at:
             return None
-        self._embedder_probed = True
-        try:
-            embedder = await asyncio.to_thread(build_embedder, self._embedding)
-        except EmbedderUnavailableError as exc:
-            self._embedder_failed = str(exc)
-            logger.warning("embeddings unavailable: %s", exc)
-            return None
-        self._embedder = embedder
-        self.db.meta_set(META_EMBED_MODEL, embedder.name)
-        self.db.meta_set(META_EMBED_DIM, str(embedder.dim))
-        return embedder
+        async with self._embedder_lock:
+            if self._embedder is not None:
+                return self._embedder
+            if time.monotonic() < self._embedder_retry_at:
+                return None
+            try:
+                embedder = await asyncio.to_thread(build_embedder, self._embedding)
+            except EmbedderUnavailableError as exc:
+                self._embedder_probe_attempts += 1
+                delay = min(
+                    _EMBEDDER_RETRY_INITIAL_SECONDS * 2 ** (self._embedder_probe_attempts - 1),
+                    _EMBEDDER_RETRY_MAX_SECONDS,
+                )
+                self._embedder_retry_at = time.monotonic() + delay
+                self._embedder_failed = str(exc)
+                logger.warning("embeddings unavailable (retry in %.0fs): %s", delay, exc)
+                return None
+            self._embedder = embedder
+            self._embedder_failed = ""
+            self._embedder_probe_attempts = 0
+            self._embedder_retry_at = 0.0
+            self.db.meta_set(META_EMBED_MODEL, embedder.name)
+            self.db.meta_set(META_EMBED_DIM, str(embedder.dim))
+            return embedder
+
+    def _worker_wait_seconds(self) -> float:
+        """How long the worker may sleep: shorter while a probe retry is due."""
+        if self._embedder is not None:
+            return _WORKER_POLL_SECONDS
+        return min(_WORKER_POLL_SECONDS, max(0.0, self._embedder_retry_at - time.monotonic()))
 
     async def _worker_loop(self) -> None:
-        """Drain the embed backlog in batches, forever."""
+        """Drain the embed backlog in batches, forever.
+
+        The worker also *warms* the embedder (issue #362): a restarted hub
+        whose index is fully embedded has nothing pending, so without this
+        the model would load on the first hybrid query instead — minutes,
+        on a cold download, on the answer path.
+        """
         while not self._closing:
             try:
-                await asyncio.wait_for(self._wake.wait(), timeout=_WORKER_POLL_SECONDS)
+                await self._ensure_embedder()
+            except asyncio.CancelledError:  # pragma: no cover - shutdown
+                raise
+            except Exception:  # noqa: BLE001 - the worker must survive anything
+                logger.exception("embedder warm-up failed")
+            try:
+                await asyncio.wait_for(self._wake.wait(), timeout=self._worker_wait_seconds())
             except TimeoutError:
                 pass
             self._wake.clear()
