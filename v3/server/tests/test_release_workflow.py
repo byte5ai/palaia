@@ -259,3 +259,44 @@ def test_v3_ci_runs_for_changes_to_the_v3_workflow_files_themselves(trigger: str
         f"v3-ci.yml `{trigger}.paths` must include the v3 workflow files, or a PR "
         "touching only them runs no v3 CI (issue #392)"
     )
+
+
+# ---------------------------------------------------------------------------
+# Issue #393: the manual `channel` input. Dispatching on `main` with
+# `channel=stable` tagged `stable` and baked `PALAIA_CHANNEL=stable` for a
+# build whose version annotation is `0.0.0+edge.<sha>` and which no
+# `v3.<version>` tag names — every stable hub would then compare against
+# `0.0.0` and report "up to date" until the next real tag.
+# ---------------------------------------------------------------------------
+
+
+@_NEEDS_BASH
+@pytest.mark.parametrize("channel", ["stable", "beta"])
+def test_a_manual_channel_is_refused_on_a_branch_ref(tmp_path: Path, channel: str) -> None:
+    result, outputs = _run_compute_tags(
+        tmp_path, ref="refs/heads/main", version_file="3.0.0", channel_input=channel
+    )
+    assert result.returncode != 0
+    assert "only honoured on a v3.* release tag" in result.stderr
+    assert "tags" not in outputs, "the step must fail before it emits tags"
+
+
+@_NEEDS_BASH
+def test_a_manual_channel_is_honoured_on_a_release_tag(tmp_path: Path) -> None:
+    result, outputs = _run_compute_tags(
+        tmp_path, ref="refs/tags/v3.3.0.0-rc1", version_file="3.0.0-rc1", channel_input="stable"
+    )
+    assert result.returncode == 0, result.stderr
+    assert outputs["channel"] == "stable"
+    assert "ghcr.io/byte5ai/palaia-hub:stable" in outputs["tags"].split(",")
+    assert outputs["annotation_version"] == "3.0.0-rc1"
+
+
+@_NEEDS_BASH
+def test_a_plain_manual_rebuild_on_main_still_works(tmp_path: Path) -> None:
+    result, outputs = _run_compute_tags(
+        tmp_path, ref="refs/heads/main", version_file="3.0.0", channel_input="none"
+    )
+    assert result.returncode == 0, result.stderr
+    assert outputs["channel"] == "edge"
+    assert "ghcr.io/byte5ai/palaia-hub:edge" in outputs["tags"].split(",")

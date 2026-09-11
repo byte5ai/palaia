@@ -23,8 +23,10 @@ on:
         description: >-
           Also publish this build under this channel tag (in addition to
           whatever the triggering ref already produces below) — e.g.
-          re-promoting an existing commit to `stable`/`beta` without
-          cutting a new tag. Leave as 'none' for a plain manual rebuild.
+          re-promoting an existing release to `stable`/`beta`. Only
+          honoured when dispatched on a `v3.*` release tag: a branch
+          commit has no version to bind the image to, so the build fails
+          instead (issue #393). Leave as 'none' for a plain manual rebuild.
         type: choice
         options: [none, stable, beta]
         default: none
@@ -100,6 +102,15 @@ jobs:
           fi
           manual_channel="${{ github.event.inputs.channel }}"
           if [[ -n "${manual_channel}" && "${manual_channel}" != "none" ]]; then
+            # Issue #393: a channel tag is a promise that the image carries a
+            # release version (the update check compares against its
+            # annotation). On a branch ref the annotation is `0.0.0+edge.*`
+            # and no `v3.<version>` tag exists, so `stable` would point at an
+            # untagged commit that every hub then reads as "up to date".
+            if [[ "${GITHUB_REF}" != refs/tags/v3.* ]]; then
+              echo "channel=${manual_channel} is only honoured on a v3.* release tag; ${GITHUB_REF} has no release version to bind the image to. Dispatch this workflow on the tag instead (issue #393)." >&2
+              exit 1
+            fi
             tags="${tags},${IMAGE}:${manual_channel}"
             channel="${manual_channel}"
           fi

@@ -225,7 +225,10 @@ Each build also bakes `PALAIA_CHANNEL` (matching the table above) and an
 `org.opencontainers.image.version` manifest annotation `/api/update/check`
 reads back — see "Updates (SPEC-501)" above. The workflow also accepts a
 manual `channel` input (`workflow_dispatch`) to additionally tag an
-existing build `stable`/`beta` without cutting a new git tag.
+existing *release* `stable`/`beta` — dispatch it on the `v3.*` tag. On a
+branch commit the input is refused (issue #393): such a build carries no
+release version, so a `stable` pointing at it would make every hub read
+"up to date" against `0.0.0` until the next real tag.
 
 ## Manual verification (fresh Linux VM)
 
