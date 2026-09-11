@@ -153,6 +153,9 @@ class VaultIndex:
         # modify's read-then-write around a delete's write put the deleted
         # note back into the index. Serialising the apply closes that.
         self._apply_lock = asyncio.Lock()
+        #: Issue #404: the chunk-state aggregate ran on every hybrid query;
+        #: it is recomputed only after a commit changed the database.
+        self._embed_counts: tuple[int, dict[str, int]] | None = None
         #: SPEC-201's ``index.reindexed``/``index.embed_backlog_drained``/
         #: ``doctor.finding`` hook point — see :data:`HubEventHook`. ``None``
         #: (the default) keeps this class's behavior identical to before
@@ -534,15 +537,27 @@ class VaultIndex:
 
     # ----------------------------------------------------------------- status
 
+    def _chunk_counts(self) -> dict[str, int]:
+        """Chunks per state, re-aggregated only when a commit changed them."""
+        if not self.db.opened:
+            return {"pending": 0, "ready": 0, "failed": 0}
+        with self.db.lock:
+            generation = self.db.generation
+            cached = self._embed_counts
+            if cached is not None and cached[0] == generation and not self.db.rebuilding:
+                return dict(cached[1])
+            counts = {"pending": 0, "ready": 0, "failed": 0}
+            for row in self.db.conn.execute(
+                "SELECT state, COUNT(*) AS n FROM chunks GROUP BY state"
+            ).fetchall():
+                counts[str(row["state"])] = int(row["n"])
+            if not self.db.rebuilding:
+                self._embed_counts = (generation, dict(counts))
+        return counts
+
     def embed_status(self) -> EmbedStatus:
         """The embed backlog, as the status API reports it."""
-        counts = {"pending": 0, "ready": 0, "failed": 0}
-        if self.db.opened:
-            with self.db.lock:
-                for row in self.db.conn.execute(
-                    "SELECT state, COUNT(*) AS n FROM chunks GROUP BY state"
-                ).fetchall():
-                    counts[str(row["state"])] = int(row["n"])
+        counts = self._chunk_counts()
         available = self.db.vectors.available
         reason = "" if available else self.db.vectors.reason
         if available and self._embedder_failed:

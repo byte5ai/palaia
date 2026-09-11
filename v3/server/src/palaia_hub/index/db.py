@@ -25,6 +25,7 @@ from pathlib import Path
 
 from ..security.files import harden_sqlite_database
 from .schema import (
+    ADDITIVE_INDEX_SQL,
     META_SCHEMA_VERSION,
     META_VAULT,
     SCHEMA_SQL,
@@ -90,6 +91,12 @@ class IndexDatabase:
         self._conn: sqlite3.Connection | None = None
         self.vectors = VectorSupport(False, "not opened yet")
         self._rebuilding = False
+        #: Issue #404: ``sqlite_master`` was probed once per chunk on every
+        #: note write; the answer only changes through :meth:`ensure_vec_table`.
+        self._vec_table_known: bool | None = None
+        #: Bumped on every real commit — a cheap "did anything change" key
+        #: for readers that would otherwise re-aggregate per call.
+        self.generation = 0
 
     # ------------------------------------------------------------- lifecycle
 
@@ -118,6 +125,7 @@ class IndexDatabase:
             for suffix in ("-wal", "-shm"):
                 self.path.with_name(self.path.name + suffix).unlink(missing_ok=True)
             self._open_once(force_create=True)
+        self._ensure_additive_indexes()
         # SPEC-502: the index holds every note's text and its embeddings —
         # the same content as the vault, in one queryable file. It is
         # derived data, but it is not less sensitive than what it derives
@@ -146,6 +154,7 @@ class IndexDatabase:
             self._conn = None
             return f"unreadable database ({exc})"
         self._conn = conn
+        self._vec_table_known = None
         self.vectors = _load_sqlite_vec(conn)
         if self.vectors.available:
             logger.debug("sqlite-vec loaded for index %s", self.path)
@@ -167,6 +176,12 @@ class IndexDatabase:
         if version != str(SCHEMA_VERSION):
             return f"schema version {version!r} != {SCHEMA_VERSION}"
         return None
+
+    def _ensure_additive_indexes(self) -> None:
+        with self.lock:
+            for statement in ADDITIVE_INDEX_SQL:
+                self.conn.execute(statement)
+            self.conn.commit()
 
     def _create_schema(self) -> None:
         with self.lock:
@@ -229,6 +244,7 @@ class IndexDatabase:
         if self._rebuilding:
             return
         self.conn.commit()
+        self.generation += 1
 
     @property
     def rebuilding(self) -> bool:
@@ -249,17 +265,21 @@ class IndexDatabase:
             self._rebuilding = False
             if commit:
                 self.conn.commit()
+                self.generation += 1
             else:
                 self.conn.rollback()
 
     # -------------------------------------------------------------- vec table
 
     def has_vec_table(self) -> bool:
+        if self._vec_table_known is not None:
+            return self._vec_table_known
         with self.lock:
             row = self.conn.execute(
                 "SELECT name FROM sqlite_master WHERE name='vec_chunks'"
             ).fetchone()
-        return row is not None
+            self._vec_table_known = row is not None
+            return self._vec_table_known
 
     def ensure_vec_table(self, dim: int) -> bool:
         """Create the KNN table for ``dim``-dimensional vectors if needed.
@@ -279,6 +299,7 @@ class IndexDatabase:
                 self.conn.execute("DROP TABLE vec_chunks")
                 self.conn.execute("UPDATE chunks SET state='pending', attempts=0")
             self.conn.execute(VEC_TABLE_SQL.format(dim=dim))
+            self._vec_table_known = True
             self.meta_set("vec_dim", str(dim))
             self.commit()
         return True

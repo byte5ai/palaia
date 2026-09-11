@@ -169,12 +169,41 @@ class IndexWriter:
         return removed
 
     def move_note(self, previous_path: str, note: Note) -> None:
-        """Handle a move: drop the old path's rows, index the new ones."""
+        """Handle a move.
+
+        A move that changed nothing but the path (§3.1: the permalink stays)
+        is a two-column ``UPDATE`` — every other row references the note by
+        id, and re-chunking would have thrown the note's ready vectors away
+        for the embed worker to recompute (issue #404). Anything else (the
+        content changed too, or the permalink was path-derived) takes the
+        full delete-and-index path.
+        """
         with self._db.lock:
+            if previous_path != note.path and self._relocate_unchanged(previous_path, note):
+                self._db.commit()
+                return
             if previous_path != note.path:
                 self._delete_note(previous_path)
             self._index_note(note)
             self._db.commit()
+
+    def _relocate_unchanged(self, previous_path: str, note: Note) -> bool:
+        conn = self._db.conn
+        row = conn.execute(
+            "SELECT id, permalink, checksum FROM notes WHERE path = ?", (previous_path,)
+        ).fetchone()
+        if row is None or str(row["checksum"]) != note.checksum:
+            return False
+        if conn.execute("SELECT 1 FROM notes WHERE path = ?", (note.path,)).fetchone():
+            return False  # the new path is taken: let the full path sort it out
+        parsed = parse_note(note.text, note.path)
+        if _permalink_for(note, parsed) != str(row["permalink"]):
+            return False
+        conn.execute(
+            "UPDATE notes SET path = ?, folder = ? WHERE id = ?",
+            (note.path, _folder_of(note.path), int(row["id"])),
+        )
+        return True
 
     def sweep_orphan_vectors(self) -> int:
         """Delete vectors whose chunk no longer exists; return how many.
