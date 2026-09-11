@@ -2,7 +2,12 @@
 # EVALUATION.md in this directory for the full evaluation this config is
 # the "positive" half of.
 name: palaia
-version: "stable"
+# The real release version, not a channel name (issue #394): the
+# Supervisor detects add-on updates by this field changing, so a constant
+# `stable` meant HA never offered one while the dashboard said "update via
+# Home Assistant". server/tests/test_version_drift.py pins it to v3/VERSION,
+# so the release bump in RELEASING.md §3 carries it along.
+version: "3.0.0-rc1"
 slug: palaia
 description: Shared memory for every AI assistant you use
 url: https://github.com/byte5ai/palaia
@@ -12,8 +17,9 @@ arch:
   - amd64
   - aarch64
 # Points at the same published image every other channel in this SPEC
-# uses — no separate add-on build. `version` above must match this tag,
-# per HA's own `image` field contract.
+# uses — no separate add-on build. HA pulls `image:<version>`, so the
+# release workflow publishes every release under its bare version as well
+# as `v3.<version>` (v3-release.yml, issue #394).
 image: ghcr.io/byte5ai/palaia-hub
 startup: application
 boot: auto

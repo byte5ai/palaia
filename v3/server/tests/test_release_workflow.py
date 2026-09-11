@@ -157,6 +157,8 @@ def test_any_semver_suffix_publishes_to_the_beta_channel_never_stable(
     assert "ghcr.io/byte5ai/palaia-hub:beta" in tags
     assert "ghcr.io/byte5ai/palaia-hub:stable" not in tags
     assert f"ghcr.io/byte5ai/palaia-hub:v3.{version}" in tags
+    # Issue #394: Home Assistant pulls `image:<config.yaml version>`.
+    assert f"ghcr.io/byte5ai/palaia-hub:{version}" in tags
     assert outputs["annotation_version"] == version
 
 
@@ -168,6 +170,7 @@ def test_a_final_version_publishes_to_stable(tmp_path: Path) -> None:
     tags = outputs["tags"].split(",")
     assert "ghcr.io/byte5ai/palaia-hub:stable" in tags
     assert "ghcr.io/byte5ai/palaia-hub:beta" not in tags
+    assert "ghcr.io/byte5ai/palaia-hub:3.0.0" in tags
     assert outputs["annotation_version"] == "3.0.0"
 
 

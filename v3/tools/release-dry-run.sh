@@ -32,7 +32,7 @@ else
   CHANNEL="stable"
 fi
 echo "git tag:        ${TAG}"
-echo "image tags:     ghcr.io/byte5ai/palaia-hub:${TAG}, ghcr.io/byte5ai/palaia-hub:${CHANNEL}"
+echo "image tags:     ghcr.io/byte5ai/palaia-hub:${TAG}, ghcr.io/byte5ai/palaia-hub:${VERSION} (Home Assistant), ghcr.io/byte5ai/palaia-hub:${CHANNEL}"
 echo "OCI annotation: org.opencontainers.image.version=${VERSION}"
 echo "channel:        ${CHANNEL}  (never 'stable' for a pre-release version — enforced by"
 echo "                 the release workflow's own branch and by the drift test above)"

@@ -129,8 +129,11 @@ whoever holds it.
       image tag: `truenas/community/palaia/app.yaml`'s `app_version`/
       `human_version`, `runtipi/apps/palaia/config.json`'s `version`,
       `umbrel/umbrel-app.yml`'s `version`, `casaos/docker-compose.yml`'s
-      `version` label. Each package's own `SUBMIT.md`/`EVALUATION.md`
-      names exactly what to update and how — see
+      `version` label. The Home Assistant `config.yaml`'s `version` is
+      *not* on this list: it is the image tag HA pulls, so
+      `server/tests/test_version_drift.py` pins it to `v3/VERSION` and §3's
+      bump carries it along (issue #394). Each package's own
+      `SUBMIT.md`/`EVALUATION.md` names exactly what to update and how — see
       `v3/deploy/stores/README.md`. This is deliberately *not* done as
       part of `rc1` (SPEC-506's own non-goal): bumping these to claim
       `3.0.0` while the `stable` channel still served a pre-release image

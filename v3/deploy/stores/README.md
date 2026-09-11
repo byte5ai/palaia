@@ -23,7 +23,9 @@ docs, and what to update on every release.
 ## What's shared across every package
 
 - **Image**: `ghcr.io/byte5ai/palaia-hub:stable` (or, for Home Assistant,
-  the equivalent `image`/`version` pair) — never `beta` or `edge`. A
+  `image` plus the release version in `version` — the Supervisor pulls
+  `image:<version>`, and only a changing version makes it offer an update;
+  issue #394) — never `beta` or `edge`. A
   store listing is what a new user finds first; it should always install
   the same thing `docker compose up -d` against the shipped
   `v3/deploy/docker-compose.yml` would.

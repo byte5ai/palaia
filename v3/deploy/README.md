@@ -215,7 +215,7 @@ Published by `.github/workflows/v3-release.yml`:
 | Tag | Trigger |
 |---|---|
 | `edge` | every push to `main` touching `v3/**` |
-| `v3.<version>` and `stable` | a `v3.*` git tag |
+| `v3.<version>`, `<version>` and `stable` | a `v3.*` git tag (the bare `<version>` tag is what the Home Assistant add-on pulls — issue #394) |
 | `beta` | any pre-release git tag — `v3.*-*` with a SemVer suffix (`-rc1`, `-beta2`, `-alpha1`, `-dev1`) |
 
 Images are `linux/amd64` and `linux/arm64` (Raspberry-class hosts —

@@ -2,7 +2,9 @@ name: v3 hub image
 
 # SPEC-112: builds/pushes the palaia-hub image to GHCR.
 #   - `edge`                    on every push to main touching v3/**
-#   - `v3.<version>` + `stable` on a `v3.*` tag (release)
+#   - `v3.<version>` + `<version>` + `stable` on a `v3.*` tag (release);
+#     the bare `<version>` tag exists for Home Assistant, whose add-on model
+#     pulls `image:<config.yaml version>` (issue #394)
 #   - `beta`                    on any pre-release tag (`v3.*-*`: rc, beta,
 #                               alpha, dev — any SemVer suffix, issue #386)
 # Independent of the v2 root `publish.yml` (PyPI/npm) — this workflow never
@@ -90,6 +92,11 @@ jobs:
               exit 1
             fi
             tags="${tags},${IMAGE}:v3.${version}"
+            # Issue #394: Home Assistant pulls `image:<version>` with the
+            # add-on config's own `version` field, and that field must be a
+            # real version for HA to ever offer an update — so the bare
+            # version is a tag too. Same manifest, one more name.
+            tags="${tags},${IMAGE}:${version}"
             annotation_version="${version}"
             # Any SemVer suffix is a pre-release (#386) — never `stable`.
             if [[ "${version}" == *-* ]]; then

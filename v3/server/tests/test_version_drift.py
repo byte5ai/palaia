@@ -172,6 +172,25 @@ def test_store_packages_pin_the_stable_channel_tag(compose_path: str) -> None:
     )
 
 
+def test_home_assistant_addon_version_is_this_version() -> None:
+    """Issue #394: the Home Assistant Supervisor pulls `image:<version>` and
+    offers an update only when `version` changes — so the add-on config
+    carries the real release version, never a channel name, and moves with
+    `v3/VERSION` (the release workflow publishes the bare version tag)."""
+    import yaml
+
+    config = yaml.safe_load(
+        (V3_ROOT / "deploy" / "stores" / "home-assistant" / "config.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert config["image"] == "ghcr.io/byte5ai/palaia-hub"
+    assert str(config["version"]) == _read_version_file(), (
+        "deploy/stores/home-assistant/config.yaml `version` must equal v3/VERSION — "
+        "it is the image tag HA pulls and the only thing HA compares for updates"
+    )
+
+
 def test_release_workflow_tag_derived_version_would_round_trip_this_rc() -> None:
     """Simulates `.github/workflows/v3-release.yml`'s own tag-parsing
     shell (`test_release_workflow.py` checks that script's structure;
