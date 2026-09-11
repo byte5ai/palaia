@@ -216,7 +216,7 @@ Published by `.github/workflows/v3-release.yml`:
 |---|---|
 | `edge` | every push to `main` touching `v3/**` |
 | `v3.<version>` and `stable` | a `v3.*` git tag |
-| `beta` | a `v3.*-beta*` / `v3.*-rc*` git tag |
+| `beta` | any pre-release git tag — `v3.*-*` with a SemVer suffix (`-rc1`, `-beta2`, `-alpha1`, `-dev1`) |
 
 Images are `linux/amd64` and `linux/arm64` (Raspberry-class hosts —
 verified in CI via QEMU emulation, per the SPEC's acceptance criteria).

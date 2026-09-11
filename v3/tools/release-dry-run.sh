@@ -25,7 +25,8 @@ echo ""
 
 echo "-- 2. what the release workflow would tag and push --"
 TAG="v3.${VERSION}"
-if [[ "${VERSION}" == *rc* || "${VERSION}" == *beta* ]]; then
+# Any SemVer suffix is a pre-release (issue #386) — same test as the workflows.
+if [[ "${VERSION}" == *-* ]]; then
   CHANNEL="beta"
 else
   CHANNEL="stable"
@@ -33,7 +34,7 @@ fi
 echo "git tag:        ${TAG}"
 echo "image tags:     ghcr.io/byte5ai/palaia-hub:${TAG}, ghcr.io/byte5ai/palaia-hub:${CHANNEL}"
 echo "OCI annotation: org.opencontainers.image.version=${VERSION}"
-echo "channel:        ${CHANNEL}  (never 'stable' for an rc/beta version — enforced by"
+echo "channel:        ${CHANNEL}  (never 'stable' for a pre-release version — enforced by"
 echo "                 the release workflow's own branch and by the drift test above)"
 echo ""
 

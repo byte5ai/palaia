@@ -178,8 +178,9 @@ def test_release_workflow_tag_derived_version_would_round_trip_this_rc() -> None
     this test checks the *arithmetic* it would do against this exact
     release): tagging `v3.<VERSION>` must strip back down to exactly
     `v3/VERSION`'s content, and the channel that arithmetic resolves to
-    must match what `v3/VERSION` actually is right now — `rc`/`beta` in
-    the version means the `beta` channel, never `stable`, and vice versa.
+    must match what `v3/VERSION` actually is right now — any SemVer
+    suffix (`-rc1`, `-beta2`, `-alpha1`, issue #386) means the `beta`
+    channel, never `stable`, and vice versa.
     This is deliberately not a hardcoded "must be beta" assertion: this
     same test still has to pass once `v3/RELEASING.md`'s §3 bumps
     `VERSION` to a final, non-candidate `3.0.0`, at which point the
@@ -191,7 +192,7 @@ def test_release_workflow_tag_derived_version_would_round_trip_this_rc() -> None
     assert tag_ref.startswith("refs/tags/v3.")
     extracted = tag_ref[len("refs/tags/v3.") :]
     assert extracted == version
-    is_prerelease = "beta" in version or "rc" in version
+    is_prerelease = "-" in version
     channel = "beta" if is_prerelease else "stable"
     if version == "3.0.0-rc1":
         assert channel == "beta", f"{version!r} is an RC and must resolve to beta, not stable"

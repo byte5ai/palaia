@@ -1,5 +1,6 @@
 # Cuts a v3 release from the dispatched ref: creates the `v3.<version>` tag
-# and the GitHub release (pre-release for `rc`/`beta` versions) from the
+# and the GitHub release (marked pre-release for any version with a SemVer
+# suffix — `3.0.0-rc1`, `3.1.0-alpha1`, `3.0.1-dev1`; issue #386) from the
 # committed notes file, then dispatches the `v3 hub image` workflow on that
 # tag so the container images publish, and the `v3 Pi appliance image`
 # workflow so the .img.xz lands on the release. Exists because release cuts are done
@@ -67,7 +68,9 @@ jobs:
             tail -n +2 "${notes}" | sed '1{/^$/d}' > /tmp/release-body.md
           fi
           prerelease_flag=""
-          if [[ "${version}" == *rc* || "${version}" == *beta* ]]; then
+          # Any `-suffix` is a pre-release (SemVer §9), not only rc/beta:
+          # an alpha or dev build must never publish as "Latest" (#386).
+          if [[ "${version}" == *-* ]]; then
             prerelease_flag="--prerelease"
           fi
           {

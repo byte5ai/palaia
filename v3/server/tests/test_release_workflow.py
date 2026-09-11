@@ -9,8 +9,12 @@ checked structurally instead: the workflow YAML actually wires what
 
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 _WORKFLOW_PATH = Path(__file__).resolve().parents[3] / ".github" / "workflows" / "v3-release.yml"
@@ -74,3 +78,121 @@ def test_the_compute_tags_step_fails_the_build_on_a_version_file_mismatch() -> N
     assert "cat v3/VERSION" in script
     assert '"${version}" != "${file_version}"' in script
     assert "exit 1" in script
+
+
+# ---------------------------------------------------------------------------
+# Issue #386: pre-release detection. The workflows, the dry-run script and
+# the drift test all used to ask "does the version contain `rc` or `beta`?"
+# — so a `3.1.0-alpha1` or `3.0.1-dev1` (both valid per the drift test's own
+# `_SEMVER_RE`) would have published as a non-prerelease marked "Latest",
+# repointed `stable`, and baked `PALAIA_CHANNEL=stable`. SemVer says any
+# `-suffix` is a pre-release; these tests pin that reading in every copy of
+# the shell, and *run* the release workflow's own tag arithmetic under bash.
+# ---------------------------------------------------------------------------
+
+_V3_ROOT = Path(__file__).resolve().parents[2]
+_CUT_WORKFLOW_PATH = _WORKFLOW_PATH.with_name("v3-cut-release.yml")
+_DRY_RUN_PATH = _V3_ROOT / "tools" / "release-dry-run.sh"
+
+_NEEDS_BASH = pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+
+
+def _compute_tags_script() -> str:
+    workflow = _load_workflow()
+    steps = workflow["jobs"]["build-and-push"]["steps"]
+    return next(s for s in steps if s.get("id") == "tags")["run"]
+
+
+def _cut_guard_script() -> str:
+    workflow = yaml.safe_load(_CUT_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["cut"]["steps"]
+    return next(s for s in steps if s.get("id") == "guard")["run"]
+
+
+def _run_compute_tags(
+    tmp_path: Path, *, ref: str, version_file: str, channel_input: str = "none"
+) -> tuple[subprocess.CompletedProcess[str], dict[str, str]]:
+    """Run the real `Compute tags` step under bash, the way Actions would:
+    `${{ github.event.inputs.channel }}` substituted, `v3/VERSION` read from
+    the working directory, outputs collected from `$GITHUB_OUTPUT`."""
+    script = _compute_tags_script().replace("${{ github.event.inputs.channel }}", channel_input)
+    (tmp_path / "v3").mkdir(exist_ok=True)
+    (tmp_path / "v3" / "VERSION").write_text(version_file + "\n", encoding="utf-8")
+    output_file = tmp_path / "github_output"
+    output_file.write_text("", encoding="utf-8")
+    env = {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "GITHUB_REF": ref,
+        "GITHUB_SHA": "0123456789abcdef0123456789abcdef01234567",
+        "GITHUB_OUTPUT": str(output_file),
+        "IMAGE": "ghcr.io/byte5ai/palaia-hub",
+    }
+    result = subprocess.run(
+        ["bash", "-e", "-c", script],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    outputs = dict(
+        line.split("=", 1)
+        for line in output_file.read_text(encoding="utf-8").splitlines()
+        if "=" in line
+    )
+    return result, outputs
+
+
+@_NEEDS_BASH
+@pytest.mark.parametrize("version", ["3.0.0-rc1", "3.0.0-beta2", "3.1.0-alpha1", "3.0.1-dev1"])
+def test_any_semver_suffix_publishes_to_the_beta_channel_never_stable(
+    tmp_path: Path, version: str
+) -> None:
+    result, outputs = _run_compute_tags(
+        tmp_path, ref=f"refs/tags/v3.{version}", version_file=version
+    )
+    assert result.returncode == 0, result.stderr
+    assert outputs["channel"] == "beta"
+    tags = outputs["tags"].split(",")
+    assert "ghcr.io/byte5ai/palaia-hub:beta" in tags
+    assert "ghcr.io/byte5ai/palaia-hub:stable" not in tags
+    assert f"ghcr.io/byte5ai/palaia-hub:v3.{version}" in tags
+    assert outputs["annotation_version"] == version
+
+
+@_NEEDS_BASH
+def test_a_final_version_publishes_to_stable(tmp_path: Path) -> None:
+    result, outputs = _run_compute_tags(tmp_path, ref="refs/tags/v3.3.0.0", version_file="3.0.0")
+    assert result.returncode == 0, result.stderr
+    assert outputs["channel"] == "stable"
+    tags = outputs["tags"].split(",")
+    assert "ghcr.io/byte5ai/palaia-hub:stable" in tags
+    assert "ghcr.io/byte5ai/palaia-hub:beta" not in tags
+    assert outputs["annotation_version"] == "3.0.0"
+
+
+@_NEEDS_BASH
+def test_a_tag_that_disagrees_with_the_version_file_fails_the_build(tmp_path: Path) -> None:
+    result, _ = _run_compute_tags(tmp_path, ref="refs/tags/v3.3.0.0", version_file="3.0.1")
+    assert result.returncode != 0
+    assert "does not match v3/VERSION" in result.stderr
+
+
+def test_the_cut_release_guard_marks_any_suffixed_version_a_prerelease() -> None:
+    script = _cut_guard_script()
+    assert '"${version}" == *-*' in script
+    assert "*rc*" not in script and "*beta*" not in script
+
+
+def test_no_release_shell_still_detects_prereleases_by_rc_or_beta_only() -> None:
+    """Every copy of the arithmetic — both workflows and the dry-run script —
+    must use the same SemVer reading, or one of them silently disagrees
+    with the others on the next non-rc pre-release."""
+    sources = {
+        "v3-release.yml": _compute_tags_script(),
+        "v3-cut-release.yml": _cut_guard_script(),
+        "release-dry-run.sh": _DRY_RUN_PATH.read_text(encoding="utf-8"),
+    }
+    for name, text in sources.items():
+        assert "*rc*" not in text and "*beta*" not in text, f"{name} still tests for rc/beta"
+        assert "== *-*" in text, f"{name} does not test for a SemVer suffix"
