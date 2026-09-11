@@ -121,6 +121,13 @@ GITIGNORE_BLOCK = (
 ) + GITIGNORE_EDITOR_STATE
 
 
+#: Engine temp files are swept at ``open()`` only once they are this old —
+#: anything younger may be another live process's in-flight write on the
+#: same vault (issue #398). The doctor's explicit ``repair()`` still sweeps
+#: everything: it is the owner asking for a clean-up, not a startup path.
+OPEN_RESIDUE_MIN_AGE_SECONDS = 60.0
+
+
 @dataclass(frozen=True, slots=True)
 class CatalogEntry:
     """The engine's in-memory record of one note file.
@@ -324,7 +331,13 @@ class VaultEngine:
                 )
             self.root.mkdir(parents=True, exist_ok=True)
 
-        swept = sweep_temp_files(self.root)
+        # Issue #398: a CLI import and the server can share one vault; a
+        # temp file only seconds old may be the other process's in-flight
+        # write, so only clear residue older than a minute here. (Git locks
+        # keep the policy's threshold: a commit holds one for milliseconds,
+        # and a lock left behind by a crash must not block the first write
+        # after a quick restart.)
+        swept = sweep_temp_files(self.root, min_age_seconds=OPEN_RESIDUE_MIN_AGE_SECONDS)
         if swept:
             logger.info("swept %d orphaned temp file(s) in %s", len(swept), self.root)
 
@@ -470,6 +483,11 @@ class VaultEngine:
             except OSError:  # pragma: no cover - vanished under us
                 continue
             for entry in entries:
+                if entry.is_symlink():
+                    # Issue #398: a link pointing outside the vault made
+                    # `_relative` raise for the whole open(); a link loop
+                    # walked ~40 levels deep. Links are not vault content.
+                    continue
                 if entry.is_dir():
                     if entry.name in IGNORED_DIRS:
                         continue
@@ -488,7 +506,10 @@ class VaultEngine:
             return None
         text = data.decode("utf-8", errors="replace")
         parsed = fm.parse(text)
-        relative = self._relative(path)
+        try:
+            relative = self._relative(path)
+        except ValueError:  # resolves outside the vault (a symlinked parent)
+            return None
         title, _ = fm.string_value(parsed.frontmatter, "title")
         permalink, _ = fm.string_value(parsed.frontmatter, "permalink")
         return CatalogEntry(
@@ -503,6 +524,11 @@ class VaultEngine:
 
     def _relative(self, path: Path) -> str:
         return path.resolve().relative_to(self.root.resolve()).as_posix()
+
+    def path_for_permalink(self, permalink: str) -> str | None:
+        """The vault-relative path of the note whose permalink is exactly
+        ``permalink`` — no title or alias tiers, unlike :meth:`resolve`."""
+        return self._snapshot.lookups.by_permalink.get(permalink)
 
     @property
     def catalog(self) -> Mapping[str, CatalogEntry]:
@@ -582,10 +608,14 @@ class VaultEngine:
                     f"path {raw!r} escapes the vault root. Fix: use a path inside the vault."
                 )
             parts.append(part)
-        if parts and parts[0] in IGNORED_DIRS:
+        # At any depth, not only the first segment (issue #398): the walk
+        # skips these directories wherever they are, so a note written into
+        # one would be committed but never catalogued or indexed.
+        private = next((part for part in parts if part in IGNORED_DIRS), None)
+        if private is not None:
             raise InvalidPathError(
-                f"path {raw!r} points at engine-private or VCS storage ({parts[0]}). "
-                f"Fix: write vault content outside {parts[0]}."
+                f"path {raw!r} points at engine-private or VCS storage ({private}). "
+                f"Fix: write vault content outside {private}."
             )
         relative = "/".join(parts)
         if not relative.endswith(NOTE_SUFFIX):
@@ -711,7 +741,15 @@ class VaultEngine:
         return await asyncio.to_thread(self._list_dir_sync, relative)
 
     def _list_dir_sync(self, relative: str) -> list[DirEntry]:
-        base = self.root if relative in (".", "", "/") else self.root / relative.strip("/")
+        raw_parts = relative.replace("\\", "/").split("/")
+        segments = [part for part in raw_parts if part not in ("", ".")]
+        if any(part in IGNORED_DIRS for part in segments):
+            # Issue #398: the children filter below hid these directories,
+            # but listing one *as the base* still exposed its contents.
+            raise NoteNotFoundError(
+                f"directory {relative!r} is engine-private or VCS storage, not vault content."
+            )
+        base = self.root if not segments else self.root / "/".join(segments)
         if not base.exists() or not base.is_dir():
             raise NoteNotFoundError(
                 f"directory {relative!r} does not exist in vault {self.name!r}. "
@@ -892,9 +930,18 @@ class VaultEngine:
         )
         self._reject_volatile("title", resolved_title)
 
+        # Issue #398: `frontmatter={"permalink": X}` used to bypass the
+        # canonical/uniqueness checks `permalink=X` gets — an identity the
+        # caller is *introducing* (a new note, or a value that differs from
+        # the note's own) is a request, and is checked as one.
+        requested_permalink = permalink
+        if requested_permalink is None and extra and "permalink" in extra:
+            introduced, _ = fm.string_value(extra, "permalink")
+            if introduced and not (existing and existing.permalink == introduced):
+                requested_permalink = introduced
         resolved_permalink = self._resolve_write_permalink(
             relative=relative,
-            requested=permalink,
+            requested=requested_permalink,
             merged=merged,
             title=resolved_title,
         )

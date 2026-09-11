@@ -15,17 +15,13 @@ and the public concept dossier in ``v3/research/basic-memory.md``.
 
 from __future__ import annotations
 
-from .embed_queue import EmbedQueueStatus, enqueue_for_embedding, queue_status
 from .models import ImportOutcome, ImportReport, MappedNote, SkippedItem
 from .runner import ImportRunner
 
 __all__ = [
-    "EmbedQueueStatus",
     "ImportOutcome",
     "ImportReport",
     "ImportRunner",
     "MappedNote",
     "SkippedItem",
-    "enqueue_for_embedding",
-    "queue_status",
 ]

@@ -4,10 +4,11 @@ Both sources (:mod:`.v2_source`, :mod:`.basic_memory_source`) reduce to the
 same shape: an iterable of :class:`~.models.MappedNote` /
 :class:`~.models.SkippedItem`. :class:`ImportRunner` is the one place that
 actually talks to :class:`~palaia_hub.vault.engine.VaultEngine`, so
-idempotence and dry-run are implemented once. Every written note also
-reaches the real SPEC-104 embed backlog automatically, via the engine's own
-change events — see :mod:`.embed_queue`'s module docstring for why that
-module's own JSONL queue is no longer the operative path.
+idempotence and dry-run are implemented once. Every written note reaches
+the SPEC-104 embed backlog through the engine's own change events (a
+:class:`~palaia_hub.index.VaultIndex` on the same bus inserts its chunks as
+pending); the importer keeps no bookkeeping of its own (issue #398 removed
+the inert ``.palaia/import-embed-queue.jsonl`` that predated SPEC-104).
 """
 
 from __future__ import annotations
@@ -15,11 +16,9 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from palaia_hub.vault.engine import VaultEngine
-from palaia_hub.vault.errors import NoteExistsError, VaultError, VolatileNameError
-from palaia_hub.vault.frontmatter import utc_now_iso
+from palaia_hub.vault.errors import NoteExistsError, VolatileNameError
 from palaia_hub.vault.models import Attribution
 
-from .embed_queue import enqueue_for_embedding
 from .models import ImportedItem, ImportReport, MappedNote, SkippedItem
 
 #: The attribution every import commit carries (vault-format.md §2.1 origin).
@@ -92,9 +91,6 @@ class ImportRunner:
                 outcome="skipped",
                 detail=str(exc),
             )
-        enqueue_for_embedding(
-            self.engine.engine_dir, permalink=note.permalink, enqueued_at=utc_now_iso()
-        )
         return ImportedItem(
             source_path=note.source_path,
             permalink=note.permalink,
@@ -104,11 +100,10 @@ class ImportRunner:
         )
 
     def _already_imported(self, permalink: str) -> bool:
-        try:
-            self.engine.resolve(permalink)
-        except VaultError:
-            return False
-        return True
+        # Exact permalink only (issue #398): the full resolver's title/alias
+        # tiers made a pre-existing note titled like an import permalink
+        # silently skip the source item.
+        return self.engine.path_for_permalink(permalink) is not None
 
 
 __all__ = ["IMPORT_ATTRIBUTION", "ImportRunner"]

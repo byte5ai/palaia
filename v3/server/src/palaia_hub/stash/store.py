@@ -146,12 +146,15 @@ class StashStore:
         total = self._total_bytes_locked()
         if total + needed_bytes <= self.total_budget_bytes:
             return evicted
-        cursor = self._conn.execute(
+        # Materialised first (issue #398): deleting rows while iterating a
+        # live cursor over the same table is undefined in SQLite and could
+        # under-evict.
+        candidates = self._conn.execute(
             "SELECT namespace, key, size_bytes FROM stash_entries "
             "WHERE NOT (namespace = ? AND key = ?) ORDER BY accessed_at ASC",
             (protect_namespace, protect_key),
-        )
-        for row in cursor:
+        ).fetchall()
+        for row in candidates:
             if total + needed_bytes <= self.total_budget_bytes:
                 break
             self._conn.execute(

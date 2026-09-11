@@ -106,7 +106,7 @@ normalizations (bm-lesson: user YAML is hostile):
 | `permalink` | R* | string | Stable identity (§3). *Assigned by the engine on first index if absent |
 | `type` | O | string | Taxonomy §6; default `note`; unknown types are valid (warning `type-unknown`, warn-first philosophy) |
 | `tags` | O | list \| comma-string | Normalized to a list of lowercase strings |
-| `created` / `modified` | O | ISO 8601 | Engine maintains on write; external edits: `modified` from file mtime at index time |
+| `created` / `modified` | O | ISO 8601 | Engine maintains on write. An external edit keeps whatever the file says — file mtimes are never consulted (they change on checkout), so recency ranking follows the frontmatter, not the disk |
 | `scope` | O | `private` \| `project` \| `shared` | Access scope (MASTERPLAN §5.1); default: vault's configured default |
 | `origin` | O | map | Attribution: `provider`, `client`, `session`, `agent`, or `human: true`. Engine-written; free-form for humans |
 | `aliases` | O | list | Former titles/permalinks after renames (§4.2); resolvers honor them |
@@ -120,6 +120,21 @@ Engine writes MUST: order keys as in the table above (unknown keys after,
 alphabetically), quote strings only when YAML requires it, use ISO 8601 UTC
 timestamps, LF line endings, exactly one blank line after the closing `---`.
 Canonical form is a writer duty, never a read requirement.
+
+What canonical form costs a hand-written file, stated plainly (issue #398):
+the engine re-serialises frontmatter through a YAML dumper on its *first*
+edit of a note, so YAML comments are dropped, unquoted `yes`/`no`/`~`
+become `true`/`false`/`null` per YAML 1.1 (`title: yes` reads as a
+boolean and is coerced to a string with warning `title-coerced`),
+timestamps are re-rendered in ISO 8601 UTC, and block scalars may be
+re-quoted. The result is stable from then on. Keep frontmatter you care
+about as plain `key: value` pairs; comments belong in the body.
+
+Case-insensitive filesystems (macOS, Windows defaults): the engine keys its
+catalog by the path string a caller gives it, so `Foo.md` and `foo.md` are
+two entries for what the filesystem treats as one file, and a permalink can
+appear claimed twice. Use lowercase file names (the engine mints lowercase
+slugs itself); this is a documented limitation, not yet a check.
 
 ## 3. Permalinks & `memory://` addressing
 

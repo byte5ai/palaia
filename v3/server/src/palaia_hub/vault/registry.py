@@ -14,6 +14,7 @@ registry file stays a pointer list and the vault itself remains the truth.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from collections.abc import Iterator, Mapping
@@ -79,6 +80,7 @@ class VaultRegistry:
         self.policy = policy
         self._records: dict[str, VaultRecord] = {}
         self._engines: dict[str, VaultEngine] = {}
+        self._open_locks: dict[str, asyncio.Lock] = {}
         self._load()
 
     # ------------------------------------------------------------- persistence
@@ -217,7 +219,12 @@ class VaultRegistry:
         return engine
 
     async def get(self, name: str) -> VaultEngine:
-        """Return the opened engine for ``name``, opening it on first use."""
+        """Return the opened engine for ``name``, opening it on first use.
+
+        Two concurrent first-time callers used to open two engines with
+        independent locks for one vault (issue #398); the per-name lock
+        makes the second caller wait for, and receive, the first's engine.
+        """
         engine = self._engines.get(name)
         if engine is not None:
             return engine
@@ -228,10 +235,14 @@ class VaultRegistry:
                 f"no vault named {name!r} is registered (known vaults: {known}). "
                 f"Fix: register it with the registry's create()/register()."
             )
-        engine = VaultEngine(record.path, name, bus=self.bus, policy=self.policy)
-        await engine.open(create=False)
-        self._engines[name] = engine
-        return engine
+        async with self._open_locks.setdefault(name, asyncio.Lock()):
+            engine = self._engines.get(name)
+            if engine is not None:
+                return engine
+            engine = VaultEngine(record.path, name, bus=self.bus, policy=self.policy)
+            await engine.open(create=False)
+            self._engines[name] = engine
+            return engine
 
     def unregister(self, name: str) -> VaultRecord:
         """Forget a vault. Its files are never touched."""

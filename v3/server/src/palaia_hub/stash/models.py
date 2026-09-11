@@ -61,7 +61,9 @@ class StatusResult(BaseModel):
 
 class StashError(Exception):
     """Raised by :class:`~palaia_hub.stash.store.StashStore` for a bad call
-    (a value too large for the per-entry limit, an invalid key/namespace).
+    (a value too large for the per-entry limit). Keys and namespaces are
+    not validated beyond what the tool schema enforces (issue #398 — the
+    old docstring promised a check that never existed).
     Turned into a ``ToolResult(is_error=True, ...)`` by the gateway layer,
     never an uncaught exception (same convention as ``VaultServiceError``).
     """
