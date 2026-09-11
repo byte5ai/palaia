@@ -304,8 +304,11 @@ export function Home() {
           attention={Boolean(inbox && inbox.count > 0)}
           action={
             inbox && inbox.count > 0 ? (
-              <Link className="btn btn--sm" to="/inbox">
-                Review now
+              // Issue 375: this used to lead to a "not built yet" page.
+              // Captures wait in the vault's inbox folder, which the
+              // explorer shows.
+              <Link className="btn btn--sm" to="/explorer">
+                See in explorer
               </Link>
             ) : undefined
           }

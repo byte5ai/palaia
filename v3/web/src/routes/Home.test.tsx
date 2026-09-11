@@ -132,6 +132,28 @@ describe("Home — a hub without a vault points at the wizard (issue 372)", () =
   });
 });
 
+describe("Home — the inbox tile leads somewhere real (issue 375)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("sends a waiting inbox to the explorer, where the captures are (issue 375)", async () => {
+    mockApi({ funnel: NO_FUNNEL });
+    vi.spyOn(api, "inboxStatus").mockResolvedValue({
+      count: 2,
+      oldest_capture_id: "c1",
+      oldest_age_seconds: 90,
+      last_capture_id: "c2",
+      last_captured_at: new Date().toISOString(),
+    });
+
+    mount();
+
+    const link = await screen.findByRole("link", { name: /see in explorer/i });
+    expect(link).toHaveAttribute("href", "/explorer");
+  });
+});
+
 describe("Home — SPEC-504 first-memory celebration", () => {
   it("shows nothing extra before the first memory is recorded", async () => {
     mockApi({ funnel: NO_FUNNEL });

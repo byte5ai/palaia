@@ -5,15 +5,12 @@ import {
   AutomationsIcon,
   ClientsIcon,
   ExplorerIcon,
-  HealthIcon,
   HomeIcon,
-  InboxIcon,
   LinkIcon,
   MarketplaceIcon,
   ReviewIcon,
   SettingsIcon,
   ToolsIcon,
-  VaultsIcon,
 } from "./icons";
 
 export interface NavItemConfig {
@@ -41,10 +38,11 @@ export const NAV_GROUPS: NavGroupConfig[] = [
   {
     label: "Memory",
     items: [
+      // Issue 375: only destinations that exist. Captures waiting in the
+      // inbox are shown in the explorer's tree; vaults are picked there and
+      // counted on Home; health lives in the top bar's live status.
       { path: "/explorer", label: "Explorer", icon: ExplorerIcon, liveBadge: "vaultChanges" },
-      { path: "/inbox", label: "Inbox", icon: InboxIcon },
       { path: "/review-queue", label: "Review queue", icon: ReviewIcon },
-      { path: "/vaults", label: "Vaults", icon: VaultsIcon },
     ],
   },
   {
@@ -61,7 +59,6 @@ export const NAV_GROUPS: NavGroupConfig[] = [
     items: [
       { path: "/automations", label: "Automations", icon: AutomationsIcon },
       { path: "/exposure", label: "Access mode", icon: LinkIcon },
-      { path: "/health", label: "Health", icon: HealthIcon },
       { path: "/settings", label: "Settings", icon: SettingsIcon },
     ],
   },

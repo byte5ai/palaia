@@ -147,6 +147,27 @@ export interface LocalGraph {
   inbound: GraphNode[];
 }
 
+/** One curator maintenance proposal waiting for the owner's decision —
+ * mirrors `palaia_hub.gateway.vault_protocol.ProposalSummary`. */
+export interface ProposalSummary {
+  permalink: string;
+  title: string;
+  status: string;
+  created: string;
+  /** The proposal's full markdown: the explanation, the plan, pre-images. */
+  body: string;
+}
+
+export interface ReviewQueueResult {
+  proposals: ProposalSummary[];
+  decide_tool: string;
+}
+
+export interface ReviewDecideResult {
+  permalink: string;
+  status: string;
+}
+
 export interface InboxStatus {
   count: number;
   oldest_capture_id: string | null;
@@ -790,6 +811,15 @@ export const api = {
     getJson<SearchHit[]>(`/api/vaults/${vaultKey}/search${queryString({ q })}`),
   inboxStatus: (vaultKey: string) =>
     getJson<InboxStatus>(`/api/vaults/${vaultKey}/inbox_status`),
+  /** The review queue's dashboard mirror (SPEC-208, issue 375): the same
+   * proposals and the same decision the review-queue app makes in a client. */
+  listReviewQueue: (vaultKey: string) =>
+    getJson<ReviewQueueResult>(`/api/vaults/${vaultKey}/review`),
+  decideReview: (vaultKey: string, permalink: string, decision: "approved" | "rejected") =>
+    postJson<ReviewDecideResult>(
+      `/api/vaults/${vaultKey}/review/${encodeURI(permalink)}/decision`,
+      { decision },
+    ),
   indexStatus: (vaultKey: string) =>
     getJson<IndexStatus>(`/api/vaults/${vaultKey}/index_status`),
 

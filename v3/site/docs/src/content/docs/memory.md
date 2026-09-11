@@ -41,7 +41,8 @@ two things:
   something that already exists in a bigger way — merging two notes,
   renaming one, retiring one that's gone stale. Nothing like that ever
   happens automatically. You see the proposal and approve or reject it
-  yourself, in the dashboard.
+  yourself — in the dashboard's **Review queue** (under Memory), or in the
+  review view your AI tool can show you.
 
 That split is deliberate: adding something new is low-risk and constant, so
 it stays automatic; changing something that already exists can lose

@@ -33,16 +33,26 @@ interface FolderGroup {
   notes: NoteSummary[];
 }
 
+function isInboxFolder(folder: string): boolean {
+  return folder === "inbox" || folder.startsWith("inbox/");
+}
+
 function groupByFolder(notes: NoteSummary[]): FolderGroup[] {
   const groups = new Map<string, NoteSummary[]>();
   for (const note of notes) {
-    if (note.folder.startsWith("inbox")) continue; // the inbox has its own count, not a tree slot
     const bucket = groups.get(note.folder) ?? [];
     bucket.push(note);
     groups.set(note.folder, bucket);
   }
+  // Issue 375: captures waiting in the inbox used to be hidden here while
+  // every "review now" button pointed at a page that did not exist. They
+  // are notes like any other — shown first, since they are what is new.
   return [...groups.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
+    .sort(([a], [b]) => {
+      const inboxA = isInboxFolder(a) ? 0 : 1;
+      const inboxB = isInboxFolder(b) ? 0 : 1;
+      return inboxA - inboxB || a.localeCompare(b);
+    })
     .map(([folder, items]) => ({
       folder,
       notes: items.sort((a, b) => a.title.localeCompare(b.title)),
@@ -165,10 +175,10 @@ function VaultView({
           <div className="pane__head">
             <span className="t-over">Notes</span>
             {inboxCount ? (
-              <Link className="badge badge--warn" to="/inbox">
+              <span className="badge badge--warn" title="Captures waiting in the inbox folder below">
                 <span className="dot dot--warn" />
                 {inboxCount} uncurated
-              </Link>
+              </span>
             ) : null}
           </div>
           <div className="pane__body scrollpane">

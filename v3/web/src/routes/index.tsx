@@ -11,6 +11,7 @@ import { Exposure } from "./Exposure";
 import { Home } from "./Home";
 import { Marketplace } from "./Marketplace";
 import { Onboarding } from "./onboarding/Onboarding";
+import { ReviewQueue } from "./ReviewQueue";
 import { Settings } from "./Settings";
 import { ToolProfiles } from "./ToolProfiles";
 
@@ -28,6 +29,7 @@ const BUILT_PATHS = new Set([
   "/tools",
   "/marketplace",
   "/agents",
+  "/review-queue",
 ]);
 
 const placeholderRoutes = NAV_GROUPS.flatMap((group) => group.items)
@@ -55,6 +57,7 @@ export const router = createBrowserRouter([
       { path: "tools", element: <ToolProfiles /> },
       { path: "marketplace", element: <Marketplace /> },
       { path: "agents", element: <Agents /> },
+      { path: "review-queue", element: <ReviewQueue /> },
       ...placeholderRoutes,
     ],
   },

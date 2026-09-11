@@ -42,3 +42,17 @@ describe("Sidebar access-mode indicator (issue 343)", () => {
     expect(indicator.querySelector(".dot")).not.toHaveClass("dot--ok");
   });
 });
+
+describe("Sidebar destinations (issue 375)", () => {
+  it("offers the review queue and no longer offers pages that were never built", () => {
+    mount("locked");
+
+    expect(screen.getByRole("link", { name: /review queue/i })).toHaveAttribute(
+      "href",
+      "/review-queue",
+    );
+    for (const gone of [/^inbox$/i, /^vaults$/i, /^health$/i]) {
+      expect(screen.queryByRole("link", { name: gone })).not.toBeInTheDocument();
+    }
+  });
+});
