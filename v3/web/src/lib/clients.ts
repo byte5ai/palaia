@@ -100,18 +100,23 @@ export interface NotYetClient {
    * to paste into the client's own "custom connector" settings. Present
    * only on clients that connect through sign-in rather than through
    * this hub's own per-client tokens (claude.ai, ChatGPT, Grok). */
-  oauthConnect?: (issuer: string, profile: string) => { url: string; note: string };
+  oauthConnect?: (
+    issuer: string,
+    profile: string,
+  ) => { url: string; note: string };
 }
 
 export type ClientEntry = GuidedClient | NotYetClient | DownloadClient;
 
-const CLOUD_CONNECTOR_REASON = (name: string, planNote: string) => (mode: HubMode): string =>
-  mode === "locked"
-    ? `${name} connects from its own cloud, not from this device — Locked mode only answers ` +
-      `inside your network, so it would time out whatever you paste into it. Switch to Cloud or ` +
-      `Open mode to expose an endpoint it can reach.`
-    : `${name} needs sign-in turned on for this hub, and it is not yet — turn it on from the ` +
-      `Access mode page (Cloud and Open both support it), then come back here. ${planNote}`;
+const CLOUD_CONNECTOR_REASON =
+  (name: string, planNote: string) =>
+  (mode: HubMode): string =>
+    mode === "locked"
+      ? `${name} connects from its own cloud, not from this device — Locked mode only answers ` +
+        `inside your network, so it would time out whatever you paste into it. Switch to Cloud or ` +
+        `Open mode to expose an endpoint it can reach.`
+      : `${name} needs sign-in turned on for this hub, and it is not yet — turn it on from the ` +
+        `Access mode page (Cloud and Open both support it), then come back here. ${planNote}`;
 
 const OAUTH_CONNECT = (name: string) => (issuer: string, profile: string) => ({
   url: `${issuer.replace(/\/$/, "")}/mcp/${profile}`,
@@ -127,7 +132,11 @@ const authHeader = (token?: string): string => `Bearer ${tokenOr(token)}`;
 
 /** The shared "paste a prompt" text: the address, the header the hub
  * requires, and the one thing to do afterwards. */
-const connectPrompt = (origin: string, profile: string, token?: string): string =>
+const connectPrompt = (
+  origin: string,
+  profile: string,
+  token?: string,
+): string =>
   `Please connect yourself to my palaia hub as an MCP server:\n${origin}/mcp/${profile}\n` +
   `Send the header "Authorization: ${authHeader(token)}" with every request.\n` +
   `Then run a test recall and tell me what you found.`;
@@ -179,12 +188,15 @@ export const CLIENTS: ClientEntry[] = [
   {
     kind: "download",
     id: "claude-desktop",
-    name: "Claude Code (Desktop app)",
+    // Issue 385: this is the Claude Desktop app (the MCPB bundle target),
+    // not Claude Code — the name, the token name and the docs page agree.
+    name: "Claude Desktop",
     icon: ExplorerIcon,
-    subtitle: "One-click download — a signed bridge to your hub, no typing required",
+    subtitle:
+      "One-click download — a signed bridge to your hub, no typing required",
     downloadUrl: (origin, profile) =>
       `${origin}/api/connect/mcpb?profile=${encodeURIComponent(profile)}&client_name=${encodeURIComponent(
-        "Claude Code (Desktop app)",
+        "Claude Desktop",
       )}`,
   },
   {
@@ -192,7 +204,8 @@ export const CLIENTS: ClientEntry[] = [
     id: "claude-ai",
     name: "claude.ai",
     icon: LinkIcon,
-    subtitle: "Web, desktop, mobile and Cowork — custom connector on every plan",
+    subtitle:
+      "Web, desktop, mobile and Cowork — custom connector on every plan",
     reason: CLOUD_CONNECTOR_REASON(
       "claude.ai",
       "Every plan (including Free) can add palaia as a custom connector.",
@@ -251,7 +264,10 @@ export const CLIENTS: ClientEntry[] = [
     name: "Grok",
     icon: ClientsIcon,
     subtitle: "Custom (bring-your-own) MCP connectors — web/iOS/Android",
-    reason: CLOUD_CONNECTOR_REASON("Grok", "Connect from web, iOS or Android once it is on."),
+    reason: CLOUD_CONNECTOR_REASON(
+      "Grok",
+      "Connect from web, iOS or Android once it is on.",
+    ),
     oauthConnect: OAUTH_CONNECT("Grok"),
   },
   {

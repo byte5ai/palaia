@@ -10,8 +10,13 @@ interface ClientRow {
 }
 
 const rows: ClientRow[] = [
-  { id: "1", name: "Claude Code CLI", profile: "coding", lastSeen: "6 min ago" },
-  { id: "2", name: "Claude Code (Desktop app)", profile: "general", lastSeen: "2 h ago" },
+  {
+    id: "1",
+    name: "Claude Code CLI",
+    profile: "coding",
+    lastSeen: "6 min ago",
+  },
+  { id: "2", name: "Claude Desktop", profile: "general", lastSeen: "2 h ago" },
   { id: "3", name: "claude.ai", profile: "general", lastSeen: "1 d ago" },
 ];
 

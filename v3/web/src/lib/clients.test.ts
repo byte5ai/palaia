@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { CLIENTS, CODEX_TOKEN_ENV, TOKEN_PLACEHOLDER, guidedClients } from "./clients";
+import {
+  CLIENTS,
+  CODEX_TOKEN_ENV,
+  TOKEN_PLACEHOLDER,
+  guidedClients,
+} from "./clients";
 
 describe("client integration catalog", () => {
   it("has one entry per MASTERPLAN §6 client", () => {
@@ -8,7 +13,7 @@ describe("client integration catalog", () => {
     expect(names).toEqual([
       "Claude Code CLI",
       "Codex",
-      "Claude Code (Desktop app)",
+      "Claude Desktop",
       "claude.ai",
       "ChatGPT",
       "Antigravity / Gemini CLI",
@@ -45,7 +50,8 @@ describe("client integration catalog", () => {
     const url = `${origin}/mcp/${profile}`;
     const guided = (id: string) => {
       const client = CLIENTS.find((c) => c.id === id);
-      if (client?.kind !== "guided") throw new Error(`expected ${id} to be guided`);
+      if (client?.kind !== "guided")
+        throw new Error(`expected ${id} to be guided`);
       return client;
     };
 
@@ -59,17 +65,25 @@ describe("client integration catalog", () => {
       const codex = guided("codex");
       const command = codex.command(origin, profile, token);
       expect(command).toContain(`export ${CODEX_TOKEN_ENV}=${token}`);
-      expect(command).toContain(`codex mcp add palaia --url ${url} --bearer-token-env-var ${CODEX_TOKEN_ENV}`);
+      expect(command).toContain(
+        `codex mcp add palaia --url ${url} --bearer-token-env-var ${CODEX_TOKEN_ENV}`,
+      );
       const file = codex.configFile?.(origin, profile, token);
-      expect(file?.content).toContain(`bearer_token_env_var = "${CODEX_TOKEN_ENV}"`);
+      expect(file?.content).toContain(
+        `bearer_token_env_var = "${CODEX_TOKEN_ENV}"`,
+      );
       expect(file?.content).toContain(`export ${CODEX_TOKEN_ENV}=${token}`);
     });
 
     it("Gemini CLI and LM Studio carry it in their config's headers object", () => {
       for (const id of ["gemini-cli", "lm-studio"]) {
         const client = guided(id);
-        const parsed = JSON.parse(client.configFile?.(origin, profile, token)?.content ?? "{}");
-        expect(parsed.mcpServers.palaia.headers, id).toEqual({ Authorization: `Bearer ${token}` });
+        const parsed = JSON.parse(
+          client.configFile?.(origin, profile, token)?.content ?? "{}",
+        );
+        expect(parsed.mcpServers.palaia.headers, id).toEqual({
+          Authorization: `Bearer ${token}`,
+        });
         // The command tab is the same object, minus the file's outer shape.
         expect(client.command(origin, profile, token), id).toContain(
           `"headers": {"Authorization": "Bearer ${token}"}`,
@@ -98,8 +112,12 @@ describe("client integration catalog", () => {
           expect(text, client.id).toContain(TOKEN_PLACEHOLDER);
         }
         // ...and the real token replaces the placeholder in place of it.
-        expect(client.command(origin, profile, token), client.id).not.toContain(TOKEN_PLACEHOLDER);
-        expect(client.prompt(origin, profile, token), client.id).not.toContain(TOKEN_PLACEHOLDER);
+        expect(client.command(origin, profile, token), client.id).not.toContain(
+          TOKEN_PLACEHOLDER,
+        );
+        expect(client.prompt(origin, profile, token), client.id).not.toContain(
+          TOKEN_PLACEHOLDER,
+        );
       }
     });
   });
@@ -126,10 +144,16 @@ describe("client integration catalog", () => {
   it("cloud connectors carry an oauthConnect fallback for once sign-in is on", () => {
     for (const id of ["claude-ai", "chatgpt", "grok"]) {
       const client = CLIENTS.find((c) => c.id === id);
-      if (client?.kind !== "notYet") throw new Error(`expected ${id} to be notYet`);
-      const connect = client.oauthConnect?.("https://hub.example.com", "default");
+      if (client?.kind !== "notYet")
+        throw new Error(`expected ${id} to be notYet`);
+      const connect = client.oauthConnect?.(
+        "https://hub.example.com",
+        "default",
+      );
       expect(connect?.url).toBe("https://hub.example.com/mcp/default");
-      expect(connect?.note).toMatch(new RegExp(client.name.replace(".", "\\."), "i"));
+      expect(connect?.note).toMatch(
+        new RegExp(client.name.replace(".", "\\."), "i"),
+      );
     }
   });
 
@@ -157,7 +181,9 @@ describe("client integration catalog", () => {
     const geminiFile = gemini.configFile?.(origin, profile);
     expect(geminiFile?.filename).toMatch(/\.json$/);
     const geminiParsed = JSON.parse(geminiFile?.content ?? "{}");
-    expect(geminiParsed.mcpServers.palaia.httpUrl).toBe(`${origin}/mcp/${profile}`);
+    expect(geminiParsed.mcpServers.palaia.httpUrl).toBe(
+      `${origin}/mcp/${profile}`,
+    );
 
     const lmStudio = CLIENTS.find((c) => c.id === "lm-studio");
     if (lmStudio?.kind !== "guided") throw new Error("expected guided");
@@ -188,7 +214,9 @@ describe("client integration catalog", () => {
     // it is the technical text itself, shown inside a code block, and the
     // header the hub requires is literally `Authorization: Bearer …`
     // (issue 318) — the one place the word has to appear verbatim.
-    const BANNED_IN_SNIPPETS = BANNED.filter((pattern) => pattern.source !== "\\bbearer\\b");
+    const BANNED_IN_SNIPPETS = BANNED.filter(
+      (pattern) => pattern.source !== "\\bbearer\\b",
+    );
     const origin = "https://hub.example.com";
     const profile = "default";
     for (const client of CLIENTS) {
@@ -196,22 +224,49 @@ describe("client integration catalog", () => {
       const snippets: string[] = [];
       if (client.kind === "guided") {
         strings.push(client.estimate);
-        snippets.push(client.command(origin, profile), client.prompt(origin, profile));
+        snippets.push(
+          client.command(origin, profile),
+          client.prompt(origin, profile),
+        );
       } else if (client.kind === "download") {
         strings.push(client.subtitle);
       } else {
-        strings.push(client.subtitle, client.reason("cloud"), client.reason("locked"));
+        strings.push(
+          client.subtitle,
+          client.reason("cloud"),
+          client.reason("locked"),
+        );
       }
       for (const text of strings) {
         for (const pattern of BANNED) {
-          expect(text, `jargon ${pattern} in ${client.id}: ${text}`).not.toMatch(pattern);
+          expect(
+            text,
+            `jargon ${pattern} in ${client.id}: ${text}`,
+          ).not.toMatch(pattern);
         }
       }
       for (const text of snippets) {
         for (const pattern of BANNED_IN_SNIPPETS) {
-          expect(text, `jargon ${pattern} in ${client.id}: ${text}`).not.toMatch(pattern);
+          expect(
+            text,
+            `jargon ${pattern} in ${client.id}: ${text}`,
+          ).not.toMatch(pattern);
         }
       }
     }
+  });
+});
+
+describe("Claude Desktop naming (issue 385)", () => {
+  it("is called Claude Desktop everywhere the entry speaks — name and token name alike", () => {
+    const desktop = CLIENTS.find((c) => c.id === "claude-desktop");
+    if (desktop?.kind !== "download") throw new Error("expected download");
+    expect(desktop.name).toBe("Claude Desktop");
+    expect(desktop.downloadUrl("", "default")).toContain(
+      `client_name=${encodeURIComponent("Claude Desktop")}`,
+    );
+    expect(CLIENTS.filter((c) => c.name.includes("Claude Code"))).toHaveLength(
+      1,
+    );
   });
 });

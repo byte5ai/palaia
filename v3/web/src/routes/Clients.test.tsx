@@ -3,7 +3,11 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ToastProvider } from "../components/Toast";
-import type { CreatedToken, GatewayProfile, ModeStatus } from "../lib/api/client";
+import type {
+  CreatedToken,
+  GatewayProfile,
+  ModeStatus,
+} from "../lib/api/client";
 import { api } from "../lib/api/client";
 import { Clients } from "./Clients";
 
@@ -19,7 +23,11 @@ const DEFAULT_PROFILE: GatewayProfile = {
   managed: false,
 };
 
-const CODEX_ONLY_PROFILE: GatewayProfile = { ...DEFAULT_PROFILE, path: "codex-only", tool_count: 4 };
+const CODEX_ONLY_PROFILE: GatewayProfile = {
+  ...DEFAULT_PROFILE,
+  path: "codex-only",
+  tool_count: 4,
+};
 
 describe("Clients (connect-a-client)", () => {
   it("lists every §6-matrix client and explains a not-yet one when selected", async () => {
@@ -31,8 +39,12 @@ describe("Clients (connect-a-client)", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("button", { name: /claude code cli/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^chatgpt/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /claude code cli/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^chatgpt/i }),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /^chatgpt/i }));
 
@@ -49,7 +61,9 @@ describe("Clients (connect-a-client)", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("button", { name: /issue token/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /issue token/i }),
+    ).toBeInTheDocument();
   });
 
   describe("the tool-profile picker (issue 373)", () => {
@@ -66,19 +80,25 @@ describe("Clients (connect-a-client)", () => {
         oauth_issuer: null,
       } as unknown as ModeStatus);
       vi.spyOn(api, "listTokens").mockResolvedValue([]);
-      vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([DEFAULT_PROFILE, CODEX_ONLY_PROFILE]);
-      const created = vi.spyOn(api, "createToken").mockImplementation(async (body) => ({
-        info: {
-          id: "t-new",
-          name: body.name,
-          profile: body.profile,
-          scopes: body.scopes ?? [],
-          created_at: new Date().toISOString(),
-          last_used_at: null,
-          revoked_at: null,
-        },
-        token: "plaintext-token",
-      }) as CreatedToken);
+      vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([
+        DEFAULT_PROFILE,
+        CODEX_ONLY_PROFILE,
+      ]);
+      const created = vi.spyOn(api, "createToken").mockImplementation(
+        async (body) =>
+          ({
+            info: {
+              id: "t-new",
+              name: body.name,
+              profile: body.profile,
+              scopes: body.scopes ?? [],
+              created_at: new Date().toISOString(),
+              last_used_at: null,
+              revoked_at: null,
+            },
+            token: "plaintext-token",
+          }) as CreatedToken,
+      );
 
       render(
         <MemoryRouter>
@@ -90,10 +110,14 @@ describe("Clients (connect-a-client)", () => {
 
       const picker = await screen.findByLabelText(/tool profile for/i);
       fireEvent.change(picker, { target: { value: "codex-only" } });
-      fireEvent.click(await screen.findByRole("button", { name: /issue token/i }));
+      fireEvent.click(
+        await screen.findByRole("button", { name: /issue token/i }),
+      );
 
       await waitFor(() => expect(created).toHaveBeenCalled());
-      expect(created).toHaveBeenCalledWith(expect.objectContaining({ profile: "codex-only" }));
+      expect(created).toHaveBeenCalledWith(
+        expect.objectContaining({ profile: "codex-only" }),
+      );
     });
   });
 
@@ -120,8 +144,10 @@ describe("Clients (connect-a-client)", () => {
         </MemoryRouter>,
       );
 
-      fireEvent.click(screen.getByRole("button", { name: /claude code \(desktop app\)/i }));
-      const downloadButton = await screen.findByRole("button", { name: /download bundle/i });
+      fireEvent.click(screen.getByRole("button", { name: /^claude desktop/i }));
+      const downloadButton = await screen.findByRole("button", {
+        name: /download bundle/i,
+      });
       fireEvent.click(downloadButton);
 
       // The dashboard's own mount-time calls (mode/listTokens) share this
@@ -129,7 +155,9 @@ describe("Clients (connect-a-client)", () => {
       // bundle endpoint, not that it was the only call.
       await waitFor(() => {
         const urls = fetchMock.mock.calls.map((call) => String(call[0]));
-        expect(urls.some((url) => url.includes("/api/connect/mcpb"))).toBe(true);
+        expect(urls.some((url) => url.includes("/api/connect/mcpb"))).toBe(
+          true,
+        );
       });
       await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
 
@@ -142,7 +170,9 @@ describe("Clients (connect-a-client)", () => {
         vi.fn().mockResolvedValue({
           ok: false,
           status: 501,
-          json: async () => ({ detail: "no client-authentication method is configured" }),
+          json: async () => ({
+            detail: "no client-authentication method is configured",
+          }),
         }),
       );
 
@@ -154,11 +184,15 @@ describe("Clients (connect-a-client)", () => {
         </MemoryRouter>,
       );
 
-      fireEvent.click(screen.getByRole("button", { name: /claude code \(desktop app\)/i }));
-      fireEvent.click(await screen.findByRole("button", { name: /download bundle/i }));
+      fireEvent.click(screen.getByRole("button", { name: /^claude desktop/i }));
+      fireEvent.click(
+        await screen.findByRole("button", { name: /download bundle/i }),
+      );
 
       expect(
-        await screen.findByText(/no client-authentication method is configured/i),
+        await screen.findByText(
+          /no client-authentication method is configured/i,
+        ),
       ).toBeInTheDocument();
     });
   });

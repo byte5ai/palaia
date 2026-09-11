@@ -11,7 +11,7 @@ Pick the tool you use. Each one takes a couple of minutes, and every tool you co
 
 - **[Claude Code CLI](/connect/clients/claude-code-cli/)** — about one command · 1 min
 - **[Codex](/connect/clients/codex/)** — about one command · 1 min
-- **[Claude Code (Desktop app)](/connect/clients/claude-desktop/)** — One-click download — a signed bridge to your hub, no typing required
+- **[Claude Desktop](/connect/clients/claude-desktop/)** — One-click download — a signed bridge to your hub, no typing required
 - **[Antigravity / Gemini CLI](/connect/clients/gemini-cli/)** — about one command · 1 min
 - **[LM Studio](/connect/clients/lm-studio/)** — about one command · 1 min
 - **[Any other AI tool](/connect/clients/generic/)** — about endpoint and token

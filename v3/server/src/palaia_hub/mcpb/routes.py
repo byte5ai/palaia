@@ -81,7 +81,7 @@ def build_mcpb_router(
 
     @router.get(MCPB_PATH)
     async def download_bundle(
-        request: Request, profile: str = "default", client_name: str = "Claude Desktop bundle"
+        request: Request, profile: str = "default", client_name: str = "Claude Desktop"
     ) -> Response:
         if oauth_server is None and token_store is None:
             raise HTTPException(
