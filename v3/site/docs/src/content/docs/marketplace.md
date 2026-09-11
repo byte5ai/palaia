@@ -52,7 +52,7 @@ connection is allowed to see it.
 
 When a newer version of an installed tool is published, the dashboard shows
 an update badge on it rather than updating anything on its own — you decide
-when, the same consent step runs again, and you can see what changed first.
+when, and the same consent step runs again before anything changes.
 
 ## If nothing here fits
 

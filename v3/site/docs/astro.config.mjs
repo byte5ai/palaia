@@ -1,5 +1,6 @@
 // palaia docs site (SPEC-503). Astro + Starlight: static output, no
 // server, search built in (Pagefind, bundled by Starlight itself).
+import { unified } from "@astrojs/markdown-remark";
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
 
@@ -40,7 +41,10 @@ export default defineConfig({
   // /docs; `site` gives the absolute origin for sitemap/canonical URLs.
   site: "https://palaia.byte5.ai",
   base: BASE,
-  markdown: { remarkPlugins: [remarkBaseAbsoluteLinks] },
+  // Astro 7 deprecated the top-level `markdown.remarkPlugins`; the plugin
+  // rides on the configured processor instead (issue 399). `scripts/
+  // check-links.mjs` is what would catch this plugin ever silently dropping.
+  markdown: { processor: unified({ remarkPlugins: [remarkBaseAbsoluteLinks] }) },
   integrations: [
     starlight({
       title: "palaia docs",

@@ -785,6 +785,17 @@ function deleteRequest(path: string): Promise<void> {
   return request<void>(path, { method: "DELETE", expectJson: false });
 }
 
+/** One path segment (a vault key, a profile path, an id): percent-encoded
+ * so a `#`, `?` or `/` in the value cannot rewrite the request (issue 399). */
+function seg(value: string | number): string {
+  return encodeURIComponent(String(value));
+}
+
+/** A permalink is a `/`-joined path — each segment encoded, the slashes kept. */
+function permalinkPath(permalink: string): string {
+  return permalink.split("/").map(encodeURIComponent).join("/");
+}
+
 function queryString(
   params: Record<string, string | number | undefined>,
 ): string {
@@ -872,38 +883,42 @@ export const api = {
   }) => postJson<VaultSummary>("/api/vaults", body),
   listNotes: (vaultKey: string, folder = "") =>
     getJson<NoteSummary[]>(
-      `/api/vaults/${vaultKey}/notes${queryString({ folder })}`,
+      `/api/vaults/${seg(vaultKey)}/notes${queryString({ folder })}`,
     ),
   readNote: (vaultKey: string, permalink: string) =>
-    getJson<NoteRecord>(`/api/vaults/${vaultKey}/notes/${permalink}`),
+    getJson<NoteRecord>(
+      `/api/vaults/${seg(vaultKey)}/notes/${permalinkPath(permalink)}`,
+    ),
   noteHistory: (vaultKey: string, permalink: string) =>
     getJson<CommitSummary[]>(
-      `/api/vaults/${vaultKey}/notes/${permalink}/history`,
+      `/api/vaults/${seg(vaultKey)}/notes/${permalinkPath(permalink)}/history`,
     ),
   noteGraph: (vaultKey: string, permalink: string) =>
-    getJson<LocalGraph>(`/api/vaults/${vaultKey}/notes/${permalink}/graph`),
+    getJson<LocalGraph>(
+      `/api/vaults/${seg(vaultKey)}/notes/${permalinkPath(permalink)}/graph`,
+    ),
   search: (vaultKey: string, q: string, signal?: AbortSignal) =>
     getJson<SearchHit[]>(
-      `/api/vaults/${vaultKey}/search${queryString({ q })}`,
+      `/api/vaults/${seg(vaultKey)}/search${queryString({ q })}`,
       signal,
     ),
   inboxStatus: (vaultKey: string) =>
-    getJson<InboxStatus>(`/api/vaults/${vaultKey}/inbox_status`),
+    getJson<InboxStatus>(`/api/vaults/${seg(vaultKey)}/inbox_status`),
   /** The review queue's dashboard mirror (SPEC-208, issue 375): the same
    * proposals and the same decision the review-queue app makes in a client. */
   listReviewQueue: (vaultKey: string) =>
-    getJson<ReviewQueueResult>(`/api/vaults/${vaultKey}/review`),
+    getJson<ReviewQueueResult>(`/api/vaults/${seg(vaultKey)}/review`),
   decideReview: (
     vaultKey: string,
     permalink: string,
     decision: "approved" | "rejected",
   ) =>
     postJson<ReviewDecideResult>(
-      `/api/vaults/${vaultKey}/review/${encodeURI(permalink)}/decision`,
+      `/api/vaults/${seg(vaultKey)}/review/${permalinkPath(permalink)}/decision`,
       { decision },
     ),
   indexStatus: (vaultKey: string) =>
-    getJson<IndexStatus>(`/api/vaults/${vaultKey}/index_status`),
+    getJson<IndexStatus>(`/api/vaults/${seg(vaultKey)}/index_status`),
 
   // ---- SPEC-504: the local-only first-run funnel ----
   funnelStatus: () => getJson<FunnelStatus>("/api/funnel/status"),
@@ -920,7 +935,7 @@ export const api = {
   // ---- SPEC-305: the tool-profile editor ----
   listGatewayProfiles: () => getJson<GatewayProfile[]>("/api/gateway/profiles"),
   listGatewayProfileTools: (profilePath: string) =>
-    getJson<GatewayTool[]>(`/api/gateway/profiles/${profilePath}/tools`),
+    getJson<GatewayTool[]>(`/api/gateway/profiles/${seg(profilePath)}/tools`),
   createGatewayProfile: (body: {
     path: string;
     label?: string | null;
@@ -940,9 +955,13 @@ export const api = {
       semantic_routing?: boolean;
       upstreams?: string[];
     },
-  ) => patchJson<GatewayProfile>(`/api/gateway/profiles/${profilePath}`, body),
+  ) =>
+    patchJson<GatewayProfile>(
+      `/api/gateway/profiles/${seg(profilePath)}`,
+      body,
+    ),
   deleteGatewayProfile: (profilePath: string) =>
-    deleteRequest(`/api/gateway/profiles/${profilePath}`),
+    deleteRequest(`/api/gateway/profiles/${seg(profilePath)}`),
   listGatewayVaults: () =>
     getJson<GatewayVaultIdentity[]>("/api/gateway/vaults"),
   updateGatewayVault: (
@@ -952,7 +971,11 @@ export const api = {
       purpose?: string;
       tool_renames?: Record<string, string>;
     },
-  ) => patchJson<GatewayVaultIdentity>(`/api/gateway/vaults/${vaultKey}`, body),
+  ) =>
+    patchJson<GatewayVaultIdentity>(
+      `/api/gateway/vaults/${seg(vaultKey)}`,
+      body,
+    ),
   // SPEC-302's registry, read here so the profile editor (SPEC-304 follow-up)
   // can offer an upstream-server checkbox next to the vault checkboxes.
   listGatewayUpstreams: () =>
@@ -963,17 +986,17 @@ export const api = {
   createToken: (body: { name: string; profile: string; scopes?: string[] }) =>
     postJson<CreatedToken>("/api/auth/tokens", { scopes: [], ...body }),
   revokeToken: (tokenId: string) =>
-    deleteRequest(`/api/auth/tokens/${tokenId}`),
+    deleteRequest(`/api/auth/tokens/${seg(tokenId)}`),
 
   // ---- SPEC-201's webhook surface ----
   listHooks: () => getJson<HookInfo[]>("/api/hooks"),
   createHook: (body: { url: string; events?: string[] }) =>
     postJson<CreatedHook>("/api/hooks", body),
   setHookEnabled: (hookId: string, enabled: boolean) =>
-    patchJson<HookInfo>(`/api/hooks/${hookId}`, { enabled }),
-  deleteHook: (hookId: string) => deleteRequest(`/api/hooks/${hookId}`),
+    patchJson<HookInfo>(`/api/hooks/${seg(hookId)}`, { enabled }),
+  deleteHook: (hookId: string) => deleteRequest(`/api/hooks/${seg(hookId)}`),
   hookDeadLetters: (hookId: string) =>
-    getJson<DeadLetter[]>(`/api/hooks/${hookId}/dead_letters`),
+    getJson<DeadLetter[]>(`/api/hooks/${seg(hookId)}/dead_letters`),
 
   // ---- SPEC-307's automations editor ----
   listAutomations: () => getJson<AutomationInfo[]>("/api/automations"),
@@ -992,20 +1015,27 @@ export const api = {
       action?: AutomationAction;
       condition?: ConditionClause[];
     },
-  ) => putJson<AutomationInfo>(`/api/automations/${automationId}`, body),
+  ) => putJson<AutomationInfo>(`/api/automations/${seg(automationId)}`, body),
   setAutomationEnabled: (automationId: string, enabled: boolean) =>
-    patchJson<AutomationInfo>(`/api/automations/${automationId}`, { enabled }),
+    patchJson<AutomationInfo>(`/api/automations/${seg(automationId)}`, {
+      enabled,
+    }),
   deleteAutomation: (automationId: string) =>
-    deleteRequest(`/api/automations/${automationId}`),
+    deleteRequest(`/api/automations/${seg(automationId)}`),
   automationDeliveries: (automationId: string) =>
-    getJson<DeliveryLogEntry[]>(`/api/automations/${automationId}/deliveries`),
+    getJson<DeliveryLogEntry[]>(
+      `/api/automations/${seg(automationId)}/deliveries`,
+    ),
   testFireAutomation: (
     automationId: string,
     data: Record<string, unknown> = {},
   ) =>
-    postJson<DeliveryLogEntry>(`/api/automations/${automationId}/test_fire`, {
-      data,
-    }),
+    postJson<DeliveryLogEntry>(
+      `/api/automations/${seg(automationId)}/test_fire`,
+      {
+        data,
+      },
+    ),
 
   // ---- SPEC-307's notification center ----
   listNotifications: (unreadOnly = false) =>
@@ -1016,7 +1046,7 @@ export const api = {
     getJson<{ count: number }>("/api/notifications/unread_count"),
   markNotificationRead: (notificationId: number) =>
     postJson<NotificationRecord>(
-      `/api/notifications/${notificationId}/read`,
+      `/api/notifications/${seg(notificationId)}/read`,
       {},
     ),
   markAllNotificationsRead: () =>
@@ -1047,7 +1077,7 @@ export const api = {
       signal,
     ),
   getMarketEntry: (entryId: string) =>
-    getJson<MarketEntry>(`/api/market/entry/${entryId}`),
+    getJson<MarketEntry>(`/api/market/entry/${seg(entryId)}`),
   createManualMarketEntry: (body: {
     id: string;
     name: string;
@@ -1061,12 +1091,12 @@ export const api = {
   /** What an install would run or connect to, derived before anything
    * happens (issue 349) — the consent screen renders it. */
   getMarketPlan: (entryId: string) =>
-    getJson<PlanPreview>(`/api/market/entry/${entryId}/plan`),
+    getJson<PlanPreview>(`/api/market/entry/${seg(entryId)}/plan`),
   /** The consent screen's own POST (SPEC-304 deliverable #3) — the token
    * it returns is what `installMarketEntry` below must be given; there is
    * no install path that skips this call. */
   issueMarketConsent: (entryId: string) =>
-    postJson<ConsentToken>(`/api/market/entry/${entryId}/consent`, {}),
+    postJson<ConsentToken>(`/api/market/entry/${seg(entryId)}/consent`, {}),
   installMarketEntry: (
     entryId: string,
     body: {
@@ -1075,12 +1105,16 @@ export const api = {
       profiles?: string[];
       display_name?: string | null;
     },
-  ) => postJson<InstalledAddon>(`/api/market/entry/${entryId}/install`, body),
+  ) =>
+    postJson<InstalledAddon>(`/api/market/entry/${seg(entryId)}/install`, body),
   listInstalledAddons: () => getJson<InstalledAddon[]>("/api/market/installed"),
   updateInstalledAddon: (upstreamKey: string) =>
-    postJson<InstalledAddon>(`/api/market/installed/${upstreamKey}/update`, {}),
+    postJson<InstalledAddon>(
+      `/api/market/installed/${seg(upstreamKey)}/update`,
+      {},
+    ),
   uninstallAddon: (upstreamKey: string) =>
-    deleteRequest(`/api/market/installed/${upstreamKey}`),
+    deleteRequest(`/api/market/installed/${seg(upstreamKey)}`),
 
   // ---- SPEC-402/405: the session directory ----
   listSessions: (params: { status?: SessionStatus; platform?: string } = {}) =>
@@ -1093,7 +1127,7 @@ export const api = {
    * secret. Idempotent — an already-gone handle answers
    * `deregistered: false`, not an error. */
   deregisterSession: (handle: string) =>
-    postJson<DeregisterResult>(`/api/directory/${handle}/deregister`, {}),
+    postJson<DeregisterResult>(`/api/directory/${seg(handle)}/deregister`, {}),
 
   // ---- SPEC-403/405: the messenger ----
   messageFlows: (
@@ -1105,11 +1139,13 @@ export const api = {
     } = {},
   ) => getJson<MessageFlowsResult>(`/api/messenger/${queryString(params)}`),
   messageThread: (envelopeId: string) =>
-    getJson<ThreadMetadataResult>(`/api/messenger/threads/${envelopeId}`),
+    getJson<ThreadMetadataResult>(`/api/messenger/threads/${seg(envelopeId)}`),
   /** The owner's body-bearing read (deliverable #1: "body on expand") —
    * the one route on this mirror that ever returns a body. */
   envelopeDetail: (envelopeId: string) =>
-    getJson<EnvelopeDetailResult>(`/api/messenger/envelopes/${envelopeId}`),
+    getJson<EnvelopeDetailResult>(
+      `/api/messenger/envelopes/${seg(envelopeId)}`,
+    ),
   /** Owner control (SPEC-405 deliverable #2): compose and send as the
    * owner. No handle/secret in the body — the owner has neither; the
    * signed-in session and its CSRF token are the proof of identity. */
@@ -1128,7 +1164,7 @@ export const api = {
    * the thread's still-undelivered envelopes. */
   endConversation: (envelopeId: string) =>
     postJson<EndConversationResult>(
-      `/api/messenger/threads/${envelopeId}/end`,
+      `/api/messenger/threads/${seg(envelopeId)}/end`,
       {},
     ),
 };

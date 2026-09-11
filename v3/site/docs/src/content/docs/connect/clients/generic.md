@@ -5,7 +5,7 @@ title: "Any other AI tool"
 description: "Connect Any other AI tool to your shared memory."
 ---
 
-Time: about endpoint and token.
+Time: about a couple of minutes.
 
 ## Copy one line
 

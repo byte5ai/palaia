@@ -306,7 +306,7 @@ export const CLIENTS: ClientEntry[] = [
     id: "generic",
     name: "Any other AI tool",
     icon: ExplorerIcon,
-    estimate: "endpoint and token",
+    estimate: "a couple of minutes",
     // No vendor syntax to follow here: the address, and the one header
     // every request to it must carry.
     command: (origin, profile, token) =>

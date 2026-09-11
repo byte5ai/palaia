@@ -24,11 +24,11 @@ import {
   CardHead,
   ConfigSchemaForm,
   EmptyState,
-  missingRequiredFields,
   Segmented,
   useToast,
   type ConfigFormValues,
 } from "../components";
+import { missingRequiredFields } from "../lib/configSchema";
 import type {
   GatewayProfile,
   InstalledAddon,

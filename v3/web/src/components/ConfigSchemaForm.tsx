@@ -17,16 +17,6 @@ export type ConfigFormValues = Record<string, ConfigFormValue>;
 
 /** Field names the schema marks required but the current values leave
  * blank — used to disable the install action until every one is filled. */
-export function missingRequiredFields(
-  schema: MarketConfigSchema | null | undefined,
-  values: ConfigFormValues,
-): string[] {
-  const required = schema?.required ?? [];
-  return required.filter((key) => {
-    const value = values[key];
-    return value === undefined || value === "";
-  });
-}
 
 export function ConfigSchemaForm({
   schema,
@@ -43,7 +33,11 @@ export function ConfigSchemaForm({
   const keys = Object.keys(properties);
 
   if (keys.length === 0) {
-    return <p className="t-xs t-muted">This add-on needs no setup — it is ready to connect.</p>;
+    return (
+      <p className="t-xs t-muted">
+        This add-on needs no setup — it is ready to connect.
+      </p>
+    );
   }
 
   function setValue(key: string, value: ConfigFormValue) {
@@ -118,7 +112,10 @@ export function ConfigSchemaForm({
               type="number"
               value={value === undefined ? "" : String(value)}
               onChange={(event) =>
-                setValue(key, event.target.value === "" ? "" : Number(event.target.value))
+                setValue(
+                  key,
+                  event.target.value === "" ? "" : Number(event.target.value),
+                )
               }
             />
           );

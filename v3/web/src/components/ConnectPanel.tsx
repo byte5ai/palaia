@@ -56,6 +56,7 @@ import { api } from "../lib/api/client";
 import type { GuidedClient } from "../lib/clients";
 import { TOKEN_PLACEHOLDER } from "../lib/clients";
 import { describeApiError } from "../lib/errors";
+import { formatAge } from "../lib/format";
 import { nextPollDelay, POLL_INITIAL_MS } from "../lib/polling";
 import { CheckIcon, CopyIcon } from "../shell/icons";
 import { Badge } from "./Badge";
@@ -64,14 +65,6 @@ import { Card, CardBody, CardFoot, CardHead, CardSubject } from "./Card";
 import { Input } from "./Field";
 import { Waiting } from "./Skeleton";
 import { useToast } from "./Toast";
-
-export function formatAge(iso: string): string {
-  const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (seconds < 60) return `${Math.round(seconds)} s ago`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)} min ago`;
-  if (seconds < 86400) return `${Math.round(seconds / 3600)} h ago`;
-  return `${Math.round(seconds / 86400)} d ago`;
-}
 
 export function ConnectPanel({
   client,
@@ -172,8 +165,12 @@ export function ConnectPanel({
     setUnchecked(new Set());
   }
 
+  // Issue 399: the field used to snap to "default" the moment it was
+  // emptied, so the last character could never be deleted to retype. The
+  // draft is what was typed; an empty draft *means* default when it is read.
+  const effectiveProfile = profileDraft.trim() || "default";
   const targetProfile =
-    profiles?.find((candidate) => candidate.path === profileDraft) ?? null;
+    profiles?.find((candidate) => candidate.path === effectiveProfile) ?? null;
   const mountedVaults = targetProfile?.vaults ?? [];
 
   function isChecked(vaultKey: string, permission: "read" | "write"): boolean {
@@ -213,7 +210,7 @@ export function ConnectPanel({
   const wouldGrantNothing = pickerTouched && explicitScopes.length === 0;
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const profile = token?.profile ?? profileDraft;
+  const profile = token?.profile ?? effectiveProfile;
   const connected = Boolean(token?.last_used_at);
   // The one-time plaintext, or nothing — `clients.ts` renders its
   // placeholder in that case (issue 318; see this file's header comment).
@@ -252,8 +249,12 @@ export function ConnectPanel({
       // what a caller who never opens the picker gets.
       const body =
         pickerTouched && explicitScopes.length > 0
-          ? { name: client.name, profile: profileDraft, scopes: explicitScopes }
-          : { name: client.name, profile: profileDraft };
+          ? {
+              name: client.name,
+              profile: effectiveProfile,
+              scopes: explicitScopes,
+            }
+          : { name: client.name, profile: effectiveProfile };
       const result: CreatedToken = await api.createToken(body);
       setToken(result.info);
       setPlaintext(result.token);
@@ -363,9 +364,10 @@ export function ConnectPanel({
               <div className="row row--wrap">
                 <Input
                   value={profileDraft}
-                  onChange={(event) =>
-                    setProfileDraft(event.target.value.trim() || "default")
-                  }
+                  onChange={(event) => setProfileDraft(event.target.value)}
+                  onBlur={() => {
+                    if (!profileDraft.trim()) setProfileDraft("default");
+                  }}
                   style={{ maxWidth: 220 }}
                   aria-label="Tool profile name"
                 />

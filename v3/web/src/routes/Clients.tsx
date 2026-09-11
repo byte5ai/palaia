@@ -6,14 +6,20 @@
 import { useEffect, useState } from "react";
 
 import { Button } from "../components/Button";
-import { ConnectPanel, formatAge } from "../components/ConnectPanel";
+import { ConnectPanel } from "../components/ConnectPanel";
 import { SkillPanel } from "../components/SkillPanel";
 import { useToast } from "../components/Toast";
 import type { GatewayProfile, TokenInfo } from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
 import { saveBlob } from "../lib/download";
 import { describeApiError } from "../lib/errors";
-import { CLIENTS, type DownloadClient, type HubMode, type NotYetClient } from "../lib/clients";
+import { formatAge } from "../lib/format";
+import {
+  CLIENTS,
+  type DownloadClient,
+  type HubMode,
+  type NotYetClient,
+} from "../lib/clients";
 import { CopyIcon, InfoIcon, WarningIcon } from "../shell/icons";
 
 /** SPEC-205 deliverable #3: sign-in is turned on and configured — the
@@ -50,7 +56,9 @@ function OAuthReadyCard({
           <Button
             size="sm"
             onClick={() =>
-              navigator.clipboard.writeText(connect.url).then(() => toast.show("Address copied."))
+              navigator.clipboard
+                .writeText(connect.url)
+                .then(() => toast.show("Address copied."))
             }
           >
             <CopyIcon className="icon--sm" />
@@ -68,7 +76,13 @@ function OAuthReadyCard({
  * configured yet (the download endpoint's 501) shows a plain-language
  * error here instead of the browser opening a blank tab, matching this
  * page's "never a dead end" rule for every other client card. */
-function DownloadCard({ client, profile }: { client: DownloadClient; profile: string }) {
+function DownloadCard({
+  client,
+  profile,
+}: {
+  client: DownloadClient;
+  profile: string;
+}) {
   const toast = useToast();
   const [downloading, setDownloading] = useState(false);
   const Icon = client.icon;
@@ -100,14 +114,21 @@ function DownloadCard({ client, profile }: { client: DownloadClient; profile: st
           <span className="numstep__num numstep__num--on">1</span>
           <div className="grow stack stack--3">
             <div>
-              <p className="numstep__title">Download, then double-click the file</p>
+              <p className="numstep__title">
+                Download, then double-click the file
+              </p>
               <p className="t-sm t-muted">
-                Claude Desktop shows a settings form pre-filled with this hub&rsquo;s address and
-                a token made just for it — check it over, then install.
+                Claude Desktop shows a settings form pre-filled with this
+                hub&rsquo;s address and a token made just for it — check it
+                over, then install.
               </p>
             </div>
             <div className="row row--wrap">
-              <Button variant="primary" onClick={download} disabled={downloading}>
+              <Button
+                variant="primary"
+                onClick={download}
+                disabled={downloading}
+              >
                 <Icon className="icon--sm" style={{ marginRight: 4 }} />
                 {downloading ? "Building…" : "Download bundle"}
               </Button>
@@ -117,8 +138,8 @@ function DownloadCard({ client, profile }: { client: DownloadClient; profile: st
       </div>
       <div className="card__foot">
         <span className="t-xs t-subtle">
-          A fresh bundle is built for every download — closing and reopening this page never
-          reuses an old one.
+          A fresh bundle is built for every download — closing and reopening
+          this page never reuses an old one.
         </span>
       </div>
     </div>
@@ -140,14 +161,17 @@ function NotYetCard({ client, mode }: { client: NotYetClient; mode: HubMode }) {
         <div className="banner banner--warn">
           <WarningIcon className="icon icon--sm" />
           <div>
-            <p className="banner__title">Not available yet — and here is exactly why</p>
+            <p className="banner__title">
+              Not available yet — and here is exactly why
+            </p>
             <p className="t-sm t-muted">{client.reason(mode)}</p>
           </div>
         </div>
         <div className="row" style={{ gap: 8 }}>
           <Icon className="icon icon--sm" />
           <span className="t-xs t-subtle">
-            Tracked in MASTERPLAN.md §6 — this page updates the moment that section does.
+            Tracked in MASTERPLAN.md §6 — this page updates the moment that
+            section does.
           </span>
         </div>
       </div>
@@ -207,7 +231,9 @@ export function Clients() {
         // Keep whatever is already selected if it still exists; otherwise
         // fall back to "default" (or the only profile there is).
         setSelectedProfile((current) =>
-          list.some((p) => p.path === current) ? current : list[0]?.path ?? "default",
+          list.some((p) => p.path === current)
+            ? current
+            : (list[0]?.path ?? "default"),
         );
       })
       .catch(() => {
@@ -234,7 +260,9 @@ export function Clients() {
         <div className="card__head">
           <h3 className="card__title">clients</h3>
           <span className="t-meta">
-            {connectedCount === 0 ? "none connected" : `${connectedCount} connected`}
+            {connectedCount === 0
+              ? "none connected"
+              : `${connectedCount} connected`}
           </span>
         </div>
         <div className="clientlist">
@@ -245,7 +273,10 @@ export function Clients() {
               <button
                 key={client.id}
                 type="button"
-                className={["clientrow", client.id === selectedId ? "clientrow--on" : ""]
+                className={[
+                  "clientrow",
+                  client.id === selectedId ? "clientrow--on" : "",
+                ]
                   .filter(Boolean)
                   .join(" ")}
                 onClick={() => setSelectedId(client.id)}
@@ -278,14 +309,17 @@ export function Clients() {
         </div>
         <div className="card__foot">
           <span className="t-xs t-subtle">
-            Every client gets its own token and its own tool profile. Revoking one never touches
-            the others.
+            Every client gets its own token and its own tool profile. Revoking
+            one never touches the others.
           </span>
         </div>
       </div>
       <div className="stack">
         {profiles.length > 1 ? (
-          <div className="row row--wrap" style={{ gap: 8, alignItems: "baseline" }}>
+          <div
+            className="row row--wrap"
+            style={{ gap: 8, alignItems: "baseline" }}
+          >
             <label className="t-xs t-muted" htmlFor="connect-profile-picker">
               Tool profile for {selected.name}
             </label>
@@ -310,8 +344,8 @@ export function Clients() {
               <div className="banner banner--warn">
                 <InfoIcon className="icon icon--sm" />
                 <p className="t-sm t-muted">
-                  This hub has no token store mounted, so no client can be issued a token from
-                  here yet.
+                  This hub has no token store mounted, so no client can be
+                  issued a token from here yet.
                 </p>
               </div>
             </div>
@@ -326,13 +360,24 @@ export function Clients() {
             client={selected}
             defaultProfile={selectedProfile}
             onTokenIssued={(info) =>
-              setTokens((prev) => [...prev.filter((t) => t.id !== info.id), info])
+              setTokens((prev) => [
+                ...prev.filter((t) => t.id !== info.id),
+                info,
+              ])
             }
           />
         ) : selected.kind === "download" ? (
-          <DownloadCard key={selected.id} client={selected} profile={selectedProfile} />
+          <DownloadCard
+            key={selected.id}
+            client={selected}
+            profile={selectedProfile}
+          />
         ) : oauthIssuer && selected.oauthConnect ? (
-          <OAuthReadyCard client={selected} issuer={oauthIssuer} profile={selectedProfile} />
+          <OAuthReadyCard
+            client={selected}
+            issuer={oauthIssuer}
+            profile={selectedProfile}
+          />
         ) : (
           <NotYetCard client={selected} mode={mode} />
         )}

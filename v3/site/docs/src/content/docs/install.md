@@ -105,8 +105,9 @@ docker compose up -d   # or the equivalent docker run, after docker rm
 
 Your data lives in the named volume, not the container, so this is safe —
 pulling a newer image and recreating the container keeps everything. The
-dashboard footer shows the version you're running and tells you when a
-newer one is published.
+dashboard footer shows the version you're running; when a newer one is
+published, a notice appears at the top of the dashboard with the steps for
+your kind of install.
 
 If you install through a self-hosting app store (Umbrel, CasaOS, Runtipi,
 TrueNAS SCALE, and similar), check there first — those platforms often

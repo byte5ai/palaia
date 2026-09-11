@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "astro dev",
     "gen:connect": "node scripts/generate-connect-pages.mjs",
@@ -20,6 +23,7 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
+    "@astrojs/markdown-remark": "7.2.4",
     "@eslint/js": "^10.0.1",
     "esbuild": "^0.28.2",
     "eslint": "^10.9.0",

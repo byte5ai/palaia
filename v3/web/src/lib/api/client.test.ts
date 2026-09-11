@@ -181,3 +181,16 @@ describe("request coalescing and cancellation (issue 384)", () => {
     expect(init.signal).toBe(controller.signal);
   });
 });
+
+describe("path parameters are encoded (issue 399)", () => {
+  it("keeps a permalink's slashes but encodes the characters that would rewrite the request", async () => {
+    fetchMock.mockImplementation(async () => jsonResponse({}));
+
+    await api.readNote("my vault", "notes/what?#really");
+    await api.revokeToken("tok/1");
+
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls[0]).toBe("/api/vaults/my%20vault/notes/notes/what%3F%23really");
+    expect(urls[1]).toBe("/api/auth/tokens/tok%2F1");
+  });
+});

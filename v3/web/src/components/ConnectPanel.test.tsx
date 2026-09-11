@@ -123,7 +123,11 @@ describe("ConnectPanel's read/save picker (issue #270)", () => {
     expect(createSpy).toHaveBeenCalledWith({
       name: "Test Client",
       profile: "default",
-      scopes: ["vault:work:read", "vault:personal:read", "vault:personal:write"],
+      scopes: [
+        "vault:work:read",
+        "vault:personal:read",
+        "vault:personal:write",
+      ],
     });
   });
 
@@ -151,12 +155,17 @@ describe("ConnectPanel's read/save picker (issue #270)", () => {
     await waitFor(() => expect(createSpy).toHaveBeenCalledTimes(1));
     // No `scopes` field at all — byte-for-byte what this call sent before
     // the picker existed, so the server's own default keeps deciding.
-    expect(createSpy).toHaveBeenCalledWith({ name: "Test Client", profile: "default" });
+    expect(createSpy).toHaveBeenCalledWith({
+      name: "Test Client",
+      profile: "default",
+    });
   });
 
   it("degrades to no picker, and the one-click flow still works, when no gateway is attached", async () => {
     vi.spyOn(api, "listTokens").mockResolvedValue([]);
-    vi.spyOn(api, "listGatewayProfiles").mockRejectedValue(new Error("no gateway attached"));
+    vi.spyOn(api, "listGatewayProfiles").mockRejectedValue(
+      new Error("no gateway attached"),
+    );
     const createSpy = vi.spyOn(api, "createToken").mockResolvedValue({
       info: {
         id: "tok_1",
@@ -178,22 +187,37 @@ describe("ConnectPanel's read/save picker (issue #270)", () => {
     fireEvent.click(screen.getByRole("button", { name: /issue token/i }));
 
     await waitFor(() => expect(createSpy).toHaveBeenCalledTimes(1));
-    expect(createSpy).toHaveBeenCalledWith({ name: "Test Client", profile: "default" });
+    expect(createSpy).toHaveBeenCalledWith({
+      name: "Test Client",
+      profile: "default",
+    });
   });
 });
 
 describe("ConnectPanel's snippets carry the issued token (issue 318)", () => {
   it("fills the freshly minted token into the command, prompt and file tabs", async () => {
     vi.spyOn(api, "listTokens").mockResolvedValue([]);
-    vi.spyOn(api, "listGatewayProfiles").mockRejectedValue(new Error("no gateway attached"));
+    vi.spyOn(api, "listGatewayProfiles").mockRejectedValue(
+      new Error("no gateway attached"),
+    );
     vi.spyOn(api, "createToken").mockResolvedValue(ISSUED);
     // jsdom has no URL.createObjectURL; the file tab only needs *a* href.
-    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: () => "blob:test", revokeObjectURL: () => {} }));
+    vi.stubGlobal(
+      "URL",
+      Object.assign(URL, {
+        createObjectURL: () => "blob:test",
+        revokeObjectURL: () => {},
+      }),
+    );
 
     mount();
-    fireEvent.click(await screen.findByRole("button", { name: /issue token/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /issue token/i }),
+    );
 
-    const command = await screen.findByText(/^connect .*\/mcp\/default --token plt_secret$/);
+    const command = await screen.findByText(
+      /^connect .*\/mcp\/default --token plt_secret$/,
+    );
     expect(command.textContent).not.toContain(TOKEN_PLACEHOLDER);
     // Still shown once, on its own, for clients that want just the token.
     expect(screen.getByText("plt_secret")).toBeInTheDocument();
@@ -207,13 +231,37 @@ describe("ConnectPanel's snippets carry the issued token (issue 318)", () => {
 
   it("shows the placeholder and says the token is required when only an existing token was found", async () => {
     vi.spyOn(api, "listTokens").mockResolvedValue([ISSUED.info]);
-    vi.spyOn(api, "listGatewayProfiles").mockRejectedValue(new Error("no gateway attached"));
+    vi.spyOn(api, "listGatewayProfiles").mockRejectedValue(
+      new Error("no gateway attached"),
+    );
 
     mount();
 
-    const command = await screen.findByText(/^connect .*\/mcp\/default --token /);
+    const command = await screen.findByText(
+      /^connect .*\/mcp\/default --token /,
+    );
     expect(command.textContent).toContain(TOKEN_PLACEHOLDER);
-    expect(screen.getByText(/shown once and is not stored here/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/shown once and is not stored here/i),
+    ).toBeInTheDocument();
     expect(screen.queryByText("plt_secret")).not.toBeInTheDocument();
+  });
+});
+
+describe("the tool-profile field (issue 399)", () => {
+  it("lets the last character be deleted and means default only once left empty", async () => {
+    vi.spyOn(api, "listTokens").mockResolvedValue([]);
+    vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([]);
+    mount();
+    const field = (await screen.findByLabelText(
+      /tool profile name/i,
+    )) as HTMLInputElement;
+    fireEvent.change(field, { target: { value: "" } });
+    expect(field.value).toBe("");
+    fireEvent.change(field, { target: { value: "phone" } });
+    expect(field.value).toBe("phone");
+    fireEvent.change(field, { target: { value: "" } });
+    fireEvent.blur(field);
+    expect(field.value).toBe("default");
   });
 });
