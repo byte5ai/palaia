@@ -68,9 +68,7 @@ async def test_connect_probe_and_call_without_a_restart(
 ) -> None:
     production = await _hub(tmp_path)
     async with _running(production) as http:
-        response = await http.post(
-            "/api/gateway/upstreams", json=_connect_body(http_upstream.url)
-        )
+        response = await http.post("/api/gateway/upstreams", json=_connect_body(http_upstream.url))
         assert response.status_code == 200, response.text
         body = response.json()
         assert body["key"] == "fixture"
@@ -122,9 +120,7 @@ async def test_switching_a_server_off_removes_its_tools_and_persists(
     production = await _hub(tmp_path)
     async with _running(production) as http:
         await http.post("/api/gateway/upstreams", json=_connect_body(http_upstream.url))
-        patched = await http.patch(
-            "/api/gateway/upstreams/fixture", json={"enabled": False}
-        )
+        patched = await http.patch("/api/gateway/upstreams/fixture", json={"enabled": False})
         assert patched.status_code == 200
         assert patched.json()["enabled"] is False
         assert patched.json()["up"] is False
@@ -163,9 +159,7 @@ async def test_disconnecting_removes_it_from_every_profile(
     production = await _hub(tmp_path)
     async with _running(production) as http:
         await http.post("/api/gateway/upstreams", json=_connect_body(http_upstream.url))
-        assert (
-            await http.delete("/api/gateway/upstreams/fixture")
-        ).status_code == 204
+        assert (await http.delete("/api/gateway/upstreams/fixture")).status_code == 204
         assert (await http.get("/api/gateway/upstreams")).json() == []
         profiles = (await http.get("/api/gateway/profiles")).json()
         assert all(profile["upstreams"] == [] for profile in profiles)
@@ -185,9 +179,7 @@ async def test_connecting_the_same_key_twice_is_refused(
     production = await _hub(tmp_path)
     async with _running(production) as http:
         await http.post("/api/gateway/upstreams", json=_connect_body(http_upstream.url))
-        second = await http.post(
-            "/api/gateway/upstreams", json=_connect_body(http_upstream.url)
-        )
+        second = await http.post("/api/gateway/upstreams", json=_connect_body(http_upstream.url))
         assert second.status_code == 400
         assert "already connected" in second.json()["detail"]
 
@@ -326,3 +318,49 @@ async def test_a_bad_secret_name_is_refused_without_echoing_the_value(
 
         missing = await http.delete("/api/secrets/never-stored")
         assert missing.status_code == 404
+
+
+async def test_connecting_and_removing_a_server_keeps_the_profiles_other_settings(
+    tmp_path: Path, http_upstream: HttpUpstream
+) -> None:
+    """Issue #324: `hidden_tools`, `messenger` and `directory` on the target
+    profile survive connecting an external server and removing it again —
+    live and in config.yaml."""
+    registry = VaultRegistry(tmp_path)
+    await registry.create("work", tmp_path / "vaults" / "work", purpose="Work vault.")
+    (tmp_path / "config.yaml").write_text(
+        "mode: locked\n"
+        "gateway:\n"
+        "  profiles:\n"
+        "    - path: default\n"
+        "      vaults: [work]\n"
+        "      directory: true\n"
+        "      messenger: true\n"
+        "      hidden_tools: [work_memory_delete]\n",
+        encoding="utf-8",
+    )
+    config = load_config(home=tmp_path, create_if_missing=False)
+    production = await build_production_app(config, home=tmp_path)
+
+    def _live() -> object:
+        return next(p for p in production.dynamic_gateway.config.profiles if p.path == "default")
+
+    def _persisted() -> object:
+        return load_config(home=tmp_path, create_if_missing=False).gateway.profiles[0]
+
+    async with _running(production) as http:
+        response = await http.post("/api/gateway/upstreams", json=_connect_body(http_upstream.url))
+        assert response.status_code == 200, response.text
+        for profile in (_live(), _persisted()):
+            assert profile.upstreams == ["fixture"]  # type: ignore[attr-defined]
+            assert profile.hidden_tools == ["work_memory_delete"]  # type: ignore[attr-defined]
+            assert profile.messenger is True  # type: ignore[attr-defined]
+            assert profile.directory is True  # type: ignore[attr-defined]
+
+        removed = await http.delete("/api/gateway/upstreams/fixture")
+        assert removed.status_code in (200, 204), removed.text
+        for profile in (_live(), _persisted()):
+            assert profile.upstreams == []  # type: ignore[attr-defined]
+            assert profile.hidden_tools == ["work_memory_delete"]  # type: ignore[attr-defined]
+            assert profile.messenger is True  # type: ignore[attr-defined]
+            assert profile.directory is True  # type: ignore[attr-defined]

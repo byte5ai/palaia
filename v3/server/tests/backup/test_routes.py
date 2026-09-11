@@ -15,11 +15,12 @@ import io
 import tarfile
 from pathlib import Path
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from palaia_hub.admin_session import CSRF_HEADER
 from palaia_hub.app import create_app
-from palaia_hub.backup_api import BACKUP_PATH
+from palaia_hub.backup_api import BACKUP_PATH, UNGATED_DETAIL, build_backup_router
 from palaia_hub.config import HubConfig, OAuthSettings
 from palaia_hub.oauth import AuthorizationServer, set_owner_password
 from palaia_hub.oauth.login import CSRF_COOKIE, SESSION_COOKIE
@@ -30,14 +31,23 @@ PASSWORD = "a-long-enough-passphrase"  # noqa: S105 - test fixture
 NOW = 1_800_000_000
 
 
-def test_backup_is_mounted_with_no_opt_in_parameter(tmp_path: Path) -> None:
-    """Same posture as `/api/health` — a bare `create_app()` still serves it."""
+def test_backup_is_mounted_with_no_opt_in_parameter_but_refuses_without_a_gate(
+    tmp_path: Path,
+) -> None:
+    """Same mounting posture as `/api/health` — a bare `create_app()` serves the
+    route — but issue #317: with no admin session gate in front of it (the
+    locked-mode default) it refuses, naming both ways out, rather than handing
+    the hub's keys to anyone on the network."""
     app = create_app(HubConfig(), home=tmp_path)
     client = TestClient(app)
 
     response = client.get(BACKUP_PATH)
 
-    assert response.status_code == 200
+    assert response.status_code == 403
+    detail = response.json()["detail"]
+    assert detail == UNGATED_DETAIL
+    assert "palaia-hub backup" in detail
+    assert "Fix:" in detail
 
 
 def test_backup_headers_and_body(tmp_path: Path) -> None:
@@ -46,7 +56,11 @@ def test_backup_headers_and_body(tmp_path: Path) -> None:
     vault.mkdir(parents=True)
     (vault / "note.md").write_text("# Hello\n\nBody.\n", encoding="utf-8")
 
-    app = create_app(HubConfig(), home=tmp_path)
+    # The archive itself, exercised through the router with the gate on —
+    # `session_gated=True` is what `create_app` passes once the admin
+    # session middleware wraps `/api/*`; here the router is mounted alone.
+    app = FastAPI()
+    app.include_router(build_backup_router(home=tmp_path, session_gated=True))
     client = TestClient(app)
 
     response = client.get(BACKUP_PATH)
@@ -55,8 +69,8 @@ def test_backup_headers_and_body(tmp_path: Path) -> None:
     assert response.headers["content-type"] == "application/gzip"
     assert response.headers["cache-control"] == "no-store"
     disposition = response.headers["content-disposition"]
-    assert disposition.startswith("attachment; filename=\"palaia-backup-")
-    assert disposition.endswith(".tar.gz\"")
+    assert disposition.startswith('attachment; filename="palaia-backup-')
+    assert disposition.endswith('.tar.gz"')
 
     with tarfile.open(fileobj=io.BytesIO(response.content), mode="r:gz") as tar:
         names = tar.getnames()

@@ -91,7 +91,7 @@ scoping). *Proven by* `server/tests/modes/test_policy.py`,
 | Profile | Reaches | Realistic goal |
 |---|---|---|
 | **A1 — the internet at large** | Whatever the mode exposes | Credential stuffing, scanning, spraying the OAuth endpoints |
-| **A2 — another device on the LAN** | Everything, in `locked` mode | Read the vault of a hub that assumed the LAN was safe |
+| **A2 — another device on the LAN** | Everything under `/api/*` in `locked` mode except the backup archive; `/mcp/*` only with a token | Read the vault of a hub that assumed the LAN was safe; mint a client token on it. The one thing it cannot fetch is `GET /api/backup` — the signing key, the secret-store key and the password hash — which refuses without a signed-in owner in every mode (issue #317) |
 | **A3 — another local account** on the same machine | The filesystem | Read `secrets.key`, the signing key, the databases |
 | **A4 — a connected AI client** with a valid token | Its profile's tools | Reach a vault it was not scoped to; escalate through a tool argument |
 | **A5 — a hostile upstream** the user installed | Tool results the hub relays | Prompt-inject the user's assistant; exfiltrate through a tool result |
@@ -103,16 +103,19 @@ scoping). *Proven by* `server/tests/modes/test_policy.py`,
 ## 4. B1 — the MCP surface
 
 **What is mounted.** One catch-all mount (`/mcp`, rebuilt in place as
-profiles change) plus five hub-wide tool families with their own mount
-paths: `/mcp/stash`, `/mcp/directory`, `/mcp/messenger`, `/mcp/hub`,
-`/mcp/market`, `/mcp/team`. Their tool families are
-`memory_tools`, `stash_tools`, `directory_tools` and `messenger_tools`
-under `server/src/palaia_hub/gateway/`, plus the MCP Apps in
+profiles change; each profile under it carries its own verifier) plus six
+hub-wide servers with their own mount paths: `/mcp/stash`, `/mcp/directory`,
+`/mcp/messenger`, `/mcp/hub`, `/mcp/market`, `/mcp/team`, which share one
+hub-wide verifier (issue #313). The tool families are `memory_tools`,
+`stash_tools`, `directory_tools` and `messenger_tools` under
+`server/src/palaia_hub/gateway/`, plus the MCP Apps in
 `server/src/palaia_hub/gateway/apps/`.
 
 | Threat | Mitigation as built | Where |
 |---|---|---|
-| Unauthenticated tool call | Every mounted profile carries a verifier; the hub **refuses to start** an MCP endpoint with auth off in `cloud`/`open` | `server/src/palaia_hub/auth/policy.py`, `server/tests/auth/test_app_auth_policy.py` |
+| Unauthenticated tool call on a profile mount | Every profile mounted under `/mcp` carries its own verifier (`plt_` tokens of that profile, or an OAuth JWT for its audience); the hub **refuses to start** an MCP endpoint with auth off in `cloud`/`open` | `server/src/palaia_hub/auth/policy.py`, `server/tests/auth/test_app_auth_policy.py` |
+| Unauthenticated call on a hub-wide mount (`/mcp/stash`, `/mcp/directory`, `/mcp/messenger`, `/mcp/hub`, `/mcp/market`, `/mcp/team`) | The six hub-level servers share one verifier accepting any live `plt_` token of this hub or an OAuth JWT for any of its profiles; the same start-time refusal applies to them in `cloud`/`open` (issue #313). What a token may then do there is decided by its hub-level scopes inside each tool | `server/src/palaia_hub/oauth/verifier.py` (`build_hub_auth`), `server/src/palaia_hub/auth/policy.py` (`check_hub_mount_auth_policy`), `server/tests/test_hub_mount_auth_spec313.py` |
+| A profile switched to `semantic_routing` losing its verifier | The router served in its place carries the profile's own `auth`; a cloud/open mount that would come up unauthenticated is refused *before* anything is mounted or recorded (issue #315) | `server/src/palaia_hub/gateway/semantic_routing.py`, `server/src/palaia_hub/gateway/dynamic.py`, `server/tests/gateway/test_dynamic.py` |
 | A token reaching a vault it was not scoped to | Per-token, per-profile scopes checked inside the gateway, not at the edge | `server/src/palaia_hub/auth/scopes.py`, `server/tests/auth/test_scopes.py` |
 | A stolen token file | Tokens are argon2id-hashed at rest; the plaintext is shown once at creation and never logged | `server/src/palaia_hub/auth/store.py`, `server/tests/test_logging_redaction.py` |
 | A browser session used as MCP auth | The admin gate deliberately never looks at `/mcp/*`; MCP clients authenticate with their own tokens | `server/src/palaia_hub/admin_session.py`, `server/tests/test_admin_session.py` |
@@ -163,6 +166,7 @@ See [§8](#8-accepted-risks-and-open-gaps).
 | Clickjacking / sniffing / referrer leakage | A content-security policy per surface, `nosniff`, `no-referrer`, `DENY` framing, and HSTS when the request arrived over TLS | `server/src/palaia_hub/security/headers.py`, `server/tests/security/test_security_headers.py` |
 | Script injection through vault content in the dashboard | The dashboard renders note bodies as text (React escapes); `dangerouslySetInnerHTML` appears nowhere in `web/src` | `server/tests/security/test_injection_surfaces.py` |
 | Locking the operator out of a fresh hub | The gate stays open until a way in exists (an owner account or a provider), then latches closed on the next call | `server/src/palaia_hub/admin_session.py`, `server/tests/test_admin_session.py` |
+| Planting an owner password into a fresh hub | The wizard's `POST /api/auth/owner` creates the one owner account only while none exists (409 after), refuses any request a browser marks as cross-site, and signs the creating browser in on the spot; changing an existing account needs the terminal (issue #342) | `server/src/palaia_hub/oauth/owner_api.py`, `server/tests/oauth/test_owner_api.py` |
 | A full-home backup archive read by anyone but the owner (secrets, signing keys, every vault, in one download) | `GET /api/backup` (SPEC-604) sits behind the same admin gate as everything else in this table — no separate opt-in, no route that exists without it; the archive is built and streamed straight to the response body and never written to a temp file server-side, so there is no on-disk copy to leave world-readable even briefly; the dashboard's "Back up" button carries an explicit "store this like a password" warning | `server/src/palaia_hub/backup.py`, `server/src/palaia_hub/backup_api.py`, `server/tests/backup/test_routes.py`, `web/src/routes/Home.tsx` |
 | A raw file copy of a SQLite store mid-write landing torn or missing WAL-resident rows in the archive | Every database is captured through SQLite's own online-backup API into an in-memory snapshot, not by copying bytes off disk — correct even while another connection holds the file open in WAL mode | `server/src/palaia_hub/backup.py`, `server/tests/backup/test_archive.py::test_a_sqlite_snapshot_includes_wal_resident_data_and_omits_the_wal_file` |
 
@@ -179,18 +183,20 @@ See [§8](#8-accepted-risks-and-open-gaps).
 
 | Threat | Mitigation as built | Where |
 |---|---|---|
-| Authorization-code interception | PKCE is required on every authorization request; codes are one-time and short-lived | `server/src/palaia_hub/oauth/pkce.py`, `server/src/palaia_hub/oauth/service.py`, `server/tests/oauth/test_authorize.py` |
-| Token forgery | ES256, asymmetric; the private key never leaves `<home>/oauth/signing-key.pem`; the resource side verifies with fastmcp's own `JWTVerifier` | `server/src/palaia_hub/oauth/keys.py`, `server/src/palaia_hub/oauth/verifier.py`, `server/tests/oauth/test_keys.py` |
+| Silent authorization of a signed-in owner (a crafted `/authorize` link naming an attacker's client) | Nothing is minted on a `GET`: the owner sees who is asking, the redirect target and the scopes, and only a `POST` carrying the session's double-submit CSRF token issues a code; denying sends the client `access_denied` (issue #328) | `server/src/palaia_hub/oauth/routes.py`, `server/tests/oauth/test_flow_e2e.py` |
+| Authorization-code interception | PKCE is required on every authorization request; codes are one-time and short-lived | `server/src/palaia_hub/oauth/pkce.py`, `server/src/palaia_hub/oauth/service.py`, `server/tests/oauth/test_cimd_and_pkce.py`, `server/tests/oauth/test_token_endpoint.py::test_pkce_is_mandatory` |
+| Token forgery | ES256, asymmetric; the private key never leaves `<home>/oauth/signing-key.pem`; the resource side verifies with fastmcp's own `JWTVerifier` | `server/src/palaia_hub/oauth/keys.py`, `server/src/palaia_hub/oauth/verifier.py`, `server/tests/oauth/test_keys_and_files.py` |
 | Password brute force | argon2id, a per-account failed-attempt lockout, and one identical failure message for every reason | `server/src/palaia_hub/oauth/login.py`, `server/tests/oauth/test_login.py` |
 | Probing whether a hub is set up | A constant-time miss when no owner account exists | `server/src/palaia_hub/auth/hashing.py`, `server/tests/oauth/test_login.py` |
-| Login CSRF (signing the victim into the attacker's session) | A double-submit token on the login form itself | `server/src/palaia_hub/oauth/login.py`, `server/tests/oauth/test_login.py` |
+| Login CSRF (signing the victim into the attacker's session) | A double-submit token on the login form itself; the identity-provider door binds its `state` ticket to a nonce cookie set when the browser starts the sign-in, so a callback link an attacker completed elsewhere signs nobody else in (issue #345) | `server/src/palaia_hub/oauth/login.py`, `server/src/palaia_hub/oauth/service.py`, `server/tests/oauth/test_login.py`, `server/tests/oauth/test_idp_signin.py` |
+| A stolen refresh token replayed | Grace-windowed rotation converges a client's own fan-out; a spent token presented after its window revokes the whole grant family (RFC 9700 §4.14.2), and more than eight successors inside the window does the same — a copy kept by someone else is worthless from then on (issue #346) | `server/src/palaia_hub/oauth/store.py`, `server/tests/oauth/test_refresh_rotation.py` |
 | Session fixation | A session id is minted by the server at sign-in and never accepted from the client; setting the owner password clears every existing session in the same statement | `server/src/palaia_hub/oauth/store.py`, `server/tests/security/test_session_and_cookies.py` |
 | A session cookie read by script, or sent cross-site | `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` whenever the issuer is https (and deliberately not when it is not — a LAN hub must still be able to sign its operator in) | `server/src/palaia_hub/oauth/routes.py`, `server/tests/security/test_session_and_cookies.py` |
 | An incomplete sign-out | The session row is deleted server-side, not just the cookie cleared; the CSRF cookie goes with it, so no token outlives the session it belonged to | `server/src/palaia_hub/oauth/routes.py`, `server/tests/security/test_session_and_cookies.py` |
 | Open redirect with a fresh session attached | `next` is refused unless it is a local dashboard path or the authorization endpoint | `server/src/palaia_hub/oauth/routes.py`, `server/tests/oauth/test_login.py` |
 | Credential spraying | The failed-attempt limiter covers `/oauth/token`, `/oauth/login`, `/oauth/register`, `/oauth/revoke` and `/oauth/logout` in `cloud`/`open` | `server/src/palaia_hub/modes/rate_limit.py`, `server/tests/modes/test_rate_limit.py` |
 | Credentials in logs | No handler in the OAuth package logs a request line, query string or form body; a redaction filter masks every credential shape as a second line of defense | `server/src/palaia_hub/logging.py`, `server/tests/oauth/test_redaction.py`, `server/tests/security/test_no_credentials_in_logs.py` |
-| A stale grant living forever | Refresh grants and login sessions are pruned on a schedule and on demand | `server/src/palaia_hub/oauth/store.py`, `server/tests/oauth/test_store.py` |
+| A stale grant living forever | Refresh grants and login sessions are pruned on a schedule and on demand; an expired token, code or session is refused before that | `server/src/palaia_hub/oauth/store.py`, `server/tests/oauth/test_clients.py`, `server/tests/oauth/test_refresh_rotation.py`, `server/tests/oauth/test_login.py::test_an_expired_session_is_not_accepted` |
 
 ---
 
@@ -203,14 +209,18 @@ See [§8](#8-accepted-risks-and-open-gaps).
 | Upstream credentials in plain text | Encrypted at rest under a Fernet key; never in `config.yaml`, never in a REST response, never in a log or an error message | `server/src/palaia_hub/upstream/secrets.py`, `server/tests/upstream/test_secret_never_leaks.py` |
 | A read path appearing on the secret store | No response model in the package has a field a value could be placed in; `/api/secrets` is write-only by construction | `server/src/palaia_hub/upstream/api.py`, `server/tests/upstream/test_api.py` |
 | An unreachable or hostile upstream stalling the hub | Probing is background-only; a `stdio` child is reaped at shutdown | `server/src/palaia_hub/upstream/monitor.py`, `server/tests/upstream/test_down_upstream.py` |
+| A client's own hub credential (its `plt_` token or OAuth JWT) reaching an upstream (A5 learning A4's token) | fastmcp's proxy forwards the inbound `Authorization` header by default; the hub switches that off on every HTTP upstream transport, so an upstream receives exactly the header its `auth:` names and nothing the client sent | `server/src/palaia_hub/upstream/service.py`, `server/tests/upstream/test_http_upstream.py` |
 
 ### 7.2 Marketplace installs (B5)
 
 | Threat | Mitigation as built | Where |
 |---|---|---|
-| A tampered curated index | The index is signed; verification happens before any entry is used, with a last-good fallback | `server/src/palaia_hub/market/curated.py`, `server/tests/market/test_curated.py` |
-| Installing something other than what was reviewed | Installs pin an image digest and record it | `server/src/palaia_hub/market/install.py`, `server/tests/market/test_install.py` |
-| Container escape / host access | The container runs as a non-root user with no added capabilities; see `v3/deploy/` | `v3/deploy/docker-compose.yml` |
+| A registry, index or release host answering with an unbounded body | Every outbound fetch (official registry, curated index, update check) is streamed and abandoned the moment it crosses its size cap, or refused on `Content-Length` before a single body byte is read — the hub never buffers more than the cap | `server/src/palaia_hub/security/bounded_fetch.py`, `server/tests/security/test_bounded_fetch.py` |
+| A tampered curated index | The index is signed; verification happens before any entry is used, with a last-good fallback. The public key is pinned in code and may be replaced only in the owner-only `config.yaml` (`market.public_key`), never over REST | `server/src/palaia_hub/market/curated.py`, `server/tests/market/test_curated.py` |
+| The index host used to slow or stall the marketplace (one bounded fetch per installed add-on per page load) | Every fetch outcome, success or failure, is cached on disk with a TTL; one API call resolves all installed add-ons against a single fetch | `server/src/palaia_hub/market/curated.py`, `server/tests/market/test_curated_wiring.py` |
+| Installing something other than what was reviewed | The consent screen shows exactly what would run — the resolved command and arguments, the address, or the image — derived by the same code that installs it; the consent token is bound to a hash of that plan and an install whose plan no longer matches is refused. A registry "package name" that a package runner would read as an option is refused outright | `server/src/palaia_hub/market/install.py`, `server/tests/market/test_install.py` |
+| An add-on container reaching more than it declared | Every add-on container runs with all capabilities dropped, `no-new-privileges`, and memory and process ceilings; it has no network unless the manifest declares `network`, and a read-only root filesystem unless it declares `filesystem` (declared mounts stay writable) | `server/src/palaia_hub/market/docker_runtime.py`, `server/tests/market/test_docker_runtime.py` |
+| Container escape / host access | The hub's own container runs as a non-root user with no added capabilities; see `v3/deploy/` | `v3/deploy/docker-compose.yml` |
 
 Running third-party code on the user's machine is the largest residual risk
 in this document. See [§8](#8-accepted-risks-and-open-gaps).
@@ -279,6 +289,13 @@ argue with them; that is what the list is for.
    request arrives over TLS — see `docs/exposure.md`.
 8. **No hardware-backed key storage.** The signing key and the secret-store
    key are files, protected by file modes and by whatever the host provides.
+   Concretely for upstream credentials: `secrets.key` sits next to
+   `secrets.sqlite3` in the same owner-only home, and a backup archive
+   carries both — so at rest the encryption guards against a copied
+   *database file*, not against a reader of the whole home or of a backup.
+   That is the intended design (the key has to live somewhere the hub can
+   read unattended); treat the home directory and every backup as the
+   secret they contain.
 9. **A backup is not one atomic snapshot across every store.** Each
    individual file in the archive is internally consistent (every SQLite
    database goes through the engine's own online-backup API; every other

@@ -102,16 +102,34 @@ const CLAUDE_SKILLS_FOLDER: SkillInstall = {
   command: "claude --plugin-dir /path/to/palaia/v3/clients",
 };
 
+// The Claude apps (claude.ai on the web, Claude Desktop, mobile, Cowork)
+// share one skills setting on the account — there is no folder on disk
+// to save into. Claude Desktop therefore gets these steps, not Claude
+// Code's `~/.claude/skills/` folder (issue 385).
+const CLAUDE_APP_SKILLS_STEPS = [
+  "Download SKILL.md and zip its folder (the folder name must match the skill's name).",
+  "In claude.ai, open Settings → Capabilities → Skills and upload the zip.",
+];
+
 const SKILL_SUPPORT: Record<string, SkillSupport> = {
   "claude-code-cli": { kind: "supported", install: CLAUDE_SKILLS_FOLDER },
-  "claude-desktop": { kind: "supported", install: CLAUDE_SKILLS_FOLDER },
+  "claude-desktop": {
+    kind: "supported",
+    install: {
+      headline:
+        "Add it as a capability in your account settings — Claude Desktop uses them too.",
+      steps: [
+        ...CLAUDE_APP_SKILLS_STEPS,
+        "Claude Desktop picks it up with the same account — the memory itself still needs the bundle above.",
+      ],
+    },
+  },
   "claude-ai": {
     kind: "supported",
     install: {
       headline: "Add it as a capability in your account settings.",
       steps: [
-        "Download SKILL.md and zip its folder (the folder name must match the skill's name).",
-        "In claude.ai, open Settings → Capabilities → Skills and upload the zip.",
+        ...CLAUDE_APP_SKILLS_STEPS,
         "It then applies to web, desktop, mobile and Cowork — the memory itself still needs the connector below.",
       ],
     },
@@ -130,7 +148,8 @@ const SKILL_SUPPORT: Record<string, SkillSupport> = {
   chatgpt: {
     kind: "supported",
     install: {
-      headline: "Skills and connectors live in one plugin directory, shared with Codex.",
+      headline:
+        "Skills and connectors live in one plugin directory, shared with Codex.",
       steps: [
         "Save SKILL.md into a folder named after the skill.",
         "Add it to the plugin directory ChatGPT and Codex share.",
@@ -161,8 +180,7 @@ const SKILL_SUPPORT: Record<string, SkillSupport> = {
   },
   generic: {
     kind: "unknown",
-    note:
-      "If your tool reads SKILL.md folders (about forty do), these files work as they are: one folder per skill, SKILL.md inside it, in whichever directory your tool scans. If it does not, the memory still works without them.",
+    note: "If your tool reads SKILL.md folders (about forty do), these files work as they are: one folder per skill, SKILL.md inside it, in whichever directory your tool scans. If it does not, the memory still works without them.",
   },
 };
 

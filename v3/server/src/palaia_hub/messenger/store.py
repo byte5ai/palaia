@@ -266,39 +266,50 @@ class MessengerStore:
 
     def check(
         self, recipient: str, *, now: float | None = None
-    ) -> tuple[list[InboxItem], list[EnvelopeMetadata]]:
-        """Every ``pending`` envelope for ``recipient``, marked ``delivered``.
+    ) -> tuple[list[InboxItem], list[EnvelopeMetadata], set[str]]:
+        """Every envelope for ``recipient`` not yet acked, oldest first.
 
-        Returns ``(items, expired)``, the items carrying their *new*
-        (delivered) state — so the caller's ``message.received`` event and
-        the caller's own returned envelope agree. Calling this twice returns
-        nothing the second time: ``delivered`` is what "already announced"
-        means, and re-announcing would double every automation downstream.
+        ``pending`` rows are marked ``delivered`` on the way out; rows already
+        ``delivered`` but not ``acked`` come back again — at-least-once, not
+        at-most-once (issue #340): the state flips and commits *before* the
+        tool result travels to the client, so a lost response used to make
+        the message permanently invisible to its recipient. Only ``ack``
+        removes an envelope from what ``check`` returns.
+
+        Returns ``(items, expired, newly_delivered)`` — the ids that changed
+        state on this call, so the caller announces ``message.received``
+        once per envelope rather than on every re-read.
         """
         current = self._now(now)
         with self._lock:
             expired = self._sweep_locked(current)
             rows = self._conn.execute(
                 "SELECT rowid AS seq, * FROM messenger_envelopes "
-                "WHERE recipient = ? AND state = 'pending' "
+                "WHERE recipient = ? AND state IN ('pending', 'delivered') "
                 "ORDER BY created_at ASC, seq ASC",
                 (recipient,),
             ).fetchall()
             ids = [row["id"] for row in rows]
-            if ids:
+            newly_delivered = {row["id"] for row in rows if row["state"] == "pending"}
+            if newly_delivered:
                 self._conn.executemany(
                     "UPDATE messenger_envelopes SET state = 'delivered', delivered_at = ? "
                     "WHERE id = ?",
-                    [(current, envelope_id) for envelope_id in ids],
+                    [(current, envelope_id) for envelope_id in newly_delivered],
                 )
                 self._conn.commit()
             items = [_row_to_item(row) for row in self._rows_by_ids_locked(ids)]
-        return items, expired
+        return items, expired, newly_delivered
 
     def ack(
         self, envelope_id: str, recipient: str, *, now: float | None = None
-    ) -> tuple[InboxItem, list[EnvelopeMetadata]]:
+    ) -> tuple[InboxItem, list[EnvelopeMetadata], bool]:
         """Close one envelope in ``recipient``'s inbox.
+
+        Returns ``(item, expired, newly_delivered)``: the third is ``True``
+        when the envelope was still ``pending`` — it is marked delivered on
+        the way to ``acked`` (issue #396), so the caller can fire the
+        ``message.received`` it would otherwise never get.
 
         Idempotent: acking an already-acked envelope returns it unchanged
         rather than erroring. A row belonging to somebody else's inbox reads
@@ -318,17 +329,18 @@ class MessengerStore:
                     "run messenger_check first — an envelope past its expires_at is "
                     "gone, and an id from another session's inbox is not yours to ack."
                 )
+            newly_delivered = row["state"] == "pending"
             if row["state"] != "acked":
                 self._conn.execute(
-                    "UPDATE messenger_envelopes SET state = 'acked', acked_at = ? "
-                    "WHERE id = ?",
-                    (current, envelope_id),
+                    "UPDATE messenger_envelopes SET state = 'acked', acked_at = ?, "
+                    "delivered_at = COALESCE(delivered_at, ?) WHERE id = ?",
+                    (current, current, envelope_id),
                 )
                 self._conn.commit()
                 row = self._row_locked(envelope_id)
                 assert row is not None
             item = _row_to_item(row)
-        return item, expired
+        return item, expired, newly_delivered
 
     # -- read ------------------------------------------------------------
 
@@ -488,24 +500,29 @@ class MessengerStore:
         observability mirror's feed (SPEC-403 deliverable #6). ``handle``
         matches either side of a flow (sender *or* recipient)."""
         current = self._now(now)
+        # Issue #396: filters and the limit run in SQL — this used to load and
+        # sort every envelope copy in Python on each dashboard poll.
+        clauses: list[str] = []
+        params: list[object] = []
+        if handle is not None:
+            clauses.append("(sender = ? OR recipient = ?)")
+            params.extend((handle, handle))
+        if message_type is not None:
+            clauses.append("type = ?")
+            params.append(message_type)
+        if state is not None:
+            clauses.append("state = ?")
+            params.append(state)
+        where = f"WHERE {' AND '.join(clauses)} " if clauses else ""
         with self._lock:
             expired = self._sweep_locked(current)
             rows = self._conn.execute(
                 "SELECT rowid AS seq, * FROM messenger_envelopes "
-                "ORDER BY created_at DESC, seq DESC"
+                f"{where}ORDER BY created_at DESC, seq DESC LIMIT ?",
+                (*params, max(limit, 0)),
             ).fetchall()
             items = [_row_to_item(row) for row in rows]
-        if handle is not None:
-            items = [
-                item
-                for item in items
-                if item.envelope.from_ == handle or item.recipient == handle
-            ]
-        if message_type is not None:
-            items = [item for item in items if item.envelope.type == message_type]
-        if state is not None:
-            items = [item for item in items if item.state == state]
-        return items[: max(limit, 0)], expired
+        return items, expired
 
     def sweep(self, *, now: float | None = None) -> list[EnvelopeMetadata]:
         """Run the expiry sweep on its own, with no other work attached.

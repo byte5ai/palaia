@@ -178,6 +178,11 @@ carried over yet. That table is kept honest, so check it before you move.
 **Update.** The dashboard shows an "update available" banner and updates in one click.
 On the command line it is pull-and-recreate:
 
+<!-- rc-channel-note -->
+> **Release candidate:** until `3.0.0` is final there is no `stable` image yet. Where a
+> command or file on this page says `ghcr.io/byte5ai/palaia-hub:stable`, use
+> `ghcr.io/byte5ai/palaia-hub:beta` for now.
+
 ```bash
 docker pull ghcr.io/byte5ai/palaia-hub:stable
 docker stop palaia-hub && docker rm palaia-hub

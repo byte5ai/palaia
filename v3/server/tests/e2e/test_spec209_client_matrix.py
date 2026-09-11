@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import html
 import json
 import os
 import re
@@ -94,9 +95,7 @@ def _wait_for_health(port: int, timeout: float = _STARTUP_TIMEOUT) -> None:
     last_error: Exception | None = None
     while time.monotonic() < deadline:
         try:
-            with urllib.request.urlopen(
-                f"http://127.0.0.1:{port}/api/health", timeout=0.5
-            ) as resp:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=0.5) as resp:
                 if resp.status == 200:
                     return
         except (OSError, urllib.error.URLError) as exc:
@@ -126,6 +125,24 @@ def _claude_call_tool_text(server_name: str, tool: str, prompt: str, cwd: Path) 
 def _challenge_for(verifier: str) -> str:
     digest = hashlib.sha256(verifier.encode()).digest()
     return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+
+
+def _approve_consent(client: httpx.Client, base_url: str, page: httpx.Response) -> httpx.Response:
+    """Issue #328: `GET /oauth/authorize` renders a consent page; a browser
+    user clicks Allow. Echo its hidden fields plus the session's CSRF cookie."""
+    assert page.status_code == 200 and 'name="decision"' in page.text, (
+        page.status_code,
+        page.text[:300],
+    )
+    fields = {
+        html.unescape(name): html.unescape(value)
+        for name, value in re.findall(
+            r'<input type="hidden" name="([^"]+)" value="([^"]*)">', page.text
+        )
+    }
+    fields["csrf_token"] = client.cookies["palaia_oauth_csrf"]
+    fields["decision"] = "allow"
+    return client.post(f"{base_url}/oauth/authorize", data=fields)
 
 
 def _csrf_and_sign_in(client: httpx.Client, base_url: str) -> None:
@@ -184,6 +201,7 @@ def _get_real_access_token(base_url: str) -> str:
             "resource": resource_metadata["resource"],
         },
     )
+    authorized = _approve_consent(client, "", authorized)
     assert authorized.status_code == 303, authorized.text
     code = parse_qs(urlsplit(authorized.headers["location"]).query)["code"][0]
 
@@ -438,7 +456,7 @@ def test_claude_code_cli_native_oauth_login_completes_on_the_default_path(
 
         client = httpx.Client(follow_redirects=False, timeout=15.0)
         _csrf_and_sign_in(client, base_url)
-        authorize_response = client.get(authorize_url)
+        authorize_response = _approve_consent(client, base_url, client.get(authorize_url))
         assert authorize_response.status_code == 303, authorize_response.text
         redirect_url = authorize_response.headers["location"]
         assert "/callback" in redirect_url and "code=" in redirect_url, redirect_url
@@ -501,7 +519,7 @@ def test_claude_code_cli_native_oauth_login_completes_on_the_default_path(
 
         client = httpx.Client(follow_redirects=False, timeout=15.0)
         _csrf_and_sign_in(client, base_url)
-        authorize_response = client.get(authorize_url)
+        authorize_response = _approve_consent(client, base_url, client.get(authorize_url))
         assert authorize_response.status_code == 303, authorize_response.text
         redirect_url = authorize_response.headers["location"]
 

@@ -21,15 +21,19 @@ request.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import logging
+import time
 import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
 from ..events.schema import Envelope
 from ..gateway.vault_protocol import VaultServiceError
 from ..gateway.wiring import EngineVaultService
 from ..notifications.store import NotificationStore
+from ..stash.models import StashError
 from ..stash.service import StashService
 from ..vault import VaultNotFoundError, VaultRegistry
 from . import conditions
@@ -40,7 +44,7 @@ from .models import (
     NotificationAction,
     StashSetAction,
 )
-from .outbox import AutomationOutbox, DeliveryRow
+from .outbox import AutomationOutbox, DeliveryRow, PendingDelivery
 from .store import LOOP_GUARD_PREFIX, AutomationStore
 from .templates import render
 
@@ -59,10 +63,56 @@ _MAX_BACKOFF_SECONDS = 300.0
 #: one-line call in ``palaia_hub.app``, same as the curator/index/stash.
 Emit = Callable[[str, dict[str, Any]], None]
 
+#: The id of the automation whose action is executing right now, on this
+#: task (issue #338). The events an action causes — the
+#: ``memory.entry.created`` of its own ``memory_write``, the ``stash.set`` of
+#: its own ``stash_set`` — are published synchronously, on the same task,
+#: before the action returns, so :meth:`AutomationDispatcher.on_event` sees
+#: this set and does not enqueue anything for them: an automation's output
+#: never becomes any automation's input, whatever its trigger says.
+_ACTING: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "palaia_automation_acting", default=None
+)
+
+#: The hub's own heartbeat is not something an automation means when it says
+#: "every event": a ``"*"`` trigger skips ``health`` (it fires every 15 s and
+#: describes nothing that happened). Naming ``health`` as the trigger still
+#: works for the rare automation that really wants a heartbeat.
+HEARTBEAT_EVENT = "health"
+
+#: A ceiling per automation on top of the loop guards: more fires than this
+#: within a minute means something is feeding it faster than any workflow a
+#: person set up, so the rest of that minute is dropped with one warning
+#: rather than filling the outbox (issues #338/#339).
+MAX_FIRES_PER_MINUTE = 60
+
+#: A delivery whose automation is *disabled* is not dead, merely waiting
+#: (issue #367): it is looked at again after this long, and delivered the
+#: moment the automation is enabled again.
+DISABLED_RECHECK_SECONDS = 60.0
+
+#: ...unless the automation stays disabled for this long — then the queued
+#: delivery is stale enough to dead-letter rather than keep forever.
+DISABLED_DEAD_LETTER_SECONDS = 7 * 24 * 3600.0
+
+#: Failures that no retry can fix (issue #366): a stash value over its
+#: limit, an invalid namespace or key. Retrying them five times over half a
+#: minute only delays the honest answer.
+_PERMANENT_FAILURES: tuple[type[Exception], ...] = (StashError,)
+
 
 class ActionError(RuntimeError):
     """A rendered action could not be executed. Always a plain-language
     message — never a bare exception repr."""
+
+
+def _age_seconds(created_at: str) -> float:
+    """Seconds since an outbox row's ISO ``created_at``; 0 when unparsable."""
+    try:
+        created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+    except ValueError:
+        return 0.0
+    return max(0.0, (datetime.now(UTC) - created).total_seconds())
 
 
 def _backoff_seconds(attempt: int) -> float:
@@ -76,7 +126,9 @@ def _matches_trigger(trigger_event: str, envelope: Envelope) -> bool:
         # create-time refusal in .store): even a "*" trigger never fires on
         # an automation.* event.
         return False
-    return trigger_event == "*" or trigger_event == envelope.event
+    if trigger_event == envelope.event:
+        return True
+    return trigger_event == "*" and envelope.event != HEARTBEAT_EVENT
 
 
 def render_action(action: Action, envelope: Envelope) -> dict[str, Any]:
@@ -126,6 +178,7 @@ class AutomationDispatcher:
         self._notification_store = notification_store
         self._emit = emit
         self._max_attempts = max_attempts
+        self._throttle_warned_at: dict[str, float] = {}
 
     # -------------------------------------------------------- event -> outbox
 
@@ -133,12 +186,28 @@ class AutomationDispatcher:
         """The in-process bus subscriber (see ``palaia_hub.app``)."""
         if envelope.event.startswith(LOOP_GUARD_PREFIX):
             return
+        acting = _ACTING.get()
+        if acting is not None:
+            # Caused by an automation's own action (see _ACTING): a
+            # memory_write's memory.entry.created, a stash_set's stash.set.
+            logger.debug(
+                "event %r was caused by automation %s; no automation fires on it",
+                envelope.event,
+                acting,
+            )
+            return
+        # Issue #396: matches are collected and queued in one transaction —
+        # the bus calls this synchronously on the event loop, so every
+        # commit here is a stall for whoever published.
+        pending: list[PendingDelivery] = []
         for automation in self._store.list_info():
             if not automation.enabled:
                 continue
             if not _matches_trigger(automation.trigger_event, envelope):
                 continue
             if not conditions.evaluate(automation.condition, envelope):
+                continue
+            if self._throttled(automation.id):
                 continue
             try:
                 rendered = render_action(automation.action, envelope)
@@ -149,13 +218,33 @@ class AutomationDispatcher:
                     envelope.event,
                 )
                 continue
-            self._outbox.enqueue(
-                automation_id=automation.id,
-                event_id=envelope.id,
-                event_name=envelope.event,
-                action_kind=automation.action.kind,
-                rendered_action=rendered,
+            pending.append(
+                PendingDelivery(
+                    automation_id=automation.id,
+                    event_id=envelope.id,
+                    event_name=envelope.event,
+                    action_kind=automation.action.kind,
+                    rendered_action=rendered,
+                )
             )
+        self._outbox.enqueue_many(pending)
+
+    def _throttled(self, automation_id: str) -> bool:
+        """True when ``automation_id`` already fired its minute's worth."""
+        recent = self._outbox.count_recent(automation_id, window_seconds=60.0)
+        if recent < MAX_FIRES_PER_MINUTE:
+            return False
+        now = time.monotonic()
+        if now - self._throttle_warned_at.get(automation_id, -1e9) >= 60.0:
+            self._throttle_warned_at[automation_id] = now
+            logger.warning(
+                "automation %s fired %d times within a minute; dropping further "
+                "matches for now (limit %d/min). Fix: narrow its trigger or condition.",
+                automation_id,
+                recent,
+                MAX_FIRES_PER_MINUTE,
+            )
+        return True
 
     # ------------------------------------------------------------- delivery
 
@@ -167,13 +256,31 @@ class AutomationDispatcher:
 
     async def _attempt(self, row: DeliveryRow) -> None:
         automation = self._store.get(row.automation_id)
-        if automation is None or not automation.enabled:
-            self._outbox.mark_dead(row.id, error="automation was removed or disabled")
-            self._emit_event("automation.failed", row, error="automation was removed or disabled")
+        if automation is None:
+            self._outbox.mark_dead(row.id, error="automation was removed")
+            self._emit_event("automation.failed", row, error="automation was removed")
+            return
+        if not automation.enabled:
+            # Disabled is not deleted (issue #367): the delivery waits, and
+            # runs when the automation is switched back on — unless it has
+            # been waiting so long that running it would be a surprise.
+            if _age_seconds(row.created_at) > DISABLED_DEAD_LETTER_SECONDS:
+                error = "automation stayed disabled for more than 7 days"
+                self._outbox.mark_dead(row.id, error=error)
+                self._emit_event("automation.failed", row, automation=automation, error=error)
+            else:
+                self._outbox.defer(
+                    row.id,
+                    delay_seconds=DISABLED_RECHECK_SECONDS,
+                    note="automation is disabled; will run when it is enabled again",
+                )
             return
         attempt = row.attempts + 1
         try:
-            await self._execute(row.action_kind, row.rendered_action)
+            await self._execute_as(automation.id, row.action_kind, row.rendered_action)
+        except _PERMANENT_FAILURES as exc:
+            self._fail(row, attempt, automation, error=str(exc), permanent=True)
+            return
         except (ActionError, VaultServiceError, VaultNotFoundError) as exc:
             self._fail(row, attempt, automation, error=str(exc))
             return
@@ -184,9 +291,15 @@ class AutomationDispatcher:
         self._emit_event("automation.fired", row, automation=automation)
 
     def _fail(
-        self, row: DeliveryRow, attempt: int, automation: AutomationRecord, *, error: str
+        self,
+        row: DeliveryRow,
+        attempt: int,
+        automation: AutomationRecord,
+        *,
+        error: str,
+        permanent: bool = False,
     ) -> None:
-        if attempt >= self._max_attempts:
+        if permanent or attempt >= self._max_attempts:
             logger.warning(
                 "automation %s delivery dead-lettered after %d attempt(s): %s",
                 row.automation_id,
@@ -228,6 +341,17 @@ class AutomationDispatcher:
             logger.exception("failed to emit %s for automation %s", event_name, row.automation_id)
 
     # ------------------------------------------------------------- execution
+
+    async def _execute_as(
+        self, automation_id: str, action_kind: str, rendered: dict[str, Any]
+    ) -> None:
+        """Run the action with :data:`_ACTING` naming its automation, so the
+        events it causes are recognised as its own (issue #338)."""
+        token = _ACTING.set(automation_id)
+        try:
+            await self._execute(action_kind, rendered)
+        finally:
+            _ACTING.reset(token)
 
     async def _execute(self, action_kind: str, rendered: dict[str, Any]) -> None:
         if action_kind == "memory_write":
@@ -308,8 +432,8 @@ class AutomationDispatcher:
             )
         rendered = render_action(automation.action, envelope)
         try:
-            await self._execute(automation.action.kind, rendered)
-        except (ActionError, VaultServiceError, VaultNotFoundError) as exc:
+            await self._execute_as(automation.id, automation.action.kind, rendered)
+        except (ActionError, VaultServiceError, VaultNotFoundError, StashError) as exc:
             return self._outbox.record_resolved(
                 automation_id=automation.id,
                 event_id=envelope.id,
@@ -333,10 +457,20 @@ class AutomationDispatcher:
 
     # --------------------------------------------------------------- lifecycle
 
-    async def run_forever(self, *, poll_seconds: float = 2.0) -> None:
-        """The background task ``palaia_hub.app`` starts in its lifespan."""
+    async def run_forever(
+        self, *, poll_seconds: float = 2.0, prune_every_seconds: float = 300.0
+    ) -> None:
+        """The background task ``palaia_hub.app`` starts in its lifespan.
+
+        Besides delivering, it prunes the outbox's resolved rows on a slow
+        cadence (issue #339) — once at start, then every ``prune_every_seconds``.
+        """
+        last_prune = float("-inf")
         while True:
             try:
+                if time.monotonic() - last_prune >= prune_every_seconds:
+                    self._outbox.prune()
+                    last_prune = time.monotonic()
                 delivered_any = await self.deliver_due()
                 if not delivered_any:
                     await asyncio.sleep(poll_seconds)
@@ -345,4 +479,11 @@ class AutomationDispatcher:
                 await asyncio.sleep(poll_seconds)
 
 
-__all__ = ["DEFAULT_MAX_ATTEMPTS", "ActionError", "AutomationDispatcher", "render_action"]
+__all__ = [
+    "DEFAULT_MAX_ATTEMPTS",
+    "HEARTBEAT_EVENT",
+    "MAX_FIRES_PER_MINUTE",
+    "ActionError",
+    "AutomationDispatcher",
+    "render_action",
+]

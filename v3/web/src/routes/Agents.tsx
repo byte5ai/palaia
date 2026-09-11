@@ -17,7 +17,18 @@
 import { useEffect, useId, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 
-import { Badge, Button, Card, CardBody, CardHead, Chip, EmptyState, Field, Skeleton, useToast } from "../components";
+import {
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHead,
+  Chip,
+  EmptyState,
+  Field,
+  Skeleton,
+  useToast,
+} from "../components";
 import type {
   EnvelopeMetadata,
   MessageType,
@@ -27,6 +38,10 @@ import type {
   VaultSummary,
 } from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
+import {
+  AGENT_REFRESH_COALESCE_MS,
+  useDebouncedValue,
+} from "../lib/useDebouncedValue";
 import type { EventStreamState } from "../lib/events";
 import { AgentsIcon } from "../shell/icons";
 
@@ -56,7 +71,10 @@ function describeError(err: unknown): string {
 }
 
 function relativeTime(seconds: number): string {
-  const minutes = Math.max(0, Math.round((Date.now() - seconds * 1000) / 60000));
+  const minutes = Math.max(
+    0,
+    Math.round((Date.now() - seconds * 1000) / 60000),
+  );
   if (minutes < 1) return "just now";
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.round(minutes / 60);
@@ -64,7 +82,9 @@ function relativeTime(seconds: number): string {
   return `${Math.round(hours / 24)}d ago`;
 }
 
-function statusBadgeVariant(status: SessionRecord["status"]): "ok" | "warn" | "risk" {
+function statusBadgeVariant(
+  status: SessionRecord["status"],
+): "ok" | "warn" | "risk" {
   if (status === "stale") return "risk";
   if (status === "idle") return "warn";
   return "ok";
@@ -80,7 +100,13 @@ function byteLength(text: string): number {
   return new TextEncoder().encode(text).length;
 }
 
-function AgentRow({ session, onRemoved }: { session: SessionRecord; onRemoved: () => void }) {
+function AgentRow({
+  session,
+  onRemoved,
+}: {
+  session: SessionRecord;
+  onRemoved: () => void;
+}) {
   const toast = useToast();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -102,14 +128,18 @@ function AgentRow({ session, onRemoved }: { session: SessionRecord; onRemoved: (
     <div className="listrow">
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="listrow__title t-mono">{session.handle}</div>
-        <div className="listrow__meta">{session.scope || "No scope reported"}</div>
+        <div className="listrow__meta">
+          {session.scope || "No scope reported"}
+        </div>
         <div className="listrow__meta">
           {session.platform || "Unknown platform"}
           {session.model ? ` · ${session.model}` : ""}
         </div>
       </div>
       <div className="row" style={{ gap: 8, alignItems: "center" }}>
-        <Badge variant={statusBadgeVariant(session.status)}>{statusLabel(session.status)}</Badge>
+        <Badge variant={statusBadgeVariant(session.status)}>
+          {statusLabel(session.status)}
+        </Badge>
         <span
           className="t-xs t-subtle"
           title={new Date(session.last_seen_at * 1000).toLocaleString()}
@@ -118,7 +148,12 @@ function AgentRow({ session, onRemoved }: { session: SessionRecord; onRemoved: (
         </span>
         {confirming ? (
           <>
-            <Button size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setConfirming(false)}
+              disabled={busy}
+            >
               Never mind
             </Button>
             <Button size="sm" variant="risk" onClick={remove} disabled={busy}>
@@ -126,7 +161,12 @@ function AgentRow({ session, onRemoved }: { session: SessionRecord; onRemoved: (
             </Button>
           </>
         ) : (
-          <Button size="sm" variant="risk" onClick={() => setConfirming(true)} disabled={busy}>
+          <Button
+            size="sm"
+            variant="risk"
+            onClick={() => setConfirming(true)}
+            disabled={busy}
+          >
             Remove
           </Button>
         )}
@@ -141,13 +181,21 @@ function messageStateLabel(state: EnvelopeMetadata["state"]): string {
   return "Done";
 }
 
-function messageStateVariant(state: EnvelopeMetadata["state"]): "warn" | "neutral" | "ok" {
+function messageStateVariant(
+  state: EnvelopeMetadata["state"],
+): "warn" | "neutral" | "ok" {
   if (state === "pending") return "warn";
   if (state === "acked") return "ok";
   return "neutral";
 }
 
-function MessageRow({ flow, onEnded }: { flow: EnvelopeMetadata; onEnded: () => void }) {
+function MessageRow({
+  flow,
+  onEnded,
+}: {
+  flow: EnvelopeMetadata;
+  onEnded: () => void;
+}) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [body, setBody] = useState<string | null>(null);
@@ -191,21 +239,33 @@ function MessageRow({ flow, onEnded }: { flow: EnvelopeMetadata; onEnded: () => 
   }
 
   return (
-    <div className="listrow" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
+    <div
+      className="listrow"
+      style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}
+    >
       <button
         type="button"
         className="row row--between"
         onClick={toggle}
         aria-expanded={open}
-        style={{ width: "100%", cursor: "pointer", background: "none", border: 0, padding: 0 }}
+        style={{
+          width: "100%",
+          cursor: "pointer",
+          background: "none",
+          border: 0,
+          padding: 0,
+        }}
       >
         <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
           <div className="listrow__title">{flow.subject}</div>
           <div className="listrow__meta">
-            {flow.from} &rarr; {flow.recipient} · {TYPE_LABEL[flow.type]} · {URGENCY_LABEL[flow.urgency]}
+            {flow.from} &rarr; {flow.recipient} · {TYPE_LABEL[flow.type]} ·{" "}
+            {URGENCY_LABEL[flow.urgency]}
           </div>
         </div>
-        <Badge variant={messageStateVariant(flow.state)}>{messageStateLabel(flow.state)}</Badge>
+        <Badge variant={messageStateVariant(flow.state)}>
+          {messageStateLabel(flow.state)}
+        </Badge>
       </button>
       {open ? (
         <div className="stack stack--2">
@@ -217,20 +277,36 @@ function MessageRow({ flow, onEnded }: { flow: EnvelopeMetadata; onEnded: () => 
             </p>
           )}
           {flow.refs.length > 0 ? (
-            <p className="t-xs t-subtle">Linked notes: {flow.refs.join(", ")}</p>
+            <p className="t-xs t-subtle">
+              Linked notes: {flow.refs.join(", ")}
+            </p>
           ) : null}
           <div className="row">
             {confirmEnd ? (
               <>
-                <Button size="sm" variant="ghost" onClick={() => setConfirmEnd(false)} disabled={ending}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setConfirmEnd(false)}
+                  disabled={ending}
+                >
                   Never mind
                 </Button>
-                <Button size="sm" variant="risk" onClick={end} disabled={ending}>
+                <Button
+                  size="sm"
+                  variant="risk"
+                  onClick={end}
+                  disabled={ending}
+                >
                   Yes, end it
                 </Button>
               </>
             ) : (
-              <Button size="sm" variant="risk" onClick={() => setConfirmEnd(true)}>
+              <Button
+                size="sm"
+                variant="risk"
+                onClick={() => setConfirmEnd(true)}
+              >
                 End conversation
               </Button>
             )}
@@ -241,7 +317,13 @@ function MessageRow({ flow, onEnded }: { flow: EnvelopeMetadata; onEnded: () => 
   );
 }
 
-function RefPicker({ refs, onChange }: { refs: string[]; onChange: (refs: string[]) => void }) {
+function RefPicker({
+  refs,
+  onChange,
+}: {
+  refs: string[];
+  onChange: (refs: string[]) => void;
+}) {
   const [vaults, setVaults] = useState<VaultSummary[]>([]);
   const [vaultKey, setVaultKey] = useState("");
   const [query, setQuery] = useState("");
@@ -285,7 +367,12 @@ function RefPicker({ refs, onChange }: { refs: string[]; onChange: (refs: string
       <span className="field__label">Link a note (optional)</span>
       <div className="row" style={{ gap: 8 }}>
         {vaults.length > 1 ? (
-          <select className="input" value={vaultKey} onChange={(event) => setVaultKey(event.target.value)}>
+          <select
+            className="input"
+            aria-label="Vault to search"
+            value={vaultKey}
+            onChange={(event) => setVaultKey(event.target.value)}
+          >
             {vaults.map((vault) => (
               <option key={vault.key} value={vault.key}>
                 {vault.key}
@@ -295,6 +382,7 @@ function RefPicker({ refs, onChange }: { refs: string[]; onChange: (refs: string
         ) : null}
         <input
           className="input"
+          aria-label="Search notes to link"
           placeholder="Search notes to link…"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -327,7 +415,12 @@ function RefPicker({ refs, onChange }: { refs: string[]; onChange: (refs: string
                 type="button"
                 onClick={() => onChange(refs.filter((r) => r !== ref))}
                 aria-label={`Remove ${ref}`}
-                style={{ marginLeft: 6, background: "none", border: 0, cursor: "pointer" }}
+                style={{
+                  marginLeft: 6,
+                  background: "none",
+                  border: 0,
+                  cursor: "pointer",
+                }}
               >
                 &times;
               </button>
@@ -339,7 +432,13 @@ function RefPicker({ refs, onChange }: { refs: string[]; onChange: (refs: string
   );
 }
 
-function ComposePanel({ sessions, onSent }: { sessions: SessionRecord[]; onSent: () => void }) {
+function ComposePanel({
+  sessions,
+  onSent,
+}: {
+  sessions: SessionRecord[];
+  onSent: () => void;
+}) {
   const toast = useToast();
   const subjectId = useId();
   const bodyId = useId();
@@ -471,7 +570,11 @@ function ComposePanel({ sessions, onSent }: { sessions: SessionRecord[]; onSent:
         <Field
           label={<label htmlFor={bodyId}>Message</label>}
           hint={overBody ? undefined : `${bodyBytes} / ${MAX_BODY_BYTES} bytes`}
-          error={overBody ? `${bodyBytes} / ${MAX_BODY_BYTES} bytes — over the limit.` : undefined}
+          error={
+            overBody
+              ? `${bodyBytes} / ${MAX_BODY_BYTES} bytes — over the limit.`
+              : undefined
+          }
         >
           <textarea
             id={bodyId}
@@ -495,7 +598,11 @@ function ComposePanel({ sessions, onSent }: { sessions: SessionRecord[]; onSent:
           <Button variant="primary" onClick={send} disabled={sending}>
             {sending ? "Sending…" : "Send"}
           </Button>
-          <Button variant="ghost" onClick={() => setOpen(false)} disabled={sending}>
+          <Button
+            variant="ghost"
+            onClick={() => setOpen(false)}
+            disabled={sending}
+          >
             Cancel
           </Button>
         </div>
@@ -526,15 +633,21 @@ export function Agents() {
 
   // No polling loop (deliverable #1): this refetches once on mount, then
   // again only when the SSE stream reports a session.*/message.* event.
+  // Issue 384: a burst of events (every agent's heartbeat is one) is one
+  // refetch, not one per frame — the count is read once it holds still.
+  const activity = useDebouncedValue(
+    stream.agentActivityCount,
+    AGENT_REFRESH_COALESCE_MS,
+  );
   useEffect(() => {
     refresh();
-  }, [stream.agentActivityCount]);
+  }, [activity]);
 
   return (
     <section className="stack stack--4">
       <p className="t-sm t-muted" style={{ maxWidth: 620 }}>
-        Every agent connected to this hub, and the messages moving between them — updates live, no
-        need to reload.
+        Every agent connected to this hub, and the messages moving between them
+        — updates live, no need to reload.
       </p>
 
       {error ? (
@@ -548,13 +661,21 @@ export function Agents() {
         {sessions === null ? (
           <Skeleton height={60} />
         ) : sessions.length === 0 ? (
-          <EmptyState mark={<AgentsIcon className="icon--lg" />} title="No agents yet.">
-            Connect a client and have it register with the directory to see it here.
+          <EmptyState
+            mark={<AgentsIcon className="icon--lg" />}
+            title="No agents yet."
+          >
+            Connect a client and have it register with the directory to see it
+            here.
           </EmptyState>
         ) : (
           <Card>
             {sessions.map((session) => (
-              <AgentRow key={session.handle} session={session} onRemoved={refresh} />
+              <AgentRow
+                key={session.handle}
+                session={session}
+                onRemoved={refresh}
+              />
             ))}
           </Card>
         )}
@@ -565,7 +686,10 @@ export function Agents() {
         {flows === null ? (
           <Skeleton height={60} />
         ) : flows.length === 0 ? (
-          <EmptyState mark={<AgentsIcon className="icon--lg" />} title="No messages yet.">
+          <EmptyState
+            mark={<AgentsIcon className="icon--lg" />}
+            title="No messages yet."
+          >
             Nothing has been sent between agents on this hub.
           </EmptyState>
         ) : (

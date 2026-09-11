@@ -37,6 +37,12 @@ palaia-hub = "palaia_hub.cli:main"
 embeddings = [
     "fastembed>=0.4",
 ]
+
+[dependency-groups]
+# Issue #396: a dependency *group* (PEP 735), not a wheel extra — the
+# add-on SDK below resolves only through the uv path source in this
+# workspace, so `pip install palaia-hub[dev]` from a built wheel could
+# never work. `uv sync` installs the group; a wheel carries no trace of it.
 dev = [
     "pytest>=8",
     "ruff>=0.6",

@@ -3,15 +3,14 @@
 This is the v3 track's changelog (the `v2-maintenance` line keeps its own
 history at the repo root). Versions follow `v3/VERSION`.
 
-Generated from the merged-PR record — `base:claude/palaia-major-rewrite-lj5v9x
-is:pr is:merged`, 69 PRs (#203–#271) via `mcp__github__list_pull_requests` —
-then grouped by what a user actually gets, not by internal SPEC number, and
-hand-curated into plain language. Internal-only PRs (scaffolding, ADRs,
-phase-gate records, SPEC index docs) are left out of the sections below on
-purpose; they moved the project forward but nothing in them is a capability a
-user would notice.
+Curated from the merged-PR record — every PR merged into the v3 line before a
+version's tag — grouped by what a user actually gets, not by internal SPEC
+number, and hand-written in plain language. Internal-only PRs (scaffolding,
+ADRs, phase-gate records, SPEC index docs, CI and release plumbing) are left
+out on purpose; they moved the project forward but nothing in them is a
+capability a user would notice.
 
-## 3.0.0-rc1 — 2026-08-26 (release candidate)
+## 3.0.0-rc1 — 2026-09-01 (release candidate)
 
 The first v3 release. Everything below is new relative to v2, since this is
 v3's first release candidate rather than a diff against an earlier v3 version.
@@ -52,6 +51,12 @@ v3's first release candidate rather than a diff against an earlier v3 version.
 - A validated client integration matrix, with real bugs found and fixed along
   the way (an OAuth loopback-redirect mismatch, a scope ceiling that silently
   capped what a token could be granted).
+- A scope picker when issuing a client token, so a token can be limited to
+  exactly the vaults and actions that client needs, and pre-declared OAuth
+  vault scopes in the hub's config so a signing-in client is offered only
+  those.
+- Clients that connect through sign-in now show up as connected on the
+  connect page the same way token clients do.
 
 ### Marketplace & add-ons
 
@@ -91,12 +96,18 @@ v3's first release candidate rather than a diff against an earlier v3 version.
   `palaia.local`.
 - Ready-to-submit packages for Umbrel, CasaOS, Runtipi, TrueNAS SCALE, and a
   Home Assistant add-on evaluation.
+- A Synology walkthrough that never needs a terminal, a cloud-init file for a
+  VPS install with Tailscale in front, and a Raspberry Pi appliance image
+  (`.img.xz` plus checksum, built reproducibly) attached to every release.
+- One-click backup from the dashboard — an archive of your vaults and
+  settings — with a documented restore path.
 - Release channels (`stable`/`beta`/`edge`) and an in-dashboard "update
   available" check.
 - A hardening pass (non-root container, dropped capabilities, read-only
   filesystem) and an external security review brief.
 - A documentation site with an onboarding page, a "your first shared memory"
-  walkthrough, and a per-client connect guide.
+  walkthrough, and a per-client connect guide, served at
+  `palaia.byte5.ai/docs`.
 - A migration guide and sunset timeline for palaia v2.
 
 ### Known gaps in this release candidate

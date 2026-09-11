@@ -14,13 +14,17 @@ timed-out response, a JSON-RPC error) as a clear, printable failure.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import queue
 import subprocess
 import threading
+from collections import deque
 from dataclasses import dataclass
 from types import TracebackType
 from typing import Any
+
+from ._version import __version__
 
 #: The MCP protocol version this client negotiates. A server that speaks a
 #: different (but compatible) version still answers — MCP servers respond
@@ -29,6 +33,12 @@ from typing import Any
 PROTOCOL_VERSION = "2025-06-18"
 
 CLIENT_NAME = "palaia-addon-sdk"
+
+#: How many of the add-on's most recent stderr lines are kept for the
+#: "did not answer" diagnostic (issue #354). Read on a background thread
+#: from the moment the child starts, so asking for them never blocks.
+STDERR_TAIL_LINES = 40
+STDERR_LINE_CHARS = 500
 
 
 class McpClientError(RuntimeError):
@@ -64,6 +74,8 @@ class StdioMcpClient:
         self._timeout = timeout
         self._proc: subprocess.Popen[str] | None = None
         self._lines: queue.Queue[str] = queue.Queue()
+        self._stderr_lines: deque[str] = deque(maxlen=STDERR_TAIL_LINES)
+        self._stderr_lock = threading.Lock()
         self._next_id = 1
 
     def __enter__(self) -> StdioMcpClient:
@@ -82,6 +94,7 @@ class StdioMcpClient:
                 f"could not run {self._command[0]!r} — is it installed and on PATH?"
             ) from exc
         threading.Thread(target=self._pump_stdout, daemon=True).start()
+        threading.Thread(target=self._pump_stderr, daemon=True).start()
         return self
 
     def __exit__(
@@ -100,12 +113,23 @@ class StdioMcpClient:
             proc.wait(timeout=5)
         except Exception:  # noqa: BLE001 - best-effort cleanup, never masks the real error
             proc.kill()
+            # Reap it (issue #354): a killed child that is never waited for
+            # lingers as a zombie for as long as this process runs.
+            with contextlib.suppress(Exception):
+                proc.wait(timeout=5)
 
     def _pump_stdout(self) -> None:
         proc = self._proc
         assert proc is not None and proc.stdout is not None
         for line in proc.stdout:
             self._lines.put(line)
+
+    def _pump_stderr(self) -> None:
+        proc = self._proc
+        assert proc is not None and proc.stderr is not None
+        for line in proc.stderr:
+            with self._stderr_lock:
+                self._stderr_lines.append(line.rstrip("\n")[:STDERR_LINE_CHARS])
 
     def _write(self, message: dict[str, Any]) -> None:
         proc = self._proc
@@ -114,13 +138,15 @@ class StdioMcpClient:
         proc.stdin.flush()
 
     def _stderr_tail(self) -> str:
-        proc = self._proc
-        if proc is None or proc.stderr is None:
-            return ""
-        try:
-            return proc.stderr.read(4096) or ""
-        except Exception:  # noqa: BLE001 - stderr is best-effort diagnostic text
-            return ""
+        """What the add-on wrote to stderr so far — never blocks.
+
+        Reading the pipe here used to block until 4096 characters or EOF:
+        an add-on that logged one line and then never answered
+        ``initialize`` hung this client forever, in exactly the situation
+        the timeout exists to report (issue #354).
+        """
+        with self._stderr_lock:
+            return "\n".join(self._stderr_lines)
 
     def _read_message(self) -> dict[str, Any]:
         try:
@@ -145,9 +171,7 @@ class StdioMcpClient:
     def _request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         request_id = self._next_id
         self._next_id += 1
-        self._write(
-            {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params or {}}
-        )
+        self._write({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params or {}})
         while True:
             message = self._read_message()
             if message.get("id") != request_id:
@@ -174,7 +198,7 @@ class StdioMcpClient:
             {
                 "protocolVersion": PROTOCOL_VERSION,
                 "capabilities": {},
-                "clientInfo": {"name": CLIENT_NAME, "version": "0.1.0"},
+                "clientInfo": {"name": CLIENT_NAME, "version": __version__},
             },
         )
         self._notify("notifications/initialized")

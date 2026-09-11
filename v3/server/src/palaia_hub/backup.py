@@ -66,6 +66,7 @@ every ``/api/*`` route is gated by construction.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import queue
@@ -249,19 +250,50 @@ class _BytesReader:
         return chunk
 
 
+#: How long a blocked ``put`` waits before re-checking whether the consumer
+#: has gone away (issue #368) — the ceiling on how long an abandoned build
+#: keeps its thread after the client disconnected.
+_CANCEL_POLL_SECONDS = 0.25
+
+
+class _BuildCancelled(Exception):
+    """The consumer stopped reading; the builder unwinds quietly."""
+
+
 class _QueueWriter:
     """A write-only file object that hands ``tarfile``'s output to a queue
     in fixed-size chunks, so :func:`iter_archive_bytes` can stream them out
-    without the whole archive ever existing as one in-memory object."""
+    without the whole archive ever existing as one in-memory object.
 
-    def __init__(self, sink: queue.Queue[bytes | BaseException | None]) -> None:
+    Every ``put`` watches ``cancelled`` (issue #368): a client that
+    disconnects mid-download closes the consuming generator, and the builder
+    — blocked on a full queue nobody drains any more — used to live on for
+    the whole process lifetime with its buffered chunks, tar state and an
+    open file handle. Now it notices within :data:`_CANCEL_POLL_SECONDS`
+    and stops.
+    """
+
+    def __init__(
+        self, sink: queue.Queue[bytes | BaseException | None], cancelled: threading.Event
+    ) -> None:
         self._sink = sink
+        self._cancelled = cancelled
         self._buffer = bytearray()
+
+    def put(self, item: bytes | BaseException | None) -> None:
+        while True:
+            if self._cancelled.is_set():
+                raise _BuildCancelled
+            try:
+                self._sink.put(item, timeout=_CANCEL_POLL_SECONDS)
+                return
+            except queue.Full:
+                continue
 
     def write(self, data: bytes) -> int:
         self._buffer.extend(data)
         while len(self._buffer) >= _CHUNK_SIZE:
-            self._sink.put(bytes(self._buffer[:_CHUNK_SIZE]))
+            self.put(bytes(self._buffer[:_CHUNK_SIZE]))
             del self._buffer[:_CHUNK_SIZE]
         return len(data)
 
@@ -270,21 +302,28 @@ class _QueueWriter:
 
     def close_out(self) -> None:
         if self._buffer:
-            self._sink.put(bytes(self._buffer))
+            self.put(bytes(self._buffer))
             self._buffer.clear()
 
 
-def _build_in_thread(home: Path, sink: queue.Queue[bytes | BaseException | None]) -> None:
-    writer = _QueueWriter(sink)
+def _build_in_thread(
+    home: Path, sink: queue.Queue[bytes | BaseException | None], cancelled: threading.Event
+) -> None:
+    writer = _QueueWriter(sink, cancelled)
     try:
         with tarfile.open(fileobj=writer, mode="w|gz") as tar:  # type: ignore[call-overload]
             _add_tree(tar, home)
         writer.close_out()
+    except _BuildCancelled:
+        logger.debug("backup archive build abandoned: the download was cancelled")
+        return
     except BaseException as exc:  # noqa: BLE001 - handed to the consumer, not swallowed
         logger.exception("backup archive build failed")
-        sink.put(exc)
+        with contextlib.suppress(_BuildCancelled):
+            writer.put(exc)
         return
-    sink.put(None)
+    with contextlib.suppress(_BuildCancelled):
+        writer.put(None)
 
 
 def iter_archive_bytes(home: Path) -> Iterator[bytes]:
@@ -302,8 +341,12 @@ def iter_archive_bytes(home: Path) -> Iterator[bytes]:
     the way back to the SQLite snapshot loop.
     """
     sink: queue.Queue[bytes | BaseException | None] = queue.Queue(maxsize=_QUEUE_DEPTH)
+    cancelled = threading.Event()
     builder = threading.Thread(
-        target=_build_in_thread, args=(home, sink), daemon=True, name="palaia-backup-build"
+        target=_build_in_thread,
+        args=(home, sink, cancelled),
+        daemon=True,
+        name="palaia-backup-build",
     )
     builder.start()
     try:
@@ -315,6 +358,13 @@ def iter_archive_bytes(home: Path) -> Iterator[bytes]:
                 raise item
             yield item
     finally:
+        # Whether the archive completed or the client went away (issue
+        # #368): tell the builder to stop, free the slot it may be blocked
+        # on, and wait for it — briefly, it polls the flag every quarter
+        # second.
+        cancelled.set()
+        with contextlib.suppress(queue.Empty):
+            sink.get_nowait()
         builder.join(timeout=5.0)
 
 

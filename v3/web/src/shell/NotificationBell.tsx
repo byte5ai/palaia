@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Card, CardBody, CardHead, EmptyState } from "../components";
 import type { NotificationRecord } from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
+import { describeApiError } from "../lib/errors";
 import { BellIcon } from "./icons";
 
 const POLL_INTERVAL_MS = 20_000;
@@ -75,8 +76,18 @@ export function NotificationBell() {
     }
   }
 
+  // Issue 376: a refused write (a rotated sign-in cookie, a hub that went
+  // away) used to be an unhandled rejection — the click did nothing.
+  const [actionError, setActionError] = useState<string | null>(null);
+
   async function markRead(id: number) {
-    await api.markNotificationRead(id);
+    setActionError(null);
+    try {
+      await api.markNotificationRead(id);
+    } catch (err) {
+      setActionError(describeApiError(err));
+      return;
+    }
     setEntries(
       (prev) =>
         prev?.map((n) => (n.id === id ? { ...n, read: true } : n)) ?? prev,
@@ -85,7 +96,13 @@ export function NotificationBell() {
   }
 
   async function markAllRead() {
-    await api.markAllNotificationsRead();
+    setActionError(null);
+    try {
+      await api.markAllNotificationsRead();
+    } catch (err) {
+      setActionError(describeApiError(err));
+      return;
+    }
     setEntries((prev) => prev?.map((n) => ({ ...n, read: true })) ?? prev);
     setUnreadCount(0);
   }
@@ -141,6 +158,7 @@ export function NotificationBell() {
             className="stack stack--2"
             style={{ maxHeight: 360, overflowY: "auto" }}
           >
+            {actionError ? <p className="field__error">{actionError}</p> : null}
             {entries === null ? (
               <p className="t-sm t-subtle">Loading…</p>
             ) : entries.length === 0 ? (

@@ -9,21 +9,28 @@ up and could not).
 
 Kept deliberately simple: a flat JSONL file, not a database — this is a
 low-volume, append-mostly log (nobody changes operating mode often), and a
-plain file is trivially `tail`-able and greppable, matching
-:mod:`palaia_hub.hooks.store`'s "same directory, same atomic-write
-primitive" convention for hub-home state.
+plain file is trivially `tail`-able and greppable.
+
+Each entry is one ``O_APPEND`` write of one line, under a process-wide lock
+(issue #347). The earlier read-whole-file-and-rewrite made every append
+O(size of the log) and let two concurrent mode changes lose each other's
+line — for a security audit trail the lost line is the part that matters.
+An appending write of a single line is atomic on every local filesystem
+this hub runs on, and the file is created owner-only.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..config import palaia_home
-from ..vault.atomic import atomic_write_text
+from ..security.files import harden_file
 
 AUDIT_FILE = "mode_audit.jsonl"
 
@@ -63,6 +70,7 @@ class ModeAuditLog:
     def __init__(self, home: Path | None = None) -> None:
         self.home = Path(home).expanduser() if home is not None else palaia_home()
         self.path = self.home / AUDIT_FILE
+        self._lock = threading.Lock()
 
     def record(
         self,
@@ -80,9 +88,19 @@ class ModeAuditLog:
             reason=reason,
             changed_keys=changed_keys,
         )
+        line = (json.dumps(entry.to_json()) + "\n").encode("utf-8")
         self.home.mkdir(parents=True, exist_ok=True)
-        existing = self.path.read_text(encoding="utf-8") if self.path.exists() else ""
-        atomic_write_text(self.path, existing + json.dumps(entry.to_json()) + "\n")
+        with self._lock:
+            fd = os.open(self.path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+            try:
+                view = memoryview(line)
+                while view:
+                    written = os.write(fd, view)
+                    view = view[written:]
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+            harden_file(self.path)
         return entry
 
     def recent(self, limit: int = 50) -> list[dict[str, object]]:

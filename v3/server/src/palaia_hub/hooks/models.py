@@ -28,7 +28,13 @@ class HookRecord(BaseModel):
     created_at: str
 
     def matches(self, event_name: str) -> bool:
-        return "*" in self.events or event_name in self.events
+        if event_name in self.events:
+            return True
+        # "*" means every event that describes something that happened. The
+        # hub's own 15-second `health` heartbeat is not one of those, and a
+        # wildcard hook used to receive ~5,760 of them a day, each a durable
+        # outbox row (issues #338/#339). Name it to get it.
+        return "*" in self.events and event_name != "health"
 
 
 class HookInfo(BaseModel):

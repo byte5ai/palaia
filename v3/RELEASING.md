@@ -7,16 +7,18 @@ to act. Everything else is a command this repository already has, checked
 in `server/tests/`.
 
 This file describes going from `3.0.0-rc1` (SPEC-506) to the final
-`3.0.0`. It is not itself the gate decision — `v3/IMPLEMENTATION.md` §6's
-Phase-5 paragraph is a **draft**; the architect holds the gate. Do not
-start step 1 below until that paragraph is accepted, in writing, by
-whoever holds it.
+`3.0.0`. It is not itself the gate decision: `v3/IMPLEMENTATION.md` §6's
+Gate-P5 paragraph records the architect's verdict (held 2026-08-26,
+conditional on the two owner actions in §1 below). The Phase-4 paragraph
+above it still carries its "this paragraph is a draft" marker — that is
+the historical record of what SPEC-407 ran, not an open gate, and it does
+not block the cut (issue #388).
 
 ## 0. Prerequisite: the gate is held
 
-- [ ] **[OWNER]** `v3/IMPLEMENTATION.md` §6's Phase-5 paragraph is
-      reviewed and its "draft" marker removed (or replaced with the
-      architect's actual verdict).
+- [ ] **[OWNER]** Confirm `v3/IMPLEMENTATION.md` §6's Gate-P5 verdict
+      still stands — it is conditional on §1's two owner actions, so this
+      is a re-read, not a new decision.
 - [ ] `uv run pytest server/tests -q` green, `uv run ruff check server &&
       uv run mypy server/src` clean, `v3/web` and `v3/site/docs`'s own
       lint/typecheck/test/build all green — the state this SPEC's own PR
@@ -48,10 +50,12 @@ whoever holds it.
 
 ## 2. Owner decisions this repository left open on purpose
 
-- [ ] **[OWNER]** `v3/docs/migrate-from-v2.md` has three
-      `[DECISION: ...]` placeholders (feature-parity target date, earliest
-      v2-hotfix-stops date, advance-notice policy) — fill them in with
-      real dates/policy before this becomes the message v2 users see.
+- [ ] **[OWNER]** `v3/docs/migrate-from-v2.md`'s "Support timeline" says
+      "not decided yet" in three places (feature-parity target date,
+      earliest v2-hotfix-stops date, advance-notice policy — issue #390).
+      Replace each with the real date/policy before this becomes the
+      message v2 users see; the page is already linked from the root
+      README and the release notes, so it is public now.
 - [ ] **[OWNER]** Decide whether `3.0.0` ships alongside, or after,
       those v2-sunset dates going live on the docs site.
 
@@ -60,9 +64,36 @@ whoever holds it.
 - [ ] Bump `v3/VERSION` from `3.0.0-rc1` to `3.0.0` (the only file to
       edit — `server/tests/test_version_drift.py` fails loudly if any
       other artifact disagrees; fix forward until it's green again).
-- [ ] Add a `## 3.0.0` section to `v3/CHANGELOG.md` — if nothing
-      user-visible changed since `rc1` beyond the version bump itself, say
-      so in one line rather than duplicating the `rc1` section.
+- [ ] Remove every `rc-channel-note` (the "until 3.0.0 is final, use `:beta`"
+      notes in the install docs, `deploy/README.md`, `deploy/docker-compose.yml`,
+      the root README and the generated Synology page — regenerate it with
+      `npm run gen:synology`). `server/tests/test_version_drift.py` requires
+      the notes while `VERSION` is a pre-release and refuses them once it is
+      not, so a forgotten one fails CI rather than shipping.
+- [ ] Add a `## 3.0.0` section to `v3/CHANGELOG.md`. The header line must
+      start with `## 3.0.0` followed by a space or the end of the line
+      (`## 3.0.0 — 2026-09-15` or a bare `## 3.0.0`); both the cut
+      workflow's guard and `tools/release-dry-run.sh` test exactly
+      `^## <version>( |$)`, so the existing `## 3.0.0-rc1` header never
+      counts for `3.0.0`. If nothing user-visible changed since `rc1`
+      beyond the version bump itself, say so in one line rather than
+      duplicating the `rc1` section.
+- [ ] Write `v3/docs/release-notes/3.0.0.md`, saying plainly that the
+      marketplace shows the add-ons bundled with the release unless an
+      operator configures a published index (`market.index_url` +
+      `market.public_key`) — palaia publishes none for 3.0.0 (issue #409;
+      the owner steps to change that are in `v3/tools/README.md`). Its first line is
+      `# <release title>`; the cut workflow publishes the rest as the
+      GitHub release body (§3 below), and fails without the file.
+      `server/tests/test_version_drift.py` fails first, on the checkout,
+      while the notes for `VERSION` are missing.
+- [ ] Retire the release-candidate wording: `v3/README.md`'s status
+      paragraph ("release candidate", "Not yet tagged `3.0.0`") and
+      `v3/SECURITY.md`'s supported-versions row ("there is no released v3
+      yet"). `test_version_drift.py` refuses those phrases once `VERSION`
+      has no suffix. (The root README's `:beta` command and its "use
+      `:stable` once final" line are the `rc-channel-note` the step above
+      already covers.)
 - [ ] Run `v3/tools/release-dry-run.sh` once more against the bumped
       version — it re-runs the drift test, prints what the release
       workflow would tag/push, confirms the `CHANGELOG.md` section exists,
@@ -79,7 +110,11 @@ whoever holds it.
       tag-parsing strips exactly `refs/tags/v3.` and keeps the rest, so
       the tag really is `v3.` + `v3/VERSION`'s content), publishes the
       GitHub release from `v3/docs/release-notes/<version>.md` (which must
-      exist — write it first), and dispatches the image build on the tag.
+      exist — write it first), and dispatches both image builds on the tag:
+      `v3-release.yml` (the hub container image) and `v3-pi-image.yml` (the
+      Raspberry Pi appliance image, attached to the release as
+      `.img.xz` + `.sha256`). Neither would run on its own — a tag created
+      by the workflow's token does not fire their `push: tags:` triggers.
       This is the step that actually publishes — nothing before it does.
       (A plain `git tag v3.3.0.0 && git push origin v3.3.0.0` by someone
       with tag-push rights creates the same tag, but then the GitHub
@@ -96,6 +131,11 @@ whoever holds it.
       health smoke, checks the 400MB image budget, and scans for
       secrets. **[OWNER]**: if any of these fail, this is not a "release
       anyway" situation — fix and re-tag.
+- [ ] Watch `v3-pi-image.yml`'s run too (it takes longer — a real OS image
+      is built twice for the reproducibility check): when it is green, the
+      release carries `palaia-appliance-*.img.xz` and its `.sha256`, which
+      is what `deploy/pi-image/README.md` and `BOOT-TEST.md` tell people to
+      flash. A release without that asset is not finished.
 
 ## 4. After the tag: what becomes reachable
 
@@ -103,14 +143,24 @@ whoever holds it.
       — the one-liner, `deploy/install.sh`, and `deploy/docker-compose.yml`
       need no edits; they already pin the `stable` channel tag on
       purpose (`deploy/README.md`/`deploy/stores/README.md` — never a
-      literal version).
+      literal version). The same holds for `deploy/cloud-init.yaml`, the
+      Pi image (`deploy/pi-image/`: systemd unit, README, `BOOT-TEST.md`)
+      and the generated Synology page — all pin `:stable`. The Pi
+      appliance `.img.xz` itself is attached to the release by
+      `v3-pi-image.yml` (§3).
+- [ ] Check the GitHub release the cut workflow created: title from the
+      notes' first line, body from the rest, no pre-release badge for a
+      final version. Nothing to publish by hand — §3's dispatch did it.
 - [ ] **[OWNER]** Bump the *store package* version fields — these are the
       one place a literal version string does live, separate from the
       image tag: `truenas/community/palaia/app.yaml`'s `app_version`/
       `human_version`, `runtipi/apps/palaia/config.json`'s `version`,
       `umbrel/umbrel-app.yml`'s `version`, `casaos/docker-compose.yml`'s
-      `version` label. Each package's own `SUBMIT.md`/`EVALUATION.md`
-      names exactly what to update and how — see
+      `version` label. The Home Assistant `config.yaml`'s `version` is
+      *not* on this list: it is the image tag HA pulls, so
+      `server/tests/test_version_drift.py` pins it to `v3/VERSION` and §3's
+      bump carries it along (issue #394). Each package's own
+      `SUBMIT.md`/`EVALUATION.md` names exactly what to update and how — see
       `v3/deploy/stores/README.md`. This is deliberately *not* done as
       part of `rc1` (SPEC-506's own non-goal): bumping these to claim
       `3.0.0` while the `stable` channel still served a pre-release image
@@ -119,26 +169,19 @@ whoever holds it.
 - [ ] **[OWNER]** Submit (or re-submit) the store packages per each
       `SUBMIT.md`. None was submitted as part of any SPEC in this
       repository — SPEC-501's own non-goal, carried through SPEC-506's.
-- [ ] **[OWNER]** Deploy `v3/site/docs`'s built output to real hosting —
-      `astro.config.mjs`'s `site:` is still the placeholder
-      `https://docs.palaia.example`; this needs a real domain, DNS, and a
-      host before the onboarding page's links resolve for anyone outside
-      this repository. `v3-ci.yml`'s `docs-site` job builds and link-checks
-      the site on every PR; nothing in this repository currently deploys
-      that build anywhere.
-- [ ] **[OWNER]** Once the docs site has a real address, update
-      `astro.config.mjs`'s `site:` (currently the placeholder
-      `https://docs.palaia.example`) and anything that links to it
-      absolutely rather than relatively, then re-run
-      `onboarding.test.ts`/`generated-pages.test.ts` to confirm the
-      site's own drift tests still pass against the real value.
+- [ ] **[OWNER]** Re-publish the docs site after the release. The site is
+      live at `https://palaia.byte5.ai/docs` (`astro.config.mjs`: `site:
+      "https://palaia.byte5.ai"`, `base: "/docs"`; served by the
+      palaia-homepage repo per its `DOCS-HOSTING.md`), and the dashboard's
+      docs links (`web/src/lib/docs.ts`, pinned to `site` + `base` by
+      `web/src/lib/docs.test.ts` — issue #322) resolve there. Nothing in
+      *this* repository deploys it: `v3-ci.yml`'s `docs-site` job only
+      builds and link-checks `dist/`, so the content changes a release
+      carries (connect pages, install guide, changelog links) reach the
+      live site only when the homepage repo picks up the new build.
       (`palaia.local` is unrelated and needs no change here — that is the
       hub's own real mDNS self-advertisement, `deploy/README.md` §"Finding
       it on your network", not a placeholder.)
-- [ ] **[OWNER]** Publish the GitHub release notes from
-      `v3/CHANGELOG.md`'s new section (`gh release create v3.3.0.0
-      --notes-file ...` or the GitHub UI) — this repository has no
-      workflow step that does this automatically today.
 - [ ] **[OWNER]** Turn on whatever v2-sunset messaging
       `docs/migrate-from-v2.md`'s §2 dates call for, now that they are
       real dates rather than placeholders.

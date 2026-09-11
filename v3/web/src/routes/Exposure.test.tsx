@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -55,12 +55,34 @@ afterEach(() => {
 });
 
 describe("Exposure", () => {
-  it("stays on its loading state rather than guessing at an unknown mode", async () => {
-    vi.spyOn(api, "mode").mockRejectedValue(new Error("no hub in this test"));
+  it("says so and offers a retry when the mode cannot be loaded (issue 378)", async () => {
+    // It used to sit on "Loading your current access mode…" for good.
+    const mode = vi
+      .spyOn(api, "mode")
+      .mockRejectedValue(new Error("no hub in this test"));
 
     mount();
 
-    expect(await screen.findByText(/loading your current access mode/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/could not load your current access mode/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("radiogroup", { name: /access mode/i }),
+    ).not.toBeInTheDocument();
+
+    mode.mockResolvedValue(OPEN_MODE_STATUS);
+    vi.spyOn(api, "exposure").mockResolvedValue(OPEN_EXPOSURE_STATUS);
+    vi.spyOn(api, "tunnelGuidance").mockResolvedValue({
+      kind: "tailscale",
+      config: "tailscale funnel 8420",
+      commands: [],
+      note: "",
+    } as never);
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+
+    expect(
+      await screen.findByRole("radiogroup", { name: /access mode/i }),
+    ).toBeInTheDocument();
   });
 
   it("renders the current mode, the tunnel guidance, and the hardening checklist", async () => {
@@ -75,12 +97,22 @@ describe("Exposure", () => {
 
     mount();
 
-    expect(await screen.findByText(/everything is reachable from the internet/i)).toBeInTheDocument();
-    expect(screen.getByText(/reach it from outside your network/i)).toBeInTheDocument();
-    expect(await screen.findByText(/tailscale funnel 443 on/)).toBeInTheDocument();
-    expect(screen.getByText(/before you open the dashboard itself/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/everything is reachable from the internet/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/reach it from outside your network/i),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(/tailscale funnel 443 on/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/before you open the dashboard itself/i),
+    ).toBeInTheDocument();
     expect(screen.getByText("Sign-in is required")).toBeInTheDocument();
-    expect(screen.getByText(/you understand the dashboard itself is now public/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/you understand the dashboard itself is now public/i),
+    ).toBeInTheDocument();
   });
 });
 
@@ -93,6 +125,50 @@ describe("Exposure", () => {
  * explanatory prose) against the terms rule 0's own Don't/Do table bans
  * from view.
  */
+describe("Exposure — the sign-in switch (issue 374)", () => {
+  const LOCKED_MODE_STATUS: ModeStatus = {
+    ...OPEN_MODE_STATUS,
+    active_mode: "locked",
+    configured_mode: "locked",
+    host: "127.0.0.1",
+    auth_enabled: true,
+    public_url: null,
+    tunnel: null,
+  };
+
+  it("can be saved on its own", async () => {
+    vi.spyOn(api, "mode").mockResolvedValue(LOCKED_MODE_STATUS);
+    const change = vi
+      .spyOn(api, "changeMode")
+      .mockResolvedValue({ ...LOCKED_MODE_STATUS, auth_enabled: false });
+
+    mount();
+    const save = await screen.findByRole("button", {
+      name: /no changes to save/i,
+    });
+    expect(save).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("switch", { name: /require sign-in/i }));
+
+    const armed = screen.getByRole("button", {
+      name: /save this access mode/i,
+    });
+    expect(armed).toBeEnabled();
+    fireEvent.click(armed);
+
+    await waitFor(() =>
+      expect(change).toHaveBeenCalledWith({
+        mode: "locked",
+        auth_enabled: false,
+      }),
+    );
+    // Saved: the switch's new position is the baseline again.
+    expect(
+      await screen.findByRole("button", { name: /no changes to save/i }),
+    ).toBeDisabled();
+  });
+});
+
 describe("Exposure wizard copy — no jargon in the surface (system.md §3 rule 0)", () => {
   const BANNED = [
     /\boidc\b/i,
@@ -125,7 +201,11 @@ describe("Exposure wizard copy — no jargon in the surface (system.md §3 rule 
       ...screen.queryAllByRole("heading"),
       ...screen.queryAllByRole("button"),
       ...screen.queryAllByRole("radio"),
-      ...Array.from(document.querySelectorAll(".badge, .card__title, .card__subject, .field__label")),
+      ...Array.from(
+        document.querySelectorAll(
+          ".badge, .card__title, .card__subject, .field__label",
+        ),
+      ),
     ];
 
     expect(controls.length).toBeGreaterThan(5); // the scan actually saw real content
@@ -135,5 +215,35 @@ describe("Exposure wizard copy — no jargon in the surface (system.md §3 rule 
         expect(text).not.toMatch(pattern);
       }
     }
+  });
+});
+
+describe("tunnel guidance requests (issue 384)", () => {
+  it("asks for guidance once the hostname holds still, not on every keystroke", async () => {
+    vi.spyOn(api, "mode").mockResolvedValue(OPEN_MODE_STATUS);
+    vi.spyOn(api, "exposure").mockResolvedValue(OPEN_EXPOSURE_STATUS);
+    const guidance = vi.spyOn(api, "tunnelGuidance").mockResolvedValue({
+      label: "Tailscale Serve + Funnel",
+      config: '{"Web": {}}',
+      commands: ["tailscale funnel 443 on"],
+      note: "",
+    });
+
+    mount();
+    const box = await screen.findByLabelText(/hostname/i);
+    await waitFor(() => expect(guidance).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(box, { target: { value: "h" } });
+    fireEvent.change(box, { target: { value: "hu" } });
+    fireEvent.change(box, { target: { value: "hub" } });
+
+    await waitFor(() =>
+      expect(guidance).toHaveBeenLastCalledWith(
+        { kind: "tailscale", hostname: "hub" },
+        expect.any(AbortSignal),
+      ),
+    );
+    const hostnames = guidance.mock.calls.map((call) => call[0].hostname);
+    expect(hostnames).toEqual([undefined, "hub"]);
   });
 });

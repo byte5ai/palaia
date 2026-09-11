@@ -181,11 +181,21 @@ def test_runtipi_folder_name_matches_its_own_id() -> None:
     assert data["id"] == "palaia"
 
 
-def test_runtipi_compose_pins_the_stable_channel_and_declares_the_main_service() -> None:
+def test_runtipi_compose_pins_the_stable_channel_in_the_classic_format() -> None:
+    """Issue #395: the classic format — Runtipi substitutes `${APP_PORT}` and
+    `${APP_DATA_DIR}` and attaches every app to `tipi_main_network`; the
+    `x-runtipi` keys belong to the dynamic (JSON) format and must not appear
+    next to `dynamic_config: false`."""
     data = _load_yaml(STORES_ROOT / "runtipi" / "apps" / "palaia" / "docker-compose.yml")
-    image = data["services"]["hub"]["image"]
-    assert image == f"{PINNED_IMAGE}:{PINNED_CHANNEL}"
-    assert data["services"]["hub"]["x-runtipi"]["is_main"] is True
+    service = data["services"]["hub"]
+    assert service["image"] == f"{PINNED_IMAGE}:{PINNED_CHANNEL}"
+    assert "${APP_PORT}:8420" in service["ports"]
+    assert "tipi_main_network" in service["networks"]
+    assert data["networks"]["tipi_main_network"]["external"] is True
+    assert "x-runtipi" not in service and "x-runtipi" not in data
+    config = _load_json(STORES_ROOT / "runtipi" / "apps" / "palaia" / "config.json")
+    assert config["dynamic_config"] is False
+    assert config["exposable"] is False, "no traefik labels in the compose file, so not exposable"
 
 
 def test_runtipi_description_markdown_has_no_jargon() -> None:
@@ -283,8 +293,13 @@ def test_home_assistant_config_has_the_required_fields() -> None:
     assert config.slug == "palaia"
     assert config.image == PINNED_IMAGE
     # "If you are using a docker image with the image option, this needs
-    # to match the tag" — the docs' own wording for `version`.
-    assert config.version == PINNED_CHANNEL
+    # to match the tag" — the docs' own wording for `version`. Since issue
+    # #394 that tag is the bare release version (v3-release.yml publishes
+    # it), not the `stable` channel: HA offers an update only when this
+    # field changes, so it moves with v3/VERSION.
+    version_file = (STORES_ROOT.parents[1] / "VERSION").read_text(encoding="utf-8").strip()
+    assert config.version == version_file
+    assert config.version != PINNED_CHANNEL
     _assert_no_jargon(config.description, source="home-assistant config.yaml description")
 
 
@@ -296,9 +311,7 @@ def test_home_assistant_evaluation_reaches_a_verdict() -> None:
 # ---------------------------------------------------------------------------
 # Every package: a SUBMIT.md exists and names the real submission target.
 # ---------------------------------------------------------------------------
-@pytest.mark.parametrize(
-    "store", ["umbrel", "casaos", "runtipi", "truenas"]
-)
+@pytest.mark.parametrize("store", ["umbrel", "casaos", "runtipi", "truenas"])
 def test_every_app_store_package_ships_a_submit_doc(store: str) -> None:
     submit = STORES_ROOT / store / "SUBMIT.md"
     assert submit.exists(), f"{store} is missing SUBMIT.md"

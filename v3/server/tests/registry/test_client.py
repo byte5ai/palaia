@@ -167,3 +167,19 @@ async def test_an_oversized_response_is_rejected_like_a_failed_fetch(tmp_path: P
         client = RegistryClient(client=http, cache_dir=tmp_path, max_bytes=10)
         with pytest.raises(RegistryOfflineError):
             await client.search("weather")
+
+
+@pytest.mark.anyio
+async def test_detail_encodes_the_server_id_into_the_path(tmp_path: Path) -> None:
+    """Issue #397: an id with `/` or `?` must not rewrite the request path."""
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.raw_path.decode())
+        return httpx.Response(404)
+
+    async with _client_for(httpx.MockTransport(handler)) as http:
+        client = RegistryClient(client=http, cache_dir=tmp_path)
+        await client.detail("io.example/odd?id")
+
+    assert seen == ["/v0/servers/io.example%2Fodd%3Fid"]

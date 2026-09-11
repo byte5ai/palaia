@@ -41,7 +41,8 @@ two things:
   something that already exists in a bigger way — merging two notes,
   renaming one, retiring one that's gone stale. Nothing like that ever
   happens automatically. You see the proposal and approve or reject it
-  yourself, in the dashboard.
+  yourself — in the dashboard's **Review queue** (under Memory), or in the
+  review view your AI tool can show you.
 
 That split is deliberate: adding something new is low-risk and constant, so
 it stays automatic; changing something that already exists can lose
@@ -72,7 +73,9 @@ genuinely separate: nothing crosses from one into the other on its own.
 
 If you're moving from an existing setup rather than starting empty, an
 importer can read your old palaia notes, or notes from other markdown-based
-note tools, and bring them in with their original dates and tags intact —
-ask in the dashboard's setup for the option that matches what you're coming
-from. [For developers](/developers/) has the technical detail on the file
-format itself, for anyone who wants to script against it directly.
+note tools, and bring them in with their original dates and tags intact. It
+runs from the command line on the machine that hosts your hub (`palaia-hub
+import v2 …` or `palaia-hub import basic-memory …`, each with a `--dry-run`
+that only reports); the dashboard has no import screen yet. [For
+developers](/developers/) has the technical detail on the file format itself,
+for anyone who wants to script against it directly.

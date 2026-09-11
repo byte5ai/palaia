@@ -650,6 +650,7 @@ function VaultRenameRow({ vault, onSaved }: { vault: GatewayVaultIdentity; onSav
                 <input
                   className="input"
                   style={{ maxWidth: 180 }}
+                  aria-label={`New name for ${action}`}
                   placeholder={action}
                   value={value}
                   onChange={(event) => setValue(action, event.target.value)}

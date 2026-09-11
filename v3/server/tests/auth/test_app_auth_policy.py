@@ -14,6 +14,7 @@ from palaia_hub.config import HubConfig
 from palaia_hub.gateway.build import build_gateway
 from palaia_hub.gateway.config import GatewayConfig, ProfileConfig, VaultMountConfig
 from palaia_hub.gateway.fake_vault import FakeVaultService
+from palaia_hub.vault import VaultRegistry
 
 
 def _gateway_config() -> GatewayConfig:
@@ -38,6 +39,28 @@ def test_cloud_mode_with_authenticated_gateway_starts_fine(tmp_path: Path) -> No
     )
 
     app = create_app(HubConfig(mode="cloud", host="127.0.0.1"), gateway=gateway)
+
+    assert app is not None
+
+
+def test_cloud_mode_refuses_hub_wide_mounts_without_a_verifier(tmp_path: Path) -> None:
+    """Issue #313: `/mcp/hub` (and the other hub-wide mounts) are held to the
+    same rule as the profiles — no verifier, no cloud/open hub."""
+    with pytest.raises(AuthPolicyError, match="/mcp/hub"):
+        create_app(
+            HubConfig(mode="cloud", host="127.0.0.1", auth_enabled=False, oauth={"enabled": True}),
+            vault_registry=VaultRegistry(tmp_path),
+        )
+
+
+def test_cloud_mode_hub_wide_mounts_get_a_verifier_from_the_token_store(tmp_path: Path) -> None:
+    """Issue #313: with a token store (and `auth_enabled`, the default) the
+    hub-wide mounts are mounted behind a verifier derived in `create_app`."""
+    app = create_app(
+        HubConfig(mode="cloud", host="127.0.0.1"),
+        vault_registry=VaultRegistry(tmp_path),
+        token_store=TokenStore(home=tmp_path),
+    )
 
     assert app is not None
 

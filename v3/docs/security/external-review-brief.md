@@ -19,8 +19,9 @@
 2. **The admin session gate** — the owner session in front of the whole REST
    surface, its CSRF contract, and the mode policy that decides when it is
    mandatory.
-3. **The MCP gateway** — per-profile authentication, per-token scoping, and
-   the boundary between a client's tools and the vaults behind them.
+3. **The MCP gateway** — per-profile authentication, the hub-wide verifier
+   on the six hub-level mounts (issue #313), per-token scoping, and the
+   boundary between a client's tools and the vaults behind them.
 4. **The secret store** — upstream credentials at rest, and the claim that
    there is no read path out of the hub.
 5. **Everything on disk** — file modes, and what a second local account can
@@ -65,7 +66,7 @@
 
 | Surface | Auth | Entry point in the code |
 |---|---|---|
-| `/mcp*` | bearer `plt_…` token or OAuth access token, verified per profile | `server/src/palaia_hub/gateway/` |
+| `/mcp*` | bearer `plt_…` token or OAuth access token — verified per profile under `/mcp`, and by one hub-wide verifier on the six hub-level mounts (`/mcp/stash`, `/mcp/directory`, `/mcp/messenger`, `/mcp/hub`, `/mcp/market`, `/mcp/team`; issue #313) | `server/src/palaia_hub/gateway/`, `server/src/palaia_hub/oauth/verifier.py` |
 | `/api/*` | owner session cookie + `X-Palaia-CSRF` | `server/src/palaia_hub/admin_session.py` |
 | `/oauth/*`, `/.well-known/*` | none — this is where credentials are minted | `server/src/palaia_hub/oauth/routes.py` |
 | `/` | none — static markup; all data comes from `/api/*` | `server/src/palaia_hub/static.py` |
@@ -194,9 +195,11 @@ outside answer to:
 5. Is the failed-attempt limiter's proxy handling (`X-Forwarded-For` from a
    loopback peer only, last entry wins) sound for every deployment shape we
    ship?
-6. `GET /api/backup` has no opt-in parameter and mounts unconditionally,
-   specifically so it can never exist without the admin session gate
-   wrapping it. Is that construction actually load-bearing, or is there a
+6. `GET /api/backup` has no opt-in parameter and mounts unconditionally;
+   `create_app` tells it whether the admin session gate wraps it, and
+   without that gate it refuses outright (403, issue #317) instead of
+   trusting the network the way the rest of `/api/*` does in `locked`
+   mode — `palaia-hub backup` on the host is the ungated path. Is that construction actually load-bearing, or is there a
    path (a future refactor of `create_app`, a different app assembly for
    some deployment shape) where it could end up exposed?
 

@@ -18,6 +18,7 @@ import pytest
 
 from palaia_hub.oauth import OAuthError, OAuthStore
 from palaia_hub.oauth.models import GrantRow
+from palaia_hub.oauth.store import MAX_GRACE_SUCCESSORS
 
 NOW = 1_800_000_000
 TTL = 3600
@@ -70,9 +71,7 @@ def test_two_concurrent_refreshes_of_one_grant_both_succeed(store: OAuthStore) -
     assert store.get_grant(grant.grant_id) is not None
     assert store.get_grant(grant.grant_id).revoked_at is None  # type: ignore[union-attr]
     for successor in (first.refresh_token, second.refresh_token):
-        outcome = store.rotate_refresh_token(
-            successor, now=NOW + 5, ttl=TTL, grace_window=GRACE
-        )
+        outcome = store.rotate_refresh_token(successor, now=NOW + 5, ttl=TTL, grace_window=GRACE)
         assert outcome.grant.grant_id == grant.grant_id
 
 
@@ -103,12 +102,58 @@ def test_after_the_grace_window_the_spent_token_is_dead(store: OAuthStore) -> No
         store.rotate_refresh_token(spent, now=NOW + GRACE + 1, ttl=TTL, grace_window=GRACE)
 
     assert excinfo.value.error == "invalid_grant"
-    # And — the point of not doing textbook family revocation — the successor
-    # the legitimate client is holding still works.
-    still_good = store.rotate_refresh_token(
-        successor.refresh_token, now=NOW + GRACE + 2, ttl=TTL, grace_window=GRACE
-    )
-    assert still_good.grant.grant_id == grant.grant_id
+    # Issue #346 reversed the earlier choice here: a spent token presented
+    # after its window is a kept copy, so the family goes with it — the
+    # successor the legitimate client holds is dead too, and that client
+    # re-authorizes once. (Inside the window, fan-out still converges: see
+    # test_two_concurrent_refreshes_of_one_grant_both_succeed.)
+    with pytest.raises(OAuthError):
+        store.rotate_refresh_token(
+            successor.refresh_token, now=NOW + GRACE + 2, ttl=TTL, grace_window=GRACE
+        )
+    assert store.get_grant(grant.grant_id).revoked_at == NOW + GRACE + 1  # type: ignore[union-attr]
+
+
+def test_a_replay_after_the_grace_window_revokes_the_whole_family(store: OAuthStore) -> None:
+    """Issue #346, RFC 9700 §4.14.2: a spent token presented after its window
+    is a kept copy, not a surface fanning out. The grant and every successor
+    it produced die with it — the copy is worthless from then on."""
+    grant = _grant(store)
+    spent, _expiry = store.issue_refresh_token(grant=grant, now=NOW, ttl=TTL)
+    first = store.rotate_refresh_token(spent, now=NOW, ttl=TTL, grace_window=GRACE)
+    second = store.rotate_refresh_token(spent, now=NOW + 5, ttl=TTL, grace_window=GRACE)
+
+    with pytest.raises(OAuthError):
+        store.rotate_refresh_token(spent, now=NOW + GRACE + 1, ttl=TTL, grace_window=GRACE)
+
+    assert store.get_grant(grant.grant_id).revoked_at == NOW + GRACE + 1  # type: ignore[union-attr]
+    for successor in (first.refresh_token, second.refresh_token):
+        with pytest.raises(OAuthError):
+            store.rotate_refresh_token(successor, now=NOW + GRACE + 2, ttl=TTL, grace_window=GRACE)
+
+
+def test_too_many_replays_inside_the_grace_window_revoke_the_family(store: OAuthStore) -> None:
+    """Fan-out needs a handful of successors; a token presented eight times
+    within seconds is being replayed under cover of the window."""
+    grant = _grant(store)
+    spent, _expiry = store.issue_refresh_token(grant=grant, now=NOW, ttl=TTL)
+    successors = [
+        store.rotate_refresh_token(spent, now=NOW + index, ttl=TTL, grace_window=GRACE)
+        for index in range(MAX_GRACE_SUCCESSORS)
+    ]
+    assert len({s.refresh_token for s in successors}) == MAX_GRACE_SUCCESSORS
+    assert store.get_grant(grant.grant_id).revoked_at is None  # type: ignore[union-attr]
+
+    with pytest.raises(OAuthError):
+        store.rotate_refresh_token(
+            spent, now=NOW + MAX_GRACE_SUCCESSORS, ttl=TTL, grace_window=GRACE
+        )
+
+    assert store.get_grant(grant.grant_id).revoked_at is not None  # type: ignore[union-attr]
+    with pytest.raises(OAuthError):
+        store.rotate_refresh_token(
+            successors[0].refresh_token, now=NOW + 20, ttl=TTL, grace_window=GRACE
+        )
 
 
 def test_a_zero_grace_window_is_strict_single_use(store: OAuthStore) -> None:

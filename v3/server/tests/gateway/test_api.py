@@ -212,9 +212,7 @@ def test_create_profile_with_hidden_tools_hides_them_live_and_persists(
         assert hidden == {"work_memory_delete"}
 
     on_disk = yaml.safe_load((config_file_path(tmp_path)).read_text(encoding="utf-8"))
-    restricted = next(
-        p for p in on_disk["gateway"]["profiles"] if p["path"] == "restricted"
-    )
+    restricted = next(p for p in on_disk["gateway"]["profiles"] if p["path"] == "restricted")
     assert restricted["hidden_tools"] == ["work_memory_delete"]
 
 
@@ -319,3 +317,18 @@ def test_delete_default_profile_is_refused_server_side(tmp_path: Path) -> None:
 
         listing = client.get("/api/gateway/profiles").json()
         assert {p["path"] for p in listing} == {"default"}
+
+
+def test_update_profile_clears_the_label_with_an_explicit_null(tmp_path: Path) -> None:
+    """Issue #397: `label: null` used to mean "keep", so a label could never be removed."""
+    gateway = _gateway()
+    with _client(tmp_path, gateway=gateway) as client:
+        assert (
+            client.patch("/api/gateway/profiles/default", json={"label": "Everything"}).status_code
+            == 200
+        )
+        kept = client.patch("/api/gateway/profiles/default", json={"stash": True})
+        assert kept.json()["label"] == "Everything", "an omitted label keeps its value"
+        cleared = client.patch("/api/gateway/profiles/default", json={"label": None})
+        assert cleared.status_code == 200
+        assert cleared.json()["label"] is None

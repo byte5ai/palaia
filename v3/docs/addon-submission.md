@@ -63,7 +63,11 @@ never edited by hand). One PR, one add-on. Include in the PR description:
    is a promise about what your add-on can reach once installed. The
    maintainer checks that the add-on's actual behavior doesn't ask for
    more than the manifest admits to, and that what it does ask for
-   matches what the one-liner says it's for.
+   matches what the one-liner says it's for. For `container` add-ons the
+   hub also enforces two of them at run time: without `network` the
+   container has no network, without `filesystem` its root filesystem is
+   read-only (declared mounts stay writable) — see the SDK README's
+   permission table.
 3. **Merges and re-signs.** Once satisfied, the maintainer adds your
    entry to the unsigned index source, then re-signs the whole document
    with `v3/tools/sign_market_index.py sign` (see that script's own

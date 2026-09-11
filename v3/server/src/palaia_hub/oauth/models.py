@@ -143,10 +143,15 @@ class IdpStateRow:
     appears in a URL. Consuming it (see
     :meth:`palaia_hub.oauth.store.OAuthStore.consume_idp_state`) deletes the
     row, which is what makes the ticket single-use.
+
+    ``nonce_hash`` is the hash of the cookie the browser that *started* the
+    flow was given (issue #345): the callback must arrive with that cookie,
+    so a ``state`` completed in one browser cannot sign in another.
     """
 
     provider: str
     next_url: str
+    nonce_hash: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

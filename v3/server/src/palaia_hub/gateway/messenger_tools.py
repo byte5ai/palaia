@@ -43,6 +43,7 @@ from dataclasses import dataclass
 from typing import Annotated, Any
 
 from fastmcp import FastMCP
+from fastmcp.server.auth import AuthProvider
 from fastmcp.tools.base import ToolResult
 from mcp.types import ToolAnnotations
 from pydantic import AliasChoices, Field
@@ -161,7 +162,8 @@ def register_messenger_send_tool(server: FastMCP, service: MessengerService) -> 
             "Send one typed message to another session. type is 'request', "
             "'inform', 'question', 'handoff' or 'broadcast'. For everything "
             "but 'broadcast', to is a session handle from the directory — an "
-            "unknown or stale handle is refused. For 'broadcast', to is a "
+            "unknown or stale handle is refused — or 'owner' to reach the hub's "
+            "owner (who reads it in the dashboard). For 'broadcast', to is a "
             "directory query instead: '*' for every live session, "
             "'capability:<tag>' for a capability tag, or any substring of the "
             "scope you mean; it fans out to at most "
@@ -184,8 +186,9 @@ def register_messenger_send_tool(server: FastMCP, service: MessengerService) -> 
             Field(
                 validation_alias=AliasChoices("to", "recipient"),
                 description=(
-                    "The recipient's session handle — or, for type='broadcast', "
-                    "a directory query ('*', 'capability:<tag>', or a scope substring)."
+                    "The recipient's session handle, 'owner' for the hub's owner — or, "
+                    "for type='broadcast', a directory query ('*', 'capability:<tag>', "
+                    "or a scope substring)."
                 ),
             ),
         ],
@@ -219,9 +222,7 @@ def register_messenger_send_tool(server: FastMCP, service: MessengerService) -> 
                 ),
             ),
         ] = "",
-        urgency: Annotated[
-            Urgency, Field(description="'low', 'normal' or 'high'.")
-        ] = "normal",
+        urgency: Annotated[Urgency, Field(description="'low', 'normal' or 'high'.")] = "normal",
         expects_reply: Annotated[
             bool,
             Field(description="True if you are waiting on an answer to this."),
@@ -282,9 +283,11 @@ def register_messenger_send_tool(server: FastMCP, service: MessengerService) -> 
         return ToolResult(content=text, structured_content=result)
 
 
-def build_messenger_server(service: MessengerService) -> FastMCP:
+def build_messenger_server(
+    service: MessengerService, *, auth: AuthProvider | None = None
+) -> FastMCP:
     """Build the messenger tool family, backed by ``service``."""
-    server = FastMCP(name="palaia-messenger", instructions=MESSENGER_IDENTITY)
+    server = FastMCP(name="palaia-messenger", instructions=MESSENGER_IDENTITY, auth=auth)
 
     def desc(detail: str) -> str:
         return f"{MESSENGER_IDENTITY}\n\n{detail}"
@@ -294,14 +297,16 @@ def build_messenger_server(service: MessengerService) -> FastMCP:
     @server.tool(
         name="messenger_check",
         description=desc(
-            "Collect every new envelope addressed to YOUR handle and mark it "
-            "delivered. Requires your own handle and session_secret — this "
-            "never reads another session's inbox. Delivery is pull: call this "
-            "periodically (a heartbeat is a good moment). Already-delivered "
-            "envelopes are not returned again; re-read one with "
-            "messenger_thread on its id. The text summary is compact on "
-            "purpose — bodies are in the structured result, and the text "
-            "shows one only when a single envelope arrived."
+            "Collect every envelope addressed to YOUR handle that you have "
+            "not acked yet: new ones are marked delivered, and ones an earlier "
+            "check already returned come back again until you messenger_ack "
+            "them (their ids are listed under `redelivered`), so a lost "
+            "response never loses a message. Requires your own handle and "
+            "session_secret — this never reads another session's inbox. "
+            "Delivery is pull: call this periodically (a heartbeat is a good "
+            "moment), and ack what you have dealt with. The text summary is "
+            "compact on purpose — bodies are in the structured result, and "
+            "the text shows one only when a single envelope arrived."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=False, destructiveHint=False, idempotentHint=False
@@ -316,9 +321,7 @@ def build_messenger_server(service: MessengerService) -> FastMCP:
             result = await service.check(handle, session_secret)
         except MessengerError as exc:
             return _error_result(exc)
-        text = render_envelopes(
-            result.envelopes, empty=f"no new messages for {handle}"
-        )
+        text = render_envelopes(result.envelopes, empty=f"no new messages for {handle}")
         return ToolResult(content=text, structured_content=result)
 
     @server.tool(
@@ -383,15 +386,20 @@ class MessengerGatewayASGI:
 
     app: ASGIApp
     lifespan: Any
+    #: The ``FastMCP`` behind ``app`` — what
+    #: :func:`palaia_hub.auth.policy.check_hub_mount_auth_policy` inspects.
+    server: FastMCP
 
 
-def build_messenger_gateway(service: MessengerService) -> MessengerGatewayASGI:
+def build_messenger_gateway(
+    service: MessengerService, *, auth: AuthProvider | None = None
+) -> MessengerGatewayASGI:
     """Build the messenger server and its mountable ASGI app + lifespan,
     ready for ``app.mount("/mcp/messenger", ...)`` (see
     :mod:`palaia_hub.app`)."""
-    server = build_messenger_server(service)
+    server = build_messenger_server(service, auth=auth)
     asgi_app = server.http_app(path="/")
-    return MessengerGatewayASGI(app=asgi_app, lifespan=asgi_app.lifespan)
+    return MessengerGatewayASGI(app=asgi_app, lifespan=asgi_app.lifespan, server=server)
 
 
 __all__ = [

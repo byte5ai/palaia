@@ -34,6 +34,7 @@ from .harness import (
     ISSUER,
     PROFILES,
     Harness,
+    approve_consent,
     build_harness,
 )
 
@@ -145,8 +146,9 @@ async def test_full_github_shaped_flow_signs_in_and_continues_authorize(
             assert callback.status_code == 303, callback.text
             assert "palaia_oauth_session" in http.cookies
 
-            # The session is real: /oauth/authorize now issues a code.
-            resumed = await http.get(callback.headers["location"])
+            # The session is real: /oauth/authorize now shows the consent page,
+            # and approving it issues the code (issue #328).
+            resumed = await approve_consent(http, await http.get(callback.headers["location"]))
             assert resumed.status_code == 303, resumed.text
             resumed_query = parse_qs(urlsplit(resumed.headers["location"]).query)
             assert "error" not in resumed_query, resumed_query
@@ -161,9 +163,7 @@ async def test_the_provider_token_is_never_persisted(tmp_path: Path) -> None:
     harness = _github_harness(tmp_path)
     try:
         async with _http(harness) as http:
-            start = await http.get(
-                "/oauth/idp/start?next=" + "%2Foauth%2Fauthorize%3Fx%3D1"
-            )
+            start = await http.get("/oauth/idp/start?next=" + "%2Foauth%2Fauthorize%3Fx%3D1")
             state = _state_from_start_redirect(start)
             callback = await http.get(f"/oauth/idp/callback?code=the-code&state={state}")
             assert callback.status_code == 303, callback.text
@@ -176,6 +176,24 @@ async def test_the_provider_token_is_never_persisted(tmp_path: Path) -> None:
         sibling = harness.store.path.with_name(harness.store.path.name + suffix)
         if sibling.exists():
             assert FAKE_GITHUB_TOKEN.encode() not in sibling.read_bytes()
+
+
+@pytest.mark.anyio
+async def test_a_start_with_no_next_signs_in_and_lands_on_home(tmp_path: Path) -> None:
+    """Issue #381: the dashboard's sign-out sends the browser to the start
+    link with no ``next`` — that used to be refused as "this sign-in link
+    is invalid"; now it means "sign in, then Home"."""
+    harness = _github_harness(tmp_path)
+    try:
+        async with _http(harness) as http:
+            start = await http.get("/oauth/idp/start")
+            assert start.status_code == 303, start.text
+            state = _state_from_start_redirect(start)
+            callback = await http.get(f"/oauth/idp/callback?code=the-code&state={state}")
+            assert callback.status_code == 303, callback.text
+            assert callback.headers["location"] == "/"
+    finally:
+        harness.store.close()
 
 
 # ------------------------------------------------------------------ rejections
@@ -198,6 +216,46 @@ async def test_a_replayed_state_is_rejected_single_use(tmp_path: Path) -> None:
             assert "palaia_oauth_session" not in http.cookies
     finally:
         harness.store.close()
+
+
+@pytest.mark.anyio
+async def test_the_callback_must_arrive_in_the_browser_that_started_the_sign_in(
+    tmp_path: Path,
+) -> None:
+    """Issue #345: login CSRF through the provider. An attacker completes
+    their own provider leg and hands the victim the callback link; the
+    victim's browser never received the nonce cookie `start` set, so the
+    valid `state` signs nobody in."""
+    harness = _github_harness(tmp_path)
+    async with harness.app.router.lifespan_context(harness.app):
+        async with _http(harness) as attacker:
+            start = await attacker.get("/oauth/idp/start?next=%2Foauth%2Fauthorize%3Fx%3D1")
+            state = _state_from_start_redirect(start)
+            assert "palaia_oauth_idp" in attacker.cookies, "start must bind the browser"
+
+            async with _http(harness) as victim:
+                response = await victim.get(f"/oauth/idp/callback?code=the-code&state={state}")
+                assert response.status_code == 400
+                assert "palaia_oauth_session" not in victim.cookies
+
+            # The ticket was consumed by that attempt: it does not work for
+            # the attacker afterwards either.
+            replay = await attacker.get(f"/oauth/idp/callback?code=the-code&state={state}")
+            assert replay.status_code == 400
+            assert "palaia_oauth_session" not in attacker.cookies
+
+
+@pytest.mark.anyio
+async def test_the_nonce_cookie_is_cleared_once_the_sign_in_finishes(tmp_path: Path) -> None:
+    harness = _github_harness(tmp_path)
+    async with harness.app.router.lifespan_context(harness.app):
+        async with _http(harness) as http:
+            start = await http.get("/oauth/idp/start?next=%2Foauth%2Fauthorize%3Fx%3D1")
+            state = _state_from_start_redirect(start)
+            callback = await http.get(f"/oauth/idp/callback?code=the-code&state={state}")
+            assert callback.status_code == 303
+            assert "palaia_oauth_session" in http.cookies
+            assert "palaia_oauth_idp" not in http.cookies, "a finished ticket leaves no nonce"
 
 
 @pytest.mark.anyio
@@ -260,9 +318,7 @@ async def test_a_provider_error_is_rejected(tmp_path: Path) -> None:
         async with _http(harness) as http:
             start = await http.get("/oauth/idp/start?next=%2Foauth%2Fauthorize%3Fx%3D1")
             state = _state_from_start_redirect(start)
-            response = await http.get(
-                f"/oauth/idp/callback?error=access_denied&state={state}"
-            )
+            response = await http.get(f"/oauth/idp/callback?error=access_denied&state={state}")
             assert response.status_code != 303
             assert "palaia_oauth_session" not in http.cookies
     finally:

@@ -49,10 +49,12 @@ from palaia_hub.vault import (
     AmbiguousReferenceError,
     ChecksumConflictError,
     InvalidPathError,
+    MalformedFrontmatterError,
     Note,
     NoteExistsError,
     NoteNotFoundError,
     PermalinkConflictError,
+    UncommittedWriteError,
     VaultEngine,
     VolatileNameError,
 )
@@ -84,9 +86,11 @@ _ENGINE_CALLER_ERRORS: tuple[type[Exception], ...] = (
     AmbiguousReferenceError,
     ChecksumConflictError,
     InvalidPathError,
+    MalformedFrontmatterError,
     NoteExistsError,
     NoteNotFoundError,
     PermalinkConflictError,
+    UncommittedWriteError,
     VolatileNameError,
 )
 

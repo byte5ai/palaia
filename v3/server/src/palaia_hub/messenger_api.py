@@ -48,6 +48,8 @@ from .messenger.models import (
     MAX_BODY_BYTES,
     MAX_SUBJECT_CHARS,
     MAX_TTL_SECONDS,
+    AckResult,
+    CheckResult,
     DeliveryState,
     EndConversationResult,
     EnvelopeDetailResult,
@@ -99,9 +101,7 @@ def build_messenger_router(service: MessengerService) -> APIRouter:
         one query answers "everything this session is involved in" rather
         than needing two.
         """
-        return await service.flows(
-            handle=handle, message_type=type, state=state, limit=limit
-        )
+        return await service.flows(handle=handle, message_type=type, state=state, limit=limit)
 
     @router.get("/outbox/{handle}", response_model=FlowsResult)
     async def read_outbox(handle: str) -> FlowsResult:
@@ -151,6 +151,22 @@ def build_messenger_router(service: MessengerService) -> APIRouter:
                 reply_to=body.reply_to,
                 ttl_seconds=body.ttl_seconds,
             )
+        except EnvelopeNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except MessengerError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.get("/inbox", response_model=CheckResult)
+    async def owner_inbox() -> CheckResult:
+        """The owner's own inbox — envelopes sent ``to='owner'`` (issue
+        #365), bodies included; reading marks them delivered."""
+        return await service.owner_inbox()
+
+    @router.post("/inbox/{envelope_id}/ack", response_model=AckResult)
+    async def owner_ack(envelope_id: str) -> AckResult:
+        """Close one envelope in the owner's inbox (issue #365)."""
+        try:
+            return await service.owner_ack(envelope_id)
         except EnvelopeNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except MessengerError as exc:

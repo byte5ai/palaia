@@ -2,7 +2,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { MarketConfigSchema } from "../lib/api/client";
-import { ConfigSchemaForm, missingRequiredFields } from "./ConfigSchemaForm";
+import { missingRequiredFields } from "../lib/configSchema";
+import { ConfigSchemaForm } from "./ConfigSchemaForm";
 
 const SCHEMA: MarketConfigSchema = {
   type: "object",
@@ -25,7 +26,9 @@ describe("ConfigSchemaForm (SPEC-304 deliverable #2)", () => {
 
   it("renders every field kind and reports value changes", () => {
     const onChange = vi.fn();
-    render(<ConfigSchemaForm schema={SCHEMA} values={{}} onChange={onChange} />);
+    render(
+      <ConfigSchemaForm schema={SCHEMA} values={{}} onChange={onChange} />,
+    );
 
     fireEvent.change(screen.getByLabelText(/access token/i), {
       target: { value: "sk-secret" },
@@ -35,7 +38,9 @@ describe("ConfigSchemaForm (SPEC-304 deliverable #2)", () => {
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "eu" } });
     expect(onChange).toHaveBeenCalledWith({ region: "eu" });
 
-    fireEvent.change(screen.getByLabelText(/^port/i), { target: { value: "8080" } });
+    fireEvent.change(screen.getByLabelText(/^port/i), {
+      target: { value: "8080" },
+    });
     expect(onChange).toHaveBeenCalledWith({ port: 8080 });
 
     fireEvent.click(screen.getByRole("switch"));
@@ -43,7 +48,10 @@ describe("ConfigSchemaForm (SPEC-304 deliverable #2)", () => {
 
     // The password field never shows a previous value — a config form is
     // always opened blank (the hub never echoes a stored secret back).
-    expect(screen.getByLabelText(/access token/i)).toHaveAttribute("type", "password");
+    expect(screen.getByLabelText(/access token/i)).toHaveAttribute(
+      "type",
+      "password",
+    );
   });
 
   it("marks a required field's label and flags it as missing until filled", () => {

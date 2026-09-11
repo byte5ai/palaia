@@ -40,6 +40,11 @@
 - A **note** is one `.md` file (UTF-8, LF or CRLF accepted; engine writes LF).
   Non-Markdown files MAY live in the vault (attachments); they are indexed as
   opaque entities (path + metadata only), never parsed.
+  A file that is not valid UTF-8 is still listed, read and searched — with
+  U+FFFD where its bytes could not be decoded — but the engine refuses to
+  edit it rather than write those replacement characters back over the
+  original bytes; the doctor reports it as `not-utf8` with the conversion
+  to run. A rename still rewrites such a file's backlinks, byte-preserving.
 - **Folders are the human's**: any depth, any names, except the three reserved
   ones (`meta/`, `inbox/`, `review/`) which have the semantics defined here.
 - Layout guidance (not conformance): prefer topic folders; keep directories
@@ -101,7 +106,7 @@ normalizations (bm-lesson: user YAML is hostile):
 | `permalink` | R* | string | Stable identity (§3). *Assigned by the engine on first index if absent |
 | `type` | O | string | Taxonomy §6; default `note`; unknown types are valid (warning `type-unknown`, warn-first philosophy) |
 | `tags` | O | list \| comma-string | Normalized to a list of lowercase strings |
-| `created` / `modified` | O | ISO 8601 | Engine maintains on write; external edits: `modified` from file mtime at index time |
+| `created` / `modified` | O | ISO 8601 | Engine maintains on write. An external edit keeps whatever the file says — file mtimes are never consulted (they change on checkout), so recency ranking follows the frontmatter, not the disk |
 | `scope` | O | `private` \| `project` \| `shared` | Access scope (MASTERPLAN §5.1); default: vault's configured default |
 | `origin` | O | map | Attribution: `provider`, `client`, `session`, `agent`, or `human: true`. Engine-written; free-form for humans |
 | `aliases` | O | list | Former titles/permalinks after renames (§4.2); resolvers honor them |
@@ -116,6 +121,21 @@ alphabetically), quote strings only when YAML requires it, use ISO 8601 UTC
 timestamps, LF line endings, exactly one blank line after the closing `---`.
 Canonical form is a writer duty, never a read requirement.
 
+What canonical form costs a hand-written file, stated plainly (issue #398):
+the engine re-serialises frontmatter through a YAML dumper on its *first*
+edit of a note, so YAML comments are dropped, unquoted `yes`/`no`/`~`
+become `true`/`false`/`null` per YAML 1.1 (`title: yes` reads as a
+boolean and is coerced to a string with warning `title-coerced`),
+timestamps are re-rendered in ISO 8601 UTC, and block scalars may be
+re-quoted. The result is stable from then on. Keep frontmatter you care
+about as plain `key: value` pairs; comments belong in the body.
+
+Case-insensitive filesystems (macOS, Windows defaults): the engine keys its
+catalog by the path string a caller gives it, so `Foo.md` and `foo.md` are
+two entries for what the filesystem treats as one file, and a permalink can
+appear claimed twice. Use lowercase file names (the engine mints lowercase
+slugs itself); this is a documented limitation, not yet a check.
+
 ## 3. Permalinks & `memory://` addressing
 
 ### 3.1 Permalink
@@ -127,7 +147,10 @@ Canonical form is a writer duty, never a read requirement.
   Only an explicit identity rename (§4.2) mints a new permalink.
 - Assignment: the engine slugifies the title and prefixes the folder path.
   Files arriving without a permalink (imports, hand-created notes) get one
-  assigned at first index via an attributed write-back commit.
+  assigned at first index via an attributed write-back commit — at hub start
+  for notes that arrived while it was down, and as soon as the vault watcher
+  sees a note arrive while it runs. Notes whose frontmatter does not parse,
+  or that are not UTF-8, are left alone (the doctor reports them).
 - A user-supplied permalink violating the charset is **kept verbatim**
   (identity is never silently rewritten) with warning `permalink-noncanonical`;
   the doctor offers canonicalization through the rename machinery (§4.2), so

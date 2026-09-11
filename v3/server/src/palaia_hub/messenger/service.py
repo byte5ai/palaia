@@ -44,6 +44,7 @@ every call site has to remember.
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Callable
 from typing import Any, Protocol
 
@@ -52,6 +53,7 @@ from ..directory.models import (
     QueryResult,
     SessionRecord,
 )
+from ..notifications.store import NotificationStore
 from .models import (
     MAX_BROADCAST_RECIPIENTS,
     OWNER_HANDLE,
@@ -82,6 +84,8 @@ from .models import (
     check_refs,
 )
 from .store import DEFAULT_FLOW_LIMIT, MessengerStore
+
+logger = logging.getLogger("palaia_hub.messenger.service")
 
 Publisher = Callable[[str, dict[str, Any]], None]
 
@@ -129,6 +133,9 @@ class MessengerService:
         publish: the event sink. ``None`` (or left unset) runs a fully
             working messenger that simply publishes nothing, same as
             ``StashService``/``DirectoryService``.
+        notifications: the dashboard notification center; an envelope sent
+            to ``'owner'`` (issue #365) raises one notification there so the
+            owner learns about it without polling the inbox.
     """
 
     def __init__(
@@ -138,10 +145,15 @@ class MessengerService:
         *,
         ref_validator: RefValidator | None = None,
         publish: Publisher | None = None,
+        notifications: NotificationStore | None = None,
     ) -> None:
         self._store = store
         self._directory = directory
         self._ref_validator = ref_validator
+        #: Where an envelope addressed to the owner raises a notification
+        #: (issue #365) — the dashboard's notification center. ``None``
+        #: keeps the inbox readable over ``GET /api/messenger/inbox`` only.
+        self._notifications = notifications
         #: Public and reassignable, same reason as ``StashService.publish``:
         #: ``palaia_hub.app.create_app`` builds the service before it has an
         #: event bus in hand.
@@ -157,6 +169,19 @@ class MessengerService:
         """``message.expired``, once per envelope the sweep just deleted."""
         for metadata in expired:
             self._emit("message.expired", metadata.model_dump())
+
+    def _notify_owner(self, item: InboxItem) -> None:
+        if self._notifications is None:
+            return
+        envelope = item.envelope
+        try:
+            self._notifications.create(
+                title=f"Message from {envelope.from_}: {envelope.subject}",
+                body=envelope.body,
+                source="messenger",
+            )
+        except Exception:  # noqa: BLE001 - a notification must not fail the send
+            logger.exception("could not raise a notification for envelope %s", envelope.id)
 
     # -- authorization ---------------------------------------------------
 
@@ -287,9 +312,14 @@ class MessengerService:
         clean_refs = check_refs(refs)
         self._check_refs_resolve(clean_refs, readable_vaults)
         parent = await self._reply_target(reply_to)
-        if fence_reply and parent is not None and sender not in (
-            parent.envelope.from_,
-            parent.recipient,
+        if (
+            fence_reply
+            and parent is not None
+            and sender
+            not in (
+                parent.envelope.from_,
+                parent.recipient,
+            )
         ):
             raise NotYourEnvelopeError(
                 f"envelope {reply_to!r} is not yours to reply to — you are neither "
@@ -301,6 +331,11 @@ class MessengerService:
                 "a broadcast cannot be a reply. Fix: reply to the one envelope you "
                 "are answering (its type may be anything else), or send a fresh "
                 "broadcast with reply_to unset."
+            )
+        if sender == OWNER_HANDLE and to.strip() == OWNER_HANDLE:
+            raise InvalidEnvelopeError(
+                "the owner cannot send to 'owner'. Fix: address a session handle from "
+                "the directory, or broadcast to a scope."
             )
         if message_type == "broadcast":
             recipients = await self._broadcast_recipients(sender, to)
@@ -329,15 +364,15 @@ class MessengerService:
         self._emit_expired(expired)
         for item in items:
             self._emit("message.sent", EnvelopeMetadata.of(item).model_dump())
+            if item.recipient == OWNER_HANDLE:
+                self._notify_owner(item)
         return SendResult(
             envelopes=[item.envelope for item in items],
             recipients=[item.recipient for item in items],
             broadcast_query=broadcast,
         )
 
-    def _check_refs_resolve(
-        self, refs: list[str], readable_vaults: frozenset[str] | None
-    ) -> None:
+    def _check_refs_resolve(self, refs: list[str], readable_vaults: frozenset[str] | None) -> None:
         if not refs:
             return
         if self._ref_validator is None:
@@ -381,9 +416,14 @@ class MessengerService:
         if not handle:
             raise InvalidEnvelopeError(
                 "to is empty. Fix: address this message to a handle from "
-                "directory_list/directory_query, or set type='broadcast' and put a "
-                "directory query in to."
+                "directory_list/directory_query, 'owner' for the hub's owner, or set "
+                "type='broadcast' and put a directory query in to."
             )
+        if handle == OWNER_HANDLE:
+            # The owner has no directory row (there is no session to
+            # register) but does have an inbox (issue #365): the dashboard
+            # reads it, and every envelope for it raises a notification.
+            return OWNER_HANDLE
         try:
             session = await self._directory.get(handle)
         except DirectoryError as exc:
@@ -418,9 +458,7 @@ class MessengerService:
                 "of the scope you mean (e.g. 'billing service')."
             )
         scope_contains, capability = broadcast_query(query)
-        result = await self._directory.query(
-            scope_contains=scope_contains, capability=capability
-        )
+        result = await self._directory.query(scope_contains=scope_contains, capability=capability)
         recipients = [
             session.handle
             for session in result.sessions
@@ -447,29 +485,72 @@ class MessengerService:
     # -- read ------------------------------------------------------------
 
     async def check(self, handle: str, session_secret: str) -> CheckResult:
-        """Every new envelope for ``handle``, marked delivered.
+        """Every envelope for ``handle`` that is not acked yet.
 
-        Fires ``message.received`` per envelope — metadata only, which is
-        the SPEC's contract test: the body reaches the recipient through
-        this call's *result*, and never travels the bus.
+        New ones are marked delivered; ones delivered by an earlier call and
+        still unacked come back again (at-least-once, issue #340), listed in
+        ``redelivered`` so a client can tell a repeat from news. Fires
+        ``message.received`` once per envelope, on the call that first
+        delivers it — metadata only, which is the SPEC's contract test: the
+        body reaches the recipient through this call's *result*, and never
+        travels the bus.
         """
         await self._authenticate(handle, session_secret)
-        items, expired = await asyncio.to_thread(self._store.check, handle)
+        items, expired, newly_delivered = await asyncio.to_thread(self._store.check, handle)
         self._emit_expired(expired)
         for item in items:
-            self._emit("message.received", EnvelopeMetadata.of(item).model_dump())
-        return CheckResult(handle=handle, envelopes=[item.envelope for item in items])
+            if item.envelope.id in newly_delivered:
+                self._emit("message.received", EnvelopeMetadata.of(item).model_dump())
+        return CheckResult(
+            handle=handle,
+            envelopes=[item.envelope for item in items],
+            redelivered=[
+                item.envelope.id for item in items if item.envelope.id not in newly_delivered
+            ],
+        )
+
+    async def owner_inbox(self) -> CheckResult:
+        """The owner's inbox (issue #365) — everything sent ``to='owner'``
+        and not acked yet, bodies included ("bodies only for the owner via
+        the admin surface"). Reading marks envelopes delivered, as
+        :meth:`check` does for a session. No secret: the one caller,
+        ``GET /api/messenger/inbox``, sits behind the owner's signed-in
+        session."""
+        items, expired, newly_delivered = await asyncio.to_thread(self._store.check, OWNER_HANDLE)
+        self._emit_expired(expired)
+        for item in items:
+            if item.envelope.id in newly_delivered:
+                self._emit("message.received", EnvelopeMetadata.of(item).model_dump())
+        return CheckResult(
+            handle=OWNER_HANDLE,
+            envelopes=[item.envelope for item in items],
+            redelivered=[
+                item.envelope.id for item in items if item.envelope.id not in newly_delivered
+            ],
+        )
+
+    async def owner_ack(self, envelope_id: str) -> AckResult:
+        """Close one envelope in the owner's inbox (issue #365)."""
+        return await self._ack_as(OWNER_HANDLE, envelope_id)
 
     async def ack(self, handle: str, session_secret: str, envelope_id: str) -> AckResult:
         """Close one envelope in the caller's own inbox."""
         await self._authenticate(handle, session_secret)
-        item, expired = await asyncio.to_thread(self._store.ack, envelope_id, handle)
+        return await self._ack_as(handle, envelope_id)
+
+    async def _ack_as(self, recipient: str, envelope_id: str) -> AckResult:
+        item, expired, newly_delivered = await asyncio.to_thread(
+            self._store.ack, envelope_id, recipient
+        )
         self._emit_expired(expired)
+        if newly_delivered:
+            # Acked without a prior check (issue #396): the envelope still
+            # reached its recipient, so the delivery event fires here.
+            delivered = EnvelopeMetadata.of(item).model_copy(update={"state": "delivered"})
+            self._emit("message.received", delivered.model_dump())
         return AckResult(id=item.envelope.id, acked=True, state=item.state)
 
-    async def thread(
-        self, handle: str, session_secret: str, envelope_id: str
-    ) -> ThreadResult:
+    async def thread(self, handle: str, session_secret: str, envelope_id: str) -> ThreadResult:
         """One envelope's reply chain, narrowed to the caller's own copies.
 
         The narrowing is the fence: a thread can contain envelopes addressed
@@ -481,16 +562,16 @@ class MessengerService:
         await self._authenticate(handle, session_secret)
         items, expired = await asyncio.to_thread(self._store.thread, envelope_id)
         self._emit_expired(expired)
-        mine = [
-            item for item in items if handle in (item.envelope.from_, item.recipient)
-        ]
+        mine = [item for item in items if handle in (item.envelope.from_, item.recipient)]
         if not mine:
             raise NotYourEnvelopeError(
                 f"envelope {envelope_id!r} is not part of any thread you took part "
                 "in. Fix: pass an id from your own messenger_check result."
             )
+        # The thread's true root (issue #396) — the same id
+        # ``thread_metadata`` reports, not the caller's first own copy.
         return ThreadResult(
-            root_id=mine[0].envelope.id, envelopes=[item.envelope for item in mine]
+            root_id=items[0].envelope.id, envelopes=[item.envelope for item in mine]
         )
 
     # -- REST mirror (the owner's admin surface) --------------------------

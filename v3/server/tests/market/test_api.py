@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 
 import httpx
@@ -37,6 +38,9 @@ def app(tmp_path: Path) -> FastAPI:
         cache_dir=tmp_path / "registry_cache",
     )
     curated_client = CuratedIndexClient(
+        index_url="https://index.example.test/market-index.json",
+        # Any well-formed key: the offline handler never yields a document to verify.
+        public_key_b64=base64.b64encode(bytes(32)).decode(),
         client=httpx.AsyncClient(transport=httpx.MockTransport(_offline_curated_handler)),
         last_good_path=tmp_path / "last_good.json",
     )

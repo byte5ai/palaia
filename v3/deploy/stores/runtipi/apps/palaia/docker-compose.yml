@@ -1,13 +1,29 @@
+# Runtipi's classic app format (issue #395): a plain compose file that
+# Runtipi rewrites at install time — `${APP_PORT}` and `${APP_DATA_DIR}` are
+# substituted by Runtipi, and every app joins `tipi_main_network`. The
+# `x-runtipi` keys belong to the *dynamic* format (`dynamic_config: true` +
+# `docker-compose.json`), which this package does not use; `config.json`
+# says `dynamic_config: false` to match. Not validated on a live Runtipi
+# instance in this repository — SUBMIT.md names that as the owner's step.
 services:
   hub:
     image: ghcr.io/byte5ai/palaia-hub:stable
+    container_name: palaia
+    restart: unless-stopped
+    # The image's own non-root user, pinned to 1000:1000 (v3/deploy/Dockerfile,
+    # issue #329) — the ownership Runtipi gives ${APP_DATA_DIR}, so the bind
+    # mount below is writable on first boot.
+    user: "1000:1000"
+    ports:
+      - ${APP_PORT}:8420
     environment:
       - PALAIA_MODE=locked
       - PALAIA_DEPLOYMENT=runtipi
     volumes:
       - ${APP_DATA_DIR}/data:/data
-    x-runtipi:
-      is_main: true
-      internal_port: 8420
-x-runtipi:
-  schema_version: 2
+    networks:
+      - tipi_main_network
+
+networks:
+  tipi_main_network:
+    external: true

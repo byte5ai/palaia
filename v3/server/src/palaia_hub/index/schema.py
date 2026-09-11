@@ -108,6 +108,7 @@ CREATE TABLE observations (
 );
 CREATE INDEX observations_note ON observations(note_id);
 CREATE INDEX observations_category ON observations(category);
+CREATE INDEX observations_permalink ON observations(permalink);
 
 CREATE TABLE relations (
     id               INTEGER PRIMARY KEY,
@@ -126,6 +127,7 @@ CREATE INDEX relations_note ON relations(note_id);
 CREATE INDEX relations_target_permalink ON relations(target_permalink);
 CREATE INDEX relations_target_key ON relations(target_key);
 CREATE INDEX relations_target_slug ON relations(target_slug);
+CREATE INDEX relations_permalink ON relations(permalink);
 
 CREATE TABLE search_rows (
     id      INTEGER PRIMARY KEY,
@@ -187,7 +189,16 @@ CREATE TABLE note_access (
 #: known (it is part of the table declaration).
 VEC_TABLE_SQL = "CREATE VIRTUAL TABLE vec_chunks USING vec0(embedding float[{dim}])"
 
+#: Indexes added after a schema version shipped (issue #404). Applied with
+#: ``IF NOT EXISTS`` on every open, so an existing database gains them
+#: without the drop-and-rebuild a version bump would cost every hub.
+ADDITIVE_INDEX_SQL = (
+    "CREATE INDEX IF NOT EXISTS observations_permalink ON observations(permalink)",
+    "CREATE INDEX IF NOT EXISTS relations_permalink ON relations(permalink)",
+)
+
 __all__ = [
+    "ADDITIVE_INDEX_SQL",
     "KIND_NOTE",
     "KIND_OBSERVATION",
     "KIND_RELATION",

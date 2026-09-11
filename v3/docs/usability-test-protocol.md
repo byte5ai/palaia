@@ -133,12 +133,15 @@ Concretely:
 These are known, already-documented gaps this protocol was written
 against — expected, not a sign the session is going wrong:
 
-- The wizard's "Owner account" and "Access mode" steps (Task 1) are real,
-  clickable UI, but only "First vault" and "First client" are wired to the
-  server today (`v3/web/src/routes/onboarding/Onboarding.tsx`'s own
-  comment says so). If the tester's browser session resets mid-wizard,
-  they may need to redo the first two steps' clicks — that is expected,
-  not evidence the install failed.
+- Of the wizard's four steps (Task 1), "Owner account", "First vault" and
+  "First client" are wired to the server: the first creates the hub's
+  owner account and signs the browser in (issue 342), the other two create
+  the vault and issue the client's token. "Access mode" is a read-only
+  preview by design — it shows the hub's current mode and points at the
+  Access page for changing it (`v3/web/src/routes/onboarding/Onboarding.tsx`'s
+  own comment says so). A tester who tries to change the mode there and
+  cannot is seeing the intended behaviour, not a bug; note it as a
+  finding only if they could not find the way to the Access page.
 - Two different AI tools authenticate differently depending on which
   you picked for Tasks 2/4 (some do a browser sign-in automatically, some
   use a pasted address with no separate sign-in step) — both are correct;

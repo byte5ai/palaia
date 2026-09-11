@@ -111,20 +111,24 @@ file (basic-memory indexes attachments as opaque entities; v3 import does
 not ingest attachments in v1); a file whose frontmatter fence is present but
 unparseable YAML; a file that cannot be decoded as UTF-8.
 
-## Cold-embed as a background job (honest scope note)
+## Embedding after an import
 
-SPEC-104 (index + search, including vector embedding) is a separate,
-parallel, not-yet-merged SPEC. Import therefore **never blocks on
-embedding**: notes land on disk (and are immediately FTS-searchable the
-moment a search index exists, since files are the only truth) via the same
-synchronous write-through path as any other engine write. What this SPEC
-adds is a seam for the embedding work that SPEC-104 (or a later wiring
-SPEC) will actually perform: every imported note's permalink is appended to
-a per-vault queue file (`.palaia/import-embed-queue.jsonl`,
-`importers/embed_queue.py`), and `queue_status()` reports a pending/embedded
-count in the same shape as SPEC-107's `inbox_status` — so a dashboard tile
-or an `embed_status`-style API call already has something correctly-shaped
-to read. **No embedding is actually computed here** — there is no model
-wired into this codebase yet; the queue is deliberately append-only and
-never marks anything embedded until a future worker exists to do it
-honestly.
+Import **never blocks on embedding**: notes land on disk via the same
+synchronous write-through path as any other engine write, and are
+FTS-searchable at once. Each write publishes a change event on the
+engine's bus; the vault's `VaultIndex` (opened by the running hub for every
+vault it serves, and by the `import` CLI subcommand for a bare import)
+inserts the note's chunks as *pending* and its background worker embeds
+them. `embed_status` / `embed_progress` are the live progress read. The
+importer keeps no queue of its own — the `.palaia/import-embed-queue.jsonl`
+file an earlier version appended to was inert bookkeeping from before the
+index existed and was removed (issue #398); an old vault may still carry
+the file, which nothing reads.
+
+Idempotence is by **exact permalink**: a source item whose mapped permalink
+already exists in the vault is skipped as `already-imported`. Titles and
+aliases do not count (issue #398 — a pre-existing note merely *titled* like
+an import permalink used to cause a silent skip). Note that the v2 mapping's
+`hash8` suffix is `slugify(source_id)[:12]`, which folds case and
+underscore differences between ids; two v2 ids differing only in those
+would map to one permalink and the second would be skipped.

@@ -34,7 +34,10 @@ package = false
 palaia-hub = { workspace = true }
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "palaia-hub[dev,embeddings]"]
+# The server's test/tooling dependencies are its own `dev` dependency group
+# (server/pyproject.toml, issue #396) — `uv sync --all-packages` installs
+# every member's default groups, so only the extras are named here.
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "palaia-hub[embeddings]"]
 
 [tool.pytest.ini_options]
 testpaths = ["server/tests"]

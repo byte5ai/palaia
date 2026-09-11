@@ -49,6 +49,13 @@ export interface SignInInfo {
   sign_in_url?: string | null;
 }
 
+/** `GET`/`POST /api/auth/owner` (issue 342): whether the one owner account
+ * exists. Hand-written like `SignInInfo` — the generator's hub has no
+ * sign-in server, so the route is not in the committed schema. */
+export interface OwnerAccountState {
+  configured: boolean;
+}
+
 /**
  * `GET /api/update/check` (SPEC-501). Hand-written for the same reason as
  * `SignInInfo` above: the route returns `dict[str, Any]` (no Pydantic
@@ -138,6 +145,27 @@ export interface GraphNode {
 export interface LocalGraph {
   outbound: GraphNode[];
   inbound: GraphNode[];
+}
+
+/** One curator maintenance proposal waiting for the owner's decision —
+ * mirrors `palaia_hub.gateway.vault_protocol.ProposalSummary`. */
+export interface ProposalSummary {
+  permalink: string;
+  title: string;
+  status: string;
+  created: string;
+  /** The proposal's full markdown: the explanation, the plan, pre-images. */
+  body: string;
+}
+
+export interface ReviewQueueResult {
+  proposals: ProposalSummary[];
+  decide_tool: string;
+}
+
+export interface ReviewDecideResult {
+  permalink: string;
+  status: string;
 }
 
 export interface InboxStatus {
@@ -371,7 +399,12 @@ export interface NotificationRecord {
  * `market_service` is given to `create_app`), hand-written for the same
  * reason the other opt-in surfaces above are. Mirrors
  * `palaia_hub.market.models.MarketEntry`. */
-export type MarketEntryKind = "remote" | "container" | "mcpb" | "skill" | "plugin";
+export type MarketEntryKind =
+  | "remote"
+  | "container"
+  | "mcpb"
+  | "skill"
+  | "plugin";
 export type MarketProvenance = "registry" | "curated" | "manual";
 export type MarketSourceType = "registry_ref" | "image" | "url";
 
@@ -417,9 +450,26 @@ export interface MarketSearchResult {
   notes: Record<string, string>;
 }
 
+/** What installing an entry would actually run or connect to (issue 349) —
+ * the consent screen shows it before asking, and the token the hub issues
+ * is bound to `plan_hash`: an install whose plan no longer matches is
+ * refused with a 409. */
+export interface PlanPreview {
+  kind: "stdio" | "http" | "container";
+  /** `stdio`: the exact executable and its arguments. */
+  command: string | null;
+  args: string[];
+  /** `http`: the address the hub will connect to. */
+  url: string | null;
+  /** `container`: the image that will be pulled and run. */
+  image: string | null;
+  plan_hash: string;
+}
+
 export interface ConsentToken {
   token: string;
   expires_at: number;
+  preview: PlanPreview;
 }
 
 export interface InstalledAddon {
@@ -468,7 +518,12 @@ export interface DeregisterResult {
   deregistered: boolean;
 }
 
-export type MessageType = "request" | "inform" | "question" | "handoff" | "broadcast";
+export type MessageType =
+  | "request"
+  | "inform"
+  | "question"
+  | "handoff"
+  | "broadcast";
 export type Urgency = "low" | "normal" | "high";
 export type DeliveryState = "pending" | "delivered" | "acked";
 
@@ -620,6 +675,8 @@ interface RequestOptions {
   body?: unknown;
   /** Set false for a call with no response body to parse (a 204 DELETE). */
   expectJson?: boolean;
+  /** Issue 384: lets a screen cancel a request its next keystroke made stale. */
+  signal?: AbortSignal;
 }
 
 function signInUrlFrom(body: unknown): string | null {
@@ -642,6 +699,7 @@ async function request<T>(
   const response = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
+    ...(options.signal ? { signal: options.signal } : {}),
     ...(options.body === undefined
       ? {}
       : { body: JSON.stringify(options.body) }),
@@ -663,12 +721,56 @@ async function request<T>(
   return (await response.json()) as T;
 }
 
-function getJson<T>(path: string): Promise<T> {
-  return request<T>(path);
+function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return request<T>(path, { signal });
 }
 
-function postJson<T>(path: string, body: unknown): Promise<T> {
-  return request<T>(path, { method: "POST", body });
+/** A file the hub served: its bytes and the name it suggested, if any. */
+export interface DownloadedFile {
+  blob: Blob;
+  filename: string | null;
+}
+
+function filenameFrom(disposition: string | null): string | null {
+  if (!disposition) return null;
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+/**
+ * Fetch a file through the same door as every JSON call (issue 382): a
+ * plain `<a href>` to a gated endpoint saved the gate's JSON refusal as
+ * the download, and a raw `fetch` skipped the 401 → sign-in redirect the
+ * rest of the dashboard relies on.
+ */
+async function requestBlob(path: string): Promise<DownloadedFile> {
+  const response = await fetch(`${API_BASE}${path}`);
+  if (!response.ok) {
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      body = "";
+    }
+    if (response.status === 401) {
+      const signInUrl = signInUrlFrom(body);
+      if (signInUrl) redirectToSignIn(signInUrl);
+    }
+    throw new ApiError(path, response.status, body);
+  }
+  const headers: Headers | undefined = response.headers;
+  return {
+    blob: await response.blob(),
+    filename: filenameFrom(headers?.get?.("content-disposition") ?? null),
+  };
+}
+
+function postJson<T>(
+  path: string,
+  body: unknown,
+  signal?: AbortSignal,
+): Promise<T> {
+  return request<T>(path, { method: "POST", body, signal });
 }
 
 function patchJson<T>(path: string, body: unknown): Promise<T> {
@@ -681,6 +783,17 @@ function putJson<T>(path: string, body: unknown): Promise<T> {
 
 function deleteRequest(path: string): Promise<void> {
   return request<void>(path, { method: "DELETE", expectJson: false });
+}
+
+/** One path segment (a vault key, a profile path, an id): percent-encoded
+ * so a `#`, `?` or `/` in the value cannot rewrite the request (issue 399). */
+function seg(value: string | number): string {
+  return encodeURIComponent(String(value));
+}
+
+/** A permalink is a `/`-joined path — each segment encoded, the slashes kept. */
+function permalinkPath(permalink: string): string {
+  return permalink.split("/").map(encodeURIComponent).join("/");
 }
 
 function queryString(
@@ -696,9 +809,22 @@ function queryString(
   return `?${search.toString()}`;
 }
 
+/** Issue 384: the shell's mode indicator, the sidebar and Home all ask for
+ * `/api/info` on mount. One request answers everyone asking at the same
+ * moment; the next call after it settles fetches afresh, so nothing goes
+ * stale. */
+let infoInFlight: Promise<InfoResponse> | null = null;
+
 export const api = {
   health: () => getJson<HealthResponse>("/api/health"),
-  info: () => getJson<InfoResponse>("/api/info"),
+  info: (): Promise<InfoResponse> => {
+    if (!infoInFlight) {
+      infoInFlight = getJson<InfoResponse>("/api/info").finally(() => {
+        infoInFlight = null;
+      });
+    }
+    return infoInFlight;
+  },
   /** SPEC-501: "up to date" / "update available" / "could not check", plus
    * per-deployment guidance for the dashboard's update banner. */
   updateCheck: () => getJson<UpdateCheckResponse>("/api/update/check"),
@@ -741,6 +867,11 @@ export const api = {
    * does, and the admin gate answers 401 (redirecting to sign-in) exactly
    * like it would for a fetch call if that session is missing. */
   backupUrl: () => `${API_BASE}/api/backup`,
+  /** The archive itself, fetched like every other call (issue 382). */
+  downloadBackup: () => requestBlob("/api/backup"),
+  /** Any hub-served file by its dashboard-relative path — the Claude
+   * Desktop bundle, for one. */
+  downloadFile: (path: string) => requestBlob(path),
 
   // ---- SPEC-110: wizard + memory explorer ----
   listVaults: () => getJson<VaultSummary[]>("/api/vaults"),
@@ -752,30 +883,59 @@ export const api = {
   }) => postJson<VaultSummary>("/api/vaults", body),
   listNotes: (vaultKey: string, folder = "") =>
     getJson<NoteSummary[]>(
-      `/api/vaults/${vaultKey}/notes${queryString({ folder })}`,
+      `/api/vaults/${seg(vaultKey)}/notes${queryString({ folder })}`,
     ),
   readNote: (vaultKey: string, permalink: string) =>
-    getJson<NoteRecord>(`/api/vaults/${vaultKey}/notes/${permalink}`),
+    getJson<NoteRecord>(
+      `/api/vaults/${seg(vaultKey)}/notes/${permalinkPath(permalink)}`,
+    ),
   noteHistory: (vaultKey: string, permalink: string) =>
     getJson<CommitSummary[]>(
-      `/api/vaults/${vaultKey}/notes/${permalink}/history`,
+      `/api/vaults/${seg(vaultKey)}/notes/${permalinkPath(permalink)}/history`,
     ),
   noteGraph: (vaultKey: string, permalink: string) =>
-    getJson<LocalGraph>(`/api/vaults/${vaultKey}/notes/${permalink}/graph`),
-  search: (vaultKey: string, q: string) =>
-    getJson<SearchHit[]>(`/api/vaults/${vaultKey}/search${queryString({ q })}`),
+    getJson<LocalGraph>(
+      `/api/vaults/${seg(vaultKey)}/notes/${permalinkPath(permalink)}/graph`,
+    ),
+  search: (vaultKey: string, q: string, signal?: AbortSignal) =>
+    getJson<SearchHit[]>(
+      `/api/vaults/${seg(vaultKey)}/search${queryString({ q })}`,
+      signal,
+    ),
   inboxStatus: (vaultKey: string) =>
-    getJson<InboxStatus>(`/api/vaults/${vaultKey}/inbox_status`),
+    getJson<InboxStatus>(`/api/vaults/${seg(vaultKey)}/inbox_status`),
+  /** The review queue's dashboard mirror (SPEC-208, issue 375): the same
+   * proposals and the same decision the review-queue app makes in a client. */
+  listReviewQueue: (vaultKey: string) =>
+    getJson<ReviewQueueResult>(`/api/vaults/${seg(vaultKey)}/review`),
+  decideReview: (
+    vaultKey: string,
+    permalink: string,
+    decision: "approved" | "rejected",
+  ) =>
+    postJson<ReviewDecideResult>(
+      `/api/vaults/${seg(vaultKey)}/review/${permalinkPath(permalink)}/decision`,
+      { decision },
+    ),
   indexStatus: (vaultKey: string) =>
-    getJson<IndexStatus>(`/api/vaults/${vaultKey}/index_status`),
+    getJson<IndexStatus>(`/api/vaults/${seg(vaultKey)}/index_status`),
 
   // ---- SPEC-504: the local-only first-run funnel ----
   funnelStatus: () => getJson<FunnelStatus>("/api/funnel/status"),
 
+  // ---- issue 342: the wizard's owner-account step ----
+  /** Whether this hub has its one owner account. 404 on a hub with no
+   * sign-in server at all — the wizard reads that as "nothing to set up". */
+  ownerAccount: () => getJson<OwnerAccountState>("/api/auth/owner"),
+  /** Create the owner account — accepted only while none exists (409
+   * after) — and sign this browser in with it. */
+  createOwnerAccount: (body: { username: string; password: string }) =>
+    postJson<OwnerAccountState>("/api/auth/owner", body),
+
   // ---- SPEC-305: the tool-profile editor ----
   listGatewayProfiles: () => getJson<GatewayProfile[]>("/api/gateway/profiles"),
   listGatewayProfileTools: (profilePath: string) =>
-    getJson<GatewayTool[]>(`/api/gateway/profiles/${profilePath}/tools`),
+    getJson<GatewayTool[]>(`/api/gateway/profiles/${seg(profilePath)}/tools`),
   createGatewayProfile: (body: {
     path: string;
     label?: string | null;
@@ -795,34 +955,48 @@ export const api = {
       semantic_routing?: boolean;
       upstreams?: string[];
     },
-  ) => patchJson<GatewayProfile>(`/api/gateway/profiles/${profilePath}`, body),
+  ) =>
+    patchJson<GatewayProfile>(
+      `/api/gateway/profiles/${seg(profilePath)}`,
+      body,
+    ),
   deleteGatewayProfile: (profilePath: string) =>
-    deleteRequest(`/api/gateway/profiles/${profilePath}`),
-  listGatewayVaults: () => getJson<GatewayVaultIdentity[]>("/api/gateway/vaults"),
+    deleteRequest(`/api/gateway/profiles/${seg(profilePath)}`),
+  listGatewayVaults: () =>
+    getJson<GatewayVaultIdentity[]>("/api/gateway/vaults"),
   updateGatewayVault: (
     vaultKey: string,
-    body: { name?: string; purpose?: string; tool_renames?: Record<string, string> },
-  ) => patchJson<GatewayVaultIdentity>(`/api/gateway/vaults/${vaultKey}`, body),
+    body: {
+      name?: string;
+      purpose?: string;
+      tool_renames?: Record<string, string>;
+    },
+  ) =>
+    patchJson<GatewayVaultIdentity>(
+      `/api/gateway/vaults/${seg(vaultKey)}`,
+      body,
+    ),
   // SPEC-302's registry, read here so the profile editor (SPEC-304 follow-up)
   // can offer an upstream-server checkbox next to the vault checkboxes.
-  listGatewayUpstreams: () => getJson<GatewayUpstream[]>("/api/gateway/upstreams"),
+  listGatewayUpstreams: () =>
+    getJson<GatewayUpstream[]>("/api/gateway/upstreams"),
 
   // ---- SPEC-108's token surface, consumed here for "connected clients" ----
   listTokens: () => getJson<TokenInfo[]>("/api/auth/tokens"),
   createToken: (body: { name: string; profile: string; scopes?: string[] }) =>
     postJson<CreatedToken>("/api/auth/tokens", { scopes: [], ...body }),
   revokeToken: (tokenId: string) =>
-    deleteRequest(`/api/auth/tokens/${tokenId}`),
+    deleteRequest(`/api/auth/tokens/${seg(tokenId)}`),
 
   // ---- SPEC-201's webhook surface ----
   listHooks: () => getJson<HookInfo[]>("/api/hooks"),
   createHook: (body: { url: string; events?: string[] }) =>
     postJson<CreatedHook>("/api/hooks", body),
   setHookEnabled: (hookId: string, enabled: boolean) =>
-    patchJson<HookInfo>(`/api/hooks/${hookId}`, { enabled }),
-  deleteHook: (hookId: string) => deleteRequest(`/api/hooks/${hookId}`),
+    patchJson<HookInfo>(`/api/hooks/${seg(hookId)}`, { enabled }),
+  deleteHook: (hookId: string) => deleteRequest(`/api/hooks/${seg(hookId)}`),
   hookDeadLetters: (hookId: string) =>
-    getJson<DeadLetter[]>(`/api/hooks/${hookId}/dead_letters`),
+    getJson<DeadLetter[]>(`/api/hooks/${seg(hookId)}/dead_letters`),
 
   // ---- SPEC-307's automations editor ----
   listAutomations: () => getJson<AutomationInfo[]>("/api/automations"),
@@ -841,20 +1015,27 @@ export const api = {
       action?: AutomationAction;
       condition?: ConditionClause[];
     },
-  ) => putJson<AutomationInfo>(`/api/automations/${automationId}`, body),
+  ) => putJson<AutomationInfo>(`/api/automations/${seg(automationId)}`, body),
   setAutomationEnabled: (automationId: string, enabled: boolean) =>
-    patchJson<AutomationInfo>(`/api/automations/${automationId}`, { enabled }),
+    patchJson<AutomationInfo>(`/api/automations/${seg(automationId)}`, {
+      enabled,
+    }),
   deleteAutomation: (automationId: string) =>
-    deleteRequest(`/api/automations/${automationId}`),
+    deleteRequest(`/api/automations/${seg(automationId)}`),
   automationDeliveries: (automationId: string) =>
-    getJson<DeliveryLogEntry[]>(`/api/automations/${automationId}/deliveries`),
+    getJson<DeliveryLogEntry[]>(
+      `/api/automations/${seg(automationId)}/deliveries`,
+    ),
   testFireAutomation: (
     automationId: string,
     data: Record<string, unknown> = {},
   ) =>
-    postJson<DeliveryLogEntry>(`/api/automations/${automationId}/test_fire`, {
-      data,
-    }),
+    postJson<DeliveryLogEntry>(
+      `/api/automations/${seg(automationId)}/test_fire`,
+      {
+        data,
+      },
+    ),
 
   // ---- SPEC-307's notification center ----
   listNotifications: (unreadOnly = false) =>
@@ -865,7 +1046,7 @@ export const api = {
     getJson<{ count: number }>("/api/notifications/unread_count"),
   markNotificationRead: (notificationId: number) =>
     postJson<NotificationRecord>(
-      `/api/notifications/${notificationId}/read`,
+      `/api/notifications/${seg(notificationId)}/read`,
       {},
     ),
   markAllNotificationsRead: () =>
@@ -876,20 +1057,27 @@ export const api = {
   changeMode: (body: ModeChangeRequest) =>
     postJson<ModeStatus>("/api/mode", body),
   exposure: () => getJson<ExposureStatus>("/api/exposure"),
-  tunnelGuidance: (body: {
-    kind: "tailscale" | "cloudflared";
-    local_port?: number;
-    hostname?: string;
-  }) => postJson<TunnelGuidance>("/api/exposure/tunnel", body),
+  tunnelGuidance: (
+    body: {
+      kind: "tailscale" | "cloudflared";
+      local_port?: number;
+      hostname?: string;
+    },
+    signal?: AbortSignal,
+  ) => postJson<TunnelGuidance>("/api/exposure/tunnel", body, signal),
   selfTest: (publicUrl: string) =>
     postJson<SelfTestResult>("/api/exposure/selftest", {
       public_url: publicUrl,
     }),
 
   // ---- SPEC-303/304: the marketplace ----
-  searchMarket: (q = "", source?: MarketProvenance) =>
-    getJson<MarketSearchResult>(`/api/market/search${queryString({ q, source })}`),
-  getMarketEntry: (entryId: string) => getJson<MarketEntry>(`/api/market/entry/${entryId}`),
+  searchMarket: (q = "", source?: MarketProvenance, signal?: AbortSignal) =>
+    getJson<MarketSearchResult>(
+      `/api/market/search${queryString({ q, source })}`,
+      signal,
+    ),
+  getMarketEntry: (entryId: string) =>
+    getJson<MarketEntry>(`/api/market/entry/${seg(entryId)}`),
   createManualMarketEntry: (body: {
     id: string;
     name: string;
@@ -900,11 +1088,15 @@ export const api = {
     permissions?: string[];
     maintainer: string;
   }) => postJson<MarketEntry>("/api/market/manual", body),
+  /** What an install would run or connect to, derived before anything
+   * happens (issue 349) — the consent screen renders it. */
+  getMarketPlan: (entryId: string) =>
+    getJson<PlanPreview>(`/api/market/entry/${seg(entryId)}/plan`),
   /** The consent screen's own POST (SPEC-304 deliverable #3) — the token
    * it returns is what `installMarketEntry` below must be given; there is
    * no install path that skips this call. */
   issueMarketConsent: (entryId: string) =>
-    postJson<ConsentToken>(`/api/market/entry/${entryId}/consent`, {}),
+    postJson<ConsentToken>(`/api/market/entry/${seg(entryId)}/consent`, {}),
   installMarketEntry: (
     entryId: string,
     body: {
@@ -913,12 +1105,16 @@ export const api = {
       profiles?: string[];
       display_name?: string | null;
     },
-  ) => postJson<InstalledAddon>(`/api/market/entry/${entryId}/install`, body),
+  ) =>
+    postJson<InstalledAddon>(`/api/market/entry/${seg(entryId)}/install`, body),
   listInstalledAddons: () => getJson<InstalledAddon[]>("/api/market/installed"),
   updateInstalledAddon: (upstreamKey: string) =>
-    postJson<InstalledAddon>(`/api/market/installed/${upstreamKey}/update`, {}),
+    postJson<InstalledAddon>(
+      `/api/market/installed/${seg(upstreamKey)}/update`,
+      {},
+    ),
   uninstallAddon: (upstreamKey: string) =>
-    deleteRequest(`/api/market/installed/${upstreamKey}`),
+    deleteRequest(`/api/market/installed/${seg(upstreamKey)}`),
 
   // ---- SPEC-402/405: the session directory ----
   listSessions: (params: { status?: SessionStatus; platform?: string } = {}) =>
@@ -931,18 +1127,25 @@ export const api = {
    * secret. Idempotent — an already-gone handle answers
    * `deregistered: false`, not an error. */
   deregisterSession: (handle: string) =>
-    postJson<DeregisterResult>(`/api/directory/${handle}/deregister`, {}),
+    postJson<DeregisterResult>(`/api/directory/${seg(handle)}/deregister`, {}),
 
   // ---- SPEC-403/405: the messenger ----
   messageFlows: (
-    params: { handle?: string; type?: MessageType; state?: DeliveryState; limit?: number } = {},
+    params: {
+      handle?: string;
+      type?: MessageType;
+      state?: DeliveryState;
+      limit?: number;
+    } = {},
   ) => getJson<MessageFlowsResult>(`/api/messenger/${queryString(params)}`),
   messageThread: (envelopeId: string) =>
-    getJson<ThreadMetadataResult>(`/api/messenger/threads/${envelopeId}`),
+    getJson<ThreadMetadataResult>(`/api/messenger/threads/${seg(envelopeId)}`),
   /** The owner's body-bearing read (deliverable #1: "body on expand") —
    * the one route on this mirror that ever returns a body. */
   envelopeDetail: (envelopeId: string) =>
-    getJson<EnvelopeDetailResult>(`/api/messenger/envelopes/${envelopeId}`),
+    getJson<EnvelopeDetailResult>(
+      `/api/messenger/envelopes/${seg(envelopeId)}`,
+    ),
   /** Owner control (SPEC-405 deliverable #2): compose and send as the
    * owner. No handle/secret in the body — the owner has neither; the
    * signed-in session and its CSRF token are the proof of identity. */
@@ -960,5 +1163,8 @@ export const api = {
   /** Owner control (SPEC-405 deliverable #2): end a conversation — expires
    * the thread's still-undelivered envelopes. */
   endConversation: (envelopeId: string) =>
-    postJson<EndConversationResult>(`/api/messenger/threads/${envelopeId}/end`, {}),
+    postJson<EndConversationResult>(
+      `/api/messenger/threads/${seg(envelopeId)}/end`,
+      {},
+    ),
 };

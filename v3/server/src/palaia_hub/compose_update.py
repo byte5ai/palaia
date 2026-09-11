@@ -12,6 +12,7 @@ their behalf.
 from __future__ import annotations
 
 import re
+from typing import Literal
 
 #: The image this helper knows how to retag — the one the shipped
 #: ``v3/deploy/docker-compose.yml`` pins (see that file). A compose file
@@ -19,32 +20,49 @@ import re
 #: :func:`rewrite_compose_channel`'s docstring).
 DEFAULT_IMAGE = "ghcr.io/byte5ai/palaia-hub"
 
-_TAG_PATTERN = re.compile(r"(?P<prefix>image:\s*)(?P<image>[^\s:]+):(?P<tag>[\w.\-]+)")
+#: What :func:`rewrite_compose_channel` found (issue #371): the tag was
+#: switched, the file already pinned the channel, or no line pins the image
+#: at all — three different things the CLI must say three different ways.
+RewriteOutcome = Literal["changed", "already", "not_found"]
+
+# An ``image:`` value, bare or quoted (``image: "ghcr.io/…:stable"`` is how
+# many people write it — issue #371); the closing quote must match the
+# opening one.
+_TAG_PATTERN = re.compile(
+    r"(?P<prefix>image:\s*)(?P<quote>[\"']?)(?P<image>[^\s:\"']+):(?P<tag>[\w.\-]+)(?P=quote)"
+)
 
 
 def rewrite_compose_channel(
     text: str, channel: str, *, image: str = DEFAULT_IMAGE
-) -> tuple[str, bool]:
+) -> tuple[str, RewriteOutcome]:
     """Rewrite every ``image: <image>:<tag>`` line for ``image`` to pin
     ``channel`` as the tag instead. Every other line — comments, other
     services, unrelated images — passes through unchanged.
 
-    Returns ``(new_text, changed)``; ``changed`` is ``False`` when no
-    matching line needed editing (already on this channel, or the file
-    pins a different image entirely — nothing to silently rewrite).
+    Returns ``(new_text, outcome)``: ``"changed"`` when at least one line
+    was retagged, ``"already"`` when every matching line pinned ``channel``
+    already, and ``"not_found"`` when no line pins ``image`` at all (a
+    mirror registry, a different image) — the case the CLI used to report
+    as "already on the channel" while the file stayed as it was.
     """
     changed = False
+    matched = False
 
     def _replace(match: re.Match[str]) -> str:
-        nonlocal changed
+        nonlocal changed, matched
         if match.group("image") != image:
             return match.group(0)
+        matched = True
         if match.group("tag") != channel:
             changed = True
-        return f"{match.group('prefix')}{match.group('image')}:{channel}"
+        quote = match.group("quote")
+        return f"{match.group('prefix')}{quote}{match.group('image')}:{channel}{quote}"
 
     new_text = _TAG_PATTERN.sub(_replace, text)
-    return new_text, changed
+    if changed:
+        return new_text, "changed"
+    return text, "already" if matched else "not_found"
 
 
-__all__ = ["DEFAULT_IMAGE", "rewrite_compose_channel"]
+__all__ = ["DEFAULT_IMAGE", "RewriteOutcome", "rewrite_compose_channel"]

@@ -1,9 +1,19 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ToastProvider } from "../components/Toast";
-import type { EnvelopeMetadata, SessionListResult, SessionRecord } from "../lib/api/client";
+import type {
+  EnvelopeMetadata,
+  SessionListResult,
+  SessionRecord,
+} from "../lib/api/client";
 import { api } from "../lib/api/client";
 import type { EventStreamState } from "../lib/events";
 import { useEventStream } from "../lib/events";
@@ -86,7 +96,9 @@ function mount(stream: EventStreamState = BASE_STREAM) {
  * words: "renders live updates from real session.* events (vitest with
  * SSE fixture)". */
 function LiveShell() {
-  const stream = useEventStream(FakeEventSource as unknown as typeof EventSource);
+  const stream = useEventStream(
+    FakeEventSource as unknown as typeof EventSource,
+  );
   return <Outlet context={stream} />;
 }
 
@@ -135,7 +147,9 @@ describe("Agents screen", () => {
     const listSessions = vi
       .spyOn(api, "listSessions")
       .mockResolvedValueOnce({ sessions: [] } satisfies SessionListResult)
-      .mockResolvedValueOnce({ sessions: [ACTIVE_SESSION] } satisfies SessionListResult);
+      .mockResolvedValueOnce({
+        sessions: [ACTIVE_SESSION],
+      } satisfies SessionListResult);
     vi.spyOn(api, "messageFlows").mockResolvedValue({ flows: [] });
 
     mountLive();
@@ -155,7 +169,9 @@ describe("Agents screen", () => {
   });
 
   it("lists message flows and expands a body only on click", async () => {
-    vi.spyOn(api, "listSessions").mockResolvedValue({ sessions: [ACTIVE_SESSION] });
+    vi.spyOn(api, "listSessions").mockResolvedValue({
+      sessions: [ACTIVE_SESSION],
+    });
     vi.spyOn(api, "messageFlows").mockResolvedValue({ flows: [A_FLOW] });
     const detail = vi.spyOn(api, "envelopeDetail").mockResolvedValue({
       item: {
@@ -183,7 +199,9 @@ describe("Agents screen", () => {
     mount();
     await screen.findByText(A_FLOW.subject);
     expect(detail).not.toHaveBeenCalled();
-    expect(screen.queryByText("the actual message text")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("the actual message text"),
+    ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText(A_FLOW.subject));
 
@@ -226,11 +244,15 @@ describe("Agents screen", () => {
     fireEvent.click(await screen.findByText("End conversation"));
     fireEvent.click(await screen.findByText("Yes, end it"));
 
-    await waitFor(() => expect(endConversation).toHaveBeenCalledWith(A_FLOW.id));
+    await waitFor(() =>
+      expect(endConversation).toHaveBeenCalledWith(A_FLOW.id),
+    );
   });
 
   it("removes an agent from the directory with no secret prompt", async () => {
-    vi.spyOn(api, "listSessions").mockResolvedValue({ sessions: [STALE_SESSION] });
+    vi.spyOn(api, "listSessions").mockResolvedValue({
+      sessions: [STALE_SESSION],
+    });
     vi.spyOn(api, "messageFlows").mockResolvedValue({ flows: [] });
     const deregister = vi
       .spyOn(api, "deregisterSession")
@@ -241,11 +263,15 @@ describe("Agents screen", () => {
     fireEvent.click(screen.getByText("Remove"));
     fireEvent.click(await screen.findByText("Yes, remove"));
 
-    await waitFor(() => expect(deregister).toHaveBeenCalledWith(STALE_SESSION.handle));
+    await waitFor(() =>
+      expect(deregister).toHaveBeenCalledWith(STALE_SESSION.handle),
+    );
   });
 
   it("sends as the owner with the composed schema, no handle or secret asked for", async () => {
-    vi.spyOn(api, "listSessions").mockResolvedValue({ sessions: [ACTIVE_SESSION] });
+    vi.spyOn(api, "listSessions").mockResolvedValue({
+      sessions: [ACTIVE_SESSION],
+    });
     vi.spyOn(api, "messageFlows").mockResolvedValue({ flows: [] });
     vi.spyOn(api, "listVaults").mockResolvedValue([]);
     const sendAsOwner = vi.spyOn(api, "sendAsOwner").mockResolvedValue({
@@ -266,7 +292,9 @@ describe("Agents screen", () => {
     fireEvent.change(screen.getByLabelText("Subject"), {
       target: { value: "a note from the owner" },
     });
-    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "hello there" } });
+    fireEvent.change(screen.getByLabelText("Message"), {
+      target: { value: "hello there" },
+    });
     fireEvent.click(screen.getByText("Send", { selector: "button" }));
 
     await waitFor(() =>
@@ -293,7 +321,9 @@ describe("Agents screen", () => {
     fireEvent.change(screen.getByPlaceholderText("Agent ID, or *"), {
       target: { value: "*" },
     });
-    fireEvent.change(screen.getByLabelText("Subject"), { target: { value: "s" } });
+    fireEvent.change(screen.getByLabelText("Subject"), {
+      target: { value: "s" },
+    });
     fireEvent.change(screen.getByLabelText("Message"), {
       target: { value: "x".repeat(5000) },
     });
@@ -336,7 +366,9 @@ describe("Agents screen copy — no jargon in the surface (system.md §3 rule 0)
     const controls = [
       ...screen.queryAllByRole("heading"),
       ...screen.queryAllByRole("button"),
-      ...Array.from(document.querySelectorAll(".badge, .card__title, .field__label")),
+      ...Array.from(
+        document.querySelectorAll(".badge, .card__title, .field__label"),
+      ),
     ];
 
     expect(controls.length).toBeGreaterThan(5);
@@ -346,5 +378,34 @@ describe("Agents screen copy — no jargon in the surface (system.md §3 rule 0)
         expect(text).not.toMatch(pattern);
       }
     }
+  });
+});
+
+describe("refetch coalescing (issue 384)", () => {
+  it("turns a burst of session events into one refetch, not one per frame", async () => {
+    const listSessions = vi
+      .spyOn(api, "listSessions")
+      .mockResolvedValue({ sessions: [] });
+    vi.spyOn(api, "messageFlows").mockResolvedValue({ flows: [] });
+
+    mountLive();
+    await screen.findByText(/No agents yet/i);
+    expect(listSessions).toHaveBeenCalledTimes(1);
+
+    // Three frames, three renders (one `act` each — the way heartbeats
+    // really arrive), not one batched state update.
+    const source = FakeEventSource.instances.at(-1)!;
+    for (const handle of ["a1", "b2", "c3"]) {
+      act(() => {
+        source.emit("session.updated", {
+          event: "session.updated",
+          data: { handle },
+        });
+      });
+    }
+
+    await waitFor(() => expect(listSessions).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(listSessions).toHaveBeenCalledTimes(2);
   });
 });

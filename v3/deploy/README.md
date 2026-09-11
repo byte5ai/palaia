@@ -16,6 +16,11 @@ docker run -d --name palaia-hub \
   ghcr.io/byte5ai/palaia-hub:stable
 ```
 
+<!-- rc-channel-note -->
+> **Release candidate:** until `3.0.0` is final there is no `stable` image yet. Where a
+> command or file on this page says `ghcr.io/byte5ai/palaia-hub:stable`, use
+> `ghcr.io/byte5ai/palaia-hub:beta` for now.
+
 The five hardening flags are explained in [`docker-compose.yml`](docker-compose.yml)
 and in [Container posture](#container-posture) below; the container runs as a
 non-root user either way, and drops the rest.
@@ -27,7 +32,12 @@ machine). Or use compose:
 cd v3/deploy && docker compose up -d
 ```
 
-Or the convenience script (never required — see `install.sh`):
+Or the convenience script (never required — see `install.sh`; it only
+wraps the `docker run` above). Piping a script from `main` into `bash` is
+the usual trade-off: to read it first, or to pin what you run, download it
+from a release tag instead —
+`curl -fsSLo install.sh https://raw.githubusercontent.com/byte5ai/palaia/v3.<version>/v3/deploy/install.sh`,
+read it, then `bash install.sh` (issue #400):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/byte5ai/palaia/main/v3/deploy/install.sh | bash
@@ -70,6 +80,13 @@ tailnet (SSH, or Tailscale SSH if you enabled it) and use the same two
 commands any other install uses — `docker pull` the new image tag, then
 recreate the container — or run `palaia-hub update` from the dashboard's
 own update banner (see "Updates" above); nothing here needs re-pasting.
+
+**Reboots.** The container is bound to the server's tailnet address, so
+after a reboot it can only start once `tailscaled` has that address. The
+file installs a systemd drop-in that starts Docker after `tailscaled`; if
+the address still arrives late, Docker's `--restart unless-stopped` retries
+the start with a short back-off — a minute or two of "connection refused"
+after a reboot is that retry, not a broken install (issue #400).
 
 **Backing up.** `docker run --rm -v palaia_home:/data -v
 $(pwd):/backup alpine tar czf /backup/palaia-backup.tar.gz -C /data .`
@@ -210,8 +227,8 @@ Published by `.github/workflows/v3-release.yml`:
 | Tag | Trigger |
 |---|---|
 | `edge` | every push to `main` touching `v3/**` |
-| `v3.<version>` and `stable` | a `v3.*` git tag |
-| `beta` | a `v3.*-beta*` / `v3.*-rc*` git tag |
+| `v3.<version>`, `<version>` and `stable` | a `v3.*` git tag (the bare `<version>` tag is what the Home Assistant add-on pulls — issue #394) |
+| `beta` | any pre-release git tag — `v3.*-*` with a SemVer suffix (`-rc1`, `-beta2`, `-alpha1`, `-dev1`) |
 
 Images are `linux/amd64` and `linux/arm64` (Raspberry-class hosts —
 verified in CI via QEMU emulation, per the SPEC's acceptance criteria).
@@ -220,7 +237,10 @@ Each build also bakes `PALAIA_CHANNEL` (matching the table above) and an
 `org.opencontainers.image.version` manifest annotation `/api/update/check`
 reads back — see "Updates (SPEC-501)" above. The workflow also accepts a
 manual `channel` input (`workflow_dispatch`) to additionally tag an
-existing build `stable`/`beta` without cutting a new git tag.
+existing *release* `stable`/`beta` — dispatch it on the `v3.*` tag. On a
+branch commit the input is refused (issue #393): such a build carries no
+release version, so a `stable` pointing at it would make every hub read
+"up to date" against `0.0.0` until the next real tag.
 
 ## Manual verification (fresh Linux VM)
 
@@ -247,7 +267,7 @@ same container:
 
 | Flag | What it does | Why it is safe here |
 |---|---|---|
-| `USER palaia` (in the image) | The hub, nginx and the mDNS announcer all run as an unprivileged system user | Already true before this pass; listed for completeness |
+| `USER palaia` (in the image) | The hub, nginx and the mDNS announcer all run as an unprivileged system user, pinned to uid/gid `1000:1000` so a bind-mounted `/data` can be chowned to a known number (issue #329) | Already true before this pass; listed for completeness |
 | `--security-opt no-new-privileges:true` | No process inside can gain privileges through a setuid binary | Nothing in the image is setuid, and nothing a user installs later should be able to become root |
 | `--cap-drop ALL` | Every Linux capability is removed | The hub binds 8421 and nginx binds 8420 — both above 1024, so not even `NET_BIND_SERVICE` is needed |
 | `--read-only` plus `--tmpfs /tmp --tmpfs /run` | The image's own filesystem cannot be modified at runtime | Everything written at runtime goes to `/data` (the volume) or `/tmp/nginx` (rendered config, temp paths, pid — see `entrypoint.sh` and `nginx.conf.template`); logs go to stdout/stderr |

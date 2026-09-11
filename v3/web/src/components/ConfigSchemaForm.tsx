@@ -8,6 +8,7 @@
  * `Marketplace.tsx`'s install flow for why (the hub never echoes one
  * back either).
  */
+import { useId } from "react";
 import type { MarketConfigSchema } from "../lib/api/client";
 import { LabeledInput, SwitchRow } from "./Field";
 
@@ -16,16 +17,6 @@ export type ConfigFormValues = Record<string, ConfigFormValue>;
 
 /** Field names the schema marks required but the current values leave
  * blank — used to disable the install action until every one is filled. */
-export function missingRequiredFields(
-  schema: MarketConfigSchema | null | undefined,
-  values: ConfigFormValues,
-): string[] {
-  const required = schema?.required ?? [];
-  return required.filter((key) => {
-    const value = values[key];
-    return value === undefined || value === "";
-  });
-}
 
 export function ConfigSchemaForm({
   schema,
@@ -36,12 +27,17 @@ export function ConfigSchemaForm({
   values: ConfigFormValues;
   onChange: (values: ConfigFormValues) => void;
 }) {
+  const formId = useId();
   const properties = schema?.properties ?? {};
   const required = new Set(schema?.required ?? []);
   const keys = Object.keys(properties);
 
   if (keys.length === 0) {
-    return <p className="t-xs t-muted">This add-on needs no setup — it is ready to connect.</p>;
+    return (
+      <p className="t-xs t-muted">
+        This add-on needs no setup — it is ready to connect.
+      </p>
+    );
   }
 
   function setValue(key: string, value: ConfigFormValue) {
@@ -68,13 +64,15 @@ export function ConfigSchemaForm({
         }
 
         if (prop.enum && prop.enum.length > 0) {
+          const selectId = `${formId}-${key}`;
           return (
             <div className="field" key={key}>
-              <span className="field__label">
+              <label className="field__label" htmlFor={selectId}>
                 {label}
                 {suffix}
-              </span>
+              </label>
               <select
+                id={selectId}
                 className="input"
                 value={typeof value === "string" ? value : ""}
                 onChange={(event) => setValue(key, event.target.value)}
@@ -114,7 +112,10 @@ export function ConfigSchemaForm({
               type="number"
               value={value === undefined ? "" : String(value)}
               onChange={(event) =>
-                setValue(key, event.target.value === "" ? "" : Number(event.target.value))
+                setValue(
+                  key,
+                  event.target.value === "" ? "" : Number(event.target.value),
+                )
               }
             />
           );

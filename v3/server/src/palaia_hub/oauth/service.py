@@ -28,25 +28,24 @@ Two invariants worth stating once, because everything below depends on them:
    profile, a grant id and an outcome; never a code, token, verifier, secret
    or password. The redaction filter is the net, not the plan.
 
-**Known residual risk, stated rather than hidden.** SPEC-203's non-goals
-exclude "consent screens beyond the single-owner login", so ``/authorize``
-issues a code as soon as the owner has a live session, with no per-request
-confirmation. The consequence is silent authorization: if the signed-in owner
-is lured into loading a crafted ``/authorize`` URL naming an
-attacker-controlled client and redirect URI, a code is minted and delivered to
-that client, and — since the attacker chose the PKCE challenge — it can be
-exchanged. What limits it today: the client must already be registerable (a
-CIMD document the attacker controls, or a DCR registration), every issued
-grant is visible in ``palaia-hub oauth clients`` and revocable, and access
-tokens are audience-scoped and short-lived. What actually closes it is a
-confirmation step on ``/authorize`` — one POST with the double-submit token
-the sign-in form already uses — which belongs to the SPEC that owns consent
-UX (SPEC-205's exposure work), not to this one. This paragraph exists so the
-gap is a decision on the record rather than an oversight.
+**Consent is a separate step (issue #328).** SPEC-203 shipped ``/authorize``
+issuing a code as soon as the owner had a live session — silent
+authorization, which meant a signed-in owner lured onto a crafted
+``/authorize`` URL naming an attacker-controlled client and redirect URI
+handed that client a code it could exchange (the attacker chose the PKCE
+challenge). :meth:`AuthorizationServer.authorize` now validates the request
+and returns :class:`ConsentRequired` for a plain ``GET``; the route renders
+who is asking (client name, redirect target, scopes) and a form whose
+``POST`` carries the session's double-submit CSRF token — the same token the
+sign-in form and the dashboard use. Only ``decision="allow"`` on that POST
+mints a code; ``"deny"`` sends the client ``access_denied``. A link alone can
+therefore never authorize anything: it takes the owner's click, on this
+origin, in a session that also holds the CSRF cookie.
 """
 
 from __future__ import annotations
 
+import hmac
 import logging
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -64,7 +63,7 @@ from .keys import ALGORITHM, SigningKey, now_seconds
 from .login import LoginThrottle, verify_owner_password
 from .models import ClientRow, IssuedTokens
 from .resources import ResourceRegistry
-from .secrets_util import new_secret
+from .secrets_util import hash_secret, new_secret
 from .store import OAuthStore
 
 logger = logging.getLogger("palaia_hub.oauth.service")
@@ -111,7 +110,24 @@ class LoginRequired:
     next_url: str
 
 
-AuthorizeOutcome = AuthorizeRedirect | LoginRequired
+@dataclass(frozen=True, slots=True)
+class ConsentRequired:
+    """The request is valid; ask the signed-in owner before minting a code.
+
+    Everything the consent page shows, plus ``params`` — the validated
+    authorization request, echoed back as hidden form fields so the
+    confirming ``POST`` carries exactly what was reviewed (issue #328).
+    """
+
+    client_id: str
+    client_name: str
+    redirect_uri: str
+    audience: str
+    scopes: tuple[str, ...]
+    params: dict[str, str]
+
+
+AuthorizeOutcome = AuthorizeRedirect | LoginRequired | ConsentRequired
 
 
 class AuthorizationServer:
@@ -272,7 +288,11 @@ class AuthorizationServer:
     # --------------------------------------------------------------- authorize
 
     async def authorize(
-        self, params: Mapping[str, str], *, session: str | None
+        self,
+        params: Mapping[str, str],
+        *,
+        session: str | None,
+        decision: str | None = None,
     ) -> AuthorizeOutcome:
         """Handle an authorization request.
 
@@ -283,6 +303,13 @@ class AuthorizationServer:
         redirecting to an unvalidated URI would turn this endpoint into an open
         redirector. Once both are known good, every further error is delivered
         *to the client* as a redirect carrying ``error`` and ``state``.
+
+        ``decision`` (issue #328): ``None`` is the browser's plain ``GET`` —
+        the request is validated in full and :class:`ConsentRequired` comes
+        back for the route to render. ``"allow"`` is the owner's confirming
+        ``POST`` (the route has already checked its CSRF token) and mints the
+        code; ``"deny"`` sends the client ``access_denied``. Anything else is
+        an ``invalid_request`` delivered to the client.
         """
         now = self.now()
 
@@ -335,6 +362,24 @@ class AuthorizationServer:
             audience = self.resources.resolve(params.get("resource"))
             scopes = self._resolve_scopes(params.get("scope"), audience)
 
+            if decision is None:
+                return ConsentRequired(
+                    client_id=client.client_id,
+                    client_name=client.client_name,
+                    redirect_uri=redirect_uri,
+                    audience=audience,
+                    scopes=scopes,
+                    params={k: v for k, v in params.items() if isinstance(v, str)},
+                )
+            if decision == "deny":
+                logger.info(
+                    "the owner declined an authorization request from client %s",
+                    client.client_id,
+                )
+                raise OAuthError("access_denied", "The owner declined this request.")
+            if decision != "allow":
+                raise OAuthError("invalid_request", "decision must be 'allow' or 'deny'.")
+
             code = self.store.create_code(
                 client_id=client.client_id,
                 redirect_uri=redirect_uri,
@@ -380,8 +425,7 @@ class AuthorizationServer:
             return client.redirect_uris[0]
         raise OAuthError(
             "invalid_request",
-            "redirect_uri is required because this client registered more than "
-            "one.",
+            "redirect_uri is required because this client registered more than one.",
         )
 
     def _authorize_url(self, params: Mapping[str, str]) -> str:
@@ -419,9 +463,7 @@ class AuthorizationServer:
     def sign_in(self, username: str, password: str) -> tuple[str, int]:
         """Verify the owner's password and open a session. Returns (id, expiry)."""
         now = self.now()
-        verified = verify_owner_password(
-            self.store, username, password, throttle=self.throttle
-        )
+        verified = verify_owner_password(self.store, username, password, throttle=self.throttle)
         session, expires_at = self.store.create_login_session(
             verified, now=now, ttl=self.settings.session_ttl
         )
@@ -467,8 +509,12 @@ class AuthorizationServer:
         assert idp.oidc is not None  # noqa: S101 - IdpSettings validated this
         return idp.oidc.display_name
 
-    async def start_idp_signin(self, next_url: str) -> str:
+    async def start_idp_signin(self, next_url: str, *, browser_nonce: str) -> str:
         """Begin the SPEC-204 flow: mint a ticket, return the provider's URL.
+
+        ``browser_nonce`` is the random value the route just set as a cookie
+        on the starting browser (issue #345); its hash travels with the
+        ticket so :meth:`finish_idp_signin` can require the same browser.
 
         Raises:
             OAuthError: ``server_error`` if no IdP is configured (a routing
@@ -478,21 +524,34 @@ class AuthorizationServer:
         idp_settings = self.settings.idp
         if self._idp is None or idp_settings is None:
             raise OAuthError("server_error", "no sign-in provider is configured.")
+        if not browser_nonce:
+            raise OAuthError("server_error", "the sign-in could not be bound to this browser.")
         now = self.now()
         state = self.store.create_idp_state(
             provider=idp_settings.provider,
             next_url=next_url,
+            nonce_hash=hash_secret(browser_nonce),
             now=now,
             ttl=IDP_STATE_TTL_SECONDS,
         )
         return await self._idp.authorize_url(state=state, redirect_uri=self._idp_redirect_uri())
 
-    async def finish_idp_signin(self, params: Mapping[str, str]) -> tuple[str, int, str]:
+    async def finish_idp_signin(
+        self, params: Mapping[str, str], *, browser_nonce: str
+    ) -> tuple[str, int, str]:
         """Complete the SPEC-204 callback. Returns ``(session, expires_at, next_url)``.
+
+        ``browser_nonce`` is the cookie the callback arrived with; it must
+        be the one the ticket was minted for (issue #345), otherwise a
+        ``state`` an attacker completed at the provider could sign a victim's
+        browser into the attacker's identity — the identity-provider door
+        gets the same login-CSRF protection the password form's
+        double-submit token gives.
 
         Raises:
             OAuthError: ``access_denied`` for an expired/replayed/mismatched
-                ticket, a provider-reported error, a failed exchange, or a
+                ticket, a callback in a browser that did not start the
+                sign-in, a provider-reported error, a failed exchange, or a
                 username outside the allow-list — one code for all of them,
                 the same "reveal nothing about which part failed" discipline
                 :func:`palaia_hub.oauth.login.verify_owner_password` follows.
@@ -505,10 +564,19 @@ class AuthorizationServer:
         ticket = self.store.consume_idp_state(state, now=now) if state else None
         denied = OAuthError(
             "access_denied",
-            "sign-in failed or expired. Fix: start the sign-in again from the "
-            "beginning.",
+            "sign-in failed or expired. Fix: start the sign-in again from the beginning.",
         )
         if ticket is None or ticket.provider != idp_settings.provider:
+            raise denied
+        if (
+            not browser_nonce
+            or ticket.nonce_hash is None
+            or not hmac.compare_digest(ticket.nonce_hash, hash_secret(browser_nonce))
+        ):
+            logger.info(
+                "sign-in via %s finished in a browser that did not start it; rejected",
+                idp_settings.provider,
+            )
             raise denied
         if params.get("error"):
             logger.info(
@@ -712,9 +780,7 @@ class AuthorizationServer:
                 "this client is not allowed to use the client_credentials grant.",
             )
         if client.pinned_audience is None:  # pragma: no cover - set at provisioning
-            raise OAuthError(
-                "invalid_target", "this machine client has no audience pinned to it."
-            )
+            raise OAuthError("invalid_target", "this machine client has no audience pinned to it.")
         # The audience is the pinned one, full stop. A `resource` parameter is
         # honored only insofar as it must *agree* with the pin — a machine
         # identity can never be talked into a token for another resource.
@@ -750,9 +816,7 @@ class AuthorizationServer:
             audience=client.pinned_audience,
         )
 
-    def _narrow_scopes(
-        self, requested: str | None, granted: Sequence[str]
-    ) -> tuple[str, ...]:
+    def _narrow_scopes(self, requested: str | None, granted: Sequence[str]) -> tuple[str, ...]:
         if requested is None or not requested.strip():
             return tuple(granted)
         asked = tuple(dict.fromkeys(requested.split()))

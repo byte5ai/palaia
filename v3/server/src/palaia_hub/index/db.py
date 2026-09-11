@@ -25,12 +25,20 @@ from pathlib import Path
 
 from ..security.files import harden_sqlite_database
 from .schema import (
+    ADDITIVE_INDEX_SQL,
     META_SCHEMA_VERSION,
     META_VAULT,
     SCHEMA_SQL,
     SCHEMA_VERSION,
     VEC_TABLE_SQL,
 )
+
+
+def _py_lower(value: object) -> str | None:
+    """``lower()`` with Python's Unicode case mapping — what the engine's own
+    resolver uses on both sides of its comparison (issue #360)."""
+    return value.lower() if isinstance(value, str) else None
+
 
 logger = logging.getLogger("palaia_hub.index.db")
 
@@ -82,6 +90,13 @@ class IndexDatabase:
         self.lock = threading.RLock()
         self._conn: sqlite3.Connection | None = None
         self.vectors = VectorSupport(False, "not opened yet")
+        self._rebuilding = False
+        #: Issue #404: ``sqlite_master`` was probed once per chunk on every
+        #: note write; the answer only changes through :meth:`ensure_vec_table`.
+        self._vec_table_known: bool | None = None
+        #: Bumped on every real commit — a cheap "did anything change" key
+        #: for readers that would otherwise re-aggregate per call.
+        self.generation = 0
 
     # ------------------------------------------------------------- lifecycle
 
@@ -110,6 +125,7 @@ class IndexDatabase:
             for suffix in ("-wal", "-shm"):
                 self.path.with_name(self.path.name + suffix).unlink(missing_ok=True)
             self._open_once(force_create=True)
+        self._ensure_additive_indexes()
         # SPEC-502: the index holds every note's text and its embeddings —
         # the same content as the vault, in one queryable file. It is
         # derived data, but it is not less sensitive than what it derives
@@ -120,11 +136,25 @@ class IndexDatabase:
     def _open_once(self, *, force_create: bool = False) -> str | None:
         conn = sqlite3.connect(self.path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute("PRAGMA foreign_keys=ON")
-        conn.execute("PRAGMA busy_timeout=5000")
+        # SQLite's own lower() folds ASCII only (lower('ÜBER') is 'ÜBER'), so
+        # title/alias resolution through the index disagreed with the
+        # engine's Python-side resolver on any non-ASCII name (issue #360).
+        conn.create_function("py_lower", 1, _py_lower, deterministic=True)
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.execute("PRAGMA busy_timeout=5000")
+        except sqlite3.DatabaseError as exc:
+            # A truncated or garbage file (power loss, a full disk) fails on
+            # the very first statement, before the schema probe below ever
+            # runs. Report it the same way, so open() drops and recreates
+            # the file instead of refusing to start the hub (issue #337).
+            conn.close()
+            self._conn = None
+            return f"unreadable database ({exc})"
         self._conn = conn
+        self._vec_table_known = None
         self.vectors = _load_sqlite_vec(conn)
         if self.vectors.available:
             logger.debug("sqlite-vec loaded for index %s", self.path)
@@ -146,6 +176,12 @@ class IndexDatabase:
         if version != str(SCHEMA_VERSION):
             return f"schema version {version!r} != {SCHEMA_VERSION}"
         return None
+
+    def _ensure_additive_indexes(self) -> None:
+        with self.lock:
+            for statement in ADDITIVE_INDEX_SQL:
+                self.conn.execute(statement)
+            self.conn.commit()
 
     def _create_schema(self) -> None:
         with self.lock:
@@ -189,19 +225,61 @@ class IndexDatabase:
         would then fail with "cannot start a transaction within a transaction".
         """
         with self.lock:
-            self.conn.execute(
-                "INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)", (key, value)
-            )
-            self.conn.commit()
+            self.conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)", (key, value))
+            self.commit()
+
+    # ------------------------------------------------------------ transactions
+
+    def commit(self) -> None:
+        """Commit — unless a rebuild transaction is open (issue #332).
+
+        A full rebuild is one ``BEGIN IMMEDIATE`` … ``COMMIT`` so a crash
+        can never leave half an index behind. Every other writer on this
+        connection — the embed worker storing vectors, recall recording an
+        access, the metadata setter — used to call ``conn.commit()`` on its
+        own, which committed whatever part of the rebuild had run so far.
+        While a rebuild is open their rows join its transaction and land (or
+        roll back) with it; outside one this is an ordinary commit.
+        """
+        if self._rebuilding:
+            return
+        self.conn.commit()
+        self.generation += 1
+
+    @property
+    def rebuilding(self) -> bool:
+        """True while a rebuild transaction is open."""
+        return self._rebuilding
+
+    def begin_rebuild(self) -> None:
+        """Open the rebuild transaction (the writer's ``begin``)."""
+        with self.lock:
+            if self.conn.in_transaction:  # pragma: no cover - defensive
+                self.conn.commit()
+            self.conn.execute("BEGIN IMMEDIATE")
+            self._rebuilding = True
+
+    def end_rebuild(self, *, commit: bool) -> None:
+        """Close the rebuild transaction: commit it whole, or roll it back."""
+        with self.lock:
+            self._rebuilding = False
+            if commit:
+                self.conn.commit()
+                self.generation += 1
+            else:
+                self.conn.rollback()
 
     # -------------------------------------------------------------- vec table
 
     def has_vec_table(self) -> bool:
+        if self._vec_table_known is not None:
+            return self._vec_table_known
         with self.lock:
             row = self.conn.execute(
                 "SELECT name FROM sqlite_master WHERE name='vec_chunks'"
             ).fetchone()
-        return row is not None
+            self._vec_table_known = row is not None
+            return self._vec_table_known
 
     def ensure_vec_table(self, dim: int) -> bool:
         """Create the KNN table for ``dim``-dimensional vectors if needed.
@@ -221,8 +299,9 @@ class IndexDatabase:
                 self.conn.execute("DROP TABLE vec_chunks")
                 self.conn.execute("UPDATE chunks SET state='pending', attempts=0")
             self.conn.execute(VEC_TABLE_SQL.format(dim=dim))
+            self._vec_table_known = True
             self.meta_set("vec_dim", str(dim))
-            self.conn.commit()
+            self.commit()
         return True
 
 

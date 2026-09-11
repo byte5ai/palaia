@@ -50,13 +50,15 @@ key, upper-cased.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 import secrets as secrets_module
 import time
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -73,6 +75,7 @@ from ..upstream.models import UpstreamAuthConfig, UpstreamConfig, UpstreamConfli
 from ..upstream.secrets import SecretStore, SecretStoreError
 from ..upstream.service import UpstreamNotConfiguredError, UpstreamService
 from . import docker_runtime
+from .curated import CuratedIndexResult
 from .installed_store import InstalledAddonRecord, InstalledAddonStore
 from .models import EntryKind, MarketEntry
 from .service import MarketService
@@ -108,7 +111,26 @@ class MarketInstallError(RuntimeError):
 class _ConsentEntry:
     entry_id: str
     expires_at: float
+    #: Issue #349: the hash of what the owner was shown — command, address
+    #: or image. The install re-derives it and refuses a mismatch.
+    plan_hash: str = ""
     used: bool = False
+
+
+def _upstream_config(**fields: Any) -> UpstreamConfig:
+    """Build the upstream config, turning a schema refusal into the install
+    error the caller already maps to a 400 (issue #397): a config field
+    named `api-key` becomes an env var `API-KEY`, which the upstream
+    schema rejects — that used to surface as a 500 after the secret was
+    already stored."""
+    try:
+        return UpstreamConfig(**fields)
+    except ValidationError as exc:
+        raise MarketInstallError(
+            f"this add-on's settings cannot be turned into a server configuration: {exc}. "
+            "Fix: the entry's config_schema field names must be usable as environment "
+            "variable names (letters, digits, underscores)."
+        ) from exc
 
 
 class ConsentStore:
@@ -126,15 +148,26 @@ class ConsentStore:
         self._ttl = ttl_seconds
         self._tokens: dict[str, _ConsentEntry] = {}
 
-    def issue(self, entry_id: str) -> tuple[str, float]:
+    def issue(self, entry_id: str, *, plan_hash: str = "") -> tuple[str, float]:
+        self._prune()
         token = secrets_module.token_urlsafe(24)
         expires_at = time.time() + self._ttl
-        self._tokens[token] = _ConsentEntry(entry_id=entry_id, expires_at=expires_at)
+        self._tokens[token] = _ConsentEntry(
+            entry_id=entry_id, expires_at=expires_at, plan_hash=plan_hash
+        )
         return token, expires_at
 
-    def consume(self, token: str, entry_id: str) -> None:
+    def _prune(self) -> None:
+        """Drop expired and used tokens (issue #397: nothing pruned them, so
+        every consent screen ever opened stayed in memory)."""
+        now = time.time()
+        for key in [k for k, entry in self._tokens.items() if entry.used or entry.expires_at < now]:
+            del self._tokens[key]
+
+    def consume(self, token: str, entry_id: str) -> str:
         """Raise :class:`MarketInstallError` unless ``token`` was issued for
-        ``entry_id``, is unused and unexpired — then mark it used."""
+        ``entry_id``, is unused and unexpired — then mark it used and return
+        the plan hash it was bound to (issue #349)."""
         entry = self._tokens.pop(token, None)
         if (
             entry is None
@@ -147,6 +180,7 @@ class ConsentStore:
                 "issued for a different entry. Fix: open the entry again and "
                 "confirm the consent screen before installing."
             )
+        return entry.plan_hash
 
 
 # ----------------------------------------------------------- config split
@@ -195,6 +229,11 @@ class InstallPlan:
     upstream: UpstreamConfig
     image: str | None = None
     container_name: str | None = None
+    #: A container's resolved mounts and plain environment (issue #344) —
+    #: persisted on the install record so an update can rebuild the exact
+    #: ``docker run`` with a new image.
+    mounts: dict[str, str] = field(default_factory=dict)
+    plain_env: dict[str, str] = field(default_factory=dict)
 
 
 def _resolve_stdio_command(package: dict[str, Any]) -> tuple[str, list[str]]:
@@ -218,6 +257,14 @@ def _resolve_stdio_command(package: dict[str, Any]) -> tuple[str, list[str]]:
             f"palaia does not know how to run a {label!r} package yet — only npm "
             "(npx), pypi (uvx) and nuget (dnx) packages install automatically."
         )
+    if identifier.startswith("-") or ref.startswith("-") or any(c.isspace() for c in ref):
+        # Registry content is unverified: a "package name" of `--flag` would
+        # become an option to the package runner, not a package (issue #349).
+        raise MarketInstallError(
+            f"the registry lists {identifier!r} as the package to run, which is not a "
+            f"package name {runtime_hint} would accept. Fix: this listing cannot be "
+            "installed automatically; add the server by hand if you trust it."
+        )
     base_args = ["-y", ref] if runtime_hint == "npx" else [ref]
     extra_args = [
         str(arg.get("value"))
@@ -227,15 +274,23 @@ def _resolve_stdio_command(package: dict[str, Any]) -> tuple[str, list[str]]:
     return runtime_hint, [*base_args, *extra_args]
 
 
-async def _resolve_registry_ref_plan(
-    entry: MarketEntry,
-    config: dict[str, Any],
-    *,
-    key: str,
-    display_name: str,
-    market_service: MarketService,
-    secret_store: SecretStore,
-) -> InstallPlan:
+@dataclass(frozen=True, slots=True)
+class _RegistryTarget:
+    """What a ``registry_ref`` resolves to: a remote address, or a command."""
+
+    url: str | None = None
+    command: str | None = None
+    args: tuple[str, ...] = ()
+
+
+async def _resolve_registry_target(
+    entry: MarketEntry, *, market_service: MarketService
+) -> _RegistryTarget:
+    """Fetch the registry's ``server.json`` and derive what would run.
+
+    Shared by the consent preview and the install itself (issue #349), so
+    what the owner is shown is derived by the very code that installs it.
+    """
     registry_id = entry.source.value
     try:
         server = await market_service.registry_client.detail(registry_id)
@@ -251,9 +306,7 @@ async def _resolve_registry_ref_plan(
         url = str(remotes[0].get("url", ""))
         if not url:
             raise MarketInstallError(f"{entry.name!r}'s registry listing has no usable address.")
-        return _build_http_plan(
-            entry, config, key=key, display_name=display_name, url=url, secret_store=secret_store
-        )
+        return _RegistryTarget(url=url)
 
     packages = raw.get("packages") or []
     if not packages:
@@ -262,14 +315,35 @@ async def _resolve_registry_ref_plan(
             "package — palaia does not know how to install it yet."
         )
     command, args = _resolve_stdio_command(packages[0])
+    return _RegistryTarget(command=command, args=tuple(args))
+
+
+async def _resolve_registry_ref_plan(
+    entry: MarketEntry,
+    config: dict[str, Any],
+    *,
+    key: str,
+    display_name: str,
+    market_service: MarketService,
+    secret_store: SecretStore,
+) -> InstallPlan:
+    target = await _resolve_registry_target(entry, market_service=market_service)
+    if target.url is not None:
+        return _build_http_plan(
+            entry,
+            config,
+            key=key,
+            display_name=display_name,
+            url=target.url,
+            secret_store=secret_store,
+        )
+    command, args = target.command or "", list(target.args)
     plain, secret_values, _mounts = _split_config(entry.config_schema, config)
     env = {k.upper(): v for k, v in plain.items()}
-    env_secrets: dict[str, str] = {}
-    for field_name, value in secret_values.items():
-        name = _secret_name(entry.id, field_name)
-        secret_store.put(name, value)
-        env_secrets[field_name.upper()] = name
-    upstream = UpstreamConfig(
+    env_secrets = {
+        field_name.upper(): _secret_name(entry.id, field_name) for field_name in secret_values
+    }
+    upstream = _upstream_config(
         key=key,
         kind="stdio",
         display_name=display_name,
@@ -278,6 +352,9 @@ async def _resolve_registry_ref_plan(
         env=env,
         env_secrets=env_secrets,
     )
+    # Only a config that validated stores anything (issue #397).
+    for field_name, value in secret_values.items():
+        secret_store.put(_secret_name(entry.id, field_name), value)
     return InstallPlan(upstream=upstream)
 
 
@@ -303,10 +380,8 @@ def _build_http_plan(
         # anticipate, and silently dropping it would be worse than storing
         # it unused.
         first_field = next(iter(secret_values))
-        for field_name, value in secret_values.items():
-            secret_store.put(_secret_name(entry.id, field_name), value)
         auth = UpstreamAuthConfig(secret_name=_secret_name(entry.id, first_field))
-    upstream = UpstreamConfig(
+    upstream = _upstream_config(
         key=key,
         kind="http",
         display_name=display_name,
@@ -314,6 +389,9 @@ def _build_http_plan(
         headers=headers,
         auth=auth,
     )
+    # Only a config that validated stores anything (issue #397).
+    for field_name, value in secret_values.items():
+        secret_store.put(_secret_name(entry.id, field_name), value)
     return InstallPlan(upstream=upstream)
 
 
@@ -331,11 +409,9 @@ async def _resolve_container_plan(
     await docker_runtime.ensure_image(image)
     plain, secret_values, mounts = _split_config(entry.config_schema, config)
     env = {k.upper(): v for k, v in plain.items()}
-    env_secrets: dict[str, str] = {}
-    for field_name, value in secret_values.items():
-        name = _secret_name(entry.id, field_name)
-        secret_store.put(name, value)
-        env_secrets[field_name.upper()] = name
+    env_secrets = {
+        field_name.upper(): _secret_name(entry.id, field_name) for field_name in secret_values
+    }
     container_name = _container_name(key)
     run_args = docker_runtime.build_stdio_run_args(
         image,
@@ -343,8 +419,9 @@ async def _resolve_container_plan(
         mounts=mounts,
         plain_env=env,
         secret_env_vars=list(env_secrets.keys()),
+        permissions=entry.permissions,
     )
-    upstream = UpstreamConfig(
+    upstream = _upstream_config(
         key=key,
         kind="stdio",
         display_name=display_name,
@@ -353,11 +430,52 @@ async def _resolve_container_plan(
         env={},
         env_secrets=env_secrets,
     )
-    return InstallPlan(upstream=upstream, image=image, container_name=container_name)
+    # Only a config that validated stores anything (issue #397).
+    for field_name, value in secret_values.items():
+        secret_store.put(_secret_name(entry.id, field_name), value)
+    return InstallPlan(
+        upstream=upstream,
+        image=image,
+        container_name=container_name,
+        mounts=mounts,
+        plain_env=env,
+    )
 
 
 def _container_name(key: str) -> str:
     return f"palaia-addon-{key}"
+
+
+def _plan_from_run_args(
+    args: Sequence[str], *, secret_env_vars: Iterable[str]
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Recover ``(mounts, plain_env)`` from a ``docker run`` argv this hub built.
+
+    For install records written before the plan was persisted (issue #344):
+    :func:`~palaia_hub.market.docker_runtime.build_stdio_run_args` emits
+    ``-v host:host`` per mount and ``-e KEY=value`` per plain variable
+    (``-e KEY`` alone is a secret, injected at start and never stored).
+    """
+    secrets = set(secret_env_vars)
+    mounts: dict[str, str] = {}
+    plain: dict[str, str] = {}
+    index = 0
+    while index < len(args) - 1:
+        flag, value = args[index], args[index + 1]
+        if flag == "-v":
+            host_path = value.split(":", 1)[0]
+            if host_path:
+                mounts[host_path] = host_path
+            index += 2
+            continue
+        if flag == "-e":
+            key, separator, plain_value = value.partition("=")
+            if separator and key not in secrets:
+                plain[key] = plain_value
+            index += 2
+            continue
+        index += 1
+    return mounts, plain
 
 
 async def _build_plan(
@@ -372,20 +490,32 @@ async def _build_plan(
     if entry.kind == "remote":
         if entry.source.type == "url":
             return _build_http_plan(
-                entry, config, key=key, display_name=display_name, url=entry.source.value,
+                entry,
+                config,
+                key=key,
+                display_name=display_name,
+                url=entry.source.value,
                 secret_store=secret_store,
             )
         if entry.source.type == "registry_ref":
             return await _resolve_registry_ref_plan(
-                entry, config, key=key, display_name=display_name,
-                market_service=market_service, secret_store=secret_store,
+                entry,
+                config,
+                key=key,
+                display_name=display_name,
+                market_service=market_service,
+                secret_store=secret_store,
             )
         raise MarketInstallError(
             f"a 'remote' entry cannot install from a {entry.source.type!r} source."
         )
     if entry.kind == "container":
         return await _resolve_container_plan(
-            entry, config, key=key, display_name=display_name, secret_store=secret_store,
+            entry,
+            config,
+            key=key,
+            display_name=display_name,
+            secret_store=secret_store,
         )
     label = _KIND_LABELS.get(entry.kind, entry.kind)
     raise MarketInstallError(
@@ -406,11 +536,75 @@ def _derive_upstream_key(entry_id: str) -> str:
 # ------------------------------------------------------------------- REST
 
 
+class PlanPreview(BaseModel):
+    """What installing an entry would actually run or connect to (issue #349).
+
+    ``GET /api/market/entry/{id}/plan`` renders it on the consent screen;
+    the consent token is bound to ``plan_hash``, and the install re-derives
+    the same hash from the plan it built — a registry listing that changed
+    between the two is refused rather than run.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["stdio", "http", "container"]
+    #: For ``stdio``: the exact executable and arguments, e.g. ``npx`` and
+    #: ``["-y", "@acme/tool@1.2.0"]``.
+    command: str | None = None
+    args: list[str] = Field(default_factory=list)
+    #: For ``http``: the address the hub will connect to.
+    url: str | None = None
+    #: For ``container``: the image that will be pulled and run.
+    image: str | None = None
+    plan_hash: str
+
+
+def _plan_hash(
+    kind: str, *, command: str | None, args: Sequence[str], url: str | None, image: str | None
+) -> str:
+    canonical = json.dumps(
+        {"kind": kind, "command": command, "args": list(args), "url": url, "image": image},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:32]
+
+
+def _preview(kind: str, **fields: Any) -> PlanPreview:
+    command = fields.get("command")
+    args = list(fields.get("args") or [])
+    url = fields.get("url")
+    image = fields.get("image")
+    return PlanPreview(
+        kind=kind,  # type: ignore[arg-type]
+        command=command,
+        args=args,
+        url=url,
+        image=image,
+        plan_hash=_plan_hash(kind, command=command, args=args, url=url, image=image),
+    )
+
+
+def _plan_identity(plan: InstallPlan) -> str:
+    """The hash of what ``plan`` runs — the same function the preview used."""
+    if plan.image is not None:
+        return _plan_hash("container", command=None, args=(), url=None, image=plan.image)
+    upstream = plan.upstream
+    if upstream.kind == "stdio":
+        return _plan_hash(
+            "stdio", command=upstream.command, args=upstream.args, url=None, image=None
+        )
+    return _plan_hash("http", command=None, args=(), url=upstream.url, image=None)
+
+
 class ConsentTokenOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     token: str
     expires_at: float
+    #: Issue #349: what this token consents to — shown once more to the
+    #: owner, and the thing the install must still match.
+    preview: PlanPreview
 
 
 class InstallRequest(BaseModel):
@@ -488,15 +682,48 @@ class InstallService:
         )
         self.consent = ConsentStore()
         self._publish = publish or (lambda event, data: None)
+        #: Upstream keys whose `addon.update_available` already fired (#397).
+        self._update_announced: set[str] = set()
 
     # ---------------------------------------------------------- consent
 
-    async def issue_consent(self, entry_id: str) -> ConsentTokenOut:
+    async def _preview_for(self, entry: MarketEntry) -> PlanPreview:
+        """What installing ``entry`` would run — without installing, pulling
+        or storing anything (issue #349)."""
+        if entry.kind == "remote" and entry.source.type == "url":
+            return _preview("http", url=entry.source.value)
+        if entry.kind == "remote" and entry.source.type == "registry_ref":
+            target = await _resolve_registry_target(entry, market_service=self.market_service)
+            if target.url is not None:
+                return _preview("http", url=target.url)
+            return _preview("stdio", command=target.command, args=target.args)
+        if entry.kind == "container":
+            if not entry.source.value:
+                raise MarketInstallError(f"{entry.name!r} has no image declared to install.")
+            return _preview("container", image=entry.source.value)
+        if entry.kind == "remote":
+            raise MarketInstallError(
+                f"a 'remote' entry cannot install from a {entry.source.type!r} source."
+            )
+        label = _KIND_LABELS.get(entry.kind, entry.kind)
+        raise MarketInstallError(
+            f"{entry.name!r} is {label} — install it from the connect page instead; "
+            "the marketplace only lists it here."
+        )
+
+    async def preview(self, entry_id: str) -> PlanPreview:
         entry = await self.market_service.get_entry(entry_id)
         if entry is None:
             raise HTTPException(status_code=404, detail=f"no marketplace entry {entry_id!r}")
-        token, expires_at = self.consent.issue(entry_id)
-        return ConsentTokenOut(token=token, expires_at=expires_at)
+        try:
+            return await self._preview_for(entry)
+        except MarketInstallError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    async def issue_consent(self, entry_id: str) -> ConsentTokenOut:
+        preview = await self.preview(entry_id)
+        token, expires_at = self.consent.issue(entry_id, plan_hash=preview.plan_hash)
+        return ConsentTokenOut(token=token, expires_at=expires_at, preview=preview)
 
     # ---------------------------------------------------------- install
 
@@ -505,7 +732,7 @@ class InstallService:
         if entry is None:
             raise HTTPException(status_code=404, detail=f"no marketplace entry {entry_id!r}")
         try:
-            self.consent.consume(request.consent_token, entry_id)
+            consented_hash = self.consent.consume(request.consent_token, entry_id)
         except MarketInstallError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -516,26 +743,48 @@ class InstallService:
                 detail=f"{entry.name!r} is already installed. Uninstall it first, or update it.",
             )
         display_name = request.display_name or entry.name
+        # Issue #351: a bad profile path used to surface only after the
+        # upstream was registered, leaving an orphan behind. Check first.
+        self._check_profiles(request.profiles)
 
         try:
             plan = await _build_plan(
-                entry, request.config, key=key, display_name=display_name,
-                market_service=self.market_service, secret_store=self.secret_store,
+                entry,
+                request.config,
+                key=key,
+                display_name=display_name,
+                market_service=self.market_service,
+                secret_store=self.secret_store,
             )
         except (MarketInstallError, docker_runtime.DockerError, SecretStoreError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if _plan_identity(plan) != consented_hash:
+            # Issue #349: the registry (or the entry) now says something
+            # else than what the owner reviewed and consented to.
+            raise HTTPException(
+                status_code=409,
+                detail=f"what {entry.name!r} would install changed since you reviewed it. "
+                "Fix: open the entry again, read the consent screen, and confirm again.",
+            )
 
         try:
             await self.dynamic_gateway.register_upstream(plan.upstream)
         except (UpstreamConflictError, ValidationError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        await self.upstream_service.register(plan.upstream)
         try:
+            await self.upstream_service.register(plan.upstream)
             await self._mount_on(key, request.profiles)
-        except GatewayConfigError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        await self.dynamic_gateway.refresh_upstreams([key])
-        self._persist()
+            await self.dynamic_gateway.refresh_upstreams([key])
+            self._persist()
+        except BaseException as exc:
+            # Issue #351: nothing about this install has been persisted yet,
+            # so nothing about it may stay in memory either — otherwise a
+            # retry answers "already installed" for an add-on the installed
+            # list does not show.
+            await self._forget_registration(key)
+            if isinstance(exc, GatewayConfigError):
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise
 
         record = InstalledAddonRecord(
             upstream_key=key,
@@ -547,6 +796,8 @@ class InstallService:
             image=plan.image,
             container_name=plan.container_name,
             installed_at=time.time(),
+            mounts=plan.mounts,
+            plain_env=plan.plain_env,
         )
         self.installed_store.put(record)
         self._publish(
@@ -555,7 +806,9 @@ class InstallService:
         )
         return await self._out(record)
 
-    async def _mount_on(self, key: str, profile_paths: list[str]) -> None:
+    def _check_profiles(self, profile_paths: list[str]) -> None:
+        """Refuse a profile list :meth:`_mount_on` would refuse — before
+        anything has been registered (issue #351)."""
         for path in profile_paths:
             if path == CURATOR_PROFILE_PATH:
                 raise HTTPException(
@@ -566,21 +819,35 @@ class InstallService:
                         "that session could exfiltrate them."
                     ),
                 )
+            if not any(p.path == path for p in self.dynamic_gateway.config.profiles):
+                raise HTTPException(status_code=404, detail=f"no profile at path {path!r}")
+
+    async def _forget_registration(self, key: str) -> None:
+        """Undo an in-memory registration whose install did not complete."""
+        try:
+            await self.dynamic_gateway.remove_upstream(key)
+        except KeyError:
+            pass
+        except Exception:  # noqa: BLE001 - best effort, the original error is what matters
+            logger.exception("could not roll back the gateway registration of %s", key)
+        try:
+            await self.upstream_service.unregister(key)
+        except Exception:  # noqa: BLE001 - best effort
+            logger.exception("could not roll back the upstream registration of %s", key)
+
+    async def _mount_on(self, key: str, profile_paths: list[str]) -> None:
+        self._check_profiles(profile_paths)
+        for path in profile_paths:
             current = next(
                 (p for p in self.dynamic_gateway.config.profiles if p.path == path), None
             )
-            if current is None:
+            if current is None:  # pragma: no cover - _check_profiles ran first
                 raise HTTPException(status_code=404, detail=f"no profile at path {path!r}")
             if key in current.upstreams:
                 continue
-            await self.dynamic_gateway.upsert_profile(
-                path,
-                list(current.vaults),
-                label=current.label,
-                stash=current.stash,
-                directory=current.directory,
-                upstreams=[*current.upstreams, key],
-            )
+            # Issue #324: only the upstream list changes; every other profile
+            # field (hidden_tools, messenger, semantic_routing, ...) is kept.
+            await self.dynamic_gateway.set_profile_upstreams(path, [*current.upstreams, key])
 
     def _persist(self) -> None:
         persist_gateway_settings(
@@ -589,7 +856,12 @@ class InstallService:
 
     # -------------------------------------------------------- installed
 
-    async def _out(self, record: InstalledAddonRecord) -> InstalledAddonOut:
+    async def _out(
+        self, record: InstalledAddonRecord, *, curated: CuratedIndexResult | None = None
+    ) -> InstalledAddonOut:
+        """One record's REST shape. ``curated`` is the index fetched once
+        for a whole listing (see :meth:`list_installed`); left ``None`` for
+        a single-record answer such as an install's own response."""
         try:
             status = self.upstream_service.status(record.upstream_key)
             up, detail = status.up, status.detail
@@ -601,7 +873,7 @@ class InstallService:
             # removing from the list, not a crash.
             up, detail = False, "No longer connected — reinstall it, or remove it below."
         current_ref: str | None = None
-        entry = await self.market_service.get_entry(record.entry_id)
+        entry = await self.market_service.get_entry(record.entry_id, curated=curated)
         if entry is not None:
             current_ref = entry.source.value
         profiles = sorted(
@@ -628,8 +900,19 @@ class InstallService:
             installed_at=record.installed_at,
         )
 
+    async def _outs(self) -> list[InstalledAddonOut]:
+        """Every installed record's REST shape, resolving all of them
+        against **one** curated-index fetch rather than one per record
+        (issue #321: ``GET /api/market/installed`` used to pay a full
+        index round-trip — up to its 8 s timeout — per installed add-on)."""
+        records = self.installed_store.list()
+        if not records:
+            return []
+        curated = await self.market_service.curated_client.fetch()
+        return [await self._out(record, curated=curated) for record in records]
+
     async def list_installed(self) -> list[InstalledAddonOut]:
-        return [await self._out(record) for record in self.installed_store.list()]
+        return await self._outs()
 
     async def update(self, upstream_key: str) -> InstalledAddonOut:
         record = self.installed_store.get(upstream_key)
@@ -659,12 +942,23 @@ class InstallService:
             current = self.upstream_service.config(upstream_key)
         except UpstreamNotConfiguredError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        # Issue #344: the mounts and plain settings live in the run argv, not
+        # in `current.env` (which is empty by construction for a container
+        # add-on), so rebuilding from `env` alone started a bare container.
+        # Prefer the plan persisted at install time; a record from before
+        # that field existed recovers it from the argv this hub wrote.
+        mounts, plain_env = record.mounts, record.plain_env
+        if not mounts and not plain_env:
+            mounts, plain_env = _plan_from_run_args(
+                current.args, secret_env_vars=current.env_secrets.keys()
+            )
         run_args = docker_runtime.build_stdio_run_args(
             new_image,
             container_name=record.container_name or _container_name(upstream_key),
-            mounts={},
-            plain_env=current.env,
+            mounts=mounts,
+            plain_env=plain_env,
             secret_env_vars=list(current.env_secrets.keys()),
+            permissions=entry.permissions,
         )
         # `model_copy` skips validators (same caveat SPEC-302's own
         # `PATCH /api/gateway/upstreams/{key}` documents) — re-construct so
@@ -689,6 +983,8 @@ class InstallService:
             image=new_image,
             container_name=record.container_name,
             installed_at=record.installed_at,
+            mounts=mounts,
+            plain_env=plain_env,
         )
         self.installed_store.put(new_record)
         self._publish(
@@ -726,10 +1022,15 @@ class InstallService:
         ``addon.update_available`` for one whose availability just turned
         on — called after the curated index refreshes (deliverable #4)."""
         changed: list[InstalledAddonOut] = []
-        for record in self.installed_store.list():
-            out = await self._out(record)
-            if out.update_available:
-                changed.append(out)
+        for out in await self._outs():
+            if not out.update_available:
+                self._update_announced.discard(out.upstream_key)
+                continue
+            changed.append(out)
+            if out.upstream_key not in self._update_announced:
+                # Issue #397: the event fires when availability *turns on*,
+                # not on every index refresh while it stays on.
+                self._update_announced.add(out.upstream_key)
                 self._publish(
                     "addon.update_available",
                     {
@@ -744,6 +1045,11 @@ class InstallService:
 
 def build_market_install_router(service: InstallService) -> APIRouter:
     router = APIRouter(prefix="/api/market", tags=["market"])
+
+    @router.get("/entry/{entry_id}/plan", response_model=PlanPreview)
+    async def plan_preview(entry_id: str) -> PlanPreview:
+        """What installing this entry would run — for the consent screen (#349)."""
+        return await service.preview(entry_id)
 
     @router.post("/entry/{entry_id}/consent", response_model=ConsentTokenOut)
     async def issue_consent(entry_id: str) -> ConsentTokenOut:
@@ -780,6 +1086,8 @@ def wire_market_index_updates(event_bus: EventBus, service: InstallService) -> C
     it is logged, never raised into the publisher (same posture every
     other bus subscriber in this codebase takes)."""
 
+    _pending_checks: set[asyncio.Task[None]] = set()
+
     def _on_event(envelope: Envelope) -> None:
         if envelope.event != "market.index.updated":
             return
@@ -790,7 +1098,10 @@ def wire_market_index_updates(event_bus: EventBus, service: InstallService) -> C
             except Exception:  # noqa: BLE001 - a failed check must not break the bus
                 logger.exception("checking for marketplace add-on updates failed")
 
-        asyncio.create_task(_run())
+        task = asyncio.create_task(_run())
+        # Issue #397: a bare create_task can be garbage-collected mid-flight.
+        _pending_checks.add(task)
+        task.add_done_callback(_pending_checks.discard)
 
     return event_bus.on(_on_event)
 

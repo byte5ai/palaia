@@ -1,7 +1,7 @@
 # v3 dev commands. Run from v3/, e.g. `just test`.
 # Requires: uv (https://docs.astral.sh/uv/), Node 22+.
 
-# Run every check (python + web): lint, typecheck, tests, build.
+# Run every check (python + web): lint, typecheck, tests.
 default: lint test
 
 # Install all dependencies (python workspace + web app).
@@ -14,14 +14,19 @@ test:
     uv run pytest
     cd web && npm test
 
-# Run all linters/type checkers (ruff, mypy, eslint, tsc).
+# Format the Python tree. Not part of `lint` or CI for 3.0.0 — README.md
+# ("Formatting is not enforced") records the decision and when that changes.
+fmt:
+    uv run ruff format server sdk
+
+# Run all linters/type checkers (ruff check, mypy, eslint, tsc).
 lint:
     uv run ruff check .
     uv run mypy server/src
     cd web && npm run lint
     cd web && npm run typecheck
 
-# Run the web dev server (Vite) against a hot-reloading placeholder page.
+# Run the web dev server (Vite) with hot reload; point it at a running hub.
 dev:
     cd web && npm run dev
 

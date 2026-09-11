@@ -25,23 +25,27 @@ echo ""
 
 echo "-- 2. what the release workflow would tag and push --"
 TAG="v3.${VERSION}"
-if [[ "${VERSION}" == *rc* || "${VERSION}" == *beta* ]]; then
+# Any SemVer suffix is a pre-release (issue #386) — same test as the workflows.
+if [[ "${VERSION}" == *-* ]]; then
   CHANNEL="beta"
 else
   CHANNEL="stable"
 fi
 echo "git tag:        ${TAG}"
-echo "image tags:     ghcr.io/byte5ai/palaia-hub:${TAG}, ghcr.io/byte5ai/palaia-hub:${CHANNEL}"
+echo "image tags:     ghcr.io/byte5ai/palaia-hub:${TAG}, ghcr.io/byte5ai/palaia-hub:${VERSION} (Home Assistant), ghcr.io/byte5ai/palaia-hub:${CHANNEL}"
 echo "OCI annotation: org.opencontainers.image.version=${VERSION}"
-echo "channel:        ${CHANNEL}  (never 'stable' for an rc/beta version — enforced by"
+echo "channel:        ${CHANNEL}  (never 'stable' for a pre-release version — enforced by"
 echo "                 the release workflow's own branch and by the drift test above)"
 echo ""
 
 echo "-- 3. CHANGELOG.md has an entry for this version --"
-if grep -q "## ${VERSION}" CHANGELOG.md; then
+# Same test as v3-cut-release.yml's guard (issue #387): a line that *is*
+# `## <version>`, followed by a space or the end of the line — so `## 3.0.0-rc1`
+# does not stand in for `3.0.0`, and a header without a date still counts.
+if grep -qE "^## ${VERSION}( |$)" CHANGELOG.md; then
   echo "OK: CHANGELOG.md has a '## ${VERSION}' section"
 else
-  echo "MISSING: CHANGELOG.md has no '## ${VERSION}' section" >&2
+  echo "MISSING: CHANGELOG.md has no '## ${VERSION}' section (header must be '## ${VERSION}' followed by a space or end of line)" >&2
   exit 1
 fi
 echo ""
@@ -81,4 +85,4 @@ print('sdk:', re.search(r'(?m)^version\s*=\s*\"([^\"]+)\"', text).group(1))
 "
 echo ""
 
-echo "== dry-run complete: 3.0.0-rc1's release plumbing checks out =="
+echo "== dry-run complete: ${VERSION}'s release plumbing checks out =="

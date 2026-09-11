@@ -59,3 +59,36 @@ def test_each_entry_gets_a_unique_id_and_timestamp(tmp_path: Path) -> None:
 
     assert first.id != second.id
     assert first.ts > 0
+
+
+# ------------------------------------------------------------ issue #347
+
+
+def test_concurrent_records_all_land_and_the_file_is_owner_only(tmp_path: Path) -> None:
+    """Every append used to read the whole file and rewrite it — two mode
+    changes at once could lose each other's line, and the file's mode was
+    whatever the umask gave it. Now: one appending write per entry, under a
+    lock, on an owner-only file."""
+    import json
+    import stat
+    from concurrent.futures import ThreadPoolExecutor
+
+    log = ModeAuditLog(tmp_path)
+
+    def change(i: int) -> None:
+        log.record(
+            from_mode="locked",
+            to_mode="cloud",
+            accepted=i % 2 == 0,
+            reason=f"attempt {i}",
+            changed_keys=("mode",),
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(change, range(64)))
+
+    lines = log.path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 64
+    assert {json.loads(line)["reason"] for line in lines} == {f"attempt {i}" for i in range(64)}
+    assert stat.S_IMODE(log.path.stat().st_mode) == 0o600
+    assert len(log.recent(limit=100)) == 64

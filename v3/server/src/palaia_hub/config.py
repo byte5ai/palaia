@@ -8,9 +8,13 @@ naming the file, the offending key, and how to fix it.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import ipaddress
+import logging
 import os
 import warnings
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal
 
@@ -27,6 +31,8 @@ from .security.files import harden_directory, harden_file
 # from the rest of `palaia_hub` and nothing from fastmcp, precisely so this
 # module can use it while still loading before any transport layer exists.
 from .upstream.models import UpstreamConfig as GatewayUpstreamSettings
+
+logger = logging.getLogger("palaia_hub.config")
 
 APP_NAME = "palaia-hub"
 
@@ -65,16 +71,28 @@ _ENV_KEYS = (
     "deployment",
 )
 
-DEFAULT_CONFIG_TEMPLATE = """\
+#: The template's header names the env-overridable keys from ``_ENV_KEYS``
+#: itself (issue #370): the file used to promise an override for *every*
+#: setting, including nested ones no ``PALAIA_*`` variable has ever read.
+_ENV_OVERRIDE_NOTE = (
+    "# These top-level settings may also be overridden by an environment\n"
+    "# variable named PALAIA_<SETTING> (e.g. PALAIA_MODE=cloud), which takes\n"
+    "# precedence over whatever is written here:\n"
+    + "".join(f"#   {key} -> {_ENV_PREFIX}{key.upper()}\n" for key in _ENV_KEYS)
+    + "# Every other setting is read from this file only.\n"
+)
+
+DEFAULT_CONFIG_TEMPLATE = (
+    """\
 # palaia hub configuration
 #
 # Generated automatically on first run. Edit freely — invalid values are
 # rejected at startup with a message naming this file, the offending key,
 # and a fix.
 #
-# Every setting below may also be overridden by an environment variable
-# named PALAIA_<SETTING> (e.g. PALAIA_MODE=cloud), which takes precedence
-# over whatever is written here.
+"""
+    + _ENV_OVERRIDE_NOTE
+    + """\
 
 # Operating mode: locked | cloud | open
 #   locked (default) - MCP + dashboard reachable only over VPN/tailnet
@@ -314,11 +332,16 @@ curator:
   # endpoint:
 
 # The marketplace's curated add-on index (MASTERPLAN §5.3): where to fetch
-# palaia's signed, curated list of add-ons from. The signature's public key
-# is pinned in code, never here — changing this URL alone cannot make the
-# hub trust a different signer. null uses the built-in default URL.
+# palaia's signed, curated list of add-ons from, and the Ed25519 public key
+# (raw 32 bytes, base64) the document must be signed with. null uses the
+# built-in defaults. Set both when you publish your own signed index (see
+# v3/tools/README.md); until then the hub serves its bundled starter index.
+# Changing index_url alone cannot make the hub trust a different signer —
+# public_key is the trust anchor, which is why it lives only in this
+# owner-only file and can never be set over the dashboard or REST.
 market:
   index_url: null
+  public_key: null
 
 # SPEC-501: which release stream this hub tracks, and where it is running.
 # Neither is meant to be hand-edited on a normal install — the container
@@ -334,6 +357,7 @@ market:
 channel: edge
 deployment: unknown
 """
+)
 
 
 class ConfigError(RuntimeError):
@@ -397,7 +421,7 @@ class RecallSettings(BaseModel):
 
 
 class GitHubIdpSettings(BaseModel):
-    """"Sign in with GitHub" (SPEC-204). Zero scopes are ever requested —
+    """ "Sign in with GitHub" (SPEC-204). Zero scopes are ever requested —
     the token is used once to read the signed-in username, then discarded.
     """
 
@@ -542,15 +566,18 @@ class OAuthSettings(BaseModel):
     @model_validator(mode="after")
     def _warn_deprecated_profiles(self) -> OAuthSettings:
         if self.profiles:
-            warnings.warn(
+            message = (
                 "config.yaml: `oauth.profiles` is deprecated and no longer read — "
                 "the OAuth server now always issues tokens for the gateway's own "
                 "profiles (the `gateway:` section, or the single 'default' profile "
                 "when that section is absent). Fix: remove `oauth.profiles` from "
-                "config.yaml.",
-                DeprecationWarning,
-                stacklevel=2,
+                "config.yaml."
             )
+            # Issue #396: a DeprecationWarning is hidden by Python's default
+            # filters outside __main__, so operators never saw it. The log
+            # line is what reaches them; the warning stays for tooling.
+            logger.warning(message)
+            warnings.warn(message, DeprecationWarning, stacklevel=2)
         return self
 
 
@@ -731,9 +758,7 @@ class CuratorSettings(BaseModel):
 
     enabled: bool = False
     #: The command that runs one curation session. See the class docstring.
-    runner_command: list[str] = Field(
-        default_factory=lambda: list(_DEFAULT_CURATOR_COMMAND)
-    )
+    runner_command: list[str] = Field(default_factory=lambda: list(_DEFAULT_CURATOR_COMMAND))
     #: Seconds a single session may take before it is killed.
     session_timeout: float = Field(default=300.0, gt=0.0, le=3600.0)
     #: Seconds to wait after an ``inbox.captured`` event, so a burst of
@@ -762,21 +787,52 @@ class CuratorSettings(BaseModel):
 class MarketSettings(BaseModel):
     """The marketplace's curated-index source (SPEC-303 deliverable #2).
 
-    Only the index *URL* is configurable — the Ed25519 public key it must
-    verify against is pinned in code
-    (``palaia_hub.market.curated.DEFAULT_PUBLIC_KEY_B64``), never here.
-    A configurable trust anchor would let a config-file edit alone make
-    the hub trust an attacker's index; the URL merely says where to look
-    for a document that still has to carry a valid signature from the
-    one key this hub ships pinned to.
+    Both the index *URL* and the Ed25519 *public key* the document must
+    verify against are configurable here — and **only** here. The key is
+    the trust anchor, so it is deliberately reachable through nothing but
+    this owner-only (``0600``) file: no REST route, no dashboard control
+    and no environment of a marketplace add-on can move it, and a
+    ``config.yaml`` edit already implies control of the host.
+
+    Both unset (the default) means **no curated index**: palaia publishes
+    none for 3.0.0, and the marketplace shows the add-ons bundled with the
+    release and says so (issue #409). Set both to follow a published index;
+    one without the other is a configuration error, since a URL without its
+    key could never verify and a key without a URL does nothing. See
+    ``v3/tools/README.md`` for publishing an index of your own (issue #321).
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    #: ``None`` means "use palaia_hub.market.curated.DEFAULT_INDEX_URL".
-    #: Kept optional (rather than defaulting here) so the default lives in
-    #: exactly one place.
+    #: Where the signed index lives; ``None`` = no curated index.
     index_url: str | None = None
+    #: The raw 32-byte Ed25519 public key, base64, the index is signed with.
+    public_key: str | None = None
+
+    @model_validator(mode="after")
+    def _check_public_key(self) -> MarketSettings:
+        if (self.index_url is None) != (self.public_key is None):
+            raise ValueError(
+                "market.index_url and market.public_key go together: a URL without the key "
+                "it is signed with could never verify, and a key without a URL does nothing. "
+                "Fix: set both (v3/tools/README.md), or neither for the bundled add-ons only."
+            )
+        if self.public_key is None:
+            return self
+        try:
+            raw = base64.b64decode(self.public_key, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError(
+                "market.public_key is not valid base64. Fix: paste the public key "
+                "exactly as `sign_market_index.py gen-key` printed it."
+            ) from exc
+        if len(raw) != 32:
+            raise ValueError(
+                f"market.public_key decodes to {len(raw)} bytes, not the 32 of a raw "
+                "Ed25519 public key. Fix: paste the public key exactly as "
+                "`sign_market_index.py gen-key` printed it."
+            )
+        return self
 
 
 class HubConfig(BaseModel):
@@ -786,10 +842,12 @@ class HubConfig(BaseModel):
 
     mode: Literal["locked", "cloud", "open"] = "locked"
     host: str = "127.0.0.1"
-    port: int = 8420
+    #: Issue #369: out of range used to pass validation and crash at bind
+    #: with a uvicorn traceback; now it is a config error naming the key.
+    port: int = Field(8420, ge=1, le=65535)
     log_level: Literal["debug", "info", "warning", "error"] = "info"
     log_format: Literal["human", "json"] = "human"
-    graceful_shutdown_timeout: float = 30.0
+    graceful_shutdown_timeout: float = Field(30.0, ge=0)
     auth_enabled: bool = True
     #: Which release stream this hub tracks (SPEC-501). Baked into the
     #: container image at build time (``PALAIA_CHANNEL``) from the GHCR tag
@@ -956,6 +1014,29 @@ def _read_env_values() -> dict[str, Any]:
     return values
 
 
+def apply_config_overrides(config: HubConfig, overrides: Mapping[str, object]) -> HubConfig:
+    """Return ``config`` with ``overrides`` applied *and re-validated* (issue #327).
+
+    ``model_copy(update=...)`` skips every validator, so ``palaia-hub serve
+    --host 0.0.0.0`` on a ``mode: cloud`` config used to start a hub the
+    policy in :meth:`HubConfig._check_operating_mode_policy` exists to
+    refuse — and ``deploy/entrypoint.sh`` takes exactly that path. Rebuilding
+    the model from its own dump plus the overrides runs the same checks
+    ``load_config`` runs; a refusal is a :class:`ConfigError` with the same
+    "Fix:" wording, attributed to the command line rather than a file.
+
+    Raises:
+        ConfigError: the merged configuration is invalid.
+    """
+    if not overrides:
+        return config
+    merged = {**config.model_dump(mode="json"), **overrides}
+    try:
+        return HubConfig.model_validate(merged)
+    except ValidationError as exc:
+        raise ConfigError(_format_validation_error(Path("<command line>"), exc)) from exc
+
+
 def _format_validation_error(path: Path, exc: ValidationError) -> str:
     lines = []
     for error in exc.errors():
@@ -968,11 +1049,16 @@ def _format_validation_error(path: Path, exc: ValidationError) -> str:
             # suffix below would only make its message confusing.
             lines.append(f"{path}: {msg.removeprefix('Value error, ')}")
             continue
-        env_name = f"{_ENV_PREFIX}{loc.upper()}"
-        lines.append(
-            f"{path}: key '{loc}' — {msg}. "
-            f"Fix: correct '{loc}' in {path}, or override it via {env_name}."
-        )
+        if loc in _ENV_KEYS:
+            env_name = f"{_ENV_PREFIX}{loc.upper()}"
+            lines.append(
+                f"{path}: key '{loc}' — {msg}. "
+                f"Fix: correct '{loc}' in {path}, or override it via {env_name}."
+            )
+        else:
+            # Issue #370: a nested key ("oauth.access_token_ttl") has no env
+            # override; suggesting PALAIA_OAUTH.ACCESS_TOKEN_TTL was a lie.
+            lines.append(f"{path}: key '{loc}' — {msg}. Fix: correct '{loc}' in {path}.")
     return "\n".join(lines)
 
 

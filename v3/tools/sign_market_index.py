@@ -4,7 +4,7 @@
 SPEC-303 deliverable #2: the curated index is a signed JSON document
 ``{schema_version, generated_at, entries[], signature}`` verified against
 an Ed25519 public key pinned in
-``palaia_hub.market.curated.DEFAULT_PUBLIC_KEY_B64``. This script is the
+``market.public_key`` in the hub's ``config.yaml``. This script is the
 only place the matching private key is ever supposed to touch disk on a
 publisher's machine — see README.md in this directory for the full story
 of why the key itself is never committed to the repo.
@@ -12,7 +12,7 @@ of why the key itself is never committed to the repo.
 Usage::
 
     # One-time: mint a keypair. Prints the public key to embed in
-    # palaia_hub.market.curated.DEFAULT_PUBLIC_KEY_B64; writes the private
+    # config.yaml's market.public_key (issue #409); writes the private
     # key to the given path (chmod 600) — back it up somewhere that is
     # NOT this git repository.
     python3 v3/tools/sign_market_index.py gen-key --out /secure/place/market-index.key
@@ -74,7 +74,7 @@ def cmd_gen_key(args: argparse.Namespace) -> None:
         encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw
     )
     print(f"private key written to {out_path} (chmod 600) — keep it OUT of git")
-    print("public key (paste into palaia_hub.market.curated.DEFAULT_PUBLIC_KEY_B64):")
+    print("public key (paste into config.yaml as market.public_key, next to market.index_url):")
     print(base64.b64encode(public_raw).decode())
 
 

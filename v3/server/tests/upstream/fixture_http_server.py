@@ -7,6 +7,8 @@ separate OS process, so a call that comes back through it has demonstrably
 left the hub. When ``--require-token`` is passed it rejects any request whose
 ``Authorization`` header does not carry that exact bearer token, which is how
 ``test_http_upstream.py`` proves the secret store's value reached the wire.
+Its ``headers`` tool echoes the request headers it received, which is how the
+same file proves a *client's* credential never does (issue #314).
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ import argparse
 import uvicorn
 from fastmcp import FastMCP
 from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
+from fastmcp.server.dependencies import get_http_headers
 
 
 def build_server(required_token: str | None) -> FastMCP:
@@ -35,6 +38,15 @@ def build_server(required_token: str | None) -> FastMCP:
     def ping() -> str:
         """Liveness check."""
         return "pong"
+
+    @server.tool
+    def headers() -> dict[str, str]:
+        """The HTTP headers this request arrived with, lower-cased.
+
+        What the hub's proxy actually put on the wire — the evidence for
+        ``test_http_upstream.py``'s header-forwarding tests (issue #314).
+        """
+        return get_http_headers(include_all=True)
 
     return server
 

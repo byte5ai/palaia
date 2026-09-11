@@ -77,9 +77,9 @@ def test_mcpb_personalized_download_reads_the_server_version_not_a_literal() -> 
     if this ever regresses to a hardcoded literal, every personalized
     download would silently drift from ``v3/VERSION`` without any of the
     other checks in this file noticing."""
-    routes_source = (
-        V3_ROOT / "server" / "src" / "palaia_hub" / "mcpb" / "routes.py"
-    ).read_text(encoding="utf-8")
+    routes_source = (V3_ROOT / "server" / "src" / "palaia_hub" / "mcpb" / "routes.py").read_text(
+        encoding="utf-8"
+    )
     assert "from .. import __version__" in routes_source
     assert "version=__version__" in routes_source
 
@@ -105,15 +105,43 @@ def test_mcpb_build_script_never_hardcodes_a_release_version() -> None:
     `VERSION`-file fallback is what fires) produced
     `palaia@3.0.0-rc1` / `palaia-3.0.0-rc1.mcpb`, matching `v3/VERSION` —
     see this SPEC's PR description for the full `npm run build` transcript."""
-    build_source = (
-        V3_ROOT / "tools" / "build-mcpb" / "build.mjs"
-    ).read_text(encoding="utf-8")
+    build_source = (V3_ROOT / "tools" / "build-mcpb" / "build.mjs").read_text(encoding="utf-8")
     assert "readRepoVersion()" in build_source
-    assert 'version || process.env.PALAIA_VERSION || readRepoVersion()' in build_source
+    assert "version || process.env.PALAIA_VERSION || readRepoVersion()" in build_source
     # The only literal-looking fallback left is the "file genuinely
     # missing" case inside readRepoVersion() itself — never a stand-in
     # for a real release version.
     assert '"0.0.0-dev"' in build_source
+
+
+#: Every install path that pins the `stable` channel tag carries a note
+#: telling a release-candidate reader to use `beta` instead (issue #326).
+#: The generated Synology page is included: its generator emits the note.
+_RC_CHANNEL_NOTE_FILES = (
+    "deploy/README.md",
+    "deploy/docker-compose.yml",
+    "docs/how-it-works.md",
+    "site/docs/src/content/docs/install.md",
+    "site/docs/src/content/docs/install-synology.md",
+    "site/docs/src/content/docs/backup-restore.md",
+    "../README.md",
+)
+
+
+def test_rc_channel_notes_exist_exactly_while_version_is_a_prerelease() -> None:
+    """During an RC the `stable` image does not exist (the release workflow
+    only creates it on the final tag), yet every install path pins it —
+    so each carries an `rc-channel-note` pointing at `beta`. The note must
+    be present while `VERSION` is a pre-release and gone once it is not:
+    RELEASING.md §3 lists removing them, and this is what enforces it."""
+    prerelease = "-" in _read_version_file()
+    for relative in _RC_CHANNEL_NOTE_FILES:
+        text = (V3_ROOT / relative).read_text(encoding="utf-8")
+        present = "rc-channel-note" in text
+        assert present is prerelease, (
+            f"{relative}: rc-channel-note {'missing' if prerelease else 'still present'} "
+            f"for VERSION {_read_version_file()!r} — see RELEASING.md §3"
+        )
 
 
 def test_compose_pins_the_stable_channel_tag_not_a_literal_version() -> None:
@@ -144,14 +172,34 @@ def test_store_packages_pin_the_stable_channel_tag(compose_path: str) -> None:
     )
 
 
+def test_home_assistant_addon_version_is_this_version() -> None:
+    """Issue #394: the Home Assistant Supervisor pulls `image:<version>` and
+    offers an update only when `version` changes — so the add-on config
+    carries the real release version, never a channel name, and moves with
+    `v3/VERSION` (the release workflow publishes the bare version tag)."""
+    import yaml
+
+    config = yaml.safe_load(
+        (V3_ROOT / "deploy" / "stores" / "home-assistant" / "config.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert config["image"] == "ghcr.io/byte5ai/palaia-hub"
+    assert str(config["version"]) == _read_version_file(), (
+        "deploy/stores/home-assistant/config.yaml `version` must equal v3/VERSION — "
+        "it is the image tag HA pulls and the only thing HA compares for updates"
+    )
+
+
 def test_release_workflow_tag_derived_version_would_round_trip_this_rc() -> None:
     """Simulates `.github/workflows/v3-release.yml`'s own tag-parsing
     shell (`test_release_workflow.py` checks that script's structure;
     this test checks the *arithmetic* it would do against this exact
     release): tagging `v3.<VERSION>` must strip back down to exactly
     `v3/VERSION`'s content, and the channel that arithmetic resolves to
-    must match what `v3/VERSION` actually is right now — `rc`/`beta` in
-    the version means the `beta` channel, never `stable`, and vice versa.
+    must match what `v3/VERSION` actually is right now — any SemVer
+    suffix (`-rc1`, `-beta2`, `-alpha1`, issue #386) means the `beta`
+    channel, never `stable`, and vice versa.
     This is deliberately not a hardcoded "must be beta" assertion: this
     same test still has to pass once `v3/RELEASING.md`'s §3 bumps
     `VERSION` to a final, non-candidate `3.0.0`, at which point the
@@ -163,7 +211,86 @@ def test_release_workflow_tag_derived_version_would_round_trip_this_rc() -> None
     assert tag_ref.startswith("refs/tags/v3.")
     extracted = tag_ref[len("refs/tags/v3.") :]
     assert extracted == version
-    is_prerelease = "beta" in version or "rc" in version
+    is_prerelease = "-" in version
     channel = "beta" if is_prerelease else "stable"
     if version == "3.0.0-rc1":
         assert channel == "beta", f"{version!r} is an RC and must resolve to beta, not stable"
+
+
+# ---------------------------------------------------------------------------
+# Issue #388: the steps RELEASING.md §3 used to leave for the cut to
+# discover. Each is checked on the checkout, before any dispatch.
+# ---------------------------------------------------------------------------
+
+
+def test_release_notes_exist_for_this_version() -> None:
+    """`v3-cut-release.yml` publishes the GitHub release from
+    `docs/release-notes/<VERSION>.md` and fails without it — catch the
+    missing file here, on the PR, not at the dispatch."""
+    version = _read_version_file()
+    notes = V3_ROOT / "docs" / "release-notes" / f"{version}.md"
+    assert notes.is_file(), f"missing {notes.relative_to(V3_ROOT)} — RELEASING.md §3"
+    first_line = notes.read_text(encoding="utf-8").splitlines()[0]
+    assert first_line.startswith("# "), (
+        "the notes' first line is `# <title>` — the cut uses it as the release title"
+    )
+
+
+#: Wording that is true only while v3 has no final release. Allowed (not
+#: required) while VERSION is a pre-release; refused once it is not.
+_PRERELEASE_ONLY_WORDING = (
+    ("README.md", "release candidate"),
+    ("README.md", "Not yet tagged"),
+    ("SECURITY.md", "there is no released v3 yet"),
+)
+
+
+def test_release_candidate_wording_is_gone_once_version_is_final() -> None:
+    version = _read_version_file()
+    if "-" in version:
+        pytest.skip(f"VERSION {version!r} is a pre-release; the wording is allowed")
+    for relative, phrase in _PRERELEASE_ONLY_WORDING:
+        text = (V3_ROOT / relative).read_text(encoding="utf-8")
+        assert phrase not in text, (
+            f"{relative} still says {phrase!r} for the final VERSION {version!r} — RELEASING.md §3"
+        )
+
+
+def test_dry_run_script_never_hardcodes_a_release_version() -> None:
+    """`tools/release-dry-run.sh` reads `VERSION` and must never restate a
+    version in its own output — its closing line used to name `3.0.0-rc1`
+    for good. Comment lines may cite versions as examples."""
+    script = (V3_ROOT / "tools" / "release-dry-run.sh").read_text(encoding="utf-8")
+    code_lines = [line for line in script.splitlines() if not line.lstrip().startswith("#")]
+    offenders = [
+        line for line in code_lines if re.search(r"\b\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?\b", line)
+    ]
+    assert offenders == [], f"release-dry-run.sh hardcodes a version: {offenders}"
+
+
+def _pep440(version: str) -> str:
+    """``3.0.0-rc1`` (SemVer, v3/VERSION) as Python packaging spells it."""
+    from packaging.version import Version
+
+    return str(Version(version))
+
+
+def test_sdk_reports_the_version_it_was_built_with() -> None:
+    """Issue #397: `palaia_addon_sdk.__version__` and the MCP clientInfo
+    version were literal "0.1.0" strings; both now come from the installed
+    distribution, which `test_sdk_package_version_matches` pins to VERSION."""
+    import palaia_addon_sdk
+
+    assert _pep440(palaia_addon_sdk.__version__) == _pep440(_read_version_file())
+
+
+@pytest.mark.parametrize("manifest", ["plugin.json", "marketplace.json"])
+def test_claude_plugin_manifests_carry_this_version(manifest: str) -> None:
+    """Issue #397: `clients/.claude-plugin/*.json` said 0.1.0 and nothing checked."""
+    data = json.loads(
+        (V3_ROOT / "clients" / ".claude-plugin" / manifest).read_text(encoding="utf-8")
+    )
+    version = data["version"] if "version" in data else data["metadata"]["version"]
+    assert version == _read_version_file(), f"{manifest} must carry v3/VERSION"
+    text = json.dumps(data)
+    assert "Phase 3" not in text and "Phase-3" not in text

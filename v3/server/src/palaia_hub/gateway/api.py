@@ -130,7 +130,10 @@ class CreateGatewayProfileRequest(BaseModel):
 class UpdateGatewayProfileRequest(BaseModel):
     """``PATCH /api/gateway/profiles/{path}`` — every field optional; an
     omitted one keeps its current value. ``vaults``/``hidden_tools``, when
-    given, *replace* the whole list (there is no separate add/remove verb)."""
+    given, *replace* the whole list (there is no separate add/remove verb).
+    An explicit ``"label": null`` clears the label (issue #397) — the same
+    "None clears" contract ``upsert_profile`` has; only an *omitted* label
+    keeps the current one."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -312,9 +315,7 @@ def build_gateway_profiles_router(
         # rename route below). Persisting from the live shape is what keeps
         # a vault-identity edit and a profile edit on one write path,
         # instead of one clobbering the other's config.yaml section.
-        profiles = [
-            p for p in dynamic_gateway.config.profiles if p.path != CURATOR_PROFILE_PATH
-        ]
+        profiles = [p for p in dynamic_gateway.config.profiles if p.path != CURATOR_PROFILE_PATH]
         settings = GatewaySettings(
             vaults=[
                 GatewayVaultSettings(
@@ -363,9 +364,7 @@ def build_gateway_profiles_router(
     async def list_profiles() -> list[GatewayProfileOut]:
         return [await _out(p, dynamic_gateway) for p in dynamic_gateway.config.profiles]
 
-    @router.get(
-        "/api/gateway/profiles/{profile_path}/tools", response_model=list[GatewayToolOut]
-    )
+    @router.get("/api/gateway/profiles/{profile_path}/tools", response_model=list[GatewayToolOut])
     async def list_profile_tools(profile_path: str) -> list[GatewayToolOut]:
         """Every tool this profile's live surface would mount, hidden ones
         included — the editor's per-tool visibility checkboxes (SPEC-305
@@ -432,14 +431,10 @@ def build_gateway_profiles_router(
         profile_path: str, body: UpdateGatewayProfileRequest
     ) -> GatewayProfileOut:
         _require_editable(profile_path)
-        current = next(
-            (p for p in dynamic_gateway.config.profiles if p.path == profile_path), None
-        )
+        current = next((p for p in dynamic_gateway.config.profiles if p.path == profile_path), None)
         if current is None:
-            raise HTTPException(
-                status_code=404, detail=f"no profile at path {profile_path!r}"
-            )
-        label = body.label if body.label is not None else current.label
+            raise HTTPException(status_code=404, detail=f"no profile at path {profile_path!r}")
+        label = body.label if "label" in body.model_fields_set else current.label
         vaults = body.vaults if body.vaults is not None else list(current.vaults)
         stash = body.stash if body.stash is not None else current.stash
         directory = body.directory if body.directory is not None else current.directory
@@ -448,9 +443,7 @@ def build_gateway_profiles_router(
             body.hidden_tools if body.hidden_tools is not None else list(current.hidden_tools)
         )
         semantic_routing = (
-            body.semantic_routing
-            if body.semantic_routing is not None
-            else current.semantic_routing
+            body.semantic_routing if body.semantic_routing is not None else current.semantic_routing
         )
         upstreams = body.upstreams if body.upstreams is not None else list(current.upstreams)
         try:

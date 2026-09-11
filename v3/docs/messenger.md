@@ -98,6 +98,13 @@ the directory (`directory_list`/`directory_query`). An unknown or stale
 handle is refused — a stale session may already be gone, and a message to
 it would sit unread.
 
+`to: "owner"` reaches the hub's owner, who has no directory handle. The
+owner reads that inbox in the dashboard (`GET /api/messenger/inbox`, acked
+over `POST /api/messenger/inbox/{id}/ack`), and every message to it also
+raises a notification in the notification center — so a question the owner
+asked with `expects_reply` can be answered to the owner, not only into the
+thread. The owner cannot address `owner`.
+
 For `type: "broadcast"`, `to` is a small query grammar instead of a
 handle, resolved against the directory *at send time*:
 
@@ -116,8 +123,13 @@ sent nothing.
 ## 6. Checking, replying, and threads
 
 Delivery is pull, by design: a session calls `messenger_check` to collect
-whatever has arrived for its own handle, marking each item delivered so it
-is not handed over twice. An empty result is a normal result, not a
+whatever has arrived for its own handle. New items are marked delivered;
+items an earlier check already returned and nobody acked since come back
+again, listed under `redelivered` — at-least-once, because the hub marks
+a message delivered before its reply reaches the client, and a reply lost
+to a timeout must not lose the message with it. Only `messenger_ack`
+takes a message out of what `messenger_check` returns, so a session that
+acts on a message should ack it. An empty result is a normal result, not a
 failure — most checks, for most sessions, most of the time, will be empty.
 
 When `expects_reply` is `true`, the receiving session is expected to
@@ -144,6 +156,12 @@ never re-minted: one registration, one secret, reused for every messenger
 call that registration ever makes. Two different sessions can hold tokens
 with identical scopes and still be unable to read each other's messages;
 that is the property this design exists to guarantee.
+
+A session that stops heartbeating disappears from the directory after five
+of its TTLs, but its handle and secret keep working for `messenger_check`
+and `messenger_ack` for another seven days — as long as any message it was
+sent can live — and a heartbeat brings the session back. Nobody can send it
+anything new in between: an unlisted session is an unknown recipient.
 
 ## 8. Push adapters (beyond polling)
 

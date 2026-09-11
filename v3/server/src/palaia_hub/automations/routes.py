@@ -6,12 +6,12 @@ an ``automation_store`` — same opt-in posture as ``/api/hooks``.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
 from .dispatcher import ActionError, AutomationDispatcher
 from .models import Action, AutomationInfo, ConditionClause, DeliveryLogEntry
-from .outbox import AutomationOutbox, DeliveryRow
+from .outbox import MAX_PAGE, AutomationOutbox, DeliveryRow
 from .store import AutomationError, AutomationStore
 
 
@@ -118,10 +118,17 @@ def build_automations_router(
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @router.get("/{automation_id}/deliveries", response_model=list[DeliveryLogEntry])
-    async def deliveries(automation_id: str) -> list[DeliveryLogEntry]:
+    async def deliveries(
+        automation_id: str,
+        limit: int = Query(100, ge=1, le=MAX_PAGE),
+        before: int | None = Query(None, ge=1, description="page cursor: the last id seen"),
+    ) -> list[DeliveryLogEntry]:
+        """One page of the automation's delivery log, newest first (issue
+        #339): ``limit`` rows, older than ``before`` when given."""
         if store.get(automation_id) is None:
             raise HTTPException(status_code=404, detail=f"no automation with id {automation_id!r}")
-        return [_to_log_entry(row) for row in outbox.list_for_automation(automation_id)]
+        rows = outbox.list_for_automation(automation_id, limit=limit, before_id=before)
+        return [_to_log_entry(row) for row in rows]
 
     @router.post("/{automation_id}/test_fire", response_model=DeliveryLogEntry)
     async def test_fire(automation_id: str, body: TestFireRequest) -> DeliveryLogEntry:

@@ -32,6 +32,11 @@ import type {
   TunnelGuidance,
 } from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
+import {
+  SEARCH_DEBOUNCE_MS,
+  useDebouncedValue,
+} from "../lib/useDebouncedValue";
+import { isHubMode, notifyModeChanged } from "../lib/mode";
 import { CheckIcon, CopyIcon, InfoIcon, WarningIcon } from "../shell/icons";
 
 type Mode = "locked" | "cloud" | "open";
@@ -52,7 +57,8 @@ const MODE_COPY: Record<Mode, { title: string; body: string }> = {
       "VPN to see or change anything here.",
   },
   open: {
-    title: "Everything is reachable from the internet — including this dashboard",
+    title:
+      "Everything is reachable from the internet — including this dashboard",
     body:
       "Only choose this if you mean it: vault contents, tokens and hooks management all " +
       "become reachable from anywhere, not just your memory. Everything here is then " +
@@ -69,6 +75,11 @@ function errorDetail(err: unknown): string {
   return "Could not reach the hub.";
 }
 
+/** What the "Require sign-in" switch reflects for a saved status. */
+function signInRequired(status: ModeStatus): boolean {
+  return status.auth_enabled || status.oauth_enabled;
+}
+
 function copy(text: string, toast: ReturnType<typeof useToast>, what: string) {
   navigator.clipboard.writeText(text).then(
     () => toast.show(`${what} copied.`),
@@ -79,6 +90,8 @@ function copy(text: string, toast: ReturnType<typeof useToast>, what: string) {
 export function Exposure() {
   const toast = useToast();
   const [status, setStatus] = useState<ModeStatus | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [draftMode, setDraftMode] = useState<Mode>("locked");
   const [requireSignIn, setRequireSignIn] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -92,16 +105,18 @@ export function Exposure() {
         if (cancelled) return;
         setStatus(body);
         setDraftMode(body.configured_mode as Mode);
-        setRequireSignIn(body.auth_enabled || body.oauth_enabled);
+        setRequireSignIn(signInRequired(body));
       })
-      .catch(() => {
-        // No hub reachable — this page just stays on its loading state
-        // rather than guessing at a mode it does not actually know.
+      .catch((err: unknown) => {
+        // Issue 378: no hub reachable used to leave this page on its
+        // loading state for good. Say so, and offer to try again — never
+        // guess at a mode the hub did not report.
+        if (!cancelled) setLoadError(errorDetail(err));
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
 
   async function save() {
     setSaving(true);
@@ -112,6 +127,9 @@ export function Exposure() {
         auth_enabled: draftMode === "locked" ? requireSignIn : true,
       });
       setStatus(body);
+      setRequireSignIn(signInRequired(body));
+      // Issue issue 343: the shell's footer shows the mode the hub is *running*.
+      if (isHubMode(body.active_mode)) notifyModeChanged(body.active_mode);
       toast.show(
         body.restart_required
           ? "Saved. Restart the hub for this to take effect."
@@ -127,14 +145,39 @@ export function Exposure() {
   if (!status) {
     return (
       <Card>
-        <CardBody>
-          <Waiting>Loading your current access mode…</Waiting>
+        <CardBody className="stack stack--2">
+          {loadError ? (
+            <>
+              <div className="banner banner--warn">
+                <WarningIcon className="icon icon--sm" />
+                <p className="t-sm t-muted">
+                  Could not load your current access mode: {loadError}
+                </p>
+              </div>
+              <div className="row">
+                <Button
+                  onClick={() => {
+                    setLoadError(null);
+                    setAttempt((n) => n + 1);
+                  }}
+                >
+                  Try again
+                </Button>
+              </div>
+            </>
+          ) : (
+            <Waiting>Loading your current access mode…</Waiting>
+          )}
         </CardBody>
       </Card>
     );
   }
 
-  const dirty = draftMode !== status.configured_mode;
+  // Issue 374: the sign-in switch is a change too — it used to leave the
+  // button at "No changes to save" when toggled on its own.
+  const dirty =
+    draftMode !== status.configured_mode ||
+    (draftMode === "locked" && requireSignIn !== signInRequired(status));
   const showTunnel = draftMode === "cloud" || draftMode === "open";
   const showChecklist = draftMode === "open";
 
@@ -165,12 +208,19 @@ export function Exposure() {
                 type="button"
                 role="radio"
                 aria-checked={draftMode === mode}
-                className={["segmented__item", draftMode === mode ? "segmented__item--on" : ""]
+                className={[
+                  "segmented__item",
+                  draftMode === mode ? "segmented__item--on" : "",
+                ]
                   .filter(Boolean)
                   .join(" ")}
                 onClick={() => setDraftMode(mode)}
               >
-                {mode === "locked" ? "Locked" : mode === "cloud" ? "Cloud" : "Open"}
+                {mode === "locked"
+                  ? "Locked"
+                  : mode === "cloud"
+                    ? "Cloud"
+                    : "Open"}
               </button>
             ))}
           </div>
@@ -180,8 +230,8 @@ export function Exposure() {
             <div className="banner">
               <InfoIcon className="icon icon--sm" />
               <p className="t-sm t-muted">
-                Cloud and Open both require sign-in — anyone without a token or an account is
-                turned away.
+                Cloud and Open both require sign-in — anyone without a token or
+                an account is turned away.
               </p>
             </div>
           ) : (
@@ -201,12 +251,18 @@ export function Exposure() {
         </CardBody>
         <CardFoot>
           <Button variant="primary" onClick={save} disabled={saving || !dirty}>
-            {saving ? "Saving…" : dirty ? "Save this access mode" : "No changes to save"}
+            {saving
+              ? "Saving…"
+              : dirty
+                ? "Save this access mode"
+                : "No changes to save"}
           </Button>
         </CardFoot>
       </Card>
 
-      {showTunnel ? <TunnelCard mode={draftMode === "open" ? "open" : "cloud"} /> : null}
+      {showTunnel ? (
+        <TunnelCard mode={draftMode === "open" ? "open" : "cloud"} />
+      ) : null}
       {showChecklist ? <ChecklistCard /> : null}
     </div>
   );
@@ -214,12 +270,15 @@ export function Exposure() {
 
 function TunnelCard({ mode }: { mode: "cloud" | "open" }) {
   const toast = useToast();
-  const [kind, setKind] = useState<"tailscale" | "cloudflared" | "own">("tailscale");
+  const [kind, setKind] = useState<"tailscale" | "cloudflared" | "own">(
+    "tailscale",
+  );
   const [hostname, setHostname] = useState("");
   const [guidance, setGuidance] = useState<TunnelGuidance | null>(null);
-  const [detected, setDetected] = useState<{ tailscale: boolean; cloudflared: boolean } | null>(
-    null,
-  );
+  const [detected, setDetected] = useState<{
+    tailscale: boolean;
+    cloudflared: boolean;
+  } | null>(null);
   const [publicUrl, setPublicUrl] = useState("");
   const [testResult, setTestResult] = useState<SelfTestResult | null>(null);
   const [testing, setTesting] = useState(false);
@@ -242,26 +301,30 @@ function TunnelCard({ mode }: { mode: "cloud" | "open" }) {
     };
   }, []);
 
+  // Issue 384: one guidance request per pause in typing the hostname, the
+  // previous one aborted — not a POST per keystroke.
+  const debouncedHostname = useDebouncedValue(hostname, SEARCH_DEBOUNCE_MS);
   useEffect(() => {
     // Nothing to fetch for "I have my own reverse proxy" — the render
     // below never reads `guidance` in that branch, so leaving stale state
     // sit unread here is harmless, and it is refreshed the moment `kind`
     // switches back to a real provider.
     if (kind === "own") return;
-    let cancelled = false;
+    const controller = new AbortController();
     api
-      .tunnelGuidance({ kind, hostname: hostname || undefined })
+      .tunnelGuidance(
+        { kind, hostname: debouncedHostname || undefined },
+        controller.signal,
+      )
       .then((body) => {
-        if (!cancelled) setGuidance(body);
+        if (!controller.signal.aborted) setGuidance(body);
       })
       .catch(() => {
         // No hub reachable — the tab just stays without a generated
         // config rather than showing a stale or fabricated one.
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [kind, hostname, mode]);
+    return () => controller.abort();
+  }, [kind, debouncedHostname, mode]);
 
   async function runSelfTest() {
     if (!publicUrl.trim()) return;
@@ -282,20 +345,25 @@ function TunnelCard({ mode }: { mode: "cloud" | "open" }) {
     <Card>
       <CardHead title="reach it from outside your network" />
       <CardBody className="stack stack--3">
-        <div className="segmented" role="radiogroup" aria-label="How you reach this hub">
-          {(
-            [
-              { value: "tailscale" as const, label: "Tailscale" },
-              { value: "cloudflared" as const, label: "cloudflared" },
-              { value: "own" as const, label: "I have my own reverse proxy" },
-            ]
-          ).map((option) => (
+        <div
+          className="segmented"
+          role="radiogroup"
+          aria-label="How you reach this hub"
+        >
+          {[
+            { value: "tailscale" as const, label: "Tailscale" },
+            { value: "cloudflared" as const, label: "cloudflared" },
+            { value: "own" as const, label: "I have my own reverse proxy" },
+          ].map((option) => (
             <button
               key={option.value}
               type="button"
               role="radio"
               aria-checked={kind === option.value}
-              className={["segmented__item", kind === option.value ? "segmented__item--on" : ""]
+              className={[
+                "segmented__item",
+                kind === option.value ? "segmented__item--on" : "",
+              ]
                 .filter(Boolean)
                 .join(" ")}
               onClick={() => setKind(option.value)}
@@ -307,8 +375,9 @@ function TunnelCard({ mode }: { mode: "cloud" | "open" }) {
 
         {kind === "own" ? (
           <p className="t-sm t-muted">
-            Point your reverse proxy at this machine and terminate a secure (https) address
-            there. Once it answers, put its address in the box below and test it.
+            Point your reverse proxy at this machine and terminate a secure
+            (https) address there. Once it answers, put its address in the box
+            below and test it.
           </p>
         ) : (
           <>
@@ -321,7 +390,11 @@ function TunnelCard({ mode }: { mode: "cloud" | "open" }) {
             </p>
             <input
               className="input"
-              placeholder={kind === "tailscale" ? "your-machine.tailnet-name.ts.net" : "hub.example.com"}
+              placeholder={
+                kind === "tailscale"
+                  ? "your-machine.tailnet-name.ts.net"
+                  : "hub.example.com"
+              }
               value={hostname}
               onChange={(event) => setHostname(event.target.value)}
               aria-label="Hostname"
@@ -332,7 +405,10 @@ function TunnelCard({ mode }: { mode: "cloud" | "open" }) {
                   <code>{guidance.config}</code>
                 </div>
                 <div className="row row--wrap" style={{ gap: 6 }}>
-                  <Button size="sm" onClick={() => copy(guidance.config, toast, "Config")}>
+                  <Button
+                    size="sm"
+                    onClick={() => copy(guidance.config, toast, "Config")}
+                  >
                     <CopyIcon className="icon--sm" />
                     Copy config
                   </Button>
@@ -365,7 +441,10 @@ function TunnelCard({ mode }: { mode: "cloud" | "open" }) {
               onChange={(event) => setPublicUrl(event.target.value)}
               aria-label="Public address to test"
             />
-            <Button onClick={runSelfTest} disabled={testing || !publicUrl.trim()}>
+            <Button
+              onClick={runSelfTest}
+              disabled={testing || !publicUrl.trim()}
+            >
               {testing ? "Testing…" : "Test now"}
             </Button>
           </div>
@@ -381,7 +460,9 @@ function TunnelCard({ mode }: { mode: "cloud" | "open" }) {
             ) : (
               <div className="banner banner--warn">
                 <WarningIcon className="icon icon--sm" />
-                <p className="t-sm t-muted">Not reachable — {testResult.error}</p>
+                <p className="t-sm t-muted">
+                  Not reachable — {testResult.error}
+                </p>
               </div>
             )
           ) : null}
@@ -393,6 +474,8 @@ function TunnelCard({ mode }: { mode: "cloud" | "open" }) {
 
 function ChecklistCard() {
   const [items, setItems] = useState<ChecklistItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -401,23 +484,46 @@ function ChecklistCard() {
       .then((body: ExposureStatus) => {
         if (!cancelled) setItems(body.checklist);
       })
-      .catch(() => {
-        // No hub reachable — the list just stays on its loading state.
+      .catch((err: unknown) => {
+        // Issue 378: "Checking…" forever told the operator nothing.
+        if (!cancelled) setError(errorDetail(err));
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
 
   return (
     <Card>
       <CardHead title="before you open the dashboard itself" />
       <CardBody className="stack stack--2">
-        {items === null ? (
+        {items === null && error ? (
+          <>
+            <div className="banner banner--warn">
+              <WarningIcon className="icon icon--sm" />
+              <p className="t-sm t-muted">Could not run the checks: {error}</p>
+            </div>
+            <div className="row">
+              <Button
+                size="sm"
+                onClick={() => {
+                  setError(null);
+                  setAttempt((n) => n + 1);
+                }}
+              >
+                Try again
+              </Button>
+            </div>
+          </>
+        ) : items === null ? (
           <Waiting>Checking…</Waiting>
         ) : (
           items.map((item) => (
-            <div className="row" key={item.id} style={{ gap: 10, alignItems: "flex-start" }}>
+            <div
+              className="row"
+              key={item.id}
+              style={{ gap: 10, alignItems: "flex-start" }}
+            >
               {item.auto ? (
                 <Badge variant={item.passed ? "ok" : "risk"}>
                   {item.passed ? "checked" : "not yet"}

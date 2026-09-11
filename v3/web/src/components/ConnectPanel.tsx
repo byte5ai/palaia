@@ -35,13 +35,29 @@
  * sentinel (that module's docstring), so "everything unchecked" would
  * silently grant full access instead of none — `wouldGrantNothing` below
  * blocks Issue token in that one case rather than let it widen access.
+ *
+ * Issue 318: the hub turns away any call to a mounted profile that does
+ * not carry the client's token, so every snippet this panel shows has the
+ * freshly minted plaintext embedded (each client's own mechanism — see
+ * `clients.ts`). The plaintext lives in this component's state only, for
+ * as long as the panel is mounted: it is never persisted, and a panel that
+ * finds an *existing* token on mount cannot know it, so the snippets then
+ * show `TOKEN_PLACEHOLDER` and the copy says so instead of pretending a
+ * tokenless command would work.
  */
 import { useEffect, useMemo, useState } from "react";
 
-import type { CreatedToken, GatewayProfile, TokenInfo } from "../lib/api/client";
+import type {
+  CreatedToken,
+  GatewayProfile,
+  TokenInfo,
+} from "../lib/api/client";
 import { api } from "../lib/api/client";
 import type { GuidedClient } from "../lib/clients";
+import { TOKEN_PLACEHOLDER } from "../lib/clients";
 import { describeApiError } from "../lib/errors";
+import { formatAge } from "../lib/format";
+import { nextPollDelay, POLL_INITIAL_MS } from "../lib/polling";
 import { CheckIcon, CopyIcon } from "../shell/icons";
 import { Badge } from "./Badge";
 import { Button } from "./Button";
@@ -49,14 +65,6 @@ import { Card, CardBody, CardFoot, CardHead, CardSubject } from "./Card";
 import { Input } from "./Field";
 import { Waiting } from "./Skeleton";
 import { useToast } from "./Toast";
-
-export function formatAge(iso: string): string {
-  const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (seconds < 60) return `${Math.round(seconds)} s ago`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)} min ago`;
-  if (seconds < 86400) return `${Math.round(seconds / 3600)} h ago`;
-  return `${Math.round(seconds / 86400)} d ago`;
-}
 
 export function ConnectPanel({
   client,
@@ -97,7 +105,9 @@ export function ConnectPanel({
       .listTokens()
       .then((tokens) => {
         if (cancelled) return;
-        const mine = tokens.find((t) => t.name === client.name && !t.revoked_at);
+        const mine = tokens.find(
+          (t) => t.name === client.name && !t.revoked_at,
+        );
         if (mine) {
           setToken(mine);
           onTokenIssued?.(mine);
@@ -148,20 +158,30 @@ export function ConnectPanel({
   // effect#adjusting-some-state-when-a-prop-changes) — since a `useEffect`
   // that calls `setState` unconditionally on every commit is exactly the
   // cascading-render shape `react-hooks/set-state-in-effect` flags.
-  const [previousProfileDraft, setPreviousProfileDraft] = useState(profileDraft);
+  const [previousProfileDraft, setPreviousProfileDraft] =
+    useState(profileDraft);
   if (profileDraft !== previousProfileDraft) {
     setPreviousProfileDraft(profileDraft);
     setUnchecked(new Set());
   }
 
-  const targetProfile = profiles?.find((candidate) => candidate.path === profileDraft) ?? null;
+  // Issue 399: the field used to snap to "default" the moment it was
+  // emptied, so the last character could never be deleted to retype. The
+  // draft is what was typed; an empty draft *means* default when it is read.
+  const effectiveProfile = profileDraft.trim() || "default";
+  const targetProfile =
+    profiles?.find((candidate) => candidate.path === effectiveProfile) ?? null;
   const mountedVaults = targetProfile?.vaults ?? [];
 
   function isChecked(vaultKey: string, permission: "read" | "write"): boolean {
     return !unchecked.has(`${vaultKey}:${permission}`);
   }
 
-  function togglePermission(vaultKey: string, permission: "read" | "write", checked: boolean) {
+  function togglePermission(
+    vaultKey: string,
+    permission: "read" | "write",
+    checked: boolean,
+  ) {
     setUnchecked((prev) => {
       const next = new Set(prev);
       const id = `${vaultKey}:${permission}`;
@@ -190,17 +210,24 @@ export function ConnectPanel({
   const wouldGrantNothing = pickerTouched && explicitScopes.length === 0;
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const profile = token?.profile ?? profileDraft;
+  const profile = token?.profile ?? effectiveProfile;
   const connected = Boolean(token?.last_used_at);
+  // The one-time plaintext, or nothing — `clients.ts` renders its
+  // placeholder in that case (issue 318; see this file's header comment).
+  const snippetToken = plaintext ?? undefined;
+  const command = client.command(origin, profile, snippetToken);
+  const prompt = client.prompt(origin, profile, snippetToken);
 
   // SPEC-306 deliverable #3: a one-click "download config file" tab, for
   // the clients whose real install path is "put this file there" rather
   // than "run this command" (their real formats — SPEC-209-corrected).
-  const configFile = client.configFile?.(origin, profile);
+  const configFile = client.configFile?.(origin, profile, snippetToken);
   const configFileHref = useMemo(
     () =>
       configFile
-        ? URL.createObjectURL(new Blob([configFile.content], { type: configFile.mimeType }))
+        ? URL.createObjectURL(
+            new Blob([configFile.content], { type: configFile.mimeType }),
+          )
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [configFile?.content, configFile?.mimeType],
@@ -222,8 +249,12 @@ export function ConnectPanel({
       // what a caller who never opens the picker gets.
       const body =
         pickerTouched && explicitScopes.length > 0
-          ? { name: client.name, profile: profileDraft, scopes: explicitScopes }
-          : { name: client.name, profile: profileDraft };
+          ? {
+              name: client.name,
+              profile: effectiveProfile,
+              scopes: explicitScopes,
+            }
+          : { name: client.name, profile: effectiveProfile };
       const result: CreatedToken = await api.createToken(body);
       setToken(result.info);
       setPlaintext(result.token);
@@ -238,21 +269,37 @@ export function ConnectPanel({
   // Poll for the first successful call once a token exists — the same
   // "no refresh button anywhere" rule the SSE-backed shell follows
   // (system.md §0); this endpoint just isn't event-stream-backed yet.
+  // Issue 384: the interval backs off (3 s → … → 30 s) instead of asking
+  // every 3 s for as long as the tab stays open.
+  const tokenId = token?.id ?? null;
+  const tokenUsedAt = token?.last_used_at ?? null;
   useEffect(() => {
-    if (!token || token.last_used_at) return;
-    const id = window.setInterval(() => {
+    if (!tokenId || tokenUsedAt) return;
+    let cancelled = false;
+    let delay = POLL_INITIAL_MS;
+    let timer = 0;
+    const tick = () => {
       api
         .listTokens()
         .then((tokens) => {
-          const mine = tokens.find((t) => t.id === token.id);
-          if (mine) setToken(mine);
+          const mine = tokens.find((t) => t.id === tokenId);
+          if (!cancelled && mine?.last_used_at) setToken(mine);
         })
         .catch(() => {
           // a transient fetch failure just means the next tick tries again
+        })
+        .finally(() => {
+          if (cancelled) return;
+          delay = nextPollDelay(delay);
+          timer = window.setTimeout(tick, delay);
         });
-    }, 3000);
-    return () => window.clearInterval(id);
-  }, [token]);
+    };
+    timer = window.setTimeout(tick, delay);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [tokenId, tokenUsedAt]);
 
   function copy(text: string, what: string) {
     navigator.clipboard.writeText(text).then(
@@ -268,12 +315,17 @@ export function ConnectPanel({
       <CardHead>
         <div className="row" style={{ gap: 10 }}>
           {connected ? (
-            <span className="empty__mark" style={{ width: 34, height: 34, borderRadius: 10 }}>
+            <span
+              className="empty__mark"
+              style={{ width: 34, height: 34, borderRadius: 10 }}
+            >
               <CheckIcon className="icon--sm" />
             </span>
           ) : null}
           <div>
-            <CardSubject>{connected ? `${client.name} is connected` : client.name}</CardSubject>
+            <CardSubject>
+              {connected ? `${client.name} is connected` : client.name}
+            </CardSubject>
             <p className="t-xs t-muted" style={{ marginTop: 2 }}>
               {connected && token?.last_used_at
                 ? `Last seen ${formatAge(token.last_used_at)}`
@@ -300,37 +352,54 @@ export function ConnectPanel({
             <span className="numstep__num numstep__num--on">1</span>
             <div className="grow stack stack--3">
               <div>
-                <p className="numstep__title">Name the tool profile it should see</p>
+                <p className="numstep__title">
+                  Name the tool profile it should see
+                </p>
                 <p className="t-sm t-muted">
-                  A hundred tools in one conversation ruins an agent. This becomes part of the
-                  address, so this client cannot see anything else.
+                  A hundred tools in one conversation ruins an agent. This
+                  becomes part of the address, so this client cannot see
+                  anything else.
                 </p>
               </div>
               <div className="row row--wrap">
                 <Input
                   value={profileDraft}
-                  onChange={(event) => setProfileDraft(event.target.value.trim() || "default")}
+                  onChange={(event) => setProfileDraft(event.target.value)}
+                  onBlur={() => {
+                    if (!profileDraft.trim()) setProfileDraft("default");
+                  }}
                   style={{ maxWidth: 220 }}
                   aria-label="Tool profile name"
                 />
               </div>
               {mountedVaults.length > 0 ? (
                 <div className="stack stack--2">
-                  <span className="field__label">What {client.name} can read or save</span>
+                  <span className="field__label">
+                    What {client.name} can read or save
+                  </span>
                   <p className="t-xs t-muted">
-                    Every vault below is included, both ways, by default — the same as today.
-                    Uncheck a box to leave a vault out, or to give read-only access to it.
+                    Every vault below is included, both ways, by default — the
+                    same as today. Uncheck a box to leave a vault out, or to
+                    give read-only access to it.
                   </p>
                   <div className="stack stack--2">
                     {mountedVaults.map((vaultKey) => (
-                      <div key={vaultKey} className="row row--wrap" style={{ gap: 14 }}>
+                      <div
+                        key={vaultKey}
+                        className="row row--wrap"
+                        style={{ gap: 14 }}
+                      >
                         <span className="t-sm t-mono">{vaultKey}</span>
                         <label className="row" style={{ gap: 4 }}>
                           <input
                             type="checkbox"
                             checked={isChecked(vaultKey, "read")}
                             onChange={(event) =>
-                              togglePermission(vaultKey, "read", event.target.checked)
+                              togglePermission(
+                                vaultKey,
+                                "read",
+                                event.target.checked,
+                              )
                             }
                           />
                           <span className="t-xs">Read</span>
@@ -340,7 +409,11 @@ export function ConnectPanel({
                             type="checkbox"
                             checked={isChecked(vaultKey, "write")}
                             onChange={(event) =>
-                              togglePermission(vaultKey, "write", event.target.checked)
+                              togglePermission(
+                                vaultKey,
+                                "write",
+                                event.target.checked,
+                              )
                             }
                           />
                           <span className="t-xs">Save</span>
@@ -350,8 +423,8 @@ export function ConnectPanel({
                   </div>
                   {wouldGrantNothing ? (
                     <p className="field__error">
-                      Check at least one box — leaving every vault unchecked would give this
-                      client full access instead of none.
+                      Check at least one box — leaving every vault unchecked
+                      would give this client full access instead of none.
                     </p>
                   ) : null}
                 </div>
@@ -376,7 +449,10 @@ export function ConnectPanel({
             <div className="grow">
               <p className="numstep__title">Paste one thing</p>
               <Card variant="flat" style={{ marginTop: 8 }}>
-                <div className="card__head" style={{ borderBottom: 0, padding: "0 16px" }}>
+                <div
+                  className="card__head"
+                  style={{ borderBottom: 0, padding: "0 16px" }}
+                >
                   <div className="tabbar" role="tablist">
                     <button
                       type="button"
@@ -409,8 +485,11 @@ export function ConnectPanel({
                 <CardBody className="stack stack--3">
                   {tab === "command" ? (
                     <div className="snippet snippet--wrap">
-                      <code>{client.command(origin, profile)}</code>
-                      <Button size="sm" onClick={() => copy(client.command(origin, profile), "Command")}>
+                      <code>{command}</code>
+                      <Button
+                        size="sm"
+                        onClick={() => copy(command, "Command")}
+                      >
                         <CopyIcon className="icon--sm" />
                         Copy
                       </Button>
@@ -421,21 +500,27 @@ export function ConnectPanel({
                     </div>
                   ) : (
                     <div className="snippet snippet--block">
-                      <code>{client.prompt(origin, profile)}</code>
+                      <code>{prompt}</code>
                     </div>
                   )}
                   {tab === "prompt" ? (
                     <div className="row row--wrap">
-                      <Button size="sm" onClick={() => copy(client.prompt(origin, profile), "Prompt")}>
+                      <Button size="sm" onClick={() => copy(prompt, "Prompt")}>
                         <CopyIcon className="icon--sm" />
                         Copy prompt
                       </Button>
-                      <span className="t-xs t-muted">The agent configures itself and reports back.</span>
+                      <span className="t-xs t-muted">
+                        The agent configures itself and reports back.
+                      </span>
                     </div>
                   ) : null}
                   {tab === "file" && configFile && configFileHref ? (
                     <div className="row row--wrap">
-                      <a className="btn btn--sm" href={configFileHref} download={configFile.filename}>
+                      <a
+                        className="btn btn--sm"
+                        href={configFileHref}
+                        download={configFile.filename}
+                      >
                         Download {configFile.filename}
                       </a>
                       <span className="t-xs t-muted">
@@ -444,14 +529,35 @@ export function ConnectPanel({
                     </div>
                   ) : null}
                   {plaintext ? (
-                    <div className="row row--wrap" style={{ gap: 6 }}>
-                      <span className="t-xs t-muted">Its token (shown once):</span>
-                      <span className="chip chip--mono">{plaintext}</span>
-                      <Button size="sm" variant="quiet" onClick={() => copy(plaintext, "Token")}>
-                        <CopyIcon className="icon--sm" />
-                      </Button>
-                    </div>
-                  ) : null}
+                    <>
+                      <div className="row row--wrap" style={{ gap: 6 }}>
+                        <span className="t-xs t-muted">
+                          Its token (shown once):
+                        </span>
+                        <span className="chip chip--mono">{plaintext}</span>
+                        <Button
+                          size="sm"
+                          variant="quiet"
+                          onClick={() => copy(plaintext, "Token")}
+                        >
+                          <CopyIcon className="icon--sm" />
+                        </Button>
+                      </div>
+                      <p className="t-xs t-muted">
+                        The token is already filled in above — every request
+                        needs it. Copy now: once you leave this page it is not
+                        shown again.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="t-xs t-muted">
+                      Replace{" "}
+                      <span className="t-mono">{TOKEN_PLACEHOLDER}</span> with
+                      the token {client.name} was given when it was issued — it
+                      was shown once and is not stored here. Without it, every
+                      request is turned away.
+                    </p>
+                  )}
                 </CardBody>
               </Card>
             </div>
@@ -460,11 +566,18 @@ export function ConnectPanel({
 
         {token ? (
           <div className="numstep">
-            <span className={["numstep__num", connected ? "numstep__num--done" : ""].join(" ")}>
+            <span
+              className={[
+                "numstep__num",
+                connected ? "numstep__num--done" : "",
+              ].join(" ")}
+            >
               {connected ? <CheckIcon className="icon--sm" /> : "3"}
             </span>
             <div className="grow">
-              <p className="numstep__title">palaia watches for the first call</p>
+              <p className="numstep__title">
+                palaia watches for the first call
+              </p>
               {connected ? (
                 <p className="t-sm t-muted">
                   Connected. This line updated on its own — no refresh needed.
@@ -476,9 +589,15 @@ export function ConnectPanel({
                     <span className="t-xs t-subtle">No refresh needed.</span>
                   </div>
                   <p className="t-xs t-muted" style={{ marginTop: 8 }}>
-                    Once a gateway profile named <span className="t-mono">{profile}</span> exposes a
-                    vault, ask it <em>&ldquo;what do you remember about this project?&rdquo;</em> and
-                    this line changes on its own.
+                    Once a gateway profile named{" "}
+                    <span className="t-mono">{profile}</span> exposes a vault,
+                    ask it{" "}
+                    <em>
+                      &ldquo;what do you remember about this project?&rdquo;
+                    </em>{" "}
+                    and this line changes on its own. It only changes if the
+                    client sends its token — a call without one is turned away
+                    and never shows up here.
                   </p>
                 </>
               )}
@@ -488,8 +607,8 @@ export function ConnectPanel({
       </CardBody>
       <CardFoot>
         <span className="t-xs t-subtle">
-          Every client gets its own token and its own tool profile. Revoking one never touches the
-          others.
+          Every client gets its own token and its own tool profile. Revoking one
+          never touches the others.
         </span>
       </CardFoot>
     </Card>

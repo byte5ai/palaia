@@ -14,8 +14,9 @@ are a container plus a `config.yaml` the Supervisor reads — and critically,
 already-published** multi-arch registry image rather than requiring the
 add-on's own Dockerfile to be built by the Supervisor. palaia's existing
 GHCR image (SPEC-112) fits that directly: `config.yaml` in this directory
-points `image` at `ghcr.io/byte5ai/palaia-hub`, `version` at the `stable`
-tag, and `arch` at the two architectures the release workflow already
+points `image` at `ghcr.io/byte5ai/palaia-hub`, `version` at the release
+version (which the Supervisor uses as the image tag — see "Updates" below),
+and `arch` at the two architectures the release workflow already
 publishes (`amd64`, `aarch64` — HA's name for what SPEC-112 calls
 `arm64`). No second build pipeline, no add-on-specific Dockerfile to
 maintain alongside the real one.
@@ -29,6 +30,19 @@ maintain alongside the real one.
   entry required — and that happens to be exactly the path
   `v3/deploy/Dockerfile` already uses for `PALAIA_HOME` (`ENV
   PALAIA_HOME=/data`). No path translation needed either direction.
+- **Updates (issue #394).** The Supervisor offers an add-on update when the
+  repository's `config.yaml` `version` changes, and pulls `image:<version>`.
+  So `version` is the real release version, pinned to `v3/VERSION` by
+  `server/tests/test_version_drift.py`, and `v3-release.yml` publishes every
+  release under its bare version tag (`ghcr.io/byte5ai/palaia-hub:3.0.0`)
+  alongside `v3.3.0.0`. Bumping `v3/VERSION` for a release therefore bumps
+  this add-on too, and HA users get the update prompt the dashboard's
+  "update via Home Assistant" banner (`PALAIA_DEPLOYMENT: home_assistant`)
+  tells them to expect. Caveat, stated plainly: the `3.0.0-rc1` image was
+  built before the bare tag existed, so for this one version the tag
+  `ghcr.io/byte5ai/palaia-hub:3.0.0-rc1` is not on GHCR and the package
+  cannot be installed until the next release is cut. It was not installable
+  before either (see the `/data` ownership item below).
 - **Reaching the dashboard.** With `host_network: true` (set in this
   package's `config.yaml`), the add-on binds directly to the Home
   Assistant host's own network interface, at the port palaia's `nginx`
@@ -38,6 +52,19 @@ maintain alongside the real one.
 
 ## What doesn't (stated honestly, matching this SPEC's own instruction)
 
+- **The Supervisor's `/data` is root-owned and the image is not root
+  (issue #329).** The add-on model has no `user:` option: the Supervisor
+  creates each add-on's `/data` as root and expects the add-on to run as
+  root inside. This image runs as its own uid/gid `1000:1000` (pinned in
+  `v3/deploy/Dockerfile`) from the first instruction of its entrypoint and
+  never has root, so it cannot `chown` its way in — its first start is
+  expected to fail with a `PermissionError` under `/data` (inferred from
+  how the Supervisor provisions add-on data; not run on a real Home
+  Assistant here). Closing this needs an add-on-specific entrypoint that
+  starts as root, fixes `/data`'s ownership and drops to `palaia` — a
+  second image, which is exactly what this evaluation set out not to
+  maintain. Until that decision is made, this package is a working
+  evaluation, not a shippable add-on.
 - **mDNS (`http://palaia.local`) has the exact same limitation documented
   for the plain compose deployment** (`v3/deploy/README.md`'s "mDNS"
   section) — Docker's default bridge network does not forward multicast

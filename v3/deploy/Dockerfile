@@ -15,6 +15,13 @@
 # the MCP mount point) to the hub process on a loopback-only internal port.
 # Runs as a non-root user. No embedding models are baked in: they download
 # on first use into the PALAIA_HOME volume (see v3/deploy/README.md).
+#
+# Base images (`node:22-slim`, `python:3.12-slim`, `uv:0.8`) are pinned by
+# tag, not digest (issue #400): a digest pin freezes security fixes in the
+# base layers until someone bumps it by hand, and this repository has no
+# bot doing that yet. Reproducibility of a given release is provided by the
+# published image itself (`ghcr.io/byte5ai/palaia-hub:v3.<version>`), not
+# by rebuilding from this file. Revisit once automated digest bumps exist.
 
 # ---------------------------------------------------------------------------
 # Stage 1: web build
@@ -43,14 +50,21 @@ RUN npm run build
 FROM python:3.12-slim AS hub-build
 COPY --from=ghcr.io/astral-sh/uv:0.8 /uv /uvx /usr/local/bin/
 WORKDIR /src
-COPY v3/pyproject.toml v3/uv.lock ./
-COPY v3/server/ ./server/
 # The venv's console-script shebangs and the python symlink embed the path
 # it was created at, so it must be built at the exact path the runtime
 # stage will copy it to (venvs aren't relocatable) — hence UV_PROJECT_ENVIRONMENT
 # rather than the workspace-default `.venv` under /src.
 # --no-dev: runtime image never needs pytest/ruff/mypy/httpx.
 ENV UV_PROJECT_ENVIRONMENT=/opt/palaia/venv
+# Two-step sync (issue #405): the dependency layer is built from the
+# manifests and the lockfile alone (`--no-install-project`), so an edit to
+# the hub's own sources — or its tests — re-installs only the project, not
+# every third-party wheel.
+COPY v3/pyproject.toml v3/uv.lock ./
+COPY v3/server/pyproject.toml ./server/pyproject.toml
+COPY v3/sdk/pyproject.toml ./sdk/pyproject.toml
+RUN uv sync --frozen --no-dev --no-editable --package palaia-hub --no-install-project
+COPY v3/server/ ./server/
 RUN uv sync --frozen --no-dev --no-editable --package palaia-hub
 # python-zeroconf for the mDNS announcer (see mdns_announce.py in the
 # runtime stage). Pure Python, no extra system deps — installed straight
@@ -70,7 +84,16 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends nginx-light curl gettext-base \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd --system --create-home --home-dir /home/palaia --shell /usr/sbin/nologin palaia
+# A fixed uid/gid, never "whatever the base image hands out next" (issue
+# #329): the app-store packages under stores/ bind-mount a host directory
+# onto /data, and a bind mount keeps the host's ownership — so every package
+# declares `user: "1000:1000"` and its SUBMIT.md says what to chown. 1000 is
+# the conventional first non-system uid, the one Umbrel and Runtipi app
+# packages commonly run as. Changing this number breaks every existing
+# bind-mount install, so treat it as part of the image's contract.
+RUN groupadd --system --gid 1000 palaia \
+    && useradd --system --uid 1000 --gid palaia --create-home --home-dir /home/palaia \
+       --shell /usr/sbin/nologin palaia
 
 # Hub venv from stage 2 (already built at this exact path — see the
 # UV_PROJECT_ENVIRONMENT note above).
@@ -89,7 +112,10 @@ RUN chmod +x /opt/palaia/entrypoint.sh \
 
 # Data directory for PALAIA_HOME (mounted as a volume in compose/the
 # one-liner). Owned by the non-root user up front so first run doesn't hit
-# a permission error on a freshly created bind mount / named volume.
+# a permission error on a freshly created named volume (Docker copies the
+# image's ownership into a new named volume). A *bind* mount keeps the
+# host directory's ownership instead — that is what the fixed uid above
+# and the `user:` line in every store package are for.
 RUN mkdir -p /data && chown palaia:palaia /data
 
 # SPEC-501: which release stream this exact image belongs to. Baked at

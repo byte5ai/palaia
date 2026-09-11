@@ -4,7 +4,11 @@ Every mutating call here is **synchronous write-through**: it returns only
 after the note's bytes and its directory entry are on disk (tmp + fsync +
 atomic rename, see :mod:`.atomic`) and the change is a git commit. There is
 no accepted-but-unwritten state and no background materialization — the
-explicit anti-goal from MASTERPLAN §5.1.
+explicit anti-goal from MASTERPLAN §5.1. The one failure between those two
+steps — the files are written, the commit is refused (another git process
+holds the index lock) — raises :class:`~.errors.UncommittedWriteError`, still
+publishes the change events, and is committed by the next successful
+operation or a retry of the same write (issue #333).
 
 Identity lives in the permalink, never in the filename (format spec §3.1):
 :meth:`VaultEngine.move_note` keeps a note's permalink, and only
@@ -21,16 +25,19 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeVar
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from . import frontmatter as fm
 from . import permalink as pl
 from .atomic import (
     TEMP_SUFFIX,
     atomic_move,
+    atomic_write_bytes,
     atomic_write_text,
     durable_unlink,
     sha256_bytes,
@@ -39,10 +46,14 @@ from .atomic import (
 from .errors import (
     AmbiguousReferenceError,
     ChecksumConflictError,
+    GitError,
     InvalidPathError,
+    MalformedFrontmatterError,
+    NoteEncodingError,
     NoteExistsError,
     NoteNotFoundError,
     PermalinkConflictError,
+    UncommittedWriteError,
     VaultError,
     VaultFormatVersionError,
     VaultNotFoundError,
@@ -87,12 +98,34 @@ T = TypeVar("T")
 
 MEMORY_SCHEME = "memory://"
 
+#: Marks a ``.gitignore`` that already carries the editor-state rules below
+#: (issue #359). Once present, the file is the owner's: a rule they remove
+#: on purpose is not re-added.
+GITIGNORE_MARKER = "# palaia gitignore v2"
+
+#: Editor state and editor trash are never vault content (``IGNORED_DIRS``)
+#: and must not ride along in "external edits" commits either — Obsidian
+#: rewrites ``.obsidian/workspace.json`` on nearly every interaction.
+GITIGNORE_EDITOR_STATE = (
+    "# editor state and editor trash: never vault content\n"
+    ".obsidian/\n"
+    ".trash/\n"
+    f"{GITIGNORE_MARKER}\n"
+)
+
 GITIGNORE_BLOCK = (
     "# palaia engine-private storage: rebuildable index/state, never vault content\n"
     ".palaia/\n"
     "# in-flight atomic writes\n"
     f"*{TEMP_SUFFIX}\n"
-)
+) + GITIGNORE_EDITOR_STATE
+
+
+#: Engine temp files are swept at ``open()`` only once they are this old —
+#: anything younger may be another live process's in-flight write on the
+#: same vault (issue #398). The doctor's explicit ``repair()`` still sweeps
+#: everything: it is the owner asking for a clean-up, not a startup path.
+OPEN_RESIDUE_MIN_AGE_SECONDS = 60.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,19 +153,33 @@ class _Lookups:
     Rebuilding these per write would make every write O(vault size) — the
     same shape of mistake as staging the whole git index per commit, so they
     are updated entry by entry instead.
+
+    Title matches are tuples, never lists: a published
+    :class:`_CatalogSnapshot` shares them with the writer's own copy, so
+    nothing here is ever mutated in place once shared — :meth:`copy` can stay
+    shallow for exactly that reason.
     """
 
     __slots__ = ("by_alias", "by_permalink", "by_title")
 
-    def __init__(self) -> None:
-        self.by_permalink: dict[str, str] = {}
-        self.by_alias: dict[str, str] = {}
-        self.by_title: dict[str, list[str]] = {}
+    def __init__(
+        self,
+        by_permalink: dict[str, str] | None = None,
+        by_alias: dict[str, str] | None = None,
+        by_title: dict[str, tuple[str, ...]] | None = None,
+    ) -> None:
+        self.by_permalink: dict[str, str] = {} if by_permalink is None else by_permalink
+        self.by_alias: dict[str, str] = {} if by_alias is None else by_alias
+        self.by_title: dict[str, tuple[str, ...]] = {} if by_title is None else by_title
 
     @property
     def permalinks(self) -> Mapping[str, str]:
         """Every claimed permalink, mapped to the path claiming it."""
         return self.by_permalink
+
+    def copy(self) -> _Lookups:
+        """An independent copy the writer may keep mutating."""
+        return _Lookups(dict(self.by_permalink), dict(self.by_alias), dict(self.by_title))
 
     def add(self, entry: CatalogEntry) -> None:
         """Register one catalog entry. First claim of a key wins."""
@@ -140,9 +187,10 @@ class _Lookups:
             self.by_permalink.setdefault(entry.permalink, entry.path)
         for alias in entry.aliases:
             self.by_alias.setdefault(alias.lower(), entry.path)
-        paths = self.by_title.setdefault(entry.title.lower(), [])
+        key = entry.title.lower()
+        paths = self.by_title.get(key, ())
         if entry.path not in paths:
-            paths.append(entry.path)
+            self.by_title[key] = (*paths, entry.path)
 
     def remove(self, entry: CatalogEntry) -> None:
         """Unregister one catalog entry, keeping other notes' claims intact."""
@@ -154,9 +202,34 @@ class _Lookups:
         key = entry.title.lower()
         paths = self.by_title.get(key)
         if paths and entry.path in paths:
-            paths.remove(entry.path)
-            if not paths:
+            remaining = tuple(path for path in paths if path != entry.path)
+            if remaining:
+                self.by_title[key] = remaining
+            else:
                 del self.by_title[key]
+
+
+@dataclass(frozen=True, slots=True)
+class _CatalogSnapshot:
+    """What readers see of the catalog: one immutable, self-consistent view.
+
+    The catalog is read from the event-loop thread (:meth:`VaultEngine.resolve`
+    ahead of every edit, the gateway's listings, the dashboard) and from
+    worker threads of their own (the doctor, the curator, an index rebuild)
+    while *other* worker threads write it under the engine lock. Readers never
+    touch the writer's dicts: they take the current snapshot — one attribute
+    read, atomic under the interpreter — and work on that. A writer publishes
+    a fresh snapshot once its operation is done, so a reader sees the state
+    before an operation or the state after it, never a half-applied one, and
+    iterating a snapshot can never raise "dictionary changed size during
+    iteration" (issue #331).
+    """
+
+    entries: Mapping[str, CatalogEntry]
+    lookups: _Lookups
+
+
+_EMPTY_SNAPSHOT = _CatalogSnapshot(MappingProxyType({}), _Lookups())
 
 
 class VaultEngine:
@@ -188,8 +261,15 @@ class VaultEngine:
         self.git = GitRepo(self.root, policy)
         self.commit_external_edits = commit_external_edits
         self._lock = asyncio.Lock()
-        self._catalog: dict[str, CatalogEntry] = {}
-        self._lookups: _Lookups | None = None
+        # The writer's copy of the catalog: touched only under `_lock`, on a
+        # worker thread. Everyone else reads `_snapshot` (see _CatalogSnapshot).
+        self._entries: dict[str, CatalogEntry] = {}
+        self._tables = _Lookups()
+        self._snapshot: _CatalogSnapshot = _EMPTY_SNAPSHOT
+        self._deferring_publish = False
+        # Writes that reached disk but whose commit failed (issue #333):
+        # path -> (message, attribution), committed at the next opportunity.
+        self._uncommitted: dict[str, tuple[str, Attribution]] = {}
         self._opened = False
         self._purpose: str | None = None
         self._format_version = VAULT_FORMAT_VERSION
@@ -220,7 +300,7 @@ class VaultEngine:
             purpose=self._purpose,
             format_version=self._format_version,
             writable=self._writable,
-            note_count=len(self._catalog),
+            note_count=len(self._snapshot.entries),
         )
 
     # ---------------------------------------------------------------- lifecycle
@@ -251,7 +331,13 @@ class VaultEngine:
                 )
             self.root.mkdir(parents=True, exist_ok=True)
 
-        swept = sweep_temp_files(self.root)
+        # Issue #398: a CLI import and the server can share one vault; a
+        # temp file only seconds old may be the other process's in-flight
+        # write, so only clear residue older than a minute here. (Git locks
+        # keep the policy's threshold: a commit holds one for milliseconds,
+        # and a lock left behind by a crash must not block the first write
+        # after a quick restart.)
+        swept = sweep_temp_files(self.root, min_age_seconds=OPEN_RESIDUE_MIN_AGE_SECONDS)
         if swept:
             logger.info("swept %d orphaned temp file(s) in %s", len(swept), self.root)
 
@@ -306,6 +392,9 @@ class VaultEngine:
         current = path.read_text(encoding="utf-8")
         if ".palaia/" not in current:
             atomic_write_text(path, current.rstrip("\n") + "\n\n" + GITIGNORE_BLOCK)
+        elif GITIGNORE_MARKER not in current:
+            # A vault from before issue #359: add the editor-state rules once.
+            atomic_write_text(path, current.rstrip("\n") + "\n\n" + GITIGNORE_EDITOR_STATE)
 
     def _ensure_manifest(self, purpose: str | None) -> None:
         path = self.root / MANIFEST_PATH
@@ -355,8 +444,9 @@ class VaultEngine:
     async def close(self) -> None:
         """Release in-memory state. Files and git are already durable."""
         async with self._lock:
-            self._catalog.clear()
-            self._lookups = None
+            self._entries = {}
+            self._tables = _Lookups()
+            self._snapshot = _EMPTY_SNAPSHOT
             self._opened = False
 
     # ------------------------------------------------------------------ catalog
@@ -366,23 +456,22 @@ class VaultEngine:
         async with self._lock:
             return await asyncio.to_thread(self._refresh_sync)
 
-    def refresh_now(self) -> int:
-        """Blocking catalog rebuild, for callers already on a worker thread."""
-        return self._refresh_sync()
-
     def read_note_at(self, relative: str) -> Note:
         """Blocking read of the note at an exact vault-relative path."""
         return self._read_note_sync(relative)
 
     def _refresh_sync(self) -> int:
-        catalog: dict[str, CatalogEntry] = {}
+        entries: dict[str, CatalogEntry] = {}
+        tables = _Lookups()
         for path in self._iter_note_paths():
             entry = self._read_entry(path)
             if entry is not None:
-                catalog[entry.path] = entry
-        self._catalog = catalog
-        self._lookups = None
-        return len(catalog)
+                entries[entry.path] = entry
+                tables.add(entry)
+        self._entries = entries
+        self._tables = tables
+        self._publish_catalog()
+        return len(entries)
 
     def _iter_note_paths(self) -> list[Path]:
         found: list[Path] = []
@@ -394,6 +483,11 @@ class VaultEngine:
             except OSError:  # pragma: no cover - vanished under us
                 continue
             for entry in entries:
+                if entry.is_symlink():
+                    # Issue #398: a link pointing outside the vault made
+                    # `_relative` raise for the whole open(); a link loop
+                    # walked ~40 levels deep. Links are not vault content.
+                    continue
                 if entry.is_dir():
                     if entry.name in IGNORED_DIRS:
                         continue
@@ -412,7 +506,10 @@ class VaultEngine:
             return None
         text = data.decode("utf-8", errors="replace")
         parsed = fm.parse(text)
-        relative = self._relative(path)
+        try:
+            relative = self._relative(path)
+        except ValueError:  # resolves outside the vault (a symlinked parent)
+            return None
         title, _ = fm.string_value(parsed.frontmatter, "title")
         permalink, _ = fm.string_value(parsed.frontmatter, "permalink")
         return CatalogEntry(
@@ -428,34 +525,66 @@ class VaultEngine:
     def _relative(self, path: Path) -> str:
         return path.resolve().relative_to(self.root.resolve()).as_posix()
 
+    def path_for_permalink(self, permalink: str) -> str | None:
+        """The vault-relative path of the note whose permalink is exactly
+        ``permalink`` — no title or alias tiers, unlike :meth:`resolve`."""
+        return self._snapshot.lookups.by_permalink.get(permalink)
+
     @property
     def catalog(self) -> Mapping[str, CatalogEntry]:
-        """Read-only view of the identity catalog, keyed by vault-relative path."""
-        return self._catalog
+        """Read-only view of the identity catalog, keyed by vault-relative path.
 
-    def _lookup_tables(self) -> _Lookups:
-        cached = self._lookups
-        if cached is not None:
-            return cached
-        tables = _Lookups()
-        for entry in self._catalog.values():
-            tables.add(entry)
-        self._lookups = tables
-        return tables
+        An immutable snapshot: safe to iterate from any thread while writes
+        land, and never changed afterwards — read the property again for the
+        current state.
+        """
+        return self._snapshot.entries
+
+    def _publish_catalog(self) -> None:
+        """Replace the readers' snapshot with the writer's current state.
+
+        Every lock-holding operation ends with this. Inside
+        :meth:`catalog_batch` the publish waits for the block's end, so a loop
+        of updates copies the catalog once rather than once per entry.
+        """
+        if self._deferring_publish:
+            return
+        self._snapshot = _CatalogSnapshot(
+            MappingProxyType(dict(self._entries)), self._tables.copy()
+        )
+
+    @contextmanager
+    def catalog_batch(self) -> Iterator[None]:
+        """Publish one snapshot for many catalog updates.
+
+        For the lock holder only: the engine's own operations run inside one,
+        and :class:`~palaia_hub.vault.watcher.VaultWatcher` wraps each batch of
+        external changes it applies under :attr:`lock`. Readers keep the
+        previous snapshot until the block ends — also when it ends with an
+        exception, so what they see afterwards is exactly what the writer's
+        copy holds.
+        """
+        if self._deferring_publish:
+            yield
+            return
+        self._deferring_publish = True
+        try:
+            yield
+        finally:
+            self._deferring_publish = False
+            self._publish_catalog()
 
     def _catalog_put(self, entry: CatalogEntry) -> None:
-        tables = self._lookups
-        previous = self._catalog.get(entry.path)
-        self._catalog[entry.path] = entry
-        if tables is not None:
-            if previous is not None:
-                tables.remove(previous)
-            tables.add(entry)
+        previous = self._entries.get(entry.path)
+        self._entries[entry.path] = entry
+        if previous is not None:
+            self._tables.remove(previous)
+        self._tables.add(entry)
 
     def _catalog_drop(self, path: str) -> CatalogEntry | None:
-        entry = self._catalog.pop(path, None)
-        if entry is not None and self._lookups is not None:
-            self._lookups.remove(entry)
+        entry = self._entries.pop(path, None)
+        if entry is not None:
+            self._tables.remove(entry)
         return entry
 
     # --------------------------------------------------------------- resolution
@@ -479,10 +608,14 @@ class VaultEngine:
                     f"path {raw!r} escapes the vault root. Fix: use a path inside the vault."
                 )
             parts.append(part)
-        if parts and parts[0] in IGNORED_DIRS:
+        # At any depth, not only the first segment (issue #398): the walk
+        # skips these directories wherever they are, so a note written into
+        # one would be committed but never catalogued or indexed.
+        private = next((part for part in parts if part in IGNORED_DIRS), None)
+        if private is not None:
             raise InvalidPathError(
-                f"path {raw!r} points at engine-private or VCS storage ({parts[0]}). "
-                f"Fix: write vault content outside {parts[0]}."
+                f"path {raw!r} points at engine-private or VCS storage ({private}). "
+                f"Fix: write vault content outside {private}."
             )
         relative = "/".join(parts)
         if not relative.endswith(NOTE_SUFFIX):
@@ -519,7 +652,10 @@ class VaultEngine:
         )
 
     def _resolve_candidate(self, candidate: str) -> CatalogEntry | None:
-        tables = self._lookup_tables()
+        # One snapshot for the whole lookup: tables and entries agree with
+        # each other even while a write is publishing a newer state.
+        snapshot = self._snapshot
+        tables = snapshot.lookups
         path = tables.by_permalink.get(candidate)
         if path is None:
             path = tables.by_alias.get(candidate.lower())
@@ -533,20 +669,19 @@ class VaultEngine:
                     )
                 path = titles[0]
         if path is None:
-            path = self._resolve_by_path(candidate)
+            path = self._resolve_by_path(candidate, snapshot.entries)
         if path is None:
             return None
-        return self._catalog.get(path)
+        return snapshot.entries.get(path)
 
-    def _resolve_by_path(self, candidate: str) -> str | None:
+    @staticmethod
+    def _resolve_by_path(candidate: str, catalog: Mapping[str, CatalogEntry]) -> str | None:
         normalized = candidate if candidate.endswith(NOTE_SUFFIX) else candidate + NOTE_SUFFIX
         normalized = normalized.lstrip("/")
-        if normalized in self._catalog:
+        if normalized in catalog:
             return normalized
         matches = [
-            path
-            for path in self._catalog
-            if path == normalized or path.endswith("/" + normalized)
+            path for path in catalog if path == normalized or path.endswith("/" + normalized)
         ]
         if len(matches) > 1:
             raise AmbiguousReferenceError(
@@ -575,7 +710,15 @@ class VaultEngine:
         return self._note_from_bytes(relative, data)
 
     def _note_from_bytes(self, relative: str, data: bytes) -> Note:
-        text = data.decode("utf-8", errors="replace")
+        try:
+            text = data.decode("utf-8")
+            undecodable = False
+        except UnicodeDecodeError:
+            # Still readable — with U+FFFD where the bytes were not UTF-8 —
+            # but flagged, so no write path ever persists the replacement
+            # characters over the original bytes (issue #355).
+            text = data.decode("utf-8", errors="replace")
+            undecodable = True
         parsed = fm.parse(text)
         title, _ = fm.string_value(parsed.frontmatter, "title")
         permalink, _ = fm.string_value(parsed.frontmatter, "permalink")
@@ -589,6 +732,7 @@ class VaultEngine:
             checksum=sha256_bytes(data),
             aliases=tuple(fm.string_list(parsed.frontmatter.get("aliases"))),
             malformed_frontmatter=parsed.malformed,
+            undecodable=undecodable,
         )
 
     async def list_dir(self, relative: str = ".") -> list[DirEntry]:
@@ -597,12 +741,21 @@ class VaultEngine:
         return await asyncio.to_thread(self._list_dir_sync, relative)
 
     def _list_dir_sync(self, relative: str) -> list[DirEntry]:
-        base = self.root if relative in (".", "", "/") else self.root / relative.strip("/")
+        raw_parts = relative.replace("\\", "/").split("/")
+        segments = [part for part in raw_parts if part not in ("", ".")]
+        if any(part in IGNORED_DIRS for part in segments):
+            # Issue #398: the children filter below hid these directories,
+            # but listing one *as the base* still exposed its contents.
+            raise NoteNotFoundError(
+                f"directory {relative!r} is engine-private or VCS storage, not vault content."
+            )
+        base = self.root if not segments else self.root / "/".join(segments)
         if not base.exists() or not base.is_dir():
             raise NoteNotFoundError(
                 f"directory {relative!r} does not exist in vault {self.name!r}. "
                 f"Fix: check the path, or create a note in it (parents are created)."
             )
+        catalog = self._snapshot.entries
         entries: list[DirEntry] = []
         for child in sorted(base.iterdir()):
             if child.name in IGNORED_DIRS or child.name.endswith(TEMP_SUFFIX):
@@ -611,7 +764,7 @@ class VaultEngine:
             if child.is_dir():
                 entries.append(DirEntry(path=rel, kind="dir"))
             elif child.name.endswith(NOTE_SUFFIX):
-                catalog_entry = self._catalog.get(rel)
+                catalog_entry = catalog.get(rel)
                 entries.append(
                     DirEntry(
                         path=rel,
@@ -736,6 +889,9 @@ class VaultEngine:
         exists = target.exists()
         existing: Note | None = self._read_note_sync(relative) if exists else None
 
+        if existing is not None:
+            self._refuse_malformed(existing)
+            self._refuse_undecodable(existing)
         if must_create and exists:
             raise NoteExistsError(
                 f"note {relative!r} already exists in vault {self.name!r}. "
@@ -767,14 +923,25 @@ class VaultEngine:
             else:
                 merged[key] = value
 
-        resolved_title = title or (
-            fm.string_value(merged, "title")[0] if "title" in merged else None
-        ) or (existing.title if existing else _stem(relative))
+        resolved_title = (
+            title
+            or (fm.string_value(merged, "title")[0] if "title" in merged else None)
+            or (existing.title if existing else _stem(relative))
+        )
         self._reject_volatile("title", resolved_title)
 
+        # Issue #398: `frontmatter={"permalink": X}` used to bypass the
+        # canonical/uniqueness checks `permalink=X` gets — an identity the
+        # caller is *introducing* (a new note, or a value that differs from
+        # the note's own) is a request, and is checked as one.
+        requested_permalink = permalink
+        if requested_permalink is None and extra and "permalink" in extra:
+            introduced, _ = fm.string_value(extra, "permalink")
+            if introduced and not (existing and existing.permalink == introduced):
+                requested_permalink = introduced
         resolved_permalink = self._resolve_write_permalink(
             relative=relative,
-            requested=permalink,
+            requested=requested_permalink,
             merged=merged,
             title=resolved_title,
         )
@@ -802,9 +969,12 @@ class VaultEngine:
         resolved_body = body if body is not None else (existing.body if existing else "")
         text = fm.render(merged, resolved_body)
         if existing is not None and text == existing.text:
-            # Nothing changed: no write, no empty commit.
+            # Nothing changed: no write, no empty commit — unless this very
+            # content is still waiting for its commit (issue #333): then the
+            # retry is what commits it.
+            commit = self._recover_uncommitted(only=relative)
             return (
-                WriteResult(note=existing, commit=None, created=False, operation=operation),
+                WriteResult(note=existing, commit=commit, created=False, operation=operation),
                 [],
             )
         if existing is not None and not caller_set_modified:
@@ -825,16 +995,6 @@ class VaultEngine:
                 mtime_ns=target.stat().st_mtime_ns,
             )
         )
-        commit = self.git.commit_paths(
-            [relative],
-            build_commit_message(
-                attribution,
-                summary or f"{'write' if not exists else 'edit'} {resolved_permalink}",
-                operation=operation,
-                permalinks=[resolved_permalink],
-            ),
-            attribution,
-        )
         event: ChangeEvent = (
             NoteCreated(
                 vault=self.name,
@@ -851,10 +1011,103 @@ class VaultEngine:
                 previous_checksum=existing.checksum if existing else None,
             )
         )
+        commit = self._commit_changes(
+            [relative],
+            build_commit_message(
+                attribution,
+                summary or f"{'write' if not exists else 'edit'} {resolved_permalink}",
+                operation=operation,
+                permalinks=[resolved_permalink],
+            ),
+            attribution,
+            events=[event],
+        )
         return (
             WriteResult(note=note, commit=commit, created=not exists, operation=operation),
             [event],
         )
+
+    def _refuse_undecodable(self, note: Note) -> None:
+        """Never write replacement characters over a note's original bytes
+        (issue #355)."""
+        if not note.undecodable:
+            return
+        raise NoteEncodingError(
+            f"note {note.path!r} in vault {self.name!r} is not valid UTF-8, so the engine "
+            f"refuses to rewrite it (the undecodable bytes would be replaced by U+FFFD for "
+            f"good). Fix: convert the file to UTF-8 with your editor, or "
+            f"`iconv -f latin1 -t utf-8`, then retry."
+        )
+
+    def _refuse_malformed(self, note: Note) -> None:
+        """Never rebuild frontmatter from an empty parse (issue #335).
+
+        A fence that is present but unparseable parses to ``{}``; rendering
+        that back would replace the user's YAML block — custom keys, a
+        half-typed edit — with the engine's identity keys alone.
+        """
+        if not note.malformed_frontmatter:
+            return
+        raise MalformedFrontmatterError(
+            f"note {note.path!r} in vault {self.name!r} has frontmatter that does not "
+            f"parse as YAML, so the engine refuses to rewrite it (it would lose the "
+            f"original block). Fix: repair the frontmatter between the '---' fences in "
+            f"that file with your editor, then retry."
+        )
+
+    def _commit_changes(
+        self,
+        paths: Sequence[str],
+        message: str,
+        attribution: Attribution,
+        *,
+        events: Sequence[ChangeEvent],
+    ) -> str | None:
+        """Commit ``paths``; on failure remember them and raise (issue #333).
+
+        The files are already on disk and in the catalog when this runs. A
+        commit that fails (an ``index.lock`` held by another git process is
+        the usual reason) must not turn into a silent divergence: the paths
+        are queued with their message and attribution, and the next
+        successful engine operation — or a retry of the same write — commits
+        them first. The change events travel on the exception so
+        :meth:`_locked` can still publish them: the index reflects disk.
+        """
+        try:
+            return self.git.commit_paths(paths, message, attribution)
+        except GitError as exc:
+            for path in paths:
+                self._uncommitted[path] = (message, attribution)
+            raise UncommittedWriteError(
+                f"{exc}. The change is on disk and will be committed by the next "
+                f"successful write to this vault. Fix: release the git lock (close the "
+                f"other git process or remove a stale .git/index.lock) and retry.",
+                events=events,
+            ) from exc
+
+    def _recover_uncommitted(self, *, only: str | None = None) -> str | None:
+        """Commit writes whose commit failed earlier; return the last sha.
+
+        With ``only``, just that path (a retry of the same write); otherwise
+        everything queued, grouped by the original message so history reads
+        as if the commits had succeeded the first time.
+        """
+        if not self._uncommitted:
+            return None
+        if only is not None:
+            pending = {only: self._uncommitted[only]} if only in self._uncommitted else {}
+        else:
+            pending = dict(self._uncommitted)
+        groups: dict[tuple[str, Attribution], list[str]] = {}
+        for path, key in pending.items():
+            groups.setdefault(key, []).append(path)
+        commit: str | None = None
+        for (message, attribution), paths in groups.items():
+            commit = self.git.commit_paths(paths, message, attribution)
+            for path in paths:
+                self._uncommitted.pop(path, None)
+            logger.info("committed %d earlier write(s) whose commit had failed", len(paths))
+        return commit
 
     def _resolve_write_permalink(
         self,
@@ -864,8 +1117,8 @@ class VaultEngine:
         merged: Mapping[str, Any],
         title: str,
     ) -> str:
-        tables = self._lookup_tables()
-        current = self._catalog.get(relative)
+        tables = self._tables
+        current = self._entries.get(relative)
         own = {current.permalink} if current and current.permalink else set()
 
         if requested is not None:
@@ -945,7 +1198,14 @@ class VaultEngine:
                 mtime_ns=target.stat().st_mtime_ns,
             )
         )
-        commit = self.git.commit_paths(
+        event = NoteMoved(
+            vault=self.name,
+            path=destination,
+            previous_path=relative,
+            permalink=note.permalink,
+            checksum=note.checksum,
+        )
+        commit = self._commit_changes(
             [relative, destination],
             build_commit_message(
                 attribution,
@@ -954,13 +1214,7 @@ class VaultEngine:
                 permalinks=[note.permalink] if note.permalink else [],
             ),
             attribution,
-        )
-        event = NoteMoved(
-            vault=self.name,
-            path=destination,
-            previous_path=relative,
-            permalink=note.permalink,
-            checksum=note.checksum,
+            events=[event],
         )
         return WriteResult(note=note, commit=commit, operation="move"), [event]
 
@@ -974,9 +1228,7 @@ class VaultEngine:
         """Delete a note and commit the removal."""
         self._require_writable()
         entry = self.resolve(reference)
-        return await self._locked(
-            lambda: self._delete_note_sync(entry.path, attribution, summary)
-        )
+        return await self._locked(lambda: self._delete_note_sync(entry.path, attribution, summary))
 
     def _delete_note_sync(
         self, relative: str, attribution: Attribution, summary: str | None
@@ -987,11 +1239,16 @@ class VaultEngine:
                 f"note {relative!r} does not exist in vault {self.name!r}. "
                 f"Fix: nothing to delete — refresh the catalog with engine.refresh()."
             )
-        entry = self._catalog.get(relative)
+        entry = self._entries.get(relative)
         self._sweep_external_edits()
         durable_unlink(target)
         self._catalog_drop(relative)
-        commit = self.git.commit_paths(
+        event = NoteDeleted(
+            vault=self.name,
+            path=relative,
+            permalink=entry.permalink if entry else None,
+        )
+        commit = self._commit_changes(
             [relative],
             build_commit_message(
                 attribution,
@@ -1000,11 +1257,7 @@ class VaultEngine:
                 permalinks=[entry.permalink] if entry and entry.permalink else [],
             ),
             attribution,
-        )
-        event = NoteDeleted(
-            vault=self.name,
-            path=relative,
-            permalink=entry.permalink if entry else None,
+            events=[event],
         )
         return WriteResult(note=None, commit=commit, operation="delete"), [event]
 
@@ -1045,11 +1298,12 @@ class VaultEngine:
         summary: str | None,
     ) -> tuple[RenameResult, list[ChangeEvent]]:
         note = self._read_note_sync(relative)
+        self._refuse_malformed(note)
         old_title = note.title
         old_permalink = note.permalink
         self._reject_volatile("title", new_title)
 
-        tables = self._lookup_tables()
+        tables = self._tables
         if new_permalink is not None:
             if not pl.is_canonical(new_permalink):
                 raise VaultError(
@@ -1114,19 +1368,9 @@ class VaultEngine:
         )
         changed.extend(rewritten)
 
-        commit = self.git.commit_paths(
-            changed,
-            build_commit_message(
-                attribution,
-                summary or f"rename {old_permalink or old_title} -> {minted}",
-                operation="rename",
-                permalinks=[minted],
-            ),
-            attribution,
-        )
         result = RenameResult(
             note=renamed,
-            commit=commit,
+            commit=None,
             old_title=old_title,
             old_permalink=old_permalink,
             rewritten=rewritten,
@@ -1140,9 +1384,22 @@ class VaultEngine:
                 title=new_title,
                 previous_title=old_title,
                 rewritten_links=result.rewritten_links,
+                previous_path=relative if target_relative != relative else "",
+                rewritten_paths=tuple(sorted(rewritten)),
             )
         ]
-        return result, events
+        commit = self._commit_changes(
+            changed,
+            build_commit_message(
+                attribution,
+                summary or f"rename {old_permalink or old_title} -> {minted}",
+                operation="rename",
+                permalinks=[minted],
+            ),
+            attribution,
+            events=events,
+        )
+        return replace(result, commit=commit), events
 
     def _rewrite_backlinks(
         self,
@@ -1164,7 +1421,7 @@ class VaultEngine:
         # A path-shaped form must not shadow another note's permalink: if some
         # other entity owns that exact permalink, links using it mean *that*
         # note, not this one.
-        claims = self._lookup_tables().by_permalink
+        claims = self._tables.by_permalink
         permalink_forms = {
             form for form in permalink_forms if claims.get(form) in (None, *old_paths)
         }
@@ -1181,19 +1438,26 @@ class VaultEngine:
             return None
 
         rewritten: dict[str, int] = {}
-        for path in list(self._catalog):
+        for path in list(self._entries):
             if path == skip:
                 continue
             file_path = self.root / path
             try:
-                text = file_path.read_text(encoding="utf-8")
+                raw = file_path.read_bytes()
             except OSError:  # pragma: no cover - vanished under us
                 continue
+            # `surrogateescape` round-trips bytes that are not UTF-8 exactly
+            # (issue #355): a Latin-1 note's links are rewritten like any
+            # other's, and every byte the rewrite did not touch is written
+            # back unchanged — a strict decode used to abort the rename
+            # half-way, after some backlinks were already on disk.
+            text = raw.decode("utf-8", errors="surrogateescape")
             new_text, count = rewrite_targets(text, resolve)
             if count == 0:
                 continue
-            atomic_write_text(file_path, new_text)
-            note = self._note_from_bytes(path, new_text.encode("utf-8"))
+            new_bytes = new_text.encode("utf-8", errors="surrogateescape")
+            atomic_write_bytes(file_path, new_bytes)
+            note = self._note_from_bytes(path, new_bytes)
             self._catalog_put(_entry_from_note(note, file_path))
             rewritten[path] = count
         return rewritten
@@ -1211,7 +1475,14 @@ class VaultEngine:
         """
         if not self.commit_external_edits or not self.git.initialized:
             return None
-        dirty = self.git.dirty_paths()
+        # Engine writes whose commit failed earlier are committed first, with
+        # their own message and attribution — they are not external edits.
+        self._recover_uncommitted()
+        # Editor state (`.obsidian/`), editor trash and engine storage are not
+        # vault content whatever the vault's `.gitignore` says (issue #359).
+        dirty = [
+            path for path in self.git.dirty_paths() if path.split("/", 1)[0] not in IGNORED_DIRS
+        ]
         if not dirty:
             return None
         for path in dirty:
@@ -1241,14 +1512,43 @@ class VaultEngine:
         """Commit any external edits now, without writing anything else."""
         self._require_writable()
         async with self._lock:
-            return await asyncio.to_thread(self._sweep_external_edits)
+            return await asyncio.to_thread(self._sweep_and_publish)
+
+    def _sweep_and_publish(self) -> str | None:
+        with self.catalog_batch():
+            return self._sweep_external_edits()
+
+    @property
+    def lock(self) -> asyncio.Lock:
+        """The engine's write lock, for the one other component that mutates
+        the catalog: :class:`~palaia_hub.vault.watcher.VaultWatcher` holds it
+        while it applies a batch of external changes (in a worker thread,
+        inside :meth:`catalog_batch`), so a batch never interleaves with an
+        engine write and readers see it land as one snapshot (issue #331)."""
+        return self._lock
+
+    def known_entry(self, relative: str) -> CatalogEntry | None:
+        """The writer's current record of ``relative`` — for the lock holder.
+
+        Inside a :meth:`catalog_batch` this already reflects the batch's own
+        earlier updates, which :attr:`catalog` (the readers' snapshot) does
+        not show until the batch ends. The watcher needs exactly that view to
+        tell a repeat report of a file it just catalogued from a real change.
+        """
+        return self._entries.get(relative)
 
     def observe_external_change(
         self, relative: str, *, deleted: bool = False, permalink: str | None = None
     ) -> CatalogEntry | None:
-        """Update the catalog after an out-of-engine change (watcher callback)."""
+        """Update the catalog after an out-of-engine change (watcher callback).
+
+        The caller holds :attr:`lock`. Outside a :meth:`catalog_batch` each
+        call publishes on its own.
+        """
         if deleted:
-            return self._catalog_drop(relative)
+            dropped = self._catalog_drop(relative)
+            self._publish_catalog()
+            return dropped
         entry = self._read_entry(self.root / relative)
         if entry is None:
             return None
@@ -1263,6 +1563,7 @@ class VaultEngine:
                 mtime_ns=entry.mtime_ns,
             )
         self._catalog_put(entry)
+        self._publish_catalog()
         return entry
 
     # ------------------------------------------------------------ housekeeping
@@ -1295,15 +1596,13 @@ class VaultEngine:
 
         return await VaultDoctor(self).repair()
 
-    async def reindex(self, sink: ReindexSink) -> int:
+    async def reindex(self, sink: ReindexSink, *, refresh: bool = True) -> int:
         """Feed every note to ``sink`` — the rebuild-from-files hook point."""
         from .doctor import VaultDoctor
 
-        return await VaultDoctor(self).reindex(sink)
+        return await VaultDoctor(self).reindex(sink, refresh=refresh)
 
-    async def assign_missing_permalinks(
-        self, *, attribution: Attribution = ENGINE
-    ) -> list[str]:
+    async def assign_missing_permalinks(self, *, attribution: Attribution = ENGINE) -> list[str]:
         """Assign permalinks to notes that lack one, in one attributed commit.
 
         Format spec §3.1: files arriving without a permalink (imports,
@@ -1315,16 +1614,30 @@ class VaultEngine:
     def _assign_missing_permalinks_sync(
         self, attribution: Attribution
     ) -> tuple[list[str], list[ChangeEvent]]:
-        missing = [entry for entry in self._catalog.values() if not entry.permalink]
+        missing = [entry for entry in self._entries.values() if not entry.permalink]
         if not missing:
             return [], []
         self._sweep_external_edits()
-        taken = set(self._lookup_tables().permalinks)
+        taken = set(self._tables.permalinks)
         assigned: list[str] = []
         changed: list[str] = []
         events: list[ChangeEvent] = []
         for entry in missing:
             note = self._read_note_sync(entry.path)
+            if note.malformed_frontmatter:
+                # Its permalink is "missing" only because the block did not
+                # parse; rewriting it would destroy the block (issue #335).
+                logger.warning(
+                    "not assigning a permalink to %s: its frontmatter does not parse",
+                    entry.path,
+                )
+                continue
+            if note.undecodable:
+                # Rewriting it would persist U+FFFD over its bytes (issue #355).
+                logger.warning(
+                    "not assigning a permalink to %s: the file is not valid UTF-8", entry.path
+                )
+                continue
             minted = pl.make_unique(pl.mint(entry.path, note.title), taken)
             taken.add(minted)
             updated = dict(note.frontmatter)
@@ -1347,7 +1660,9 @@ class VaultEngine:
                     previous_checksum=note.checksum,
                 )
             )
-        self.git.commit_paths(
+        if not changed:
+            return [], []
+        self._commit_changes(
             changed,
             build_commit_message(
                 attribution,
@@ -1356,6 +1671,7 @@ class VaultEngine:
                 permalinks=assigned,
             ),
             attribution,
+            events=events,
         )
         return assigned, events
 
@@ -1363,9 +1679,7 @@ class VaultEngine:
 
     def _require_open(self) -> None:
         if not self._opened:
-            raise VaultError(
-                f"vault {self.name!r} is not open. Fix: await engine.open() first."
-            )
+            raise VaultError(f"vault {self.name!r} is not open. Fix: await engine.open() first.")
 
     def _require_writable(self) -> None:
         self._require_open()
@@ -1377,8 +1691,20 @@ class VaultEngine:
             )
 
     async def _locked(self, operation: Callable[[], tuple[T, list[ChangeEvent]]]) -> T:
-        async with self._lock:
-            result, events = await asyncio.to_thread(operation)
+        def run() -> tuple[T, list[ChangeEvent]]:
+            # One published snapshot per operation, whatever it touched.
+            with self.catalog_batch():
+                return operation()
+
+        try:
+            async with self._lock:
+                result, events = await asyncio.to_thread(run)
+        except UncommittedWriteError as exc:
+            # The files changed even though the commit did not (issue #333):
+            # subscribers — the index above all — must learn about it.
+            if self.bus is not None and exc.events:
+                await self.bus.publish_all(cast("list[ChangeEvent]", list(exc.events)))
+            raise
         if self.bus is not None and events:
             await self.bus.publish_all(events)
         return result

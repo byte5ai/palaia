@@ -9,6 +9,8 @@
 # `docker compose down -v` discards it.
 services:
   hub:
+    # rc-channel-note — release candidate: the `stable` tag is created by the
+    # final 3.0.0 release only. Until then, use `:beta` here.
     image: ghcr.io/byte5ai/palaia-hub:stable
     container_name: palaia-hub
     ports:

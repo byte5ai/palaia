@@ -21,6 +21,11 @@ docker run -d --name palaia-hub \
   ghcr.io/byte5ai/palaia-hub:stable
 ```
 
+<!-- rc-channel-note -->
+> **Release candidate:** until `3.0.0` is final there is no `stable` image yet. Where a
+> command or file on this page says `ghcr.io/byte5ai/palaia-hub:stable`, use
+> `ghcr.io/byte5ai/palaia-hub:beta` for now.
+
 The five extra flags close off what a non-root container process could
 otherwise still reach — nothing about the install changes if you leave
 them off, they simply make the container harder to escape from if
@@ -35,7 +40,10 @@ Open `http://localhost:8420/` in your browser (or the machine's address, if
 you're installing on a home server and browsing from a laptop). A short
 first-run setup walks you through:
 
-1. **An administrator sign-in** for the dashboard.
+1. **An administrator sign-in** for the dashboard — a username and a
+   password you choose right there. (A hub started without its sign-in
+   server offers to switch it on first; that one change needs a restart of
+   the container, then the setup asks for your account.)
 2. **How far your memory reaches** — just this device and network, or the
    internet too (with sign-in required the moment it is). You can change
    this later; starting local is the safe default.
@@ -97,8 +105,9 @@ docker compose up -d   # or the equivalent docker run, after docker rm
 
 Your data lives in the named volume, not the container, so this is safe —
 pulling a newer image and recreating the container keeps everything. The
-dashboard footer shows the version you're running and tells you when a
-newer one is published.
+dashboard footer shows the version you're running; when a newer one is
+published, a notice appears at the top of the dashboard with the steps for
+your kind of install.
 
 If you install through a self-hosting app store (Umbrel, CasaOS, Runtipi,
 TrueNAS SCALE, and similar), check there first — those platforms often

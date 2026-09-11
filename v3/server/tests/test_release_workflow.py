@@ -9,13 +9,15 @@ checked structurally instead: the workflow YAML actually wires what
 
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
-_WORKFLOW_PATH = (
-    Path(__file__).resolve().parents[3] / ".github" / "workflows" / "v3-release.yml"
-)
+_WORKFLOW_PATH = Path(__file__).resolve().parents[3] / ".github" / "workflows" / "v3-release.yml"
 
 
 def _load_workflow() -> dict:
@@ -41,7 +43,12 @@ def test_the_build_step_bakes_palaia_channel_and_a_version_annotation() -> None:
     build_step = next(s for s in steps if s.get("uses", "").startswith("docker/build-push-action"))
 
     assert "PALAIA_CHANNEL=" in build_step["with"]["build-args"]
-    assert "org.opencontainers.image.version=" in build_step["with"]["annotations"]
+    annotations = build_step["with"]["annotations"]
+    assert "org.opencontainers.image.version=" in annotations
+    # #319: buildx only annotates the OCI *index* (what the channel tag
+    # resolves to) when told so explicitly via the level prefix; the
+    # update check reads the index first.
+    assert "index,manifest:org.opencontainers.image.version=" in annotations
 
 
 def test_the_compute_tags_step_derives_stable_and_beta_channels() -> None:
@@ -53,7 +60,7 @@ def test_the_compute_tags_step_derives_stable_and_beta_channels() -> None:
     assert 'channel="stable"' in script
     assert 'channel="beta"' in script
     assert 'channel="edge"' in script
-    assert "echo \"channel=${channel}\" >> \"$GITHUB_OUTPUT\"" in script
+    assert 'echo "channel=${channel}" >> "$GITHUB_OUTPUT"' in script
 
 
 def test_the_compute_tags_step_fails_the_build_on_a_version_file_mismatch() -> None:
@@ -68,6 +75,344 @@ def test_the_compute_tags_step_fails_the_build_on_a_version_file_mismatch() -> N
     script = compute_step["run"]
 
     assert "file_version=" in script
-    assert 'cat v3/VERSION' in script
+    assert "cat v3/VERSION" in script
     assert '"${version}" != "${file_version}"' in script
     assert "exit 1" in script
+
+
+# ---------------------------------------------------------------------------
+# Issue #386: pre-release detection. The workflows, the dry-run script and
+# the drift test all used to ask "does the version contain `rc` or `beta`?"
+# — so a `3.1.0-alpha1` or `3.0.1-dev1` (both valid per the drift test's own
+# `_SEMVER_RE`) would have published as a non-prerelease marked "Latest",
+# repointed `stable`, and baked `PALAIA_CHANNEL=stable`. SemVer says any
+# `-suffix` is a pre-release; these tests pin that reading in every copy of
+# the shell, and *run* the release workflow's own tag arithmetic under bash.
+# ---------------------------------------------------------------------------
+
+_V3_ROOT = Path(__file__).resolve().parents[2]
+_CUT_WORKFLOW_PATH = _WORKFLOW_PATH.with_name("v3-cut-release.yml")
+_DRY_RUN_PATH = _V3_ROOT / "tools" / "release-dry-run.sh"
+
+_NEEDS_BASH = pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+
+
+def _compute_tags_script() -> str:
+    workflow = _load_workflow()
+    steps = workflow["jobs"]["build-and-push"]["steps"]
+    return next(s for s in steps if s.get("id") == "tags")["run"]
+
+
+def _cut_guard_script() -> str:
+    workflow = yaml.safe_load(_CUT_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["cut"]["steps"]
+    return next(s for s in steps if s.get("id") == "guard")["run"]
+
+
+def _run_compute_tags(
+    tmp_path: Path, *, ref: str, version_file: str, channel_input: str = "none"
+) -> tuple[subprocess.CompletedProcess[str], dict[str, str]]:
+    """Run the real `Compute tags` step under bash, the way Actions would:
+    `${{ github.event.inputs.channel }}` substituted, `v3/VERSION` read from
+    the working directory, outputs collected from `$GITHUB_OUTPUT`."""
+    script = _compute_tags_script().replace("${{ github.event.inputs.channel }}", channel_input)
+    (tmp_path / "v3").mkdir(exist_ok=True)
+    (tmp_path / "v3" / "VERSION").write_text(version_file + "\n", encoding="utf-8")
+    output_file = tmp_path / "github_output"
+    output_file.write_text("", encoding="utf-8")
+    env = {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "GITHUB_REF": ref,
+        "GITHUB_SHA": "0123456789abcdef0123456789abcdef01234567",
+        "GITHUB_OUTPUT": str(output_file),
+        "IMAGE": "ghcr.io/byte5ai/palaia-hub",
+    }
+    result = subprocess.run(
+        ["bash", "-e", "-c", script],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    outputs = dict(
+        line.split("=", 1)
+        for line in output_file.read_text(encoding="utf-8").splitlines()
+        if "=" in line
+    )
+    return result, outputs
+
+
+@_NEEDS_BASH
+@pytest.mark.parametrize("version", ["3.0.0-rc1", "3.0.0-beta2", "3.1.0-alpha1", "3.0.1-dev1"])
+def test_any_semver_suffix_publishes_to_the_beta_channel_never_stable(
+    tmp_path: Path, version: str
+) -> None:
+    result, outputs = _run_compute_tags(
+        tmp_path, ref=f"refs/tags/v3.{version}", version_file=version
+    )
+    assert result.returncode == 0, result.stderr
+    assert outputs["channel"] == "beta"
+    tags = outputs["tags"].split(",")
+    assert "ghcr.io/byte5ai/palaia-hub:beta" in tags
+    assert "ghcr.io/byte5ai/palaia-hub:stable" not in tags
+    assert f"ghcr.io/byte5ai/palaia-hub:v3.{version}" in tags
+    # Issue #394: Home Assistant pulls `image:<config.yaml version>`.
+    assert f"ghcr.io/byte5ai/palaia-hub:{version}" in tags
+    assert outputs["annotation_version"] == version
+
+
+@_NEEDS_BASH
+def test_a_final_version_publishes_to_stable(tmp_path: Path) -> None:
+    result, outputs = _run_compute_tags(tmp_path, ref="refs/tags/v3.3.0.0", version_file="3.0.0")
+    assert result.returncode == 0, result.stderr
+    assert outputs["channel"] == "stable"
+    tags = outputs["tags"].split(",")
+    assert "ghcr.io/byte5ai/palaia-hub:stable" in tags
+    assert "ghcr.io/byte5ai/palaia-hub:beta" not in tags
+    assert "ghcr.io/byte5ai/palaia-hub:3.0.0" in tags
+    assert outputs["annotation_version"] == "3.0.0"
+
+
+@_NEEDS_BASH
+def test_a_tag_that_disagrees_with_the_version_file_fails_the_build(tmp_path: Path) -> None:
+    result, _ = _run_compute_tags(tmp_path, ref="refs/tags/v3.3.0.0", version_file="3.0.1")
+    assert result.returncode != 0
+    assert "does not match v3/VERSION" in result.stderr
+
+
+def test_the_cut_release_guard_marks_any_suffixed_version_a_prerelease() -> None:
+    script = _cut_guard_script()
+    assert '"${version}" == *-*' in script
+    assert "*rc*" not in script and "*beta*" not in script
+
+
+def test_no_release_shell_still_detects_prereleases_by_rc_or_beta_only() -> None:
+    """Every copy of the arithmetic — both workflows and the dry-run script —
+    must use the same SemVer reading, or one of them silently disagrees
+    with the others on the next non-rc pre-release."""
+    sources = {
+        "v3-release.yml": _compute_tags_script(),
+        "v3-cut-release.yml": _cut_guard_script(),
+        "release-dry-run.sh": _DRY_RUN_PATH.read_text(encoding="utf-8"),
+    }
+    for name, text in sources.items():
+        assert "*rc*" not in text and "*beta*" not in text, f"{name} still tests for rc/beta"
+        assert "== *-*" in text, f"{name} does not test for a SemVer suffix"
+
+
+# ---------------------------------------------------------------------------
+# Issue #387: the changelog-section guard. The cut workflow demanded
+# `^## <version> ` (trailing space) while the dry run accepted `## <version>`
+# anywhere — so a `## 3.0.0` header at end-of-line passed the dry run and
+# failed the cut, and the existing `## 3.0.0-rc1` line satisfied the dry run
+# for a `3.0.0` cut. Both now test `^## <version>( |$)`.
+# ---------------------------------------------------------------------------
+
+_CHANGELOG_GUARD = 'grep -qE "^## ${'
+
+
+def test_cut_workflow_and_dry_run_use_the_same_changelog_header_test() -> None:
+    assert f'{_CHANGELOG_GUARD}version}}( |$)"' in _cut_guard_script()
+    assert f'{_CHANGELOG_GUARD}VERSION}}( |$)"' in _DRY_RUN_PATH.read_text(encoding="utf-8")
+
+
+@_NEEDS_BASH
+@pytest.mark.parametrize(
+    ("changelog", "accepted"),
+    [
+        ("## 3.0.0 — 2026-09-15\n", True),
+        ("## 3.0.0\n", True),
+        ("## 3.0.0-rc1 — 2026-09-01\n", False),
+        ("### 3.0.0\n", False),
+        ("see ## 3.0.0 below\n", False),
+    ],
+)
+def test_the_changelog_header_test_accepts_exactly_the_documented_forms(
+    tmp_path: Path, changelog: str, accepted: bool
+) -> None:
+    """RELEASING.md §3 states the header form; this runs the guards' own
+    `grep` against each documented case, so the doc, the cut and the dry
+    run cannot drift apart again."""
+    path = tmp_path / "CHANGELOG.md"
+    path.write_text(changelog, encoding="utf-8")
+    result = subprocess.run(
+        ["bash", "-c", f'grep -qE "^## ${{version}}( |$)" "{path}"'],
+        env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "version": "3.0.0"},
+        check=False,
+    )
+    assert (result.returncode == 0) is accepted
+
+
+# ---------------------------------------------------------------------------
+# Issue #392: the v3 CI's path filter. This file and `test_pi_image.py` pin
+# the v3 workflows' structure, but `v3-ci.yml` ran only for `v3/**` — a PR
+# editing just `.github/workflows/v3-*.yml` got no v3 CI at all.
+# ---------------------------------------------------------------------------
+
+_CI_WORKFLOW_PATH = _WORKFLOW_PATH.with_name("v3-ci.yml")
+
+
+@pytest.mark.parametrize("trigger", ["push", "pull_request"])
+def test_v3_ci_runs_for_changes_to_the_v3_workflow_files_themselves(trigger: str) -> None:
+    workflow = yaml.safe_load(_CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    paths = workflow[True][trigger]["paths"]
+    assert "v3/**" in paths
+    assert ".github/workflows/v3-*.yml" in paths, (
+        f"v3-ci.yml `{trigger}.paths` must include the v3 workflow files, or a PR "
+        "touching only them runs no v3 CI (issue #392)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Issue #393: the manual `channel` input. Dispatching on `main` with
+# `channel=stable` tagged `stable` and baked `PALAIA_CHANNEL=stable` for a
+# build whose version annotation is `0.0.0+edge.<sha>` and which no
+# `v3.<version>` tag names — every stable hub would then compare against
+# `0.0.0` and report "up to date" until the next real tag.
+# ---------------------------------------------------------------------------
+
+
+@_NEEDS_BASH
+@pytest.mark.parametrize("channel", ["stable", "beta"])
+def test_a_manual_channel_is_refused_on_a_branch_ref(tmp_path: Path, channel: str) -> None:
+    result, outputs = _run_compute_tags(
+        tmp_path, ref="refs/heads/main", version_file="3.0.0", channel_input=channel
+    )
+    assert result.returncode != 0
+    assert "only honoured on a v3.* release tag" in result.stderr
+    assert "tags" not in outputs, "the step must fail before it emits tags"
+
+
+@_NEEDS_BASH
+def test_a_manual_channel_is_honoured_on_a_release_tag(tmp_path: Path) -> None:
+    result, outputs = _run_compute_tags(
+        tmp_path, ref="refs/tags/v3.3.0.0-rc1", version_file="3.0.0-rc1", channel_input="stable"
+    )
+    assert result.returncode == 0, result.stderr
+    assert outputs["channel"] == "stable"
+    assert "ghcr.io/byte5ai/palaia-hub:stable" in outputs["tags"].split(",")
+    assert outputs["annotation_version"] == "3.0.0-rc1"
+
+
+@_NEEDS_BASH
+def test_a_plain_manual_rebuild_on_main_still_works(tmp_path: Path) -> None:
+    result, outputs = _run_compute_tags(
+        tmp_path, ref="refs/heads/main", version_file="3.0.0", channel_input="none"
+    )
+    assert result.returncode == 0, result.stderr
+    assert outputs["channel"] == "edge"
+    assert "ghcr.io/byte5ai/palaia-hub:edge" in outputs["tags"].split(",")
+
+
+# ---------------------------------------------------------------------------
+# Issue #400: the arm64 smoke boots the image under the documented hardening
+# flags, so the hardened posture is proven on both architectures.
+# ---------------------------------------------------------------------------
+
+
+def test_the_arm64_smoke_runs_under_the_documented_hardening_flags() -> None:
+    workflow = _load_workflow()
+    steps = workflow["jobs"]["build-and-push"]["steps"]
+    smoke = next(s for s in steps if "arm64 smoke" in s.get("name", ""))
+    script = smoke["run"]
+    for flag in (
+        "--security-opt no-new-privileges:true",
+        "--cap-drop ALL",
+        "--read-only",
+        "--tmpfs /tmp",
+    ):
+        assert flag in script, f"the arm64 smoke lacks {flag}"
+
+
+# ---------------------------------------------------------------------------
+# Issue #401: release-workflow robustness.
+# ---------------------------------------------------------------------------
+
+
+def _cut_workflow() -> dict:
+    return yaml.safe_load(_CUT_WORKFLOW_PATH.read_text(encoding="utf-8"))
+
+
+def test_the_release_title_reaches_the_shell_through_the_environment() -> None:
+    steps = _cut_workflow()["jobs"]["cut"]["steps"]
+    create = next(s for s in steps if s.get("name") == "Create tag + release")
+    assert "${{ steps.guard.outputs.title }}" not in create["run"]
+    assert create["env"]["TITLE"] == "${{ steps.guard.outputs.title }}"
+    assert '--title "${TITLE}"' in create["run"]
+    assert create["if"] == "steps.guard.outputs.create == 'true'"
+
+
+def test_the_cut_offers_a_redispatch_only_recovery() -> None:
+    workflow = _cut_workflow()
+    inputs = workflow[True]["workflow_dispatch"]["inputs"]
+    assert inputs["redispatch_only"]["type"] == "boolean"
+    assert inputs["redispatch_only"]["default"] is False
+    assert "redispatch_only=true" in _cut_guard_script()
+
+
+def test_ci_runs_the_sdk_tests_and_its_own_mypy() -> None:
+    workflow = yaml.safe_load(_CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    sdk = workflow["jobs"]["sdk"]
+    assert sdk["defaults"]["run"]["working-directory"] == "v3/sdk"
+    runs = [s.get("run", "") for s in sdk["steps"]]
+    assert any("uv run mypy src" in run for run in runs)
+    assert any("uv run pytest" in run for run in runs)
+
+
+def test_dependency_audits_report_into_the_job_summary() -> None:
+    workflow = yaml.safe_load(_CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    audits = [
+        s
+        for s in workflow["jobs"]["dependency-audit"]["steps"]
+        if "advisories" in s.get("name", "")
+    ]
+    assert len(audits) == 4
+    for step in audits:
+        assert step["continue-on-error"] is True, "reporting, not gating — by design"
+        assert "report-audit.sh" in step["run"]
+    script = (_WORKFLOW_PATH.parents[1] / "scripts" / "report-audit.sh").read_text(encoding="utf-8")
+    assert "GITHUB_STEP_SUMMARY" in script
+    assert "::warning" in script
+
+
+# ---------------------------------------------------------------------------
+# Issue #405: CI/build time.
+# ---------------------------------------------------------------------------
+
+
+def test_every_uv_setup_in_ci_caches_its_environment() -> None:
+    workflow = yaml.safe_load(_CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    setups = [
+        step
+        for job in workflow["jobs"].values()
+        for step in job["steps"]
+        if step.get("uses", "").startswith("astral-sh/setup-uv")
+    ]
+    assert len(setups) >= 4
+    for step in setups:
+        assert step["with"]["enable-cache"] is True
+        assert step["with"]["cache-dependency-glob"].endswith("uv.lock")
+
+
+def test_a_docs_only_push_to_main_skips_the_image_build() -> None:
+    workflow = _load_workflow()
+    changes = workflow["jobs"]["changes"]
+    decide = next(s for s in changes["steps"] if s.get("id") == "decide")
+    assert "git diff --quiet" in decide["run"]
+    assert "v3 .github/workflows/v3-release.yml" in decide["run"]
+    build = workflow["jobs"]["build-and-push"]
+    assert build["needs"] == "changes"
+    assert build["if"] == "needs.changes.outputs.build == 'true'"
+
+
+def test_the_dockerfile_installs_dependencies_before_the_project_sources() -> None:
+    lines = (_V3_ROOT / "deploy" / "Dockerfile").read_text(encoding="utf-8").splitlines()
+    no_project = next(i for i, line in enumerate(lines) if "--no-install-project" in line)
+    sources = next(i for i, line in enumerate(lines) if line.startswith("COPY v3/server/ "))
+    full_sync = next(
+        i
+        for i, line in enumerate(lines)
+        if line.startswith("RUN uv sync") and "--no-install-project" not in line
+    )
+    assert no_project < sources < full_sync

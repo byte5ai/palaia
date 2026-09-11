@@ -45,13 +45,20 @@ describe("per-client skill gating", () => {
   });
 
   it("gives clients that load skills a headline and concrete steps", () => {
-    for (const id of ["claude-code-cli", "claude-desktop", "claude-ai", "codex", "gemini-cli"]) {
+    for (const id of [
+      "claude-code-cli",
+      "claude-desktop",
+      "claude-ai",
+      "codex",
+      "gemini-cli",
+    ]) {
       const support = skillSupportFor(id);
       expect(support.kind).toBe("supported");
       if (support.kind !== "supported") return;
       expect(support.install.headline.length).toBeGreaterThan(20);
       expect(support.install.steps.length).toBeGreaterThanOrEqual(2);
-      for (const step of support.install.steps) expect(step.length).toBeGreaterThan(20);
+      for (const step of support.install.steps)
+        expect(step.length).toBeGreaterThan(20);
     }
   });
 
@@ -70,5 +77,19 @@ describe("per-client skill gating", () => {
     const support = skillSupportFor("generic");
     expect(support.kind).toBe("unknown");
     expect(skillSupportFor("something-we-never-heard-of").kind).toBe("unknown");
+  });
+});
+
+describe("where each Claude client reads skills from (issue 385)", () => {
+  it("sends Claude Desktop to the account's skills setting, not to Claude Code's folder", () => {
+    const desktop = skillSupportFor("claude-desktop");
+    const cli = skillSupportFor("claude-code-cli");
+    if (desktop.kind !== "supported" || cli.kind !== "supported")
+      throw new Error("expected support");
+    expect(desktop.install.steps.join(" ")).not.toContain("~/.claude/skills");
+    expect(desktop.install.steps.join(" ")).toContain(
+      "Settings → Capabilities → Skills",
+    );
+    expect(cli.install.steps.join(" ")).toContain("~/.claude/skills");
   });
 });

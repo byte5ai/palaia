@@ -34,6 +34,20 @@ Umbrel does not publish a standalone schema document — the shipped apps
 5. Open the PR. Fill in `submission:` in `umbrel-app.yml` with its URL
    once opened (a manifest field their tooling reads back).
 
+## Data directory ownership
+
+The container runs as uid/gid `1000:1000` (pinned in `v3/deploy/Dockerfile`,
+issue #329), and `docker-compose.yml` says so with `user: "1000:1000"`.
+`${APP_DATA_DIR}/data` is a bind mount, so it keeps whatever ownership the
+host gives it — on Umbrel that is the same `1000:1000` (inferred from
+Umbrel's own app packages, which run as that pair for the same reason; not
+verified on a live Umbrel here). If the first boot logs a `PermissionError`
+under `/data`, fix the ownership once on the host:
+
+```bash
+sudo chown -R 1000:1000 "${APP_DATA_DIR}/data"
+```
+
 ## Faster alternative: a Community App Store
 
 Umbrel also supports third-party app stores added by URL, no PR or review
@@ -43,6 +57,15 @@ root of a small public git repo, then following Umbrel's own "Community
 App Stores" instructions to register that repo's URL, gets palaia
 installable today — worth doing in parallel with the PR above, which can
 take a while to review.
+
+## Before the first submission: gallery images
+
+`umbrel-app.yml`'s `gallery` is an empty list. Umbrel's app-store PR
+checklist expects gallery screenshots (their contributor docs give the
+sizes); take them from a running hub — the dashboard's Home, Explorer and
+Connect pages are the natural three — and list the uploaded image URLs
+there before opening the PR (issue #400). Nothing in this repository can
+produce them: they need a browser in front of a live hub.
 
 ## What to update before every release
 

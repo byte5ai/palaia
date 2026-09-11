@@ -14,7 +14,14 @@ import pytest
 from palaia_hub.oauth import provision_machine_client
 from palaia_hub.oauth.pkce import challenge_for
 
-from .harness import CIMD_CLIENT_ID, CIMD_REDIRECT_URI, OWNER_PASSWORD, OWNER_USERNAME, Harness
+from .harness import (
+    CIMD_CLIENT_ID,
+    CIMD_REDIRECT_URI,
+    OWNER_PASSWORD,
+    OWNER_USERNAME,
+    Harness,
+    authorize_with_consent,
+)
 
 BASE_URL = "https://testserver"
 VERIFIER = "token-endpoint-code-verifier-with-plenty-of-entropy"
@@ -44,7 +51,8 @@ async def _sign_in(http: httpx.AsyncClient) -> None:
 
 async def _grant_tokens(harness: Harness, http: httpx.AsyncClient) -> dict[str, str]:
     await _sign_in(http)
-    authorize = await http.get(
+    authorize = await authorize_with_consent(
+        http,
         "/oauth/authorize",
         params={
             "response_type": "code",
@@ -190,7 +198,8 @@ async def test_a_code_cannot_be_redeemed_twice(harness: Harness) -> None:
     async with harness.app.router.lifespan_context(harness.app):
         async with _http(harness) as http:
             await _sign_in(http)
-            authorize = await http.get(
+            authorize = await authorize_with_consent(
+                http,
                 "/oauth/authorize",
                 params={
                     "response_type": "code",
@@ -233,7 +242,8 @@ async def test_a_wrong_code_verifier_is_refused_and_kills_the_grant(
     async with harness.app.router.lifespan_context(harness.app):
         async with _http(harness) as http:
             await _sign_in(http)
-            authorize = await http.get(
+            authorize = await authorize_with_consent(
+                http,
                 "/oauth/authorize",
                 params={
                     "response_type": "code",
@@ -424,7 +434,8 @@ async def test_a_machine_client_cannot_use_the_code_flow(harness: Harness) -> No
     async with harness.app.router.lifespan_context(harness.app):
         async with _http(harness) as http:
             await _sign_in(http)
-            response = await http.get(
+            response = await authorize_with_consent(
+                http,
                 "/oauth/authorize",
                 params={
                     "response_type": "code",
@@ -465,7 +476,8 @@ async def test_an_unauthenticated_authorize_request_touches_no_client(
     """
     async with harness.app.router.lifespan_context(harness.app):
         async with _http(harness) as http:
-            response = await http.get(
+            response = await authorize_with_consent(
+                http,
                 "/oauth/authorize",
                 params={
                     "response_type": "code",
@@ -488,7 +500,8 @@ async def test_an_unknown_client_id_never_redirects(harness: Harness) -> None:
     async with harness.app.router.lifespan_context(harness.app):
         async with _http(harness) as http:
             await _sign_in(http)
-            response = await http.get(
+            response = await authorize_with_consent(
+                http,
                 "/oauth/authorize",
                 params={
                     "response_type": "code",
@@ -509,7 +522,8 @@ async def test_a_mismatched_redirect_uri_never_redirects(harness: Harness) -> No
     async with harness.app.router.lifespan_context(harness.app):
         async with _http(harness) as http:
             await _sign_in(http)
-            response = await http.get(
+            response = await authorize_with_consent(
+                http,
                 "/oauth/authorize",
                 params={
                     "response_type": "code",
@@ -529,7 +543,8 @@ async def test_errors_after_validation_are_redirected_with_state(harness: Harnes
     async with harness.app.router.lifespan_context(harness.app):
         async with _http(harness) as http:
             await _sign_in(http)
-            response = await http.get(
+            response = await authorize_with_consent(
+                http,
                 "/oauth/authorize",
                 params={
                     "response_type": "token",  # OAuth 2.1 removed the implicit flow
@@ -555,7 +570,8 @@ async def test_pkce_is_mandatory(harness: Harness) -> None:
     async with harness.app.router.lifespan_context(harness.app):
         async with _http(harness) as http:
             await _sign_in(http)
-            response = await http.get(
+            response = await authorize_with_consent(
+                http,
                 "/oauth/authorize",
                 params={
                     "response_type": "code",
@@ -574,7 +590,8 @@ async def test_an_unknown_resource_is_invalid_target(harness: Harness) -> None:
     async with harness.app.router.lifespan_context(harness.app):
         async with _http(harness) as http:
             await _sign_in(http)
-            response = await http.get(
+            response = await authorize_with_consent(
+                http,
                 "/oauth/authorize",
                 params={
                     "response_type": "code",

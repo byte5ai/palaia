@@ -23,11 +23,17 @@ public-facing; nothing here prescribes design.
 
 ## What is deliberately NOT decided here (yours)
 
-1. **Domain + DNS** — `astro.config.mjs`'s `site:` is the placeholder
-   `https://docs.palaia.example`. After choosing the real domain, update
-   it and re-run `tests/onboarding.test.ts` + `tests/generated-pages.test.ts`.
-2. **Hosting + deploy** — CI builds the site but deploys nowhere. Any
-   static host works on `dist/`; a deploy workflow does not exist yet.
+1. **Domain + DNS** — decided: `astro.config.mjs` has `site:
+   "https://palaia.byte5.ai"` and `base: "/docs"` (the docs are a subpath
+   of the homepage). The dashboard's `web/src/lib/docs.ts` is pinned to
+   that value by `web/src/lib/docs.test.ts` (issue #322), so changing it
+   means changing both — the test says so.
+2. **Hosting + deploy** — the site is live at
+   `https://palaia.byte5.ai/docs`, served by the palaia-homepage repo
+   (its `DOCS-HOSTING.md`). This repository's CI only builds and
+   link-checks `dist/`; a deploy step that hands a new build to the
+   homepage repo does not exist here yet, so content changes reach the
+   live site only when that repo picks them up.
 3. **Marketing** — every page is functional, none is promotional. Whether
    a marketing landing page fronts the docs site (or lives elsewhere) is
    a website-session decision. The root README's pitch (being rewritten,

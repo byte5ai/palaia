@@ -1,12 +1,33 @@
 import { useEffect, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 
-import { Badge, CardBody, CardFoot, CardHead, EmptyState } from "../components";
-import type { FunnelStatus, InfoResponse, TokenInfo, VaultSummary } from "../lib/api/client";
+import {
+  Badge,
+  Button,
+  CardBody,
+  CardFoot,
+  CardHead,
+  EmptyState,
+} from "../components";
+import type {
+  FunnelStatus,
+  InfoResponse,
+  SignInInfo,
+  TokenInfo,
+  VaultSummary,
+} from "../lib/api/client";
 import { api } from "../lib/api/client";
 import { docsUrl } from "../lib/docs";
+import { saveBlob } from "../lib/download";
+import { describeApiError } from "../lib/errors";
+import { nextPollDelay, POLL_INITIAL_MS } from "../lib/polling";
 import type { EventStreamState, VaultChangeEntry } from "../lib/events";
-import { CheckIcon, ClientsIcon, ExplorerIcon, WarningIcon } from "../shell/icons";
+import {
+  CheckIcon,
+  ClientsIcon,
+  ExplorerIcon,
+  WarningIcon,
+} from "../shell/icons";
 
 interface InboxAggregate {
   count: number;
@@ -69,7 +90,11 @@ function Tile({
   action?: React.ReactNode;
 }) {
   return (
-    <div className={["tile", attention ? "tile--attention" : ""].filter(Boolean).join(" ")}>
+    <div
+      className={["tile", attention ? "tile--attention" : ""]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <div>
         <span className="t-over">{label}</span>
       </div>
@@ -90,10 +115,34 @@ export function Home() {
   const stream = useOutletContext<EventStreamState>();
   const [info, setInfo] = useState<InfoResponse | null>(null);
   const [vaults, setVaults] = useState<VaultSummary[] | null>(null);
+  // Issue 378: a failed vault listing used to look like "nothing to
+  // remember yet" with two tiles stuck at "…".
+  const [vaultsError, setVaultsError] = useState<string | null>(null);
   const [inbox, setInbox] = useState<InboxAggregate | null>(null);
   const [tokens, setTokens] = useState<TokenInfo[] | null>(null);
-  const [indexAggregate, setIndexAggregate] = useState<IndexAggregate | null>(null);
+  const [indexAggregate, setIndexAggregate] = useState<IndexAggregate | null>(
+    null,
+  );
   const [funnel, setFunnel] = useState<FunnelStatus | null>(null);
+  const [backingUp, setBackingUp] = useState(false);
+  const [backupError, setBackupError] = useState<string | null>(null);
+
+  // Issue 382: a plain link to the gated endpoint saved the gate's refusal
+  // as the download once the session had expired. Fetching through the
+  // client redirects to sign-in like every other call, and any other
+  // refusal is shown in the hub's own words.
+  async function backUp() {
+    setBackingUp(true);
+    setBackupError(null);
+    try {
+      const file = await api.downloadBackup();
+      saveBlob(file.blob, file.filename ?? "palaia-backup.tar.gz");
+    } catch (err) {
+      setBackupError(describeApiError(err));
+    } finally {
+      setBackingUp(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -120,7 +169,10 @@ export function Home() {
           if (!status) continue;
           count += status.count;
           if (status.oldest_age_seconds != null) {
-            oldest = oldest == null ? status.oldest_age_seconds : Math.max(oldest, status.oldest_age_seconds);
+            oldest =
+              oldest == null
+                ? status.oldest_age_seconds
+                : Math.max(oldest, status.oldest_age_seconds);
           }
         }
         setInbox({ count, oldestAgeSeconds: oldest });
@@ -138,12 +190,18 @@ export function Home() {
           totalReady += status.embeds.ready;
           totalPending += status.embeds.pending;
           totalFailed += status.embeds.failed;
-          if (status.embeds.enabled && status.embeds.pending > 0) allCaughtUp = false;
+          if (status.embeds.enabled && status.embeds.pending > 0)
+            allCaughtUp = false;
         }
-        setIndexAggregate({ totalReady, totalPending, totalFailed, allCaughtUp });
+        setIndexAggregate({
+          totalReady,
+          totalPending,
+          totalFailed,
+          allCaughtUp,
+        });
       })
-      .catch(() => {
-        if (!cancelled) setVaults([]);
+      .catch((err: unknown) => {
+        if (!cancelled) setVaultsError(describeApiError(err));
       });
     api
       .listTokens()
@@ -170,20 +228,39 @@ export function Home() {
   // "no refresh button anywhere" way ConnectPanel.tsx polls for a client's
   // first call — this tile just isn't event-stream-backed either. Stops
   // once a first memory is recorded; nothing left to wait for after that.
+  // Issue 384: backs off (3 s → … → 30 s) rather than asking every 3 s
+  // forever on a hub that never records a first memory.
+  const firstMemoryAt = funnel?.first_memory_at ?? null;
   useEffect(() => {
-    if (funnel?.first_memory_at) return;
-    const id = window.setInterval(() => {
+    if (firstMemoryAt) return;
+    let cancelled = false;
+    let delay = POLL_INITIAL_MS;
+    let timer = 0;
+    const tick = () => {
       api
         .funnelStatus()
-        .then(setFunnel)
+        .then((status) => {
+          if (!cancelled) setFunnel(status);
+        })
         .catch(() => {
           // a transient fetch failure just means the next tick tries again
+        })
+        .finally(() => {
+          if (cancelled) return;
+          delay = nextPollDelay(delay);
+          timer = window.setTimeout(tick, delay);
         });
-    }, 3000);
-    return () => window.clearInterval(id);
-  }, [funnel?.first_memory_at]);
+    };
+    timer = window.setTimeout(tick, delay);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [firstMemoryAt]);
 
   const isHealthy = stream.health?.status === "ok";
+  // `sign_in` is typed `unknown` by the generated schema (see SignInInfo).
+  const signIn = info?.sign_in as SignInInfo | undefined;
   const hasVaults = (vaults?.length ?? 0) > 0;
   const totalNotes = vaults?.reduce((sum, v) => sum + v.note_count, 0) ?? 0;
   const liveClients = (tokens ?? [])
@@ -198,18 +275,28 @@ export function Home() {
           <h2 className="verdict__line">
             {stream.connection === "connecting"
               ? "Connecting to the hub…"
-              : !hasVaults
-                ? "Your hub is up. Nothing to remember yet."
-                : isHealthy
-                  ? "Everything is healthy."
-                  : "The hub needs a look."}
+              : vaultsError
+                ? "The hub needs a look."
+                : vaults === null
+                  ? "Looking at your hub…"
+                  : !hasVaults
+                    ? "Your hub is up. Nothing to remember yet."
+                    : isHealthy
+                      ? "Everything is healthy."
+                      : "The hub needs a look."}
           </h2>
           <p className="verdict__sub">
-            {vaults === null
-              ? "Loading vaults…"
-              : hasVaults
-                ? `${vaults.length} vault${vaults.length === 1 ? "" : "s"}, ${totalNotes} note${totalNotes === 1 ? "" : "s"} on disk.`
-                : "No vault exists yet — the onboarding wizard's third step creates one."}
+            {vaults === null ? (
+              (vaultsError ?? "Loading vaults…")
+            ) : hasVaults ? (
+              `${vaults.length} vault${vaults.length === 1 ? "" : "s"}, ${totalNotes} note${totalNotes === 1 ? "" : "s"} on disk.`
+            ) : (
+              <>
+                No vault exists yet —{" "}
+                <Link to="/onboarding">the setup wizard</Link> creates your
+                first one in a minute.
+              </>
+            )}
           </p>
         </div>
         <div className="verdict__aside">
@@ -225,7 +312,10 @@ export function Home() {
           ) : (
             <>
               <span className="t-over">Connection</span>
-              <Badge variant={stream.connection === "open" ? "ok" : "warn"} live={stream.connection === "open"}>
+              <Badge
+                variant={stream.connection === "open" ? "ok" : "warn"}
+                live={stream.connection === "open"}
+              >
                 {stream.connection}
               </Badge>
             </>
@@ -234,13 +324,17 @@ export function Home() {
       </section>
 
       {funnel?.time_to_first_memory_display ? (
-        <section className="banner banner--ok" data-testid="first-memory-celebration">
+        <section
+          className="banner banner--ok"
+          data-testid="first-memory-celebration"
+        >
           <CheckIcon className="icon icon--sm" />
           <div>
             <p className="banner__title">Your first memory is in.</p>
             <p className="t-sm t-muted">
-              Set up in {funnel.time_to_first_memory_display} — from install to a client's
-              first successful write, timed by the hub itself. This number never leaves this hub.
+              Set up in {funnel.time_to_first_memory_display} — from install to
+              a client's first successful write, timed by the hub itself. This
+              number never leaves this hub.
             </p>
           </div>
         </section>
@@ -251,27 +345,45 @@ export function Home() {
           label="Hub"
           metric={info?.version ? String(info.version) : "…"}
           unit={info?.mode ? String(info.mode) : undefined}
-          sub={isHealthy ? "healthy" : stream.connection === "connecting" ? "connecting…" : "needs a look"}
+          sub={
+            isHealthy
+              ? "healthy"
+              : stream.connection === "connecting"
+                ? "connecting…"
+                : "needs a look"
+          }
         />
         <Tile
           label="Vaults"
-          metric={vaults?.length ?? "…"}
+          metric={vaults?.length ?? (vaultsError ? "—" : "…")}
           unit={vaults?.length === 1 ? "vault" : "vaults"}
-          sub={`${totalNotes} note${totalNotes === 1 ? "" : "s"}`}
+          sub={
+            vaultsError
+              ? "could not load"
+              : `${totalNotes} note${totalNotes === 1 ? "" : "s"}`
+          }
         />
         <Tile
           label="Semantic search"
           metric={
             indexAggregate === null
-              ? "…"
+              ? vaultsError
+                ? "—"
+                : "…"
               : indexAggregate.allCaughtUp
                 ? "caught up"
                 : `${indexAggregate.totalPending}`
           }
-          unit={indexAggregate && !indexAggregate.allCaughtUp ? "embedding" : undefined}
+          unit={
+            indexAggregate && !indexAggregate.allCaughtUp
+              ? "embedding"
+              : undefined
+          }
           sub={
             indexAggregate === null
-              ? "loading…"
+              ? vaultsError
+                ? "could not load"
+                : "loading…"
               : indexAggregate.allCaughtUp
                 ? "searchable now — fully caught up"
                 : `searchable now — catching up (${indexAggregate.totalReady} of ` +
@@ -281,18 +393,23 @@ export function Home() {
         />
         <Tile
           label="Inbox"
-          metric={inbox?.count ?? "…"}
+          metric={inbox?.count ?? (vaultsError ? "—" : "…")}
           unit="waiting"
           sub={
-            inbox && inbox.oldestAgeSeconds != null
-              ? `oldest capture ${formatDuration(inbox.oldestAgeSeconds)} old`
-              : "nothing captured yet"
+            vaultsError
+              ? "could not load"
+              : inbox && inbox.oldestAgeSeconds != null
+                ? `oldest capture ${formatDuration(inbox.oldestAgeSeconds)} old`
+                : "nothing captured yet"
           }
           attention={Boolean(inbox && inbox.count > 0)}
           action={
             inbox && inbox.count > 0 ? (
-              <Link className="btn btn--sm" to="/inbox">
-                Review now
+              // Issue 375: this used to lead to a "not built yet" page.
+              // Captures wait in the vault's inbox folder, which the
+              // explorer shows.
+              <Link className="btn btn--sm" to="/explorer">
+                See in explorer
               </Link>
             ) : undefined
           }
@@ -301,12 +418,19 @@ export function Home() {
           label="Clients"
           metric={liveClients.length}
           unit="connected"
-          sub={tokens ? `${tokens.length} token${tokens.length === 1 ? "" : "s"} issued` : "…"}
+          sub={
+            tokens
+              ? `${tokens.length} token${tokens.length === 1 ? "" : "s"} issued`
+              : "…"
+          }
         />
       </section>
 
       <section className="home-grid">
-        <div className="card" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <div
+          className="card"
+          style={{ display: "flex", flexDirection: "column", minHeight: 0 }}
+        >
           <CardHead title="activity">
             <Badge variant="neutral" live={stream.connection === "open"}>
               live
@@ -315,9 +439,12 @@ export function Home() {
           <div className="feed scrollpane" style={{ maxHeight: 320 }}>
             {stream.recentChanges.length === 0 ? (
               <div style={{ padding: "var(--space-6) var(--space-4)" }}>
-                <EmptyState mark={<ExplorerIcon className="icon--lg" />} title="Nothing yet.">
-                  A note written, moved or deleted anywhere in a vault shows up here the moment
-                  it happens — no refresh needed.
+                <EmptyState
+                  mark={<ExplorerIcon className="icon--lg" />}
+                  title="Nothing yet."
+                >
+                  A note written, moved or deleted anywhere in a vault shows up
+                  here the moment it happens — no refresh needed.
                 </EmptyState>
               </div>
             ) : (
@@ -333,7 +460,9 @@ export function Home() {
                     </p>
                     <div className="feed__meta">
                       {entry.data.path ? (
-                        <span className="chip chip--mono">{entry.data.path}</span>
+                        <span className="chip chip--mono">
+                          {entry.data.path}
+                        </span>
                       ) : null}
                       <span className="t-meta">{formatAgo(entry.ts)}</span>
                     </div>
@@ -356,13 +485,21 @@ export function Home() {
                 .filter((t) => !t.revoked_at)
                 .map((token) => (
                   <div className="listrow" key={token.id}>
-                    <span className={["dot", token.last_used_at ? "dot--ok" : ""].filter(Boolean).join(" ")} />
+                    <span
+                      className={["dot", token.last_used_at ? "dot--ok" : ""]
+                        .filter(Boolean)
+                        .join(" ")}
+                    />
                     <div className="grow">
                       <div className="listrow__title">{token.name}</div>
-                      <div className="listrow__meta">profile: {token.profile}</div>
+                      <div className="listrow__meta">
+                        profile: {token.profile}
+                      </div>
                     </div>
                     <span className="t-meta">
-                      {token.last_used_at ? formatAgo(new Date(token.last_used_at).getTime()) : "waiting"}
+                      {token.last_used_at
+                        ? formatAgo(new Date(token.last_used_at).getTime())
+                        : "waiting"}
                     </span>
                   </div>
                 ))
@@ -380,34 +517,58 @@ export function Home() {
         </div>
       </section>
 
-      {/* SPEC-604: the dashboard's one "Back up" action. Always shown — the
-       * endpoint behind it (GET /api/backup) is mounted on every hub with
-       * no opt-in parameter, the same posture as /api/health — so there is
-       * no service-not-configured state to branch on here. */}
+      {/* SPEC-604: the dashboard's one "Back up" action. Issue 317: the
+       * download is served only to a signed-in owner (the file can act as
+       * the hub), so on a hub whose dashboard has no sign-in turned on the
+       * card explains the way to take a backup there instead of offering a
+       * link that would come back as a refusal. */}
       <section className="card" data-testid="backup-card">
         <CardHead title="back up" />
         <CardBody className="stack stack--3">
           <p className="t-sm t-muted">
-            Downloads one file with everything this hub has saved — every memory, your sign-in
-            and connection setup, and any saved keys for tools you&rsquo;ve connected.
+            Downloads one file with everything this hub has saved — every
+            memory, your sign-in and connection setup, and any saved keys for
+            tools you&rsquo;ve connected.
           </p>
           <div className="banner banner--warn">
             <WarningIcon className="icon icon--sm" />
             <div>
               <p className="banner__title">This file can act as your hub.</p>
               <p className="t-sm t-muted">
-                Anyone who has it can read everything in it. Store it like you&rsquo;d store a
-                password — never somewhere shared or public.
+                Anyone who has it can read everything in it. Store it like
+                you&rsquo;d store a password — never somewhere shared or public.
               </p>
             </div>
           </div>
         </CardBody>
         <CardFoot>
-          <a className="btn btn--primary btn--sm" href={api.backupUrl()} download>
-            Back up now
-          </a>
+          {signIn?.required ? (
+            <>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => void backUp()}
+                disabled={backingUp}
+              >
+                {backingUp ? "Preparing the file…" : "Back up now"}
+              </Button>
+              {backupError ? (
+                <p className="field__error">{backupError}</p>
+              ) : null}
+            </>
+          ) : (
+            <span className="t-sm t-muted" data-testid="backup-needs-sign-in">
+              Downloading a backup needs the dashboard sign-in, which this hub
+              has not turned on. On the machine the hub runs on,{" "}
+              <code>palaia-hub backup</code> writes the same file.
+            </span>
+          )}
           <span className="t-meta">
-            <a href={docsUrl("/backup-restore/")} target="_blank" rel="noreferrer">
+            <a
+              href={docsUrl("/backup-restore/")}
+              target="_blank"
+              rel="noreferrer"
+            >
               How restore works
             </a>
           </span>

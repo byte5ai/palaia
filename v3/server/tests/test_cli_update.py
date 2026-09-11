@@ -64,3 +64,37 @@ def test_update_refuses_a_missing_compose_file(
         main(["update", "--file", str(missing)])
     assert exc_info.value.code == 1
     assert "no compose file" in capsys.readouterr().err
+
+
+def test_update_says_so_when_the_file_pins_no_hub_image(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Issue #371: this used to print "already on the 'beta' channel" and
+    leave the file exactly as it was."""
+    compose = tmp_path / "docker-compose.yml"
+    compose.write_text("image: mirror.example.com/byte5ai/palaia-hub:stable\n", encoding="utf-8")
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(["update", "--channel", "beta", "--file", str(compose)])
+
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert "already" not in captured.out
+    assert "nothing was changed" in captured.err
+    assert "Fix:" in captured.err
+    assert (
+        compose.read_text(encoding="utf-8")
+        == "image: mirror.example.com/byte5ai/palaia-hub:stable\n"
+    )
+
+
+def test_update_rewrites_a_quoted_image_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    compose = tmp_path / "docker-compose.yml"
+    compose.write_text('    image: "ghcr.io/byte5ai/palaia-hub:stable"\n', encoding="utf-8")
+
+    main(["update", "--channel", "beta", "--file", str(compose)])
+
+    assert "Set the image channel to 'beta'" in capsys.readouterr().out
+    assert compose.read_text(encoding="utf-8") == '    image: "ghcr.io/byte5ai/palaia-hub:beta"\n'

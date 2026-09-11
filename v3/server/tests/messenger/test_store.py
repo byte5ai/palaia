@@ -148,14 +148,31 @@ def test_a_ref_without_the_memory_scheme_is_refused(store: MessengerStore) -> No
 
 def test_check_returns_pending_and_marks_delivered(store: MessengerStore) -> None:
     _send(store, to="b")
-    items, _ = store.check("b")
+    items, _, newly = store.check("b")
     assert [item.state for item in items] == ["delivered"]
     assert items[0].delivered_at is not None
+    assert newly == {items[0].envelope.id}
 
 
-def test_check_twice_returns_nothing_the_second_time(store: MessengerStore) -> None:
+def test_check_returns_an_unacked_envelope_again_until_it_is_acked(
+    store: MessengerStore,
+) -> None:
+    """Issue #340: the state flips to delivered before the tool result
+    reaches the client, so a lost response must not lose the message.
+    `check` is at-least-once; only `ack` removes an envelope from it."""
     _send(store, to="b")
-    assert len(store.check("b")[0]) == 1
+    first, _, newly_first = store.check("b")
+    assert len(first) == 1
+    envelope_id = first[0].envelope.id
+    assert newly_first == {envelope_id}
+
+    second, _, newly_second = store.check("b")
+    assert [item.envelope.id for item in second] == [envelope_id]
+    assert second[0].state == "delivered"
+    assert second[0].delivered_at == first[0].delivered_at, "redelivery keeps the first time"
+    assert newly_second == set(), "a repeat is not news"
+
+    store.ack(envelope_id, "b")
     assert store.check("b")[0] == []
 
 
@@ -168,10 +185,10 @@ def test_check_only_sees_its_own_inbox(store: MessengerStore) -> None:
 def test_ack_closes_the_envelope_and_is_idempotent(store: MessengerStore) -> None:
     items, _ = _send(store, to="b")
     envelope_id = items[0].envelope.id
-    first, _ = store.ack(envelope_id, "b")
+    first, _, _ = store.ack(envelope_id, "b")
     assert first.state == "acked"
     assert first.acked_at is not None
-    second, _ = store.ack(envelope_id, "b")
+    second, _, _ = store.ack(envelope_id, "b")
     assert second.acked_at == first.acked_at
 
 
@@ -205,9 +222,7 @@ def test_broadcast_fans_out_one_envelope_per_recipient(store: MessengerStore) ->
 # -- TTL expiry ---------------------------------------------------------------
 
 
-def test_an_unchecked_envelope_past_expires_at_is_gone(
-    store: MessengerStore, clock: Clock
-) -> None:
+def test_an_unchecked_envelope_past_expires_at_is_gone(store: MessengerStore, clock: Clock) -> None:
     items, _ = _send(store, to="b", ttl_seconds=60)
     envelope_id = items[0].envelope.id
     clock.advance(61)
@@ -228,9 +243,7 @@ def test_expiry_metadata_never_carries_a_body(store: MessengerStore, clock: Cloc
     assert dumped["body_bytes"] == len("secret plan")
 
 
-def test_expiry_is_reported_once_then_the_row_is_gone(
-    store: MessengerStore, clock: Clock
-) -> None:
+def test_expiry_is_reported_once_then_the_row_is_gone(store: MessengerStore, clock: Clock) -> None:
     _send(store, to="b", ttl_seconds=60)
     clock.advance(61)
     assert len(store.sweep()) == 1
@@ -249,7 +262,7 @@ def test_every_read_sweeps_so_expiry_needs_no_background_task(
 ) -> None:
     _send(store, to="b", ttl_seconds=60)
     clock.advance(61)
-    _, expired = store.check("b")
+    _, expired, _ = store.check("b")
     assert len(expired) == 1
 
 
@@ -335,3 +348,32 @@ def test_flows_respects_its_limit(store: MessengerStore) -> None:
     for _ in range(5):
         _send(store, to="b")
     assert len(store.flows(limit=2)[0]) == 2
+
+
+def test_ack_on_a_pending_envelope_records_the_delivery_too(store: MessengerStore) -> None:
+    """Issue #396: pending → acked used to skip `delivered`, so the
+    message.received event never fired for an envelope acked before any check."""
+    items, _ = _send(store, to="b")
+    envelope_id = items[0].envelope.id
+    item, _, newly_delivered = store.ack(envelope_id, "b")
+    assert newly_delivered is True
+    assert item.state == "acked"
+    assert item.delivered_at is not None
+    assert item.delivered_at == item.acked_at
+    _, _, again = store.ack(envelope_id, "b")
+    assert again is False
+
+
+def test_flows_filters_by_type_and_state_in_sql(store: MessengerStore) -> None:
+    """Issue #396: the observability feed used to load every envelope copy
+    and filter in Python per dashboard poll."""
+    first, _ = _send(store, sender="a", to="b")
+    _send(store, sender="c", to="d")
+    store.check("b")
+    delivered, _ = store.flows(state="delivered")
+    assert [item.envelope.id for item in delivered] == [first[0].envelope.id]
+    pending, _ = store.flows(state="pending")
+    assert len(pending) == 1
+    assert len(store.flows(state="acked")[0]) == 0
+    assert len(store.flows(handle="c")[0]) == 1
+    assert len(store.flows(limit=1)[0]) == 1

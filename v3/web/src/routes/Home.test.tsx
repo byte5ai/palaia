@@ -1,9 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { FunnelStatus, InfoResponse, TokenInfo, VaultSummary } from "../lib/api/client";
-import { api } from "../lib/api/client";
+import { api, ApiError } from "../lib/api/client";
 import type { EventStreamState } from "../lib/events";
 import { Home } from "./Home";
 
@@ -67,8 +67,17 @@ function mount(stream: EventStreamState = BASE_STREAM) {
   return render(<RouterProvider router={router} />);
 }
 
-function mockApi(overrides: { funnel?: FunnelStatus } = {}) {
-  vi.spyOn(api, "info").mockResolvedValue({ version: "3.0.0", mode: "locked" } as InfoResponse);
+function mockApi(overrides: { funnel?: FunnelStatus; signInRequired?: boolean } = {}) {
+  vi.spyOn(api, "info").mockResolvedValue({
+    version: "3.0.0",
+    mode: "locked",
+    sign_in: {
+      method: "password",
+      provider_name: null,
+      required: overrides.signInRequired ?? true,
+      sign_in_url: "/oauth/login",
+    },
+  } as InfoResponse);
   vi.spyOn(api, "listVaults").mockResolvedValue([A_VAULT]);
   vi.spyOn(api, "inboxStatus").mockResolvedValue({
     count: 0,
@@ -104,6 +113,66 @@ function mockApi(overrides: { funnel?: FunnelStatus } = {}) {
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe("Home — a hub without a vault points at the wizard (issue 372)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("links to the setup wizard instead of merely mentioning it", async () => {
+    mockApi({ funnel: NO_FUNNEL });
+    vi.spyOn(api, "listVaults").mockResolvedValue([]);
+
+    mount();
+
+    const link = await screen.findByRole("link", { name: /setup wizard/i });
+    expect(link).toHaveAttribute("href", "/onboarding");
+    expect(screen.queryByText(/third step/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("Home — honest about loading and failure (issue 378)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("does not claim 'nothing to remember yet' while the vaults are still loading", () => {
+    mockApi({ funnel: NO_FUNNEL });
+    vi.spyOn(api, "listVaults").mockReturnValue(new Promise(() => {}));
+
+    mount();
+
+    expect(screen.queryByText(/nothing to remember yet/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/looking at your hub/i)).toBeInTheDocument();
+  });
+
+  it("says the hub needs a look when the vaults cannot be read, and the tiles say so too", async () => {
+    mockApi({ funnel: NO_FUNNEL });
+    vi.spyOn(api, "listVaults").mockRejectedValue(new Error("connection refused"));
+
+    mount();
+
+    expect(await screen.findByText(/the hub needs a look/i)).toBeInTheDocument();
+    expect(screen.queryByText(/nothing to remember yet/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/could not load/i).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("sends a waiting inbox to the explorer, where the captures are (issue 375)", async () => {
+    mockApi({ funnel: NO_FUNNEL });
+    vi.spyOn(api, "inboxStatus").mockResolvedValue({
+      count: 2,
+      oldest_capture_id: "c1",
+      oldest_age_seconds: 90,
+      last_capture_id: "c2",
+      last_captured_at: new Date().toISOString(),
+    });
+
+    mount();
+
+    const link = await screen.findByRole("link", { name: /see in explorer/i });
+    expect(link).toHaveAttribute("href", "/explorer");
+  });
 });
 
 describe("Home — SPEC-504 first-memory celebration", () => {
@@ -221,16 +290,40 @@ describe("Home — SPEC-604 back up", () => {
     /\bfunnel\b/i,
   ];
 
-  it("shows a download link to the backup endpoint, and its warning", async () => {
+  it("downloads the backup through the client, and shows its warning (issue 382)", async () => {
     mockApi({ funnel: NO_FUNNEL });
+    const download = vi.spyOn(api, "downloadBackup").mockResolvedValue({
+      blob: new Blob(["archive bytes"]),
+      filename: "palaia-backup-20260911T100000Z.tar.gz",
+    });
+    const clickSpy = vi.fn();
+    const originalClick = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = clickSpy;
 
     mount();
 
     const card = await screen.findByTestId("backup-card");
-    const link = screen.getByRole("link", { name: /back up now/i });
-    expect(link).toHaveAttribute("href", api.backupUrl());
-    expect(link).toHaveAttribute("download");
     expect(card).toHaveTextContent(/store it like you.d store a password/i);
+    // No raw link to the gated endpoint: an expired session would have
+    // saved the gate's refusal as the file.
+    expect(screen.queryByRole("link", { name: /back up now/i })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /back up now/i }));
+
+    await waitFor(() => expect(download).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
+    HTMLAnchorElement.prototype.click = originalClick;
+  });
+
+  it("says in the hub's words when the backup is refused", async () => {
+    mockApi({ funnel: NO_FUNNEL });
+    vi.spyOn(api, "downloadBackup").mockRejectedValue(
+      new ApiError("/api/backup", 403, { detail: "Your sign-in changed — reload this page." }),
+    );
+
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: /back up now/i }));
+
+    expect(await screen.findByText(/your sign-in changed/i)).toBeInTheDocument();
   });
 
   it("the card's own text uses no in-house word", async () => {
@@ -239,6 +332,22 @@ describe("Home — SPEC-604 back up", () => {
     mount();
 
     const card = await screen.findByTestId("backup-card");
+    const text = card.textContent ?? "";
+    for (const pattern of BANNED) {
+      expect(text).not.toMatch(pattern);
+    }
+  });
+
+  it("without dashboard sign-in it names the command-line way instead of a dead link", async () => {
+    // Issue 317: the download is served only to a signed-in owner.
+    mockApi({ funnel: NO_FUNNEL, signInRequired: false });
+
+    mount();
+
+    const card = await screen.findByTestId("backup-card");
+    await screen.findByTestId("backup-needs-sign-in");
+    expect(screen.queryByRole("link", { name: /back up now/i })).toBeNull();
+    expect(card).toHaveTextContent(/palaia-hub backup/);
     const text = card.textContent ?? "";
     for (const pattern of BANNED) {
       expect(text).not.toMatch(pattern);

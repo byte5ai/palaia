@@ -28,7 +28,7 @@ from typing import Any
 
 import yaml
 
-from ..config import GatewayProfileSettings, GatewaySettings, HubConfig
+from ..config import GatewayProfileSettings, GatewaySettings, GatewayVaultSettings, HubConfig
 from ..modes.patch import replace_config_section
 from ..upstream.models import UpstreamConfig
 from .config import CURATOR_PROFILE_PATH, ProfileConfig, VaultMountConfig
@@ -286,14 +286,29 @@ def snapshot_gateway_settings(dynamic_gateway: Any, config: HubConfig) -> Gatewa
     ever read off it.
 
     The curator's own profile is excluded (synthesized from ``curator:``,
-    never itself persisted); every per-vault identity override already in
-    ``config.gateway.vaults`` is carried through untouched, since this
-    function never sees a vault edit.
+    never itself persisted).
+
+    Vault identities come from the *live* gateway (issue #325): a vault
+    renamed through ``PATCH /api/gateway/vaults/{key}`` lives in
+    ``dynamic_gateway.config.vaults``, not in the ``config.gateway.vaults``
+    snapshot this process booted with — persisting the snapshot reverted
+    every such rename on the next upstream edit or add-on install. An
+    override in ``config.gateway.vaults`` for a vault that is *not* mounted
+    (pre-declared for the wizard to create later, #273) has no live
+    counterpart and is carried through untouched.
     """
-    existing_vaults = config.gateway.vaults if config.gateway is not None else []
+    declared = config.gateway.vaults if config.gateway is not None else []
+    live_vaults = [
+        GatewayVaultSettings(
+            key=v.key, name=v.name, purpose=v.purpose, tool_renames=dict(v.tool_renames)
+        )
+        for v in dynamic_gateway.config.vaults
+    ]
+    live_keys = {v.key for v in live_vaults}
+    vaults = [*live_vaults, *(v for v in declared if v.key not in live_keys)]
     profiles = [p for p in dynamic_gateway.config.profiles if p.path != CURATOR_PROFILE_PATH]
     return GatewaySettings(
-        vaults=existing_vaults,
+        vaults=vaults,
         profiles=[
             GatewayProfileSettings(
                 path=p.path,

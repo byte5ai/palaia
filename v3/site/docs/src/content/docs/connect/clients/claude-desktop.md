@@ -1,8 +1,8 @@
 ---
 # Generated from v3/web/src/lib/clients.ts and skills.ts by v3/site/docs/scripts/generate-connect-pages.mjs. Do not hand-edit —
 # change the source and run `npm run gen:connect` from v3/site/docs.
-title: "Claude Code (Desktop app)"
-description: "Connect Claude Code (Desktop app) to your shared memory."
+title: "Claude Desktop"
+description: "Connect Claude Desktop to your shared memory."
 ---
 
 One-click download — a signed bridge to your hub, no typing required
@@ -15,15 +15,11 @@ One-click download — a signed bridge to your hub, no typing required
 
 ## Teach it to look things up and save things on its own
 
-Save the folder, or load the whole package for one session.
+Add it as a capability in your account settings — Claude Desktop uses them too.
 
-1. Create ~/.claude/skills/<name>/ and save SKILL.md into it — one folder per skill.
-2. Start a new session; the skill is offered from then on, and loads itself when a task needs it.
-3. Trying it out first: clone this repo and pass v3/clients as a plugin, which loads every skill in it for that session only.
-
-```bash
-claude --plugin-dir /path/to/palaia/v3/clients
-```
+1. Download SKILL.md and zip its folder (the folder name must match the skill's name).
+2. In claude.ai, open Settings → Capabilities → Skills and upload the zip.
+3. Claude Desktop picks it up with the same account — the memory itself still needs the bundle above.
 
 ## Check it worked
 

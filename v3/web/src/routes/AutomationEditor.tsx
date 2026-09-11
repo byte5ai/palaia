@@ -5,7 +5,7 @@
  * a label/heading/button/badge/option name) — see `Automations.test.tsx`'s
  * jargon lint, scoped to this editor's own controls.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import {
   Badge,
@@ -15,6 +15,7 @@ import {
   CardHead,
   EmptyState,
   LabeledInput,
+  useToast,
 } from "../components";
 import type {
   AutomationAction,
@@ -23,6 +24,7 @@ import type {
   DeliveryLogEntry,
 } from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
+import { describeApiError } from "../lib/errors";
 import { AutomationsIcon } from "../shell/icons";
 
 /** Plain-language labels for the event names a person is likely to pick as
@@ -266,6 +268,7 @@ function ConditionEditor({
           >
             <select
               className="input"
+              aria-label="Which detail to check"
               value={isDataField ? "data" : clause.field}
               onChange={(e) =>
                 update(index, {
@@ -284,6 +287,7 @@ function ConditionEditor({
               <input
                 className="input"
                 style={{ width: 140 }}
+                aria-label="Name of the data field"
                 placeholder="data.severity"
                 value={clause.field}
                 onChange={(e) => update(index, { field: e.target.value })}
@@ -291,6 +295,7 @@ function ConditionEditor({
             ) : null}
             <select
               className="input"
+              aria-label="How to compare"
               value={clause.op}
               onChange={(e) =>
                 update(index, { op: e.target.value as ConditionClause["op"] })
@@ -305,6 +310,7 @@ function ConditionEditor({
             <input
               className="input"
               style={{ width: 140 }}
+              aria-label="Value to compare with"
               value={clause.value}
               onChange={(e) => update(index, { value: e.target.value })}
             />
@@ -330,6 +336,8 @@ function AutomationForm({
   prefill: Recipe | null;
   onCreated: () => void;
 }) {
+  const whenId = useId();
+  const thenId = useId();
   const [name, setName] = useState(prefill?.title ?? "");
   const [triggerEvent, setTriggerEvent] = useState(
     prefill?.trigger_event ?? TRIGGER_OPTIONS[0].value,
@@ -387,8 +395,11 @@ function AutomationForm({
           onChange={(e) => setName(e.target.value)}
         />
         <div className="stack stack--2">
-          <span className="field__label">When</span>
+          <label className="field__label" htmlFor={whenId}>
+            When
+          </label>
           <select
+            id={whenId}
             className="input"
             value={triggerEvent}
             onChange={(e) => setTriggerEvent(e.target.value)}
@@ -402,8 +413,11 @@ function AutomationForm({
         </div>
         <ConditionEditor condition={condition} onChange={setCondition} />
         <div className="stack stack--2">
-          <span className="field__label">Then</span>
+          <label className="field__label" htmlFor={thenId}>
+            Then
+          </label>
           <select
+            id={thenId}
             className="input"
             value={action.kind}
             onChange={(e) =>
@@ -489,22 +503,38 @@ function AutomationRow({
   automation: AutomationInfo;
   onChanged: () => void;
 }) {
+  const toast = useToast();
   const [testResult, setTestResult] = useState<DeliveryLogEntry | null>(null);
   const [showLog, setShowLog] = useState(false);
 
+  // Issue 376: these used to have no catch — a 403 (a sign-in cookie
+  // rotated by another tab) or any other refusal did nothing visible.
   async function toggle(enabled: boolean) {
-    await api.setAutomationEnabled(automation.id, enabled);
+    try {
+      await api.setAutomationEnabled(automation.id, enabled);
+    } catch (err) {
+      toast.show(describeApiError(err));
+      return;
+    }
     onChanged();
   }
 
   async function remove() {
-    await api.deleteAutomation(automation.id);
+    try {
+      await api.deleteAutomation(automation.id);
+    } catch (err) {
+      toast.show(describeApiError(err));
+      return;
+    }
     onChanged();
   }
 
   async function testFire() {
-    const result = await api.testFireAutomation(automation.id, {});
-    setTestResult(result);
+    try {
+      setTestResult(await api.testFireAutomation(automation.id, {}));
+    } catch (err) {
+      toast.show(describeApiError(err));
+    }
   }
 
   const triggerLabel =
@@ -569,6 +599,7 @@ function AutomationRow({
 export function AutomationEditor() {
   const [automations, setAutomations] = useState<AutomationInfo[] | null>(null);
   const [available, setAvailable] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [prefill, setPrefill] = useState<Recipe | null>(null);
 
   function refresh() {
@@ -579,11 +610,37 @@ export function AutomationEditor() {
         setAvailable(true);
       })
       .catch((err) => {
-        if (err instanceof ApiError && err.status === 404) setAvailable(false);
+        if (err instanceof ApiError && err.status === 404) {
+          setAvailable(false);
+          return;
+        }
+        // Issue 378: any other failure left the count at "…" for good.
+        setLoadError(describeApiError(err));
       });
   }
 
   useEffect(refresh, []);
+
+  if (loadError && automations === null) {
+    return (
+      <Card>
+        <CardBody className="stack stack--2">
+          <p className="t-sm t-muted">Could not load your automations: {loadError}</p>
+          <div className="row">
+            <Button
+              size="sm"
+              onClick={() => {
+                setLoadError(null);
+                refresh();
+              }}
+            >
+              Try again
+            </Button>
+          </div>
+        </CardBody>
+      </Card>
+    );
+  }
 
   if (!available) {
     return (

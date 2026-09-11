@@ -244,9 +244,7 @@ def test_selftest_against_an_unreachable_url_reports_unreachable_honestly(
 
     # Port 0 is never a live listener; this stays entirely on loopback, no
     # real network or DNS dependency, and fails fast and deterministically.
-    response = client.post(
-        "/api/exposure/selftest", json={"public_url": "http://127.0.0.1:1"}
-    )
+    response = client.post("/api/exposure/selftest", json={"public_url": "http://127.0.0.1:1"})
 
     assert response.status_code == 200
     body = response.json()
@@ -259,9 +257,7 @@ def test_selftest_against_an_unreachable_url_reports_unreachable_honestly(
 
 def test_auth_endpoints_are_rate_limited_in_cloud_mode(tmp_path: Path) -> None:
     token_store = TokenStore(tmp_path)
-    client = _client(
-        HubConfig(mode="cloud", auth_enabled=True), tmp_path, token_store=token_store
-    )
+    client = _client(HubConfig(mode="cloud", auth_enabled=True), tmp_path, token_store=token_store)
 
     statuses = [client.post("/api/auth/tokens", json={}).status_code for _ in range(15)]
 
@@ -271,10 +267,53 @@ def test_auth_endpoints_are_rate_limited_in_cloud_mode(tmp_path: Path) -> None:
 
 def test_auth_endpoints_are_not_rate_limited_in_locked_mode(tmp_path: Path) -> None:
     token_store = TokenStore(tmp_path)
-    client = _client(
-        HubConfig(mode="locked", auth_enabled=True), tmp_path, token_store=token_store
-    )
+    client = _client(HubConfig(mode="locked", auth_enabled=True), tmp_path, token_store=token_store)
 
     statuses = [client.post("/api/auth/tokens", json={}).status_code for _ in range(15)]
 
     assert statuses == [422] * 15
+
+
+# ------------------------------------------------------------ issue #348
+
+
+def test_get_mode_reparses_the_config_file_only_when_it_changed(
+    tmp_path: Path, monkeypatch: object
+) -> None:
+    """The dashboard polls ``GET /api/mode``; each poll used to re-read,
+    re-validate and re-chmod ``config.yaml``. Now the file is parsed once,
+    again after this API changed it, and again after somebody edited it by
+    hand while the hub was running — never on a poll that changed nothing."""
+    import os
+
+    import pytest
+
+    from palaia_hub.modes import api as modes_api
+
+    assert isinstance(monkeypatch, pytest.MonkeyPatch)
+    client = _client(HubConfig(mode="locked", auth_enabled=True), tmp_path)
+    loads: list[int] = []
+    real_load_config = modes_api.load_config
+
+    def counting_load_config(*args: object, **kwargs: object) -> HubConfig:
+        loads.append(1)
+        return real_load_config(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(modes_api, "load_config", counting_load_config)
+
+    assert client.get("/api/mode").json()["configured_mode"] == "locked"
+    assert client.get("/api/mode").json()["configured_mode"] == "locked"
+    assert len(loads) == 1, "two polls, one parse"
+
+    assert client.post("/api/mode", json={"mode": "cloud"}).status_code == 200
+    assert client.get("/api/mode").json()["configured_mode"] == "cloud"
+    assert len(loads) == 2, "a change made through this API is read back once"
+
+    # An edit made by hand while the hub runs is still seen.
+    path = config_file_path(tmp_path)
+    path.write_text("mode: locked\nhost: 127.0.0.1\nauth_enabled: true\n", encoding="utf-8")
+    stamp = path.stat()
+    os.utime(path, ns=(stamp.st_atime_ns, stamp.st_mtime_ns + 1_000_000))
+    assert client.get("/api/mode").json()["configured_mode"] == "locked"
+    assert client.get("/api/mode").json()["configured_mode"] == "locked"
+    assert len(loads) == 3

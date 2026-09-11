@@ -58,6 +58,7 @@ def market_service(
         cache_dir=tmp_path / "registry_cache",
     )
     curated_client = CuratedIndexClient(
+        index_url="https://index.example.test/market-index.json",
         client=httpx.AsyncClient(transport=httpx.MockTransport(curated_handler)),
         public_key_b64=public_key_b64,
         last_good_path=tmp_path / "last_good.json",

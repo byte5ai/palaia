@@ -1,9 +1,15 @@
 """``palaia-hub`` command-line entry point.
 
-Currently one subcommand: ``serve``, which loads config, builds the app, and
-runs it under uvicorn with graceful shutdown (uvicorn drains in-flight
-requests on SIGTERM/SIGINT up to ``graceful_shutdown_timeout`` before
-exiting).
+Subcommands: ``serve`` (load config, build the app, run it under uvicorn with
+graceful shutdown — in-flight requests drain on SIGTERM/SIGINT up to
+``graceful_shutdown_timeout``), ``token`` (per-client bearer tokens),
+``oauth`` (the OAuth 2.1 server's owner password, machine clients, GC),
+``curator`` (inbox curation), ``import`` (v2 / basic-memory), ``update``
+(switch the compose file's channel) and ``backup``.
+
+Every subcommand shares one error boundary in :func:`main`: a broken
+``config.yaml`` or an unknown vault is a one-line ``palaia-hub: …`` message
+and exit code 1, never a traceback (issue #396).
 """
 
 from __future__ import annotations
@@ -20,8 +26,9 @@ import uvicorn
 
 from .auth import TokenError, TokenStore
 from .auth.scopes import vault_scope
-from .compose_update import rewrite_compose_channel
-from .config import ConfigError, HubConfig, load_config, palaia_home
+from .backup import archive_filename, iter_archive_bytes
+from .compose_update import DEFAULT_IMAGE, rewrite_compose_channel
+from .config import ConfigError, HubConfig, apply_config_overrides, load_config, palaia_home
 from .curator import CURATOR_PROFILE_PATH, ApplyReport, CuratorRunReport, ProposalApplier
 from .curator.wiring import TOKEN_ENV, CuratorWiring, build_curator
 from .gateway.config import DEFAULT_GATEWAY_PROFILE, ProfileConfig, VaultMountConfig
@@ -39,8 +46,17 @@ from .oauth import (
     set_owner_password,
 )
 from .serve import build_production_app
-from .vault import EventBus, VaultRegistry
+from .vault import EventBus, VaultConfigError, VaultNotFoundError, VaultRegistry
 from .vault.engine import VaultEngine
+
+#: Issue #396: the help used to list only the vault family, although the
+#: token store accepts (and the team features need) the other three.
+_SCOPE_HELP = (
+    "Repeatable. 'vault:<key>:read' / 'vault:<key>:write' for a vault, "
+    "'stash:read' / 'stash:write' for the stash, 'directory:read' / "
+    "'directory:write' for the session directory, 'messenger:read' / "
+    "'messenger:send' for the messenger. Omit for everything the profile mounts."
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -62,7 +78,7 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="scopes",
         action="append",
         default=[],
-        help="'vault:<key>:read' or 'vault:<key>:write'; repeatable",
+        help=_SCOPE_HELP,
     )
 
     token_subparsers.add_parser("list", help="List known tokens (no secrets shown)")
@@ -87,6 +103,24 @@ def _build_parser() -> argparse.ArgumentParser:
         "--file",
         default="docker-compose.yml",
         help="Path to your compose file (default: ./docker-compose.yml)",
+    )
+
+    backup_parser = subparsers.add_parser(
+        "backup",
+        help=(
+            "Write everything this hub has saved — every vault, config, sign-in and "
+            "connection setup, and the keys for connected tools — as one tar.gz on this "
+            "machine. The same archive the dashboard's Back up action downloads; this is "
+            "the way to take one on a hub whose dashboard has no sign-in turned on."
+        ),
+    )
+    backup_parser.add_argument(
+        "--out",
+        default=None,
+        help=(
+            "Where to write the archive (a file, or a directory to put a timestamped file "
+            "in). Default: a timestamped file in the current directory."
+        ),
     )
 
     import_parser = subparsers.add_parser("import", help="Import notes from another store")
@@ -132,7 +166,7 @@ def _add_oauth_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPa
         dest="scopes",
         action="append",
         default=[],
-        help="'vault:<key>:read' or 'vault:<key>:write'; repeatable",
+        help=_SCOPE_HELP,
     )
 
     oauth_subparsers.add_parser("clients", help="List registered clients (no secrets shown)")
@@ -163,9 +197,7 @@ def _add_curator_parser(subparsers: argparse._SubParsersAction[argparse.Argument
     token_parser = curator_subparsers.add_parser(
         "token", help="Mint the curator's own token, bound to the curator profile"
     )
-    token_parser.add_argument(
-        "--name", default="curator", help="Human-readable name for the token"
-    )
+    token_parser.add_argument("--name", default="curator", help="Human-readable name for the token")
 
 
 def _add_curator_common_args(parser: argparse.ArgumentParser) -> None:
@@ -208,7 +240,13 @@ def serve(host: str | None = None, port: int | None = None) -> None:
     if port is not None:
         overrides["port"] = port
     if overrides:
-        config = config.model_copy(update=overrides)
+        # Issue #327: `--host`/`--port` are subject to the same operating-mode
+        # policy as config.yaml — `model_copy(update=...)` skipped it.
+        try:
+            config = apply_config_overrides(config, overrides)
+        except ConfigError as exc:
+            print(f"palaia-hub: configuration error:\n{exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
 
     try:
         asyncio.run(_serve_async(config))
@@ -253,9 +291,7 @@ def _profile_scopes(profiles: Sequence[ProfileConfig]) -> dict[str, list[str]]:
 
     def scopes_for(profile: ProfileConfig) -> list[str]:
         scopes = [
-            scope
-            for key in profile.vaults
-            for scope in (f"vault:{key}:read", f"vault:{key}:write")
+            scope for key in profile.vaults for scope in (f"vault:{key}:read", f"vault:{key}:write")
         ]
         if profile.stash:
             scopes += ["stash:read", "stash:write"]
@@ -406,10 +442,7 @@ def _oauth_clients() -> None:
         return
     for client in clients:
         kind = "machine" if client.is_machine else client.source
-        print(
-            f"{client.client_id}  {kind:8}  {client.client_name!r}  "
-            f"scopes={list(client.scopes)}"
-        )
+        print(f"{client.client_id}  {kind:8}  {client.client_name!r}  scopes={list(client.scopes)}")
 
 
 def _oauth_gc() -> None:
@@ -447,8 +480,7 @@ def _token_list() -> None:
     for info in tokens:
         status = "revoked" if info.revoked_at else "active"
         print(
-            f"{info.id}  {status:8}  {info.name!r}  "
-            f"profile={info.profile!r}  scopes={info.scopes}"
+            f"{info.id}  {status:8}  {info.name!r}  profile={info.profile!r}  scopes={info.scopes}"
         )
 
 
@@ -649,20 +681,75 @@ def _update_compose(channel: str | None, file_path: str) -> None:
         raise SystemExit(1)
     if channel is not None:
         text = path.read_text(encoding="utf-8")
-        new_text, changed = rewrite_compose_channel(text, channel)
-        if changed:
+        new_text, outcome = rewrite_compose_channel(text, channel)
+        if outcome == "changed":
             path.write_text(new_text, encoding="utf-8")
             print(f"Set the image channel to {channel!r} in {path}.")
-        else:
+        elif outcome == "already":
             print(f"{path} is already on the {channel!r} channel.")
+        else:
+            # Issue #371: this used to be reported as "already on the
+            # channel" while the file was left exactly as it was.
+            print(
+                f"palaia-hub: {path} has no `image: {DEFAULT_IMAGE}:<tag>` line, so nothing "
+                f"was changed. Fix: if your compose file pins the hub image under another "
+                f"name (a mirror registry, a custom build), set its tag to {channel!r} by "
+                f"hand, then run the two commands below.",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
     print("Now pull the new image and recreate the container:")
     print("  docker compose pull")
     print("  docker compose up -d")
 
 
+def _backup(out: str | None) -> Path:
+    """``palaia-hub backup`` (issue #317): the dashboard's archive, written locally.
+
+    Streams :func:`palaia_hub.backup.iter_archive_bytes` — the exact bytes
+    ``GET /api/backup`` would serve — into ``out`` (default: a timestamped
+    ``palaia-backup-*.tar.gz`` in the current directory), via a ``.part``
+    sibling that is renamed into place only once the archive is complete, so
+    a killed run never leaves a truncated file under the real name. Mode
+    ``0600``: this file can act as the hub.
+    """
+    home = palaia_home()
+    target = Path(out) if out else Path.cwd() / archive_filename()
+    if target.is_dir():
+        target = target / archive_filename()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    partial = target.with_name(target.name + ".part")
+    written = 0
+    with partial.open("wb") as handle:
+        for chunk in iter_archive_bytes(home):
+            handle.write(chunk)
+            written += len(chunk)
+    partial.chmod(0o600)
+    partial.replace(target)
+    print(
+        f"Wrote {target} ({written} bytes). This file can act as your hub — anyone who "
+        "has it can read everything in it, so store it like a password."
+    )
+    return target
+
+
+#: Caller-facing failures every subcommand can hit while opening its
+#: stores: a config.yaml that does not validate, a gateway shape the config
+#: cannot resolve, a vault named on the command line that is not registered.
+_USER_FACING_ERRORS = (ConfigError, GatewaySettingsError, VaultConfigError, VaultNotFoundError)
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     parser = _build_parser()
     args = parser.parse_args(argv)
+    try:
+        _dispatch(args)
+    except _USER_FACING_ERRORS as exc:
+        print(f"palaia-hub: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+
+
+def _dispatch(args: argparse.Namespace) -> None:
     if args.command == "serve":
         serve(host=args.host, port=args.port)
     elif args.command == "token":
@@ -695,6 +782,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             _import_basic_memory(args)
     elif args.command == "update":
         _update_compose(args.channel, args.file)
+    elif args.command == "backup":
+        _backup(args.out)
 
 
 if __name__ == "__main__":

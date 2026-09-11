@@ -111,9 +111,7 @@ class Envelope(BaseModel):
     docstring for why ``from_`` is spelled with a trailing underscore.
     """
 
-    model_config = ConfigDict(
-        extra="forbid", populate_by_name=True, serialize_by_alias=True
-    )
+    model_config = ConfigDict(extra="forbid", populate_by_name=True, serialize_by_alias=True)
 
     #: Server-minted. Never supplied by a sender — an envelope id is the
     #: only handle a reply, an ack or a thread walk has, so a caller able to
@@ -122,9 +120,7 @@ class Envelope(BaseModel):
     type: MessageType
     #: The sender's directory handle (SPEC-402), proven by their session
     #: secret at send time — see :mod:`palaia_hub.messenger.service`.
-    from_: str = Field(
-        validation_alias=AliasChoices("from", "from_"), serialization_alias="from"
-    )
+    from_: str = Field(validation_alias=AliasChoices("from", "from_"), serialization_alias="from")
     #: The recipient handle as *addressed*: a directory handle for every
     #: type but ``broadcast``, and the directory query itself for a
     #: broadcast (so a broadcast copy still says what net it was cast
@@ -186,15 +182,11 @@ class EnvelopeMetadata(BaseModel):
     event bus.
     """
 
-    model_config = ConfigDict(
-        extra="forbid", populate_by_name=True, serialize_by_alias=True
-    )
+    model_config = ConfigDict(extra="forbid", populate_by_name=True, serialize_by_alias=True)
 
     id: str
     type: MessageType
-    from_: str = Field(
-        validation_alias=AliasChoices("from", "from_"), serialization_alias="from"
-    )
+    from_: str = Field(validation_alias=AliasChoices("from", "from_"), serialization_alias="from")
     to: str
     recipient: str
     subject: str
@@ -248,13 +240,17 @@ class SendResult(BaseModel):
 
 
 class CheckResult(BaseModel):
-    """``messenger_check``'s result: the caller's own new envelopes, now
-    marked delivered."""
+    """``messenger_check``'s result: every envelope in the caller's own inbox
+    that is not acked yet — the new ones now marked delivered, plus the ones
+    an earlier check already delivered (issue #340)."""
 
     model_config = ConfigDict(extra="forbid")
 
     handle: str
     envelopes: list[Envelope]
+    #: Ids in ``envelopes`` that an earlier ``check`` already returned and
+    #: nobody acked since. Empty on a first read.
+    redelivered: list[str] = Field(default_factory=list)
 
 
 class AckResult(BaseModel):
@@ -446,7 +442,9 @@ def check_refs(refs: list[str] | None) -> list[str]:
                 f"{MEMORY_SCHEME}projects/api-gateway) — refs addresses notes in "
                 "a vault, it is not a free-text field."
             )
-        cleaned.append(text)
+        # Issue #396: the test above is case-insensitive; the resolver is
+        # not, so `MEMORY://x` is normalised to the scheme it will look up.
+        cleaned.append(MEMORY_SCHEME + text[len(MEMORY_SCHEME) :])
     return cleaned
 
 

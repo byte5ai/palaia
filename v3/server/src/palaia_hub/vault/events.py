@@ -86,6 +86,12 @@ class EntityRenamed(VaultEvent):
     title: str = ""
     previous_title: str = ""
     rewritten_links: int = 0
+    #: The file's path before the rename moved it; empty when it stayed put.
+    previous_path: str = ""
+    #: Every other note whose inbound links were rewritten — exactly the
+    #: files that changed, so the index can update them one by one instead
+    #: of re-walking the vault (issue #403).
+    rewritten_paths: tuple[str, ...] = ()
     kind: ChangeKind = "modified"
 
 

@@ -161,9 +161,7 @@ class TokenStore:
 
     def _save(self) -> None:
         self.home.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "tokens": [r.model_dump(mode="json") for r in self._records.values()]
-        }
+        payload = {"tokens": [r.model_dump(mode="json") for r in self._records.values()]}
         text = _HEADER + yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
         atomic_write_text(self.store_path, text)
         # SPEC-502: one shared rule for every persisted file, rather than a
@@ -276,4 +274,4 @@ class TokenStore:
         return record
 
 
-__all__ = ["TOKEN_PREFIX", "TokenError", "TokenStore"]
+__all__ = ["CreatedToken", "TOKEN_PREFIX", "TokenError", "TokenStore"]

@@ -62,4 +62,34 @@ class PalaiaTokenVerifier(TokenVerifier):
         )
 
 
-__all__ = ["PalaiaTokenVerifier"]
+class HubTokenVerifier(TokenVerifier):
+    """Verifies a bearer token against ``store`` for the hub-wide mounts.
+
+    The six hub-level MCP surfaces (``/mcp/stash``, ``/mcp/directory``,
+    ``/mcp/messenger``, ``/mcp/hub``, ``/mcp/market``, ``/mcp/team`` — see
+    :func:`palaia_hub.app.create_app`) are not profiles: every client of this
+    hub shares them. So the credential check here is "a live ``plt_`` token
+    for *any* profile on this hub", and what the token may then do is decided
+    by its hub-level scopes (``stash:*``/``directory:*``/``messenger:*``,
+    :mod:`palaia_hub.auth.scopes`) inside each tool, exactly as on a profile.
+    A revoked, expired or unknown token collapses to fastmcp's standard 401,
+    same as :class:`PalaiaTokenVerifier` (issue #313).
+    """
+
+    def __init__(self, store: TokenStore) -> None:
+        super().__init__()
+        self._store = store
+
+    async def verify_token(self, token: str) -> AccessToken | None:
+        record = self._store.verify(token)
+        if record is None:
+            return None
+        return AccessToken(
+            token=token,
+            client_id=record.id,
+            scopes=list(record.scopes),
+            subject=record.name,
+        )
+
+
+__all__ = ["HubTokenVerifier", "PalaiaTokenVerifier"]

@@ -63,9 +63,18 @@ def build_semantic_routing_server(profile: ProfileConfig, full_server: FastMCP) 
         full_server: the profile's fully-built ``FastMCP`` instance — every
             vault/stash tool it would otherwise expose directly. Kept
             alive by closure; never mounted or served on its own.
+
+    The router carries ``full_server``'s own ``auth`` (issue #315): it is
+    the surface actually served, so the profile's token verifier has to sit
+    on *it* or the profile silently goes unauthenticated the moment
+    ``semantic_routing`` is switched on. Middleware is deliberately not
+    copied — ``full_server.call_tool`` (what ``invoke_tool`` delegates to)
+    already runs the profile's middleware chain, so copying it onto the
+    router would apply every policy twice per call.
     """
     router: FastMCP = FastMCP(
         name=f"palaia-gateway-{profile.path}-router",
+        auth=full_server.auth,
         instructions=(
             "IDENTITY: this is a tool router, not a memory vault directly. "
             "It stands in for a large tool collection: call find_tool with "

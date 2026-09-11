@@ -97,9 +97,7 @@ def api_groups() -> set[str]:
 
 def oauth_paths() -> set[str]:
     return {
-        value
-        for value in _source_path_literals()
-        if value.startswith(("/oauth/", "/.well-known/"))
+        value for value in _source_path_literals() if value.startswith(("/oauth/", "/.well-known/"))
     }
 
 
@@ -188,10 +186,54 @@ def test_the_threat_model_names_every_operating_mode(threat_model: str) -> None:
         assert f"`{mode}`" in threat_model, mode
 
 
+#: A repo-relative path the threat model or the brief cites as enforcing a
+#: claim, optionally pinned to one test (``path::test_name``).
+_CITED_PATH_RE = re.compile(
+    r"`((?:server|web|sdk)/[A-Za-z0-9_./-]+\.(?:py|tsx|ts|mjs)\b)(?:::([A-Za-z0-9_]+))?"
+)
+
+
+def cited_paths(text: str) -> list[tuple[str, str | None]]:
+    """Every ``(path, symbol)`` the document cites, in order of appearance."""
+    return [(match.group(1), match.group(2)) for match in _CITED_PATH_RE.finditer(text)]
+
+
+def _dead_citations(text: str) -> list[str]:
+    dead: list[str] = []
+    for path, symbol in cited_paths(text):
+        target = REPO_V3 / path
+        if not target.is_file():
+            dead.append(path)
+            continue
+        if symbol is not None and not re.search(
+            rf"^\s*(?:async\s+)?def\s+{re.escape(symbol)}\b",
+            target.read_text(encoding="utf-8"),
+            re.M,
+        ):
+            dead.append(f"{path}::{symbol}")
+    return dead
+
+
 def test_the_threat_model_links_each_claim_to_code_or_a_test(threat_model: str) -> None:
     """SPEC-502 #1: "every claim linked to the enforcing code/test"."""
     assert threat_model.count("server/src/palaia_hub/") >= 20
     assert threat_model.count("server/tests/") >= 10
+
+
+def test_every_path_the_threat_model_cites_exists(threat_model: str) -> None:
+    """A link to a test that is not there proves nothing (issue #330): every
+    `server/...`, `web/...` or `sdk/...` path the document names must be a
+    real file, and a `path::test_name` pin must name a function in it."""
+    cited = cited_paths(threat_model)
+    assert len(cited) >= 60, "the citation scan found too little to be trusted"
+    assert _dead_citations(threat_model) == []
+
+
+def test_every_path_the_review_brief_cites_exists() -> None:
+    """The brief inherits the threat model's claims; its links rot the same way."""
+    text = REVIEW_BRIEF.read_text(encoding="utf-8")
+    assert len(cited_paths(text)) >= 10
+    assert _dead_citations(text) == []
 
 
 def test_the_external_review_brief_exists_and_points_at_the_threat_model() -> None:

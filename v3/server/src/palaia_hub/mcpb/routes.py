@@ -19,6 +19,8 @@ path where the manifest itself can carry a pre-filled settings form.
 from __future__ import annotations
 
 import asyncio
+import re
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
@@ -26,7 +28,7 @@ from fastapi.responses import Response
 
 from .. import __version__
 from ..auth.scopes import vault_scope
-from ..auth.store import TokenError, TokenStore
+from ..auth.store import CreatedToken, TokenError, TokenStore
 from ..oauth import AuthorizationServer
 from ..vault import VaultRegistry
 from .builder import BundleBuildError, BundleRequest, build_bundle
@@ -53,16 +55,31 @@ def _full_scopes(registry: VaultRegistry) -> list[str]:
     ]
 
 
+#: A profile path as :class:`~palaia_hub.gateway.config.ProfileConfig`
+#: accepts it — the query parameter is interpolated into the bundle's URL,
+#: so anything else is refused up front (issue #397).
+_PROFILE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+
 def build_mcpb_router(
     *,
     vault_registry: VaultRegistry,
     token_store: TokenStore | None,
     oauth_server: AuthorizationServer | None,
     home: Path,
+    public_url: str | None = None,
+    known_profiles: Callable[[], Sequence[str]] | None = None,
 ) -> APIRouter:
     """Build the ``/api/connect/mcpb`` router.
 
     Args:
+        public_url: the hub's configured public address
+            (``exposure.public_url``). Given, the bundle points there; the
+            request's own ``Host`` header is the fallback, which is wrong
+            behind a reverse proxy (issue #397).
+        known_profiles: returns the profile paths the gateway currently
+            mounts; given, an unknown ``profile`` is a 404 instead of a
+            bundle that can never connect.
         vault_registry: used both to compute a minted token's scopes
             (:func:`_full_scopes`) and to require that at least one vault
             exists before offering a bundle at all.
@@ -81,7 +98,7 @@ def build_mcpb_router(
 
     @router.get(MCPB_PATH)
     async def download_bundle(
-        request: Request, profile: str = "default", client_name: str = "Claude Desktop bundle"
+        request: Request, profile: str = "default", client_name: str = "Claude Desktop"
     ) -> Response:
         if oauth_server is None and token_store is None:
             raise HTTPException(
@@ -93,9 +110,21 @@ def build_mcpb_router(
                 ),
             )
 
-        origin = str(request.base_url).rstrip("/")
+        if not _PROFILE_RE.match(profile):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"profile {profile!r} is not a profile path (lowercase letters, "
+                    "digits, '-' and '_'). Fix: pick one from the connect page."
+                ),
+            )
+        if known_profiles is not None and profile not in known_profiles():
+            raise HTTPException(status_code=404, detail=f"no profile at path {profile!r}")
+
+        origin = (public_url or str(request.base_url)).rstrip("/")
         hub_url = f"{origin}/mcp/{profile}"
 
+        created: CreatedToken | None = None
         if oauth_server is not None:
             bundle_request = BundleRequest(
                 hub_url=hub_url,
@@ -120,10 +149,13 @@ def build_mcpb_router(
 
         try:
             data = await asyncio.to_thread(build_bundle, bundle_request, home=home)
-        except TemplateNotFoundError as exc:
-            raise HTTPException(status_code=501, detail=str(exc)) from exc
-        except BundleBuildError as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        except (TemplateNotFoundError, BundleBuildError) as exc:
+            # Issue #397: the token was minted for a bundle that never
+            # shipped — it must not stay valid in the store.
+            if created is not None and token_store is not None:
+                token_store.revoke(created.info.id)
+            status = 501 if isinstance(exc, TemplateNotFoundError) else 500
+            raise HTTPException(status_code=status, detail=str(exc)) from exc
 
         return Response(
             content=data,

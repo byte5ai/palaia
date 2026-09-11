@@ -50,6 +50,11 @@ READ_ACTIONS: frozenset[str] = frozenset(
         "build_context",
         "review_queue",
         "recall_pick",
+        # SPEC-207's `inbox_status` only counts what is waiting in inbox/; it
+        # writes nothing. `capture` (the other SPEC-207 tool) is deliberately
+        # NOT listed — it creates a note, so it falls through to `write`
+        # (issue #323 closed the gap where neither tool asked at all).
+        "inbox_status",
     }
 )
 WRITE_ACTIONS: frozenset[str] = frozenset({"write", "edit", "move", "delete"})

@@ -147,13 +147,47 @@ CREATE TABLE IF NOT EXISTS idp_states (
     provider   TEXT NOT NULL,
     next_url   TEXT NOT NULL,
     created_at INTEGER NOT NULL,
-    expires_at INTEGER NOT NULL
+    expires_at INTEGER NOT NULL,
+    nonce_hash TEXT
 );
 """
+
+#: Columns added after a table first shipped, applied to an existing
+#: database on open (``CREATE TABLE IF NOT EXISTS`` leaves an old table as
+#: it was). Additive only, so the schema version stays the same.
+_LATER_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    # issue #345: the browser-binding nonce of an IdP sign-in ticket
+    ("idp_states", "nonce_hash", "TEXT"),
+)
+
+
+def _add_missing_columns(conn: sqlite3.Connection) -> None:
+    for table, column, declaration in _LATER_COLUMNS:
+        present = {str(row["name"]) for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in present:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
+
+
+#: How many successors one spent refresh token may mint inside its grace
+#: window before the store treats the replays as theft rather than fan-out
+#: (issue #346). claude.ai presents one stored token from web, phone and
+#: desktop — three, maybe a couple more on a bad network day; a token
+#: presented eight times within a window of seconds is being replayed by
+#: something else, and the whole grant is revoked.
+MAX_GRACE_SUCCESSORS = 8
 
 #: meta key holding the epoch second of the last registered-client GC pass.
 META_LAST_CLIENT_GC = "clients_gc_last_run"
 META_SCHEMA_VERSION = "schema_version"
+
+
+class _ReuseDetected(Exception):
+    """Raised inside a rotation when the presented token's use pattern is
+    theft, not fan-out (issue #346); carries the grant to revoke."""
+
+    def __init__(self, grant_id: str) -> None:
+        super().__init__(grant_id)
+        self.grant_id = grant_id
 
 
 def _dump(values: Sequence[str]) -> str:
@@ -197,6 +231,7 @@ class OAuthStore:
             conn.execute("PRAGMA foreign_keys=ON")
             conn.execute("PRAGMA busy_timeout=5000")
             conn.executescript(SCHEMA_SQL)
+            _add_missing_columns(conn)
             existing = conn.execute(
                 "SELECT value FROM meta WHERE key = ?", (META_SCHEMA_VERSION,)
             ).fetchone()
@@ -534,13 +569,19 @@ class OAuthStore:
           ``grace_until`` are set with ``COALESCE`` so they keep their
           *first* values: a replay cannot extend its own window.
         * **After the grace window the presented token is dead** —
-          ``invalid_grant``, and deliberately *without* revoking the grant
-          family. Family revocation is the textbook reuse-detection response
-          (RFC 9700 §4.14.2), but with a credential a vendor cloud
-          intentionally shares across three surfaces it re-creates the very
-          re-login loop this design exists to remove; the exposure is instead
-          bounded by the short refresh TTL and the revocation endpoint. The
-          event is logged at WARNING so an operator can act on it.
+          ``invalid_grant`` — **and the grant family is revoked** (RFC 9700
+          §4.14.2, issue #346): a spent token presented minutes or days later
+          is not a surface fanning out, it is a copy someone kept, and every
+          successor it ever produced goes with it. The legitimate clients
+          re-authorize once; the copy is worthless from then on. Logged at
+          WARNING with the client and grant.
+        * **Inside the grace window there is a ceiling**:
+          :data:`MAX_GRACE_SUCCESSORS` successors per spent token. Fan-out
+          needs a handful; the ninth presentation within seconds is a replay
+          under cover of the window, and revokes the family the same way.
+          Successors minted inside the window stay live for the full refresh
+          TTL — that is the multi-device trade-off MASTERPLAN §5.5 records,
+          now bounded in count rather than open-ended.
 
         Returns:
             A :class:`~palaia_hub.oauth.models.RotationOutcome`.
@@ -550,6 +591,18 @@ class OAuthStore:
                 reason, so a client learns nothing about *why*.
         """
         presented_hash = hash_secret(presented)
+        invalid = OAuthError("invalid_grant", "the refresh token is not valid.")
+        try:
+            return self._rotate_locked(presented_hash, now=now, ttl=ttl, grace_window=grace_window)
+        except _ReuseDetected as reuse:
+            # Outside the rotation's transaction, which the raise rolled back:
+            # the revocation must commit even though the exchange fails.
+            self.revoke_grant(reuse.grant_id, now)
+            raise invalid from None
+
+    def _rotate_locked(
+        self, presented_hash: str, *, now: int, ttl: int, grace_window: int
+    ) -> RotationOutcome:
         invalid = OAuthError("invalid_grant", "the refresh token is not valid.")
         with self._write() as conn:
             row = conn.execute(
@@ -575,11 +628,25 @@ class OAuthStore:
                 if not within_grace:
                     logger.warning(
                         "spent refresh token replayed past its grace window "
-                        "(client=%s grant=%s); rejected",
+                        "(client=%s grant=%s); the grant family is revoked",
                         refresh.client_id,
                         refresh.grant_id,
                     )
-                    raise invalid
+                    raise _ReuseDetected(grant.grant_id)
+                minted = conn.execute(
+                    "SELECT COUNT(*) AS n FROM refresh_tokens WHERE grant_id = ? "
+                    "AND token_hash != ? AND created_at >= ? AND created_at <= ?",
+                    (grant.grant_id, presented_hash, refresh.rotated_at, refresh.grace_until),
+                ).fetchone()
+                if int(minted["n"]) >= MAX_GRACE_SUCCESSORS:
+                    logger.warning(
+                        "spent refresh token replayed %d times inside its grace window "
+                        "(client=%s grant=%s); the grant family is revoked",
+                        int(minted["n"]),
+                        refresh.client_id,
+                        refresh.grant_id,
+                    )
+                    raise _ReuseDetected(grant.grant_id)
 
             successor = new_secret()
             successor_hash = hash_secret(successor)
@@ -778,21 +845,24 @@ class OAuthStore:
 
     # --------------------------------------------------------------- idp (204)
 
-    def create_idp_state(self, *, provider: str, next_url: str, now: int, ttl: int) -> str:
+    def create_idp_state(
+        self, *, provider: str, next_url: str, nonce_hash: str, now: int, ttl: int
+    ) -> str:
         """Mint a fresh single-use sign-in ticket (returned plaintext, stored hashed).
 
         ``next_url`` is the ``/oauth/authorize`` continuation the browser
         started from — held here rather than round-tripped through the IdP,
-        per SPEC-204's "ticket never in the URL" rule.
+        per SPEC-204's "ticket never in the URL" rule. ``nonce_hash`` is the
+        hash of the cookie that browser was handed (issue #345).
         """
         state = new_secret()
         expires_at = now + ttl
         with self._write() as conn:
             conn.execute("DELETE FROM idp_states WHERE expires_at < ?", (now,))
             conn.execute(
-                "INSERT INTO idp_states(state_hash, provider, next_url, created_at, expires_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (hash_secret(state), provider, next_url, now, expires_at),
+                "INSERT INTO idp_states(state_hash, provider, next_url, created_at, expires_at, "
+                "nonce_hash) VALUES (?, ?, ?, ?, ?, ?)",
+                (hash_secret(state), provider, next_url, now, expires_at, nonce_hash),
             )
         return state
 
@@ -807,13 +877,18 @@ class OAuthStore:
         state_hash = hash_secret(state)
         with self._write() as conn:
             row = conn.execute(
-                "SELECT provider, next_url, expires_at FROM idp_states WHERE state_hash = ?",
+                "SELECT provider, next_url, expires_at, nonce_hash FROM idp_states "
+                "WHERE state_hash = ?",
                 (state_hash,),
             ).fetchone()
             conn.execute("DELETE FROM idp_states WHERE state_hash = ?", (state_hash,))
         if row is None or int(row["expires_at"]) <= now:
             return None
-        return IdpStateRow(provider=str(row["provider"]), next_url=str(row["next_url"]))
+        return IdpStateRow(
+            provider=str(row["provider"]),
+            next_url=str(row["next_url"]),
+            nonce_hash=None if row["nonce_hash"] is None else str(row["nonce_hash"]),
+        )
 
 
 # ------------------------------------------------------------- row adapters
@@ -835,9 +910,7 @@ def _client_from_row(row: sqlite3.Row) -> ClientRow:
         client_secret_hash=(
             None if row["client_secret_hash"] is None else str(row["client_secret_hash"])
         ),
-        pinned_audience=(
-            None if row["pinned_audience"] is None else str(row["pinned_audience"])
-        ),
+        pinned_audience=(None if row["pinned_audience"] is None else str(row["pinned_audience"])),
         is_machine=bool(row["is_machine"]),
     )
 
@@ -877,9 +950,7 @@ def _refresh_from_row(row: sqlite3.Row) -> RefreshRow:
         created_at=int(row["created_at"]),
         expires_at=int(row["expires_at"]),
         rotated_at=None if row["rotated_at"] is None else int(row["rotated_at"]),
-        successor_hash=(
-            None if row["successor_hash"] is None else str(row["successor_hash"])
-        ),
+        successor_hash=(None if row["successor_hash"] is None else str(row["successor_hash"])),
         grace_until=None if row["grace_until"] is None else int(row["grace_until"]),
         revoked_at=None if row["revoked_at"] is None else int(row["revoked_at"]),
     )
@@ -888,6 +959,7 @@ def _refresh_from_row(row: sqlite3.Row) -> RefreshRow:
 __all__ = [
     "DATABASE_FILE",
     "META_LAST_CLIENT_GC",
+    "MAX_GRACE_SUCCESSORS",
     "SCHEMA_VERSION",
     "OAuthStore",
 ]

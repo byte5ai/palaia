@@ -28,10 +28,12 @@ import logging
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
 from ..config import palaia_home
+from ..security.bounded_fetch import ResponseTooLargeError, get_bounded
 from .cache import DiskCache
 from .models import RegistrySearchResult, RegistryServer
 
@@ -100,9 +102,15 @@ class RegistryClient:
             )
 
         try:
-            response = await self._client.get(
-                f"{self.base_url}{path}", params=params, timeout=self.timeout_seconds
+            response = await get_bounded(
+                self._client,
+                f"{self.base_url}{path}",
+                params=params,
+                timeout=self.timeout_seconds,
+                max_bytes=self.max_bytes,
             )
+        except ResponseTooLargeError as exc:
+            return self._fallback(cached, cache_key, str(exc))
         except httpx.TimeoutException:
             return self._fallback(cached, cache_key, f"timed out after {self.timeout_seconds:.0f}s")
         except httpx.RequestError as exc:
@@ -118,12 +126,6 @@ class RegistryClient:
         if response.status_code >= 400:
             return self._fallback(
                 cached, cache_key, f"registry answered HTTP {response.status_code}"
-            )
-
-        content_length = len(response.content)
-        if content_length > self.max_bytes:
-            return self._fallback(
-                cached, cache_key, f"response too large ({content_length} > {self.max_bytes} bytes)"
             )
 
         try:
@@ -165,7 +167,8 @@ class RegistryClient:
         return await self._fetch("/v0/servers", params)
 
     async def detail(self, server_id: str) -> RegistryServer | None:
-        result = await self._fetch(f"/v0/servers/{server_id}", {}, single=True)
+        # Issue #397: an id containing `/` or `?` must not rewrite the path.
+        result = await self._fetch(f"/v0/servers/{quote(server_id, safe='')}", {}, single=True)
         if not result.servers:
             return None
         return result.servers[0]

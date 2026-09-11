@@ -42,7 +42,7 @@ from fastmcp.server.auth.providers.jwt import JWTVerifier
 from pydantic import AnyHttpUrl
 
 from ..auth.store import TokenStore
-from ..auth.verifier import PalaiaTokenVerifier
+from ..auth.verifier import HubTokenVerifier, PalaiaTokenVerifier
 from ..events import EventBus, publish_event
 from .keys import ALGORITHM, SigningKey
 from .resources import ResourceRegistry
@@ -259,6 +259,73 @@ def build_profile_auth(
     return providers
 
 
+#: The label the hub-wide verifier reports to ``on_oauth_verified`` in place
+#: of a profile path — the hub-level mounts belong to no profile.
+HUB_MOUNT_LABEL = "hub"
+
+
+def build_hub_auth(
+    *,
+    key: SigningKey | None = None,
+    resources: ResourceRegistry | None = None,
+    token_store: TokenStore | None = None,
+    on_oauth_verified: OnOAuthVerified | None = None,
+) -> AuthProvider | None:
+    """The one :class:`AuthProvider` every hub-wide MCP mount shares (issue #313).
+
+    Same credentials as :func:`build_profile_auth` — an OAuth access JWT or
+    a SPEC-108 ``plt_`` token — but not pinned to one profile: the JWT
+    verifier accepts every audience this hub's authorization server can
+    issue (``resources.audiences()``, which already includes pre-declared
+    profiles, #273), and the token verifier accepts a live ``plt_`` token
+    bound to any profile. What such a token may *do* on those mounts is
+    still decided per tool by its hub-level scopes
+    (:mod:`palaia_hub.auth.enforcement`) — this only closes the door on
+    having no token at all.
+
+    Returns ``None`` when the hub has no credential to check at all (no
+    OAuth server and ``auth_enabled: false``); the mounts then stay open,
+    which :func:`palaia_hub.auth.policy.check_hub_mount_auth_policy` refuses
+    in ``cloud``/``open`` exactly as it does for profiles.
+
+    No ``resource_base_url``: the hub-wide mounts have no RFC 9728
+    protected-resource document of their own, so the 401 carries no
+    ``resource_metadata`` pointer rather than one to a document that does
+    not exist. OAuth clients connect to a profile, never to these mounts.
+    """
+    if (key is None) != (resources is None):
+        raise ValueError("build_hub_auth needs `key` and `resources` together, or neither")
+    verifiers: list[TokenVerifier] = []
+    if key is not None and resources is not None:
+        audiences = sorted(resources.audiences().values())
+        if audiences:
+            if on_oauth_verified is None:
+                verifiers.append(
+                    JWTVerifier(
+                        public_key=key.public_pem(),
+                        algorithm=ALGORITHM,
+                        issuer=resources.issuer,
+                        audience=audiences,
+                    )
+                )
+            else:
+                verifiers.append(
+                    _ConnectedJWTVerifier(
+                        public_key=key.public_pem(),
+                        algorithm=ALGORITHM,
+                        issuer=resources.issuer,
+                        audience=audiences,
+                        on_verified=on_oauth_verified,
+                        profile=HUB_MOUNT_LABEL,
+                    )
+                )
+    if token_store is not None:
+        verifiers.append(HubTokenVerifier(token_store))
+    if not verifiers:
+        return None
+    return MultiAuth(verifiers=verifiers)
+
+
 def summarize_profile_auth(providers: Mapping[str, AuthProvider]) -> list[str]:
     """One human-readable line per profile naming the credentials it accepts.
 
@@ -289,8 +356,10 @@ def log_profile_auth(providers: Mapping[str, AuthProvider]) -> None:
 
 
 __all__ = [
+    "HUB_MOUNT_LABEL",
     "OnOAuthVerified",
     "ProfileAuth",
+    "build_hub_auth",
     "build_jwt_verifier",
     "build_profile_auth",
     "log_profile_auth",

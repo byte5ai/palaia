@@ -51,6 +51,9 @@ logger = logging.getLogger("palaia_hub.oauth.login")
 
 SESSION_COOKIE = "palaia_oauth_session"
 CSRF_COOKIE = "palaia_oauth_csrf"
+#: Issue #345: binds an identity-provider sign-in to the browser that
+#: started it. Set on ``/oauth/idp/start``, required back on the callback.
+IDP_NONCE_COOKIE = "palaia_oauth_idp"
 CSRF_FIELD = "csrf_token"
 #: The request header the double-submit token is echoed in by anything that
 #: is not an HTML form — the dashboard's API client, and the sign-out call.
@@ -164,7 +167,8 @@ def verify_owner_password(
     denied = OAuthError(
         "access_denied",
         "sign-in failed. Fix: check the username and password; the operator sets "
-        "them with `palaia-hub oauth set-password`.",
+        "them with `palaia-hub oauth set-password` (or the dashboard's first-run "
+        "setup, while no account exists).",
         status_code=401,
     )
     if owner is None:

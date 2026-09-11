@@ -17,7 +17,12 @@ password manager or an encrypted drive, never in a plain, shared, or
 public place, and never sent casually over email or chat.
 
 You need to be signed in as the administrator to download one — the same
-sign-in the dashboard itself uses.
+sign-in the dashboard itself uses. If your hub's dashboard has no sign-in
+turned on (the default when it only runs on your own network), the button
+is replaced by a note: on the machine the hub runs on, `palaia-hub backup`
+writes the same file. Running palaia in Docker, that is
+`docker exec palaia-hub palaia-hub backup --out /tmp/hub.tar.gz` followed by
+`docker cp palaia-hub:/tmp/hub.tar.gz .`.
 
 One thing is deliberately left out to keep the file smaller: the part that
 makes searching fast. It isn't a record of anything — it's rebuilt
@@ -54,6 +59,11 @@ docker run -d --name palaia-hub \
   --read-only --tmpfs /tmp --tmpfs /run \
   ghcr.io/byte5ai/palaia-hub:stable
 ```
+
+<!-- rc-channel-note -->
+> **Release candidate:** until `3.0.0` is final there is no `stable` image yet. Where a
+> command or file on this page says `ghcr.io/byte5ai/palaia-hub:stable`, use
+> `ghcr.io/byte5ai/palaia-hub:beta` for now.
 
 If you installed with the docker-compose file:
 

@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from typing import Annotated, Any
 
 from fastmcp import FastMCP
+from fastmcp.server.auth import AuthProvider
 from fastmcp.tools.base import ToolResult
 from mcp.types import ToolAnnotations
 from pydantic import AliasChoices, Field
@@ -49,7 +50,7 @@ from starlette.types import ASGIApp
 from ..auth.enforcement import missing_directory_scope_error
 from ..directory.models import DirectoryError, ReportedStatus, SessionStatus
 from ..directory.service import DirectoryService
-from ..directory.store import DEFAULT_TTL_SECONDS
+from ..directory.store import DEFAULT_TTL_SECONDS, MAX_TTL_SECONDS, MIN_TTL_SECONDS
 
 DIRECTORY_TOOL_ACTIONS: tuple[str, ...] = (
     "directory_register",
@@ -107,9 +108,11 @@ def _scope_error(action: str) -> ToolResult | None:
     return ToolResult(content=message, is_error=True) if message else None
 
 
-def build_directory_server(service: DirectoryService) -> FastMCP:
+def build_directory_server(
+    service: DirectoryService, *, auth: AuthProvider | None = None
+) -> FastMCP:
     """Build the session directory tool family, backed by ``service``."""
-    server = FastMCP(name="palaia-directory", instructions=DIRECTORY_IDENTITY)
+    server = FastMCP(name="palaia-directory", instructions=DIRECTORY_IDENTITY, auth=auth)
 
     def desc(detail: str) -> str:
         return f"{DIRECTORY_IDENTITY}\n\n{detail}"
@@ -123,7 +126,8 @@ def build_directory_server(service: DirectoryService) -> FastMCP:
             "for every later heartbeat/update/deregister on this handle). "
             "ttl_seconds controls how long this session may go without a "
             "heartbeat before showing as stale to others (default "
-            f"{DEFAULT_TTL_SECONDS:.0f}s)."
+            f"{DEFAULT_TTL_SECONDS:.0f}s; values outside {MIN_TTL_SECONDS:.0f}s to "
+            f"{MAX_TTL_SECONDS:.0f}s are clamped to that range)."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=False, destructiveHint=False, idempotentHint=False
@@ -139,16 +143,21 @@ def build_directory_server(service: DirectoryService) -> FastMCP:
         model: Annotated[
             str,
             Field(
-                description=(
-                    "Model name, self-reported verbatim (display only, never trusted)."
-                )
+                description=("Model name, self-reported verbatim (display only, never trusted).")
             ),
         ] = "",
         capabilities: Annotated[
             list[str] | None, Field(description="Free-text capability tags this session offers.")
         ] = None,
         ttl_seconds: Annotated[
-            float, Field(description="Seconds without a heartbeat before this session goes stale.")
+            float,
+            Field(
+                description=(
+                    "Seconds without a heartbeat before this session goes stale "
+                    f"({MIN_TTL_SECONDS:.0f} to {MAX_TTL_SECONDS:.0f}; out-of-range values "
+                    "are clamped)."
+                )
+            ),
         ] = DEFAULT_TTL_SECONDS,
     ) -> ToolResult:
         if (err := _scope_error("directory_register")) is not None:
@@ -314,15 +323,20 @@ class DirectoryGatewayASGI:
 
     app: ASGIApp
     lifespan: Any
+    #: The ``FastMCP`` behind ``app`` — what
+    #: :func:`palaia_hub.auth.policy.check_hub_mount_auth_policy` inspects.
+    server: FastMCP
 
 
-def build_directory_gateway(service: DirectoryService) -> DirectoryGatewayASGI:
+def build_directory_gateway(
+    service: DirectoryService, *, auth: AuthProvider | None = None
+) -> DirectoryGatewayASGI:
     """Build the directory server and its mountable ASGI app + lifespan,
     ready for ``app.mount("/mcp/directory", ...)`` (see
     :mod:`palaia_hub.app`)."""
-    server = build_directory_server(service)
+    server = build_directory_server(service, auth=auth)
     asgi_app = server.http_app(path="/")
-    return DirectoryGatewayASGI(app=asgi_app, lifespan=asgi_app.lifespan)
+    return DirectoryGatewayASGI(app=asgi_app, lifespan=asgi_app.lifespan, server=server)
 
 
 __all__ = [

@@ -8,6 +8,10 @@
 services:
   hub:
     image: "{{ ix_values.image.repository }}:{{ ix_values.image.tag }}"
+    # The image's own non-root user, pinned to 1000:1000 (v3/deploy/Dockerfile,
+    # issue #329); app.yaml's run_as_context declares the same pair. The
+    # dataset bound to /data below must be owned by it — see SUBMIT.md.
+    user: "{{ ix_values.palaia.uid }}:{{ ix_values.palaia.gid }}"
     restart: unless-stopped
     environment:
       PALAIA_MODE: "{{ values.mode | default(ix_values.palaia.mode) }}"

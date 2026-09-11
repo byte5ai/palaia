@@ -164,3 +164,51 @@ async def test_revoked_token_is_refused_at_the_transport(tmp_path: Path) -> None
             )
 
     assert response.status_code == 401
+
+
+# ------------------------------------------------ issue #323: capture / inbox_status
+
+
+@pytest.mark.anyio
+async def test_read_only_token_cannot_capture(tmp_path: Path) -> None:
+    """`capture` writes an inbox note, so it needs the vault's write scope —
+    it used to skip the check entirely (issue #323)."""
+    app, store = _build_app(tmp_path)
+    created = store.create("client", "alpha", ["vault:work:read"])
+
+    async with app.router.lifespan_context(app):
+        transport = mcp_client_transport(app, "http://testserver/mcp/alpha/", token=created.token)
+        async with Client(transport) as client:
+            result = await client.call_tool_mcp(
+                "work_memory_capture",
+                {
+                    "what_it_concerns": "API Gateway",
+                    "why_keep": "The rate limit was chosen deliberately.",
+                    "content": "We capped ingest at 100 req/min.",
+                },
+            )
+
+    assert result.isError is True
+    text = "".join(getattr(block, "text", "") for block in result.content)
+    assert "vault:work:write" in text
+
+
+@pytest.mark.anyio
+async def test_inbox_status_needs_the_read_scope(tmp_path: Path) -> None:
+    app, store = _build_app(tmp_path)
+    write_only = store.create("writer", "alpha", ["vault:work:write"])
+    reader = store.create("reader", "alpha", ["vault:work:read"])
+
+    async with app.router.lifespan_context(app):
+        transport = mcp_client_transport(
+            app, "http://testserver/mcp/alpha/", token=write_only.token
+        )
+        async with Client(transport) as client:
+            refused = await client.call_tool_mcp("work_memory_inbox_status", {})
+        transport = mcp_client_transport(app, "http://testserver/mcp/alpha/", token=reader.token)
+        async with Client(transport) as client:
+            allowed = await client.call_tool_mcp("work_memory_inbox_status", {})
+
+    assert refused.isError is True
+    assert "vault:work:read" in "".join(getattr(b, "text", "") for b in refused.content)
+    assert allowed.isError is not True

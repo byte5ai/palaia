@@ -73,7 +73,7 @@ async def test_must_include_queries_find_their_notes(
 async def test_forward_reference_query_finds_the_referencing_note(
     golden_work_vault: Path, open_index: Any
 ) -> None:
-    """"Q3 Roadmap" names no entity — the note referencing it is still findable."""
+    """ "Q3 Roadmap" names no entity — the note referencing it is still findable."""
     _, index = await open_index(golden_work_vault)
     results = await index.search("Q3 Roadmap", mode="fts", limit=20)
     assert "projects/legacy-migration" in {hit.permalink for hit in results.hits}
@@ -131,7 +131,7 @@ async def test_doctor_verify_reports_stale_and_missing_index_entries(
         "---\ntitle: Brand New\npermalink: notes/brand-new\ntype: note\n---\n\nnew\n",
         encoding="utf-8",
     )
-    engine.refresh_now()
+    await engine.refresh()
     findings = await VaultDoctor(engine).verify(index)
     codes = {finding.code for finding in findings}
     assert "index-stale-entry" in codes
@@ -157,9 +157,7 @@ async def test_rebuild_after_filter_query_keeps_filters_working(
     rebuilt = VaultIndex(engine, path=db_path)
     await rebuilt.open(start_worker=False)
     try:
-        after = [
-            hit.ref for hit in (await rebuilt.search(query, mode="fts", filters=filters)).hits
-        ]
+        after = [hit.ref for hit in (await rebuilt.search(query, mode="fts", filters=filters)).hits]
         assert after == before
     finally:
         await rebuilt.close()

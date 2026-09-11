@@ -2,8 +2,11 @@ name: v3 hub image
 
 # SPEC-112: builds/pushes the palaia-hub image to GHCR.
 #   - `edge`                    on every push to main touching v3/**
-#   - `v3.<version>` + `stable` on a `v3.*` tag (release)
-#   - `beta`                    on a `v3.*-beta*` / `v3.*-rc*` tag
+#   - `v3.<version>` + `<version>` + `stable` on a `v3.*` tag (release);
+#     the bare `<version>` tag exists for Home Assistant, whose add-on model
+#     pulls `image:<config.yaml version>` (issue #394)
+#   - `beta`                    on any pre-release tag (`v3.*-*`: rc, beta,
+#                               alpha, dev — any SemVer suffix, issue #386)
 # Independent of the v2 root `publish.yml` (PyPI/npm) — this workflow never
 # touches v2 code or v2 release tags.
 on:
@@ -22,8 +25,10 @@ on:
         description: >-
           Also publish this build under this channel tag (in addition to
           whatever the triggering ref already produces below) — e.g.
-          re-promoting an existing commit to `stable`/`beta` without
-          cutting a new tag. Leave as 'none' for a plain manual rebuild.
+          re-promoting an existing release to `stable`/`beta`. Only
+          honoured when dispatched on a `v3.*` release tag: a branch
+          commit has no version to bind the image to, so the build fails
+          instead (issue #393). Leave as 'none' for a plain manual rebuild.
         type: choice
         options: [none, stable, beta]
         default: none
@@ -36,7 +41,39 @@ env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/palaia-hub
 
 jobs:
+  changes:
+    # Issue #405: most pushes to `main` are docs-only, and each used to
+    # cost a full build + push + QEMU smoke (up to ten minutes cold). A
+    # `paths` filter cannot do this (it ANDs with the `tags` trigger — see
+    # the header), so the decision is made here: a branch push builds only
+    # when the diff since the previous head touches v3/ or this workflow;
+    # a tag push and a manual dispatch always build.
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.decide.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: decide
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          build=true
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF}" == refs/heads/* ]]; then
+            # A zero `before` is a new branch or a force-push: build.
+            if [[ -n "${BEFORE}" && "${BEFORE}" != 0000000000000000000000000000000000000000 ]] \
+               && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null \
+               && git diff --quiet "${BEFORE}" HEAD -- v3 .github/workflows/v3-release.yml; then
+              build=false
+              echo "no change under v3/ or to this workflow since ${BEFORE}; skipping the image build"
+            fi
+          fi
+          echo "build=${build}" >> "$GITHUB_OUTPUT"
+
   build-and-push:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -87,8 +124,14 @@ jobs:
               exit 1
             fi
             tags="${tags},${IMAGE}:v3.${version}"
+            # Issue #394: Home Assistant pulls `image:<version>` with the
+            # add-on config's own `version` field, and that field must be a
+            # real version for HA to ever offer an update — so the bare
+            # version is a tag too. Same manifest, one more name.
+            tags="${tags},${IMAGE}:${version}"
             annotation_version="${version}"
-            if [[ "${version}" == *beta* || "${version}" == *rc* ]]; then
+            # Any SemVer suffix is a pre-release (#386) — never `stable`.
+            if [[ "${version}" == *-* ]]; then
               tags="${tags},${IMAGE}:beta"
               channel="beta"
             else
@@ -98,6 +141,15 @@ jobs:
           fi
           manual_channel="${{ github.event.inputs.channel }}"
           if [[ -n "${manual_channel}" && "${manual_channel}" != "none" ]]; then
+            # Issue #393: a channel tag is a promise that the image carries a
+            # release version (the update check compares against its
+            # annotation). On a branch ref the annotation is `0.0.0+edge.*`
+            # and no `v3.<version>` tag exists, so `stable` would point at an
+            # untagged commit that every hub then reads as "up to date".
+            if [[ "${GITHUB_REF}" != refs/tags/v3.* ]]; then
+              echo "channel=${manual_channel} is only honoured on a v3.* release tag; ${GITHUB_REF} has no release version to bind the image to. Dispatch this workflow on the tag instead (issue #393)." >&2
+              exit 1
+            fi
             tags="${tags},${IMAGE}:${manual_channel}"
             channel="${manual_channel}"
           fi
@@ -117,10 +169,13 @@ jobs:
             PALAIA_CHANNEL=${{ steps.tags.outputs.channel }}
           # SPEC-501: the annotation `palaia_hub.update.check_for_update`
           # reads back from the channel tag's manifest. `docker/build-
-          # push-action` >= v6 forwards this to `buildx build --annotation`
-          # (OCI Distribution Spec annotations, index- and manifest-level).
+          # push-action` >= v6 forwards this to `buildx build --annotation`.
+          # The `index,manifest:` level prefix matters (#319): without it
+          # buildx annotates only the per-platform manifests, and the OCI
+          # index the channel tag actually resolves to carries no
+          # annotations at all — so the update check could never succeed.
           annotations: |
-            org.opencontainers.image.version=${{ steps.tags.outputs.annotation_version }}
+            index,manifest:org.opencontainers.image.version=${{ steps.tags.outputs.annotation_version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -135,8 +190,14 @@ jobs:
         # window expired. 10 minutes is the honest budget for emulated
         # arm64; native starts answer in seconds and exit the loop early.
         run: |
+          # The same hardening flags install.sh / docker-compose.yml document
+          # (SPEC-502), so the smoke proves the image boots *under them* on
+          # arm64 too, not only on amd64 (issue #400).
           docker run -d --name palaia-hub-arm64 --platform linux/arm64 \
-            -p 18420:8420 "${IMAGE}:edge-${{ steps.tags.outputs.short_sha }}"
+            -p 18420:8420 \
+            --security-opt no-new-privileges:true --cap-drop ALL \
+            --read-only --tmpfs /tmp --tmpfs /run \
+            "${IMAGE}:edge-${{ steps.tags.outputs.short_sha }}"
           deadline=$(( $(date +%s) + 600 ))
           until curl -fsS http://localhost:18420/api/health; do
             if [ "$(date +%s)" -ge "${deadline}" ]; then

@@ -3,7 +3,12 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ToastProvider } from "../components/Toast";
-import type { GatewayProfile, InstalledAddon, MarketEntry } from "../lib/api/client";
+import type {
+  GatewayProfile,
+  InstalledAddon,
+  MarketEntry,
+  PlanPreview,
+} from "../lib/api/client";
 import { api } from "../lib/api/client";
 import { Marketplace } from "./Marketplace";
 
@@ -28,7 +33,7 @@ const SKILL_ENTRY: MarketEntry = {
   name: "Memory Graph Viewer",
   one_liner: "A read-only viewer for the knowledge graph.",
   kind: "skill",
-  source: { type: "url", value: "https://addons.palaia.dev/viewer/SKILL.md" },
+  source: { type: "url", value: "https://addons.example.com/viewer/SKILL.md" },
   config_schema: null,
   permissions: ["memory-scope:read"],
   maintainer: "palaia",
@@ -51,6 +56,19 @@ const MANUAL_SECRET_ENTRY: MarketEntry = {
   maintainer: "someone",
   verified: false,
   provenance: "manual",
+};
+
+const REGISTRY_ENTRY: MarketEntry = {
+  id: "acme.npm-tool",
+  name: "Community Tool",
+  one_liner: "A tool somebody published to the open registry.",
+  kind: "remote",
+  source: { type: "registry_ref", value: "io.example/npm-tool" },
+  config_schema: null,
+  permissions: [],
+  maintainer: "someone",
+  verified: false,
+  provenance: "registry",
 };
 
 const DEFAULT_PROFILE: GatewayProfile = {
@@ -96,18 +114,28 @@ afterEach(() => {
 
 describe("Marketplace screen (SPEC-304)", () => {
   it("lists search results as cards", async () => {
-    vi.spyOn(api, "searchMarket").mockResolvedValue({ entries: [FETCH_ENTRY], stale: false, notes: {} });
+    vi.spyOn(api, "searchMarket").mockResolvedValue({
+      entries: [FETCH_ENTRY],
+      stale: false,
+      notes: {},
+    });
     vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([DEFAULT_PROFILE]);
     vi.spyOn(api, "listInstalledAddons").mockResolvedValue([]);
 
     mount();
 
     expect(await screen.findByText("Fetch")).toBeInTheDocument();
-    expect(screen.getByText(/fetch and convert web pages/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/fetch and convert web pages/i),
+    ).toBeInTheDocument();
   });
 
   it("shows an empty state when nothing matches", async () => {
-    vi.spyOn(api, "searchMarket").mockResolvedValue({ entries: [], stale: false, notes: {} });
+    vi.spyOn(api, "searchMarket").mockResolvedValue({
+      entries: [],
+      stale: false,
+      notes: {},
+    });
     vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([]);
     vi.spyOn(api, "listInstalledAddons").mockResolvedValue([]);
 
@@ -128,10 +156,14 @@ describe("Marketplace screen (SPEC-304)", () => {
     mount();
     fireEvent.click(await screen.findByRole("button", { name: /details/i }));
 
-    expect(await screen.findByText(/you added this one yourself/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/you added this one yourself/i),
+    ).toBeInTheDocument();
     // The install button exists but does nothing until a secret is filled
     // in and consent is actually issued — proven by the next test.
-    expect(screen.getByRole("button", { name: /install and connect/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /install and connect/i }),
+    ).toBeInTheDocument();
   });
 
   it("issues consent before installing, then installs with the collected config", async () => {
@@ -142,9 +174,18 @@ describe("Marketplace screen (SPEC-304)", () => {
     });
     vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([DEFAULT_PROFILE]);
     vi.spyOn(api, "listInstalledAddons").mockResolvedValue([]);
-    const consentSpy = vi
-      .spyOn(api, "issueMarketConsent")
-      .mockResolvedValue({ token: "tok_abc123", expires_at: 9999999999 });
+    const consentSpy = vi.spyOn(api, "issueMarketConsent").mockResolvedValue({
+      token: "tok_abc123",
+      expires_at: 9999999999,
+      preview: {
+        kind: "http",
+        command: null,
+        args: [],
+        url: "https://tracker.example.com/mcp",
+        image: null,
+        plan_hash: "h1",
+      },
+    });
     const installSpy = vi.spyOn(api, "installMarketEntry").mockResolvedValue({
       upstream_key: "acme-tracker",
       entry_id: "acme.tracker",
@@ -165,9 +206,13 @@ describe("Marketplace screen (SPEC-304)", () => {
     fireEvent.change(await screen.findByLabelText(/access token/i), {
       target: { value: "sk-secret" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /install and connect/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /install and connect/i }),
+    );
 
-    await waitFor(() => expect(consentSpy).toHaveBeenCalledWith("acme.tracker"));
+    await waitFor(() =>
+      expect(consentSpy).toHaveBeenCalledWith("acme.tracker"),
+    );
     await waitFor(() =>
       expect(installSpy).toHaveBeenCalledWith(
         "acme.tracker",
@@ -179,8 +224,52 @@ describe("Marketplace screen (SPEC-304)", () => {
     );
   });
 
+  it("shows the command a community listing would run before asking for consent", async () => {
+    vi.spyOn(api, "searchMarket").mockResolvedValue({
+      entries: [REGISTRY_ENTRY],
+      stale: false,
+      notes: {},
+    });
+    vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([DEFAULT_PROFILE]);
+    vi.spyOn(api, "listInstalledAddons").mockResolvedValue([]);
+    let resolvePlan: (plan: PlanPreview) => void = () => {};
+    const planSpy = vi.spyOn(api, "getMarketPlan").mockReturnValue(
+      new Promise<PlanPreview>((resolve) => {
+        resolvePlan = resolve;
+      }),
+    );
+
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: /details/i }));
+
+    // Until the hub has said what would run, there is nothing to consent to.
+    await waitFor(() => expect(planSpy).toHaveBeenCalledWith("acme.npm-tool"));
+    expect(
+      screen.getByRole("button", { name: /install and connect/i }),
+    ).toBeDisabled();
+
+    resolvePlan({
+      kind: "stdio",
+      command: "npx",
+      args: ["-y", "@acme/npm-tool@1.2.0"],
+      url: null,
+      image: null,
+      plan_hash: "h2",
+    });
+
+    const shown = await screen.findByTestId("install-plan");
+    expect(shown).toHaveTextContent("npx -y @acme/npm-tool@1.2.0");
+    expect(
+      screen.getByRole("button", { name: /install and connect/i }),
+    ).toBeEnabled();
+  });
+
   it("hands off a skill entry to the Clients page instead of installing it", async () => {
-    vi.spyOn(api, "searchMarket").mockResolvedValue({ entries: [SKILL_ENTRY], stale: false, notes: {} });
+    vi.spyOn(api, "searchMarket").mockResolvedValue({
+      entries: [SKILL_ENTRY],
+      stale: false,
+      notes: {},
+    });
     vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([]);
     vi.spyOn(api, "listInstalledAddons").mockResolvedValue([]);
     const installSpy = vi.spyOn(api, "installMarketEntry");
@@ -188,16 +277,21 @@ describe("Marketplace screen (SPEC-304)", () => {
     mount();
     fireEvent.click(await screen.findByRole("button", { name: /details/i }));
 
-    expect(await screen.findByRole("link", { name: /go to clients/i })).toHaveAttribute(
-      "href",
-      "/clients",
-    );
-    expect(screen.queryByRole("button", { name: /install and connect/i })).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole("link", { name: /go to clients/i }),
+    ).toHaveAttribute("href", "/clients");
+    expect(
+      screen.queryByRole("button", { name: /install and connect/i }),
+    ).not.toBeInTheDocument();
     expect(installSpy).not.toHaveBeenCalled();
   });
 
   it("opens the deep-linked entry's consent panel from ?install=", async () => {
-    vi.spyOn(api, "searchMarket").mockResolvedValue({ entries: [], stale: false, notes: {} });
+    vi.spyOn(api, "searchMarket").mockResolvedValue({
+      entries: [],
+      stale: false,
+      notes: {},
+    });
     vi.spyOn(api, "getMarketEntry").mockResolvedValue(FETCH_ENTRY);
     vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([DEFAULT_PROFILE]);
     vi.spyOn(api, "listInstalledAddons").mockResolvedValue([]);
@@ -205,11 +299,17 @@ describe("Marketplace screen (SPEC-304)", () => {
     mount("/marketplace?install=palaia.fetch");
 
     expect(await screen.findByText("Fetch")).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: /install and connect/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /install and connect/i }),
+    ).toBeInTheDocument();
   });
 
   it("lists an installed add-on with an update badge and lets it be updated", async () => {
-    vi.spyOn(api, "searchMarket").mockResolvedValue({ entries: [], stale: false, notes: {} });
+    vi.spyOn(api, "searchMarket").mockResolvedValue({
+      entries: [],
+      stale: false,
+      notes: {},
+    });
     vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([]);
     vi.spyOn(api, "listInstalledAddons").mockResolvedValue([INSTALLED_FETCH]);
     const updateSpy = vi.spyOn(api, "updateInstalledAddon").mockResolvedValue({
@@ -225,17 +325,27 @@ describe("Marketplace screen (SPEC-304)", () => {
   });
 
   it("removes an installed add-on after confirming", async () => {
-    vi.spyOn(api, "searchMarket").mockResolvedValue({ entries: [], stale: false, notes: {} });
+    vi.spyOn(api, "searchMarket").mockResolvedValue({
+      entries: [],
+      stale: false,
+      notes: {},
+    });
     vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([]);
     vi.spyOn(api, "listInstalledAddons").mockResolvedValue([INSTALLED_FETCH]);
-    const uninstallSpy = vi.spyOn(api, "uninstallAddon").mockResolvedValue(undefined);
+    const uninstallSpy = vi
+      .spyOn(api, "uninstallAddon")
+      .mockResolvedValue(undefined);
 
     mount();
 
     fireEvent.click(await screen.findByRole("button", { name: /^remove$/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /yes, remove it/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /yes, remove it/i }),
+    );
 
-    await waitFor(() => expect(uninstallSpy).toHaveBeenCalledWith("palaia-fetch"));
+    await waitFor(() =>
+      expect(uninstallSpy).toHaveBeenCalledWith("palaia-fetch"),
+    );
   });
 });
 
@@ -284,7 +394,9 @@ describe("Marketplace screen copy — no jargon in the surface (system.md §3 ru
       ...screen.queryAllByRole("button"),
       ...screen.queryAllByRole("option"),
       ...Array.from(
-        document.querySelectorAll(".badge, .card__title, .card__subject, .field__label"),
+        document.querySelectorAll(
+          ".badge, .card__title, .card__subject, .field__label",
+        ),
       ),
     ];
 
@@ -295,5 +407,57 @@ describe("Marketplace screen copy — no jargon in the surface (system.md §3 ru
         expect(text).not.toMatch(pattern);
       }
     }
+  });
+});
+
+describe("search requests (issue 384)", () => {
+  it("asks once typing pauses — not per keystroke — and cancels the request before it", async () => {
+    const search = vi
+      .spyOn(api, "searchMarket")
+      .mockResolvedValue({ entries: [], stale: false, notes: {} });
+    vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([]);
+    vi.spyOn(api, "listInstalledAddons").mockResolvedValue([]);
+
+    mount();
+    await screen.findByText(/nothing matched/i);
+    expect(search).toHaveBeenCalledTimes(1);
+    const mountSignal = search.mock.calls[0]![2] as AbortSignal;
+
+    const box = screen.getByLabelText(/search add-ons/i);
+    fireEvent.change(box, { target: { value: "a" } });
+    fireEvent.change(box, { target: { value: "ab" } });
+    fireEvent.change(box, { target: { value: "abc" } });
+
+    await waitFor(() =>
+      expect(search).toHaveBeenLastCalledWith(
+        "abc",
+        undefined,
+        expect.any(AbortSignal),
+      ),
+    );
+    const queries = search.mock.calls.map((call) => call[0]);
+    expect(queries).toEqual(["", "abc"]);
+    expect(mountSignal.aborted).toBe(true);
+  });
+});
+
+describe("what the marketplace says it is showing (issue 409)", () => {
+  it("shows the hub's own note when no curated index is configured", async () => {
+    vi.spyOn(api, "searchMarket").mockResolvedValue({
+      entries: [FETCH_ENTRY],
+      stale: false,
+      notes: { curated: "No curated add-on index is configured for this hub." },
+    });
+    vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([]);
+    vi.spyOn(api, "listInstalledAddons").mockResolvedValue([]);
+
+    mount();
+
+    expect(
+      await screen.findByText(/no curated add-on index is configured/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/could not reach every source/i),
+    ).not.toBeInTheDocument();
   });
 });

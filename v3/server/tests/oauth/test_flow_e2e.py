@@ -33,6 +33,8 @@ from .harness import (
     OWNER_PASSWORD,
     OWNER_USERNAME,
     Harness,
+    approve_consent,
+    is_consent_page,
 )
 
 BASE_URL = "https://testserver"
@@ -125,6 +127,17 @@ class ScriptedClient:
         }
         if scope is not None:
             params["scope"] = scope
+        page = await self.authorize_page(metadata, params)
+        if not is_consent_page(page):
+            return page
+        # Issue #328: a browser user clicks "Allow" on the consent page; the
+        # tests that only care about the resulting code get that click here.
+        return await approve_consent(self.http, page)
+
+    async def authorize_page(
+        self, metadata: dict[str, Any], params: dict[str, str]
+    ) -> httpx.Response:
+        """The raw ``GET /oauth/authorize`` — the consent page, when signed in."""
         return await self.http.get(
             urlsplit(str(metadata["authorization_endpoint"])).path, params=params
         )
@@ -212,7 +225,9 @@ async def test_dcr_client_completes_the_whole_flow_and_calls_a_tool(harness: Har
             assert "refresh_token" in tokens
 
             result = await scripted.call_tool(
-                "alpha", str(tokens["access_token"]), "work_memory_write",
+                "alpha",
+                str(tokens["access_token"]),
+                "work_memory_write",
                 {"title": "Hello", "body": "World"},
             )
 
@@ -392,3 +407,93 @@ async def test_an_unauthenticated_authorize_request_lands_on_the_sign_in_form(
             form = await scripted.http.get(location)
             assert form.status_code == 200
             assert "Sign in to palaia" in form.text
+
+
+# ------------------------------------------------------- consent (issue #328)
+
+
+def _authorize_params(client_id: str, redirect_uri: str, resource: str) -> dict[str, str]:
+    return {
+        "response_type": "code",
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "code_challenge": challenge_for(VERIFIER),
+        "code_challenge_method": "S256",
+        "state": "opaque-state",
+        "resource": resource,
+    }
+
+
+@pytest.mark.anyio
+async def test_a_get_on_authorize_shows_the_consent_page_and_mints_nothing(
+    harness: Harness,
+) -> None:
+    """A link alone never authorizes: the GET renders who is asking and what
+    for; only the owner's POST issues a code."""
+    async with harness.app.router.lifespan_context(harness.app):
+        scripted = await _client(harness)
+        async with scripted.http:
+            as_metadata = await scripted.authorization_server_metadata(harness.server.issuer)
+            client_id = await scripted.register_dynamically(as_metadata)
+            await scripted.sign_in()
+            page = await scripted.authorize_page(
+                as_metadata,
+                _authorize_params(client_id, DCR_REDIRECT_URI, harness.audience("alpha")),
+            )
+            assert page.status_code == 200
+            assert "location" not in page.headers
+            assert "scripted" in page.text  # the client's registered name
+            assert "Allow" in page.text and "Deny" in page.text
+            assert "Read the \u201calpha-work\u201d memory" in page.text or "memory" in page.text
+            assert "code=" not in page.text
+
+            approved = await approve_consent(scripted.http, page)
+            code = await scripted.code_from(approved)
+            assert code
+
+
+@pytest.mark.anyio
+async def test_the_consent_post_needs_the_sessions_csrf_token(harness: Harness) -> None:
+    async with harness.app.router.lifespan_context(harness.app):
+        scripted = await _client(harness)
+        async with scripted.http:
+            as_metadata = await scripted.authorization_server_metadata(harness.server.issuer)
+            client_id = await scripted.register_dynamically(as_metadata)
+            await scripted.sign_in()
+            params = _authorize_params(client_id, DCR_REDIRECT_URI, harness.audience("alpha"))
+            page = await scripted.authorize_page(as_metadata, params)
+            assert is_consent_page(page)
+
+            forged = await scripted.http.post(
+                "/oauth/authorize",
+                data={**params, "decision": "allow", "csrf_token": "not-the-cookie-value"},
+            )
+            assert forged.status_code == 403, forged.text
+            assert "location" not in forged.headers
+            assert "could not be confirmed" in forged.text
+
+            missing = await scripted.http.post(
+                "/oauth/authorize", data={**params, "decision": "allow"}
+            )
+            assert missing.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_denying_consent_sends_the_client_access_denied(harness: Harness) -> None:
+    async with harness.app.router.lifespan_context(harness.app):
+        scripted = await _client(harness)
+        async with scripted.http:
+            as_metadata = await scripted.authorization_server_metadata(harness.server.issuer)
+            client_id = await scripted.register_dynamically(as_metadata)
+            await scripted.sign_in()
+            page = await scripted.authorize_page(
+                as_metadata,
+                _authorize_params(client_id, DCR_REDIRECT_URI, harness.audience("alpha")),
+            )
+            denied = await approve_consent(scripted.http, page, decision="deny")
+
+    assert denied.status_code == 303, denied.text
+    query = parse_qs(urlsplit(denied.headers["location"]).query)
+    assert query["error"] == ["access_denied"]
+    assert query["state"] == ["opaque-state"]
+    assert "code" not in query

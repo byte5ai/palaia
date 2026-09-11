@@ -16,17 +16,26 @@ no TrueNAS instance, no docker daemon, and no checkout of that repo's own
 CI scripts. Treat every file here as a well-grounded first draft, not a
 verified one. Concretely, before submitting:
 
+- **`app.yaml` → `maintainers[0].email`** is `hello@byte5.ai`, which appears
+  nowhere else in this repository and which no test can verify is a
+  monitored mailbox (the owner has said no *security* mailbox exists —
+  `v3/RELEASING.md` §1). Confirm it is read, or replace it, before the
+  catalog PR: a maintainer contact nobody reads is worse than none (issue
+  #400).
 - **`app.yaml`**: no `lib_version`/`lib_version_hash` is set. Those pin a
   shared template library version from `truenas/apps`' own `library/`
   directory — fill them in from whatever that repo's current library
   version actually is (their contributor docs cover this); guessing a
   hash here would be worse than leaving it out.
-- **`app.yaml`**: `run_as_context` is empty. The image runs as its own
-  non-root `palaia` user (`useradd --system`, `v3/deploy/Dockerfile`)
-  rather than a fixed uid/gid, so there is nothing correct to hardcode —
-  read the real uid back with
-  `docker run --rm ghcr.io/byte5ai/palaia-hub:stable id palaia` and fill
-  it in if the schema wants a specific number rather than an empty list.
+- **`app.yaml`**: `run_as_context` declares uid/gid `1000:1000` — the pair
+  `v3/deploy/Dockerfile` pins for its `palaia` user (issue #329), and the
+  pair `ix_values.yaml` feeds the compose template's `user:`. Their schema
+  for this field (the exact key names) was not validated here; adjust the
+  shape, not the numbers. The dataset the operator picks for `/data` is a
+  bind mount and must be owned by that uid: TrueNAS's own apps handle this
+  through their library's permissions step — if this package does not
+  inherit it, the one-time fix is `chown -R 1000:1000 <dataset mountpoint>`
+  on the host, and the storage question's description should say so.
 - **`questions.yaml`**: written to a plausible shape (groups + questions,
   a `dataset`-typed storage question, a `port`-`$ref`'d network question)
   but not validated against their actual JSON Schema for this file, which

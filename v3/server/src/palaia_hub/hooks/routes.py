@@ -9,11 +9,11 @@ a dashboard login.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from .models import CreatedHook, DeadLetter, HookInfo
-from .outbox import HookOutbox
+from .outbox import MAX_PAGE, HookOutbox
 from .store import HookError, HookStore
 
 
@@ -60,7 +60,9 @@ def build_hooks_router(store: HookStore, outbox: HookOutbox) -> APIRouter:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @router.get("/{hook_id}/dead_letters", response_model=list[DeadLetter])
-    async def dead_letters(hook_id: str) -> list[DeadLetter]:
+    async def dead_letters(
+        hook_id: str, limit: int = Query(200, ge=1, le=MAX_PAGE)
+    ) -> list[DeadLetter]:
         if store.get(hook_id) is None:
             raise HTTPException(status_code=404, detail=f"no hook with id {hook_id!r}")
         return [
@@ -73,7 +75,7 @@ def build_hooks_router(store: HookStore, outbox: HookOutbox) -> APIRouter:
                 last_error=row.last_error,
                 created_at=row.created_at,
             )
-            for row in outbox.list_dead_letters(hook_id)
+            for row in outbox.list_dead_letters(hook_id, limit=limit)
         ]
 
     return router

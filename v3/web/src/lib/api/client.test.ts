@@ -68,7 +68,8 @@ describe("the double-submit token", () => {
   });
 
   it("is simply absent when the browser has no token yet", async () => {
-    document.cookie = "palaia_oauth_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    document.cookie =
+      "palaia_oauth_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
 
     await api.createVault({ key: "work" });
 
@@ -85,7 +86,10 @@ describe("a session that expired mid-use", () => {
       assign,
     });
     fetchMock.mockResolvedValue(
-      jsonResponse({ detail: "Please sign in to continue.", sign_in_url: "/oauth/login" }, 401),
+      jsonResponse(
+        { detail: "Please sign in to continue.", sign_in_url: "/oauth/login" },
+        401,
+      ),
     );
 
     await expect(api.listVaults()).rejects.toBeInstanceOf(ApiError);
@@ -101,7 +105,10 @@ describe("a session that expired mid-use", () => {
     const assign = vi.fn();
     vi.stubGlobal("location", { pathname: "/", search: "", assign });
     fetchMock.mockResolvedValue(
-      jsonResponse({ detail: "Please sign in.", sign_in_url: "/oauth/login" }, 401),
+      jsonResponse(
+        { detail: "Please sign in.", sign_in_url: "/oauth/login" },
+        401,
+      ),
     );
 
     // A hub with the gate off answers 200 here, so a 401 means exactly
@@ -146,5 +153,44 @@ describe("signing out", () => {
     await api.signOut();
 
     expect(headersOf(fetchMock.mock.calls[0])[CSRF_HEADER]).toBeUndefined();
+  });
+});
+
+describe("request coalescing and cancellation (issue 384)", () => {
+  it("answers simultaneous /api/info callers with one request, and fetches afresh afterwards", async () => {
+    fetchMock.mockImplementation(async () =>
+      jsonResponse({ version: "3.0.0-rc1" }),
+    );
+
+    const [first, second] = await Promise.all([api.info(), api.info()]);
+
+    expect(first).toEqual(second);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await api.info();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("hands a caller's AbortSignal to fetch so a stale search can be cancelled", async () => {
+    fetchMock.mockImplementation(async () => jsonResponse([]));
+    const controller = new AbortController();
+
+    await api.search("work", "abc", controller.signal);
+
+    const init = fetchMock.mock.calls[0]![1] as RequestInit;
+    expect(init.signal).toBe(controller.signal);
+  });
+});
+
+describe("path parameters are encoded (issue 399)", () => {
+  it("keeps a permalink's slashes but encodes the characters that would rewrite the request", async () => {
+    fetchMock.mockImplementation(async () => jsonResponse({}));
+
+    await api.readNote("my vault", "notes/what?#really");
+    await api.revokeToken("tok/1");
+
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls[0]).toBe("/api/vaults/my%20vault/notes/notes/what%3F%23really");
+    expect(urls[1]).toBe("/api/auth/tokens/tok%2F1");
   });
 });

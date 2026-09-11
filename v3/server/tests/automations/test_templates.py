@@ -46,3 +46,11 @@ def test_template_with_no_placeholders_passes_through_unchanged() -> None:
 def test_permalink_placeholder() -> None:
     envelope = _envelope(permalink="projects/x")
     assert render("{{permalink}}", envelope) == "projects/x"
+
+
+def test_dotted_data_paths_walk_nested_mappings() -> None:
+    """Issue #396: `{{data.a.b}}` used to look up the literal key "a.b"."""
+    envelope = _envelope(data={"a": {"b": "deep"}, "x.y": "literal"})
+    assert render("{{data.a.b}}", envelope) == "deep"
+    assert render("{{data.x.y}}", envelope) == "literal", "a literal dotted key still wins"
+    assert render("{{data.a.missing}}", envelope) == ""

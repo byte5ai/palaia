@@ -10,3 +10,7 @@ palaia:
   webPort: 8420
   mode: locked
   deployment: truenas
+  # The uid/gid the image runs as (v3/deploy/Dockerfile pins them; issue
+  # #329). Must match app.yaml's run_as_context.
+  uid: 1000
+  gid: 1000

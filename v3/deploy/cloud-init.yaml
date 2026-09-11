@@ -38,6 +38,18 @@ packages:
   - curl
   - ufw
 write_files:
+  # Issue #400: the container binds to the tailnet address. After a reboot
+  # Docker may restart it before tailscaled has that address, and the port
+  # bind fails (EADDRNOTAVAIL) until `--restart unless-stopped` retries.
+  # Starting Docker after tailscaled shortens that window to nothing in the
+  # common case; the restart policy still covers the rest.
+  - path: /etc/systemd/system/docker.service.d/palaia-after-tailscale.conf
+    permissions: "0644"
+    owner: root:root
+    content: |
+      [Unit]
+      After=tailscaled.service
+      Wants=tailscaled.service
   - path: /opt/palaia/cloud-init-setup.sh
     permissions: "0700"
     owner: root:root
@@ -136,3 +148,4 @@ write_files:
 
 runcmd:
   - [bash, /opt/palaia/cloud-init-setup.sh]
+  - [systemctl, daemon-reload]

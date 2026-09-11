@@ -38,6 +38,15 @@ that's a bug in this file, not a step to perform anyway.
 
 ## Timeline to record
 
+> Open question this test answers (issue #400): Raspberry Pi OS Lite
+> without `userconf.txt`/Imager settings shows the console first-user
+> wizard on the attached display. Whether `docker.service` and
+> `palaia.service` still start unattended behind it is unverified — note
+> below whether the hub answered on the network *before* anyone touched
+> the console. If it did not, the image needs a preseeded first user (or
+> the wizard disabled) and `README.md`'s "SSH off by default" section must
+> say so.
+
 Start a stopwatch at power-on.
 
 | Milestone | What to watch for | Typical (record actual) |

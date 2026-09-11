@@ -37,7 +37,12 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 
 from fastmcp import Client
-from fastmcp.client.transports import ClientTransport, StdioTransport, StreamableHttpTransport
+from fastmcp.client.transports import (
+    ClientTransport,
+    SSETransport,
+    StdioTransport,
+    StreamableHttpTransport,
+)
 from fastmcp.server import create_proxy
 from fastmcp.server.providers.proxy import FastMCPProxy
 
@@ -99,6 +104,29 @@ class _Connection:
     transport: ClientTransport
     client: Client[ClientTransport]
     proxy: FastMCPProxy | None = None
+
+
+def _disable_inbound_header_forwarding(transport: ClientTransport) -> None:
+    """Keep the connecting client's own headers off the upstream's wire.
+
+    ``create_proxy`` flips ``forward_incoming_headers`` on for every HTTP/SSE
+    transport it is handed (fastmcp 3.4.7, ``server/providers/proxy.py``),
+    and the transport then sends the *inbound* request's ``Authorization``
+    header — the client's palaia ``plt_`` token or OAuth JWT — plus every
+    other non-hop-by-hop inbound header to the upstream, unless a configured
+    header of the same name overrides it. palaia's credentials for an
+    upstream are exactly the ones its ``auth:`` names, and nothing else
+    (issue #314): a third-party server never gets to see what a client used
+    to authenticate to *this* hub.
+
+    Called after ``create_proxy`` on purpose: that is where the flag is
+    switched on, and the proxy's per-request ``client.new()`` is a shallow
+    copy sharing this very transport object, so the value set here is the
+    one every forwarded call reads. A ``stdio`` transport has no such flag
+    and is left alone.
+    """
+    if isinstance(transport, StreamableHttpTransport | SSETransport):
+        transport.forward_incoming_headers = False
 
 
 def _one_line(exc: BaseException) -> str:
@@ -264,6 +292,7 @@ class UpstreamService:
                 connection.proxy = create_proxy(
                     connection.client, name=f"palaia-upstream-{config.key}"
                 )
+                _disable_inbound_header_forwarding(connection.transport)
             return connection.proxy
 
     # ------------------------------------------------------------- teardown

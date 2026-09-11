@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from fastmcp import FastMCP
 from fastmcp.apps import AppConfig
+from fastmcp.server.auth import AuthProvider
 from fastmcp.tools.base import ToolResult
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, ConfigDict, Field
@@ -166,8 +167,8 @@ _SCRIPT_JS = r"""
           html += '<div class="t-xs t-muted">Permissions: ' + perms + '</div>';
         }
         if (href) {
-          html += '<a class="btn btn--primary" href="' + href + '" target="_blank" rel="noopener">'
-            + 'Install and connect' + '</a>';
+          html += '<a class="btn btn--primary" href="' + escapeHtml(href) + '"'
+            + ' target="_blank" rel="noopener">' + 'Install and connect' + '</a>';
         } else {
           html += '<p class="t-xs t-muted">Open this hub&rsquo;s dashboard, then Marketplace, '
             + 'to install.</p>';
@@ -210,12 +211,13 @@ def render_marketplace_html() -> str:
     return render_app_page(title=_TITLE, body_html=_BODY_HTML, script_js=_SCRIPT_JS)
 
 
-def build_market_server(deps: MarketAppDeps) -> FastMCP:
+def build_market_server(deps: MarketAppDeps, *, auth: AuthProvider | None = None) -> FastMCP:
     """The standalone hub-level ``browse_marketplace`` tool server, mounted
     at ``/mcp/market`` by :func:`palaia_hub.app.create_app` — mirrors
     :func:`~palaia_hub.gateway.apps.hub_status_app.build_hub_status_server`'s
     shape for this SPEC's one hub-level app."""
     server = FastMCP(
+        auth=auth,
         name="palaia-marketplace",
         instructions=(
             "IDENTITY: this is the palaia marketplace — browse and search add-ons "

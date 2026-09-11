@@ -246,3 +246,10 @@ async def test_semantic_routing_hidden_tools_still_apply_before_routing() -> Non
         found = await client.call_tool("find_tool", {"query": "delete"})
         matches = found.structured_content["matches"]
         assert not any(m["name"] == "work_memory_delete" for m in matches)
+        # Issue #397: unlisted is not enough — invoking it by name is refused too.
+        result = await client.call_tool(
+            "invoke_tool",
+            {"name": "work_memory_delete", "arguments": {"permalink": "x"}},
+            raise_on_error=False,
+        )
+        assert result.is_error is True

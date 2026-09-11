@@ -16,11 +16,12 @@ Three responsibilities:
    With no embedder, no sqlite-vec, or an undrained backlog, a hybrid query is
    an FTS query that says so.
 
-An :class:`EntityRenamed` event triggers a full reindex rather than a
-single-note update: a rename rewrites *inbound wikilinks across the whole
-vault* in one commit (format spec §4.2) and emits one event for all of it, so
-the only correct response is to re-walk the vault. That is affordable because
-:meth:`VaultIndex.reindex` skips notes whose checksum is unchanged.
+An :class:`EntityRenamed` event rewrites *inbound wikilinks across the
+whole vault* in one commit (format spec §4.2) and emits one event for all of
+it. The event names every file that changed (``rewritten_paths``, issue
+#403), so the index updates exactly those notes plus the renamed one — it
+used to re-walk and re-hash the whole vault per rename. A full
+:meth:`VaultIndex.reindex` remains the doctor's repair path.
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ import contextlib
 import logging
 import time
 from collections.abc import Callable, Iterator, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from palaia_hub.events.schema import HubEventHook
@@ -42,6 +44,7 @@ from palaia_hub.vault import (
     NoteDeleted,
     NoteModified,
     NoteMoved,
+    NoteNotFoundError,
     VaultDoctor,
     VaultEngine,
 )
@@ -69,6 +72,24 @@ _WORKER_POLL_SECONDS = 2.0
 #: A chunk that fails this many times is parked as ``failed`` instead of
 #: spinning the worker forever on the same input.
 _MAX_EMBED_ATTEMPTS = 3
+
+#: Issue #362: a failed model probe (a first download that hit a network
+#: blip, a model server not up yet) is retried with capped exponential
+#: backoff instead of disabling vectors for the rest of the process.
+_EMBEDDER_RETRY_INITIAL_SECONDS = 1.0
+_EMBEDDER_RETRY_MAX_SECONDS = 60.0
+
+
+@dataclass(frozen=True, slots=True)
+class _Claim:
+    """One pending chunk as the embed worker claimed it — id, text, and the
+    fingerprint of that text, which is what lets the worker tell afterwards
+    whether the chunk it is about to mark ``ready`` is still the one it
+    embedded (issue #336)."""
+
+    chunk_id: int
+    text: str
+    fingerprint: str
 
 
 class VaultIndex:
@@ -110,12 +131,32 @@ class VaultIndex:
         self._doctor = VaultDoctor(engine)
         self._embedder: Embedder | None = embedder
         self._embedder_failed = ""
-        self._embedder_probed = embedder is not None
+        # Issue #362: probes are serialised (a query and the worker must not
+        # both load the model) and a failure schedules a retry, never a
+        # permanent "unavailable".
+        self._embedder_lock = asyncio.Lock()
+        self._embedder_probe_attempts = 0
+        self._embedder_retry_at = 0.0
         self._unsubscribe: Callable[[], None] | None = None
         self._worker: asyncio.Task[None] | None = None
         self._wake = asyncio.Event()
         self._closing = False
         self._last_indexed_at = 0.0
+        # Issue #332: a rebuild is one transaction over the shared connection,
+        # so change events arriving while it runs are held here and replayed
+        # once it has committed (or rolled back) — never applied into it.
+        self._rebuild_lock = asyncio.Lock()
+        self._rebuilding = False
+        self._deferred: list[ChangeEvent] = []
+        # Issue #356: one event is applied at a time. The engine publishes
+        # after it has released its own lock, so two writers' events can
+        # reach the index in either order and, worse, interleave here: a
+        # modify's read-then-write around a delete's write put the deleted
+        # note back into the index. Serialising the apply closes that.
+        self._apply_lock = asyncio.Lock()
+        #: Issue #404: the chunk-state aggregate ran on every hybrid query;
+        #: it is recomputed only after a commit changed the database.
+        self._embed_counts: tuple[int, dict[str, int]] | None = None
         #: SPEC-201's ``index.reindexed``/``index.embed_backlog_drained``/
         #: ``doctor.finding`` hook point — see :data:`HubEventHook`. ``None``
         #: (the default) keeps this class's behavior identical to before
@@ -133,14 +174,19 @@ class VaultIndex:
 
     # ------------------------------------------------------------- lifecycle
 
-    async def open(self, *, build: bool = True, start_worker: bool = True) -> int:
+    async def open(
+        self, *, build: bool = True, start_worker: bool = True, refresh_catalog: bool = True
+    ) -> int:
         """Open the index, optionally build it, and subscribe to change events.
 
         Returns the number of notes indexed by the initial build (0 when
-        ``build=False``).
+        ``build=False``). ``refresh_catalog=False`` builds from the catalog
+        the engine already holds — the hub's startup opens each engine (one
+        walk) and then its index, which used to walk the same files again
+        (issue #403).
         """
         await asyncio.to_thread(self.db.open)
-        indexed = await self.reindex() if build else 0
+        indexed = await self.reindex(refresh_catalog=refresh_catalog) if build else 0
         if self._engine.bus is not None:
             self._unsubscribe = self._engine.bus.subscribe(self._on_event)
         if start_worker and self._embedding.enabled:
@@ -172,7 +218,7 @@ class VaultIndex:
         """:class:`~palaia_hub.vault.IndexView` implementation (drift check)."""
         return self.writer.index_entries()
 
-    async def reindex(self) -> int:
+    async def reindex(self, *, refresh_catalog: bool = True) -> int:
         """Full rebuild from files via the doctor's reindex hook.
 
         The whole walk is one transaction (see :class:`~.writer.IndexWriter`),
@@ -180,7 +226,27 @@ class VaultIndex:
         no-op reindex is cheap enough to use as the response to any event the
         index cannot interpret precisely.
         """
-        count = await self._engine.reindex(self.writer)
+        async with self._rebuild_lock:
+            async with self._apply_lock:
+                # Nothing is mid-apply once this is set (issue #356): an
+                # update that had already passed the check below cannot
+                # land its write inside the rebuild's transaction.
+                self._rebuilding = True
+            try:
+                count = await self._engine.reindex(self.writer, refresh=refresh_catalog)
+            finally:
+                self._rebuilding = False
+                deferred, self._deferred = self._deferred, []
+            # Whatever changed while the rebuild ran is applied on top of it
+            # now — a note written mid-rebuild is indexed, not dropped as
+            # "stale" by finish(), because finish() never saw it (#332).
+            for event in deferred:
+                try:
+                    await self.apply_event(event)
+                except Exception:  # noqa: BLE001 - one bad replay must not lose the rest
+                    logger.exception(
+                        "deferred index update failed", extra={"event": type(event).__name__}
+                    )
         self._last_indexed_at = time.monotonic()
         self._wake.set()
         logger.debug("reindexed %d note(s) of vault %s", count, self._engine.name)
@@ -208,22 +274,52 @@ class VaultIndex:
 
     async def apply_event(self, event: ChangeEvent) -> None:
         """Apply one change event (public so tests can drive it directly)."""
-        if isinstance(event, NoteDeleted):
-            await asyncio.to_thread(self.writer.delete_note, event.path)
-        elif isinstance(event, NoteMoved):
-            note = await self._engine.read_note(event.path)
-            await asyncio.to_thread(self.writer.move_note, event.previous_path, note)
-        elif isinstance(event, (NoteCreated, NoteModified)):
-            note = await self._engine.read_note(event.path)
-            await asyncio.to_thread(self.writer.upsert_note, note)
-        elif isinstance(event, EntityRenamed):
-            # A rename rewrote inbound links vault-wide under a single event.
-            await self.reindex()
-        else:  # pragma: no cover - the union is closed today
-            logger.debug("ignoring unknown event %s", type(event).__name__)
-            return
-        self._last_indexed_at = time.monotonic()
-        self._wake.set()
+        async with self._apply_lock:
+            if self._rebuilding:
+                self._deferred.append(event)
+                return
+            if isinstance(event, EntityRenamed):
+                await self._apply_rename(event)
+            elif isinstance(event, NoteDeleted):
+                await asyncio.to_thread(self.writer.delete_note, event.path)
+            elif isinstance(event, NoteMoved):
+                note = await self._engine.read_note(event.path)
+                await asyncio.to_thread(self.writer.move_note, event.previous_path, note)
+            elif isinstance(event, (NoteCreated, NoteModified)):
+                try:
+                    note = await self._engine.read_note(event.path)
+                except NoteNotFoundError:
+                    # The note is gone already: a later delete overtook this
+                    # event (issue #356). The index must agree with the disk,
+                    # not with the event's age.
+                    await asyncio.to_thread(self.writer.delete_note, event.path)
+                else:
+                    await asyncio.to_thread(self.writer.upsert_note, note)
+            else:  # pragma: no cover - the union is closed today
+                logger.debug("ignoring unknown event %s", type(event).__name__)
+                return
+            self._last_indexed_at = time.monotonic()
+            self._wake.set()
+
+    async def _apply_rename(self, event: EntityRenamed) -> None:
+        """Re-index the renamed note and every note whose links were rewritten.
+
+        The renamed note's new identity is indexed first, so the rewritten
+        notes' relations resolve against it as they are re-read; anything
+        that referenced the old permalink and was *not* rewritten (a
+        ``memory://`` URL in prose, say) is unresolved by the identity
+        change and re-linked through the old title, which the rename keeps
+        as an alias (§4.2).
+        """
+        if event.previous_path and event.previous_path != event.path:
+            await asyncio.to_thread(self.writer.delete_note, event.previous_path)
+        for path in (event.path, *event.rewritten_paths):
+            try:
+                note = await self._engine.read_note(path)
+            except NoteNotFoundError:
+                await asyncio.to_thread(self.writer.delete_note, path)
+            else:
+                await asyncio.to_thread(self.writer.upsert_note, note)
 
     # ----------------------------------------------------------------- search
 
@@ -281,27 +377,64 @@ class VaultIndex:
     # ------------------------------------------------------------- embeddings
 
     async def _ensure_embedder(self) -> Embedder | None:
+        """The embedder, loading it on first use; ``None`` while unavailable.
+
+        A failed load is remembered only until its backoff expires (issue
+        #362): the next caller after that retries, and a success clears the
+        degraded status the search path reports meanwhile.
+        """
         if self._embedder is not None:
             return self._embedder
-        if self._embedder_probed:
+        if time.monotonic() < self._embedder_retry_at:
             return None
-        self._embedder_probed = True
-        try:
-            embedder = await asyncio.to_thread(build_embedder, self._embedding)
-        except EmbedderUnavailableError as exc:
-            self._embedder_failed = str(exc)
-            logger.warning("embeddings unavailable: %s", exc)
-            return None
-        self._embedder = embedder
-        self.db.meta_set(META_EMBED_MODEL, embedder.name)
-        self.db.meta_set(META_EMBED_DIM, str(embedder.dim))
-        return embedder
+        async with self._embedder_lock:
+            if self._embedder is not None:
+                return self._embedder
+            if time.monotonic() < self._embedder_retry_at:
+                return None
+            try:
+                embedder = await asyncio.to_thread(build_embedder, self._embedding)
+            except EmbedderUnavailableError as exc:
+                self._embedder_probe_attempts += 1
+                delay = min(
+                    _EMBEDDER_RETRY_INITIAL_SECONDS * 2 ** (self._embedder_probe_attempts - 1),
+                    _EMBEDDER_RETRY_MAX_SECONDS,
+                )
+                self._embedder_retry_at = time.monotonic() + delay
+                self._embedder_failed = str(exc)
+                logger.warning("embeddings unavailable (retry in %.0fs): %s", delay, exc)
+                return None
+            self._embedder = embedder
+            self._embedder_failed = ""
+            self._embedder_probe_attempts = 0
+            self._embedder_retry_at = 0.0
+            self.db.meta_set(META_EMBED_MODEL, embedder.name)
+            self.db.meta_set(META_EMBED_DIM, str(embedder.dim))
+            return embedder
+
+    def _worker_wait_seconds(self) -> float:
+        """How long the worker may sleep: shorter while a probe retry is due."""
+        if self._embedder is not None:
+            return _WORKER_POLL_SECONDS
+        return min(_WORKER_POLL_SECONDS, max(0.0, self._embedder_retry_at - time.monotonic()))
 
     async def _worker_loop(self) -> None:
-        """Drain the embed backlog in batches, forever."""
+        """Drain the embed backlog in batches, forever.
+
+        The worker also *warms* the embedder (issue #362): a restarted hub
+        whose index is fully embedded has nothing pending, so without this
+        the model would load on the first hybrid query instead — minutes,
+        on a cold download, on the answer path.
+        """
         while not self._closing:
             try:
-                await asyncio.wait_for(self._wake.wait(), timeout=_WORKER_POLL_SECONDS)
+                await self._ensure_embedder()
+            except asyncio.CancelledError:  # pragma: no cover - shutdown
+                raise
+            except Exception:  # noqa: BLE001 - the worker must survive anything
+                logger.exception("embedder warm-up failed")
+            try:
+                await asyncio.wait_for(self._wake.wait(), timeout=self._worker_wait_seconds())
             except TimeoutError:
                 pass
             self._wake.clear()
@@ -348,17 +481,14 @@ class VaultIndex:
                 "vector table unavailable (%s); backlog left pending", self.db.vectors.reason
             )
             return 0
-        texts = [text for _, text in rows]
+        texts = [claim.text for claim in rows]
         try:
             vectors = await asyncio.to_thread(embedder.embed, texts)
         except Exception as exc:  # noqa: BLE001 - backend-specific failures
             logger.warning("embedding batch failed: %s", exc)
-            await asyncio.to_thread(self._record_failures, [chunk_id for chunk_id, _ in rows])
+            await asyncio.to_thread(self._record_failures, rows)
             return 0
-        await asyncio.to_thread(
-            self._store_vectors, [chunk_id for chunk_id, _ in rows], vectors
-        )
-        return len(rows)
+        return await asyncio.to_thread(self._store_vectors, rows, vectors)
 
     async def drain_embeddings(self, *, timeout: float = 120.0) -> int:
         """Embed everything pending (test/CLI helper); returns chunks embedded."""
@@ -372,54 +502,86 @@ class VaultIndex:
         self._emit_backlog_drained_if_empty(total)
         return total
 
-    def _claim_batch(self) -> list[tuple[int, str]]:
+    def _claim_batch(self) -> list[_Claim]:
         with self.db.lock:
             rows = self.db.conn.execute(
-                "SELECT id, text FROM chunks WHERE state = 'pending' "
+                "SELECT id, text, fingerprint FROM chunks WHERE state = 'pending' "
                 "ORDER BY id LIMIT ?",
                 (self._embedding.batch_size,),
             ).fetchall()
-        return [(int(row["id"]), str(row["text"])) for row in rows]
+        return [_Claim(int(row["id"]), str(row["text"]), str(row["fingerprint"])) for row in rows]
 
-    def _store_vectors(self, chunk_ids: Sequence[int], vectors: Sequence[Sequence[float]]) -> None:
+    def _store_vectors(self, claims: Sequence[_Claim], vectors: Sequence[Sequence[float]]) -> int:
+        """Store each vector for the chunk it was computed from; return the count.
+
+        Embedding takes seconds, and the chunk can change underneath (issue
+        #336): an edit rewrites its text and fingerprint and resets it to
+        ``pending``; a delete removes the row. The ``UPDATE`` therefore names
+        the fingerprint the text was claimed with, and only a chunk that
+        still matches gets the vector — a changed one stays ``pending`` for
+        the next batch, a vanished one gets no orphan vector.
+        """
         import sqlite_vec
 
+        stored = 0
         with self.db.lock:
             conn = self.db.conn
-            for chunk_id, vector in zip(chunk_ids, vectors, strict=True):
-                conn.execute("DELETE FROM vec_chunks WHERE rowid = ?", (chunk_id,))
+            for claim, vector in zip(claims, vectors, strict=True):
+                cursor = conn.execute(
+                    "UPDATE chunks SET state = 'ready', attempts = 0 "
+                    "WHERE id = ? AND fingerprint = ? AND state = 'pending'",
+                    (claim.chunk_id, claim.fingerprint),
+                )
+                if cursor.rowcount != 1:
+                    logger.debug(
+                        "chunk %s changed or vanished while embedding; vector dropped",
+                        claim.chunk_id,
+                    )
+                    continue
+                conn.execute("DELETE FROM vec_chunks WHERE rowid = ?", (claim.chunk_id,))
                 conn.execute(
                     "INSERT INTO vec_chunks(rowid, embedding) VALUES (?, ?)",
-                    (chunk_id, sqlite_vec.serialize_float32(list(vector))),
+                    (claim.chunk_id, sqlite_vec.serialize_float32(list(vector))),
                 )
-                conn.execute(
-                    "UPDATE chunks SET state = 'ready', attempts = 0 WHERE id = ?", (chunk_id,)
-                )
-            conn.commit()
+                stored += 1
+            self.db.commit()
+        return stored
 
-    def _record_failures(self, chunk_ids: Sequence[int]) -> None:
+    def _record_failures(self, claims: Sequence[_Claim]) -> None:
         with self.db.lock:
             conn = self.db.conn
-            for chunk_id in chunk_ids:
+            for claim in claims:
                 conn.execute(
                     "UPDATE chunks SET attempts = attempts + 1, "
                     "state = CASE WHEN attempts + 1 >= ? THEN 'failed' ELSE 'pending' END "
-                    "WHERE id = ?",
-                    (_MAX_EMBED_ATTEMPTS, chunk_id),
+                    "WHERE id = ? AND fingerprint = ? AND state = 'pending'",
+                    (_MAX_EMBED_ATTEMPTS, claim.chunk_id, claim.fingerprint),
                 )
-            conn.commit()
+            self.db.commit()
 
     # ----------------------------------------------------------------- status
 
+    def _chunk_counts(self) -> dict[str, int]:
+        """Chunks per state, re-aggregated only when a commit changed them."""
+        if not self.db.opened:
+            return {"pending": 0, "ready": 0, "failed": 0}
+        with self.db.lock:
+            generation = self.db.generation
+            cached = self._embed_counts
+            if cached is not None and cached[0] == generation and not self.db.rebuilding:
+                return dict(cached[1])
+            counts = {"pending": 0, "ready": 0, "failed": 0}
+            for row in self.db.conn.execute(
+                "SELECT state, COUNT(*) AS n FROM chunks GROUP BY state"
+            ).fetchall():
+                counts[str(row["state"])] = int(row["n"])
+            if not self.db.rebuilding:
+                self._embed_counts = (generation, dict(counts))
+        return counts
+
     def embed_status(self) -> EmbedStatus:
         """The embed backlog, as the status API reports it."""
-        counts = {"pending": 0, "ready": 0, "failed": 0}
-        if self.db.opened:
-            with self.db.lock:
-                for row in self.db.conn.execute(
-                    "SELECT state, COUNT(*) AS n FROM chunks GROUP BY state"
-                ).fetchall():
-                    counts[str(row["state"])] = int(row["n"])
+        counts = self._chunk_counts()
         available = self.db.vectors.available
         reason = "" if available else self.db.vectors.reason
         if available and self._embedder_failed:
