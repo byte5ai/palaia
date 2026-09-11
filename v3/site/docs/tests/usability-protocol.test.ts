@@ -70,9 +70,10 @@ describe("usability test protocol", () => {
     const routes = linkedRoutes(protocolText());
     expect(routes.length).toBeGreaterThan(0);
     for (const route of routes) {
-      expect(routeExists(route), `${route} has no matching page under src/content/docs`).toBe(
-        true,
-      );
+      expect(
+        routeExists(route),
+        `${route} has no matching page under src/content/docs`,
+      ).toBe(true);
     }
   });
 
@@ -107,21 +108,43 @@ describe("usability test protocol", () => {
   it("quotes the real wizard step names from Onboarding.tsx, not stale ones", () => {
     const component = readFileSync(ONBOARDING_TSX, "utf8");
     const stepNamesMatch = component.match(/STEP_NAMES = \[([\s\S]*?)\n\];/);
-    expect(stepNamesMatch, "Onboarding.tsx's STEP_NAMES block has changed shape").not.toBeNull();
-    const stepNames = [...stepNamesMatch![1].matchAll(/name:\s*"([^"]+)"/g)].map((m) => m[1]);
-    expect(stepNames).toEqual(["Owner account", "Access mode", "First vault", "First client"]);
+    expect(
+      stepNamesMatch,
+      "Onboarding.tsx's STEP_NAMES block has changed shape",
+    ).not.toBeNull();
+    const stepNames = [
+      ...stepNamesMatch![1].matchAll(/name:\s*"([^"]+)"/g),
+    ].map((m) => m[1]);
+    expect(stepNames).toEqual([
+      "Owner account",
+      "Access mode",
+      "First vault",
+      "First client",
+    ]);
 
     const protocol = protocolText();
     for (const name of stepNames) {
-      expect(protocol, `protocol's observer notes should quote "${name}"`).toContain(name);
+      expect(
+        protocol,
+        `protocol's observer notes should quote "${name}"`,
+      ).toContain(name);
     }
   });
 
-  it("the observer-only note about steps 1-2 being cosmetic still matches Onboarding.tsx's own admission", () => {
+  it("the observer-only note about the access-mode step being a preview still matches Onboarding.tsx's own admission", () => {
     const component = readFileSync(ONBOARDING_TSX, "utf8");
-    // If Onboarding.tsx ever wires step 1/2 for real, its own docstring
+    // If Onboarding.tsx ever wires step 2 for real, its own docstring
     // (this exact phrase) is what would change first — this test fails
     // loudly rather than leaving the protocol's observer note stale.
-    expect(component).toContain("are NOT wired to anything");
+    // (Step 1 has been real since issue 342; the note says so too.)
+    expect(component).toContain("Step 2 (access mode) is a preview by design");
+    expect(component).toContain(
+      "Step 1 (owner account) is real since issue 342",
+    );
+    const protocol = protocolText();
+    expect(protocol).toContain(
+      '"Access mode" is a read-only\n  preview by design',
+    );
+    expect(protocol).toContain("signs the browser in (issue 342)");
   });
 });
