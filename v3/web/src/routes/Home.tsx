@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 
-import { Badge, Button, CardBody, CardFoot, CardHead, EmptyState } from "../components";
+import {
+  Badge,
+  Button,
+  CardBody,
+  CardFoot,
+  CardHead,
+  EmptyState,
+} from "../components";
 import type {
   FunnelStatus,
   InfoResponse,
@@ -13,8 +20,14 @@ import { api } from "../lib/api/client";
 import { docsUrl } from "../lib/docs";
 import { saveBlob } from "../lib/download";
 import { describeApiError } from "../lib/errors";
+import { nextPollDelay, POLL_INITIAL_MS } from "../lib/polling";
 import type { EventStreamState, VaultChangeEntry } from "../lib/events";
-import { CheckIcon, ClientsIcon, ExplorerIcon, WarningIcon } from "../shell/icons";
+import {
+  CheckIcon,
+  ClientsIcon,
+  ExplorerIcon,
+  WarningIcon,
+} from "../shell/icons";
 
 interface InboxAggregate {
   count: number;
@@ -77,7 +90,11 @@ function Tile({
   action?: React.ReactNode;
 }) {
   return (
-    <div className={["tile", attention ? "tile--attention" : ""].filter(Boolean).join(" ")}>
+    <div
+      className={["tile", attention ? "tile--attention" : ""]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <div>
         <span className="t-over">{label}</span>
       </div>
@@ -103,7 +120,9 @@ export function Home() {
   const [vaultsError, setVaultsError] = useState<string | null>(null);
   const [inbox, setInbox] = useState<InboxAggregate | null>(null);
   const [tokens, setTokens] = useState<TokenInfo[] | null>(null);
-  const [indexAggregate, setIndexAggregate] = useState<IndexAggregate | null>(null);
+  const [indexAggregate, setIndexAggregate] = useState<IndexAggregate | null>(
+    null,
+  );
   const [funnel, setFunnel] = useState<FunnelStatus | null>(null);
   const [backingUp, setBackingUp] = useState(false);
   const [backupError, setBackupError] = useState<string | null>(null);
@@ -150,7 +169,10 @@ export function Home() {
           if (!status) continue;
           count += status.count;
           if (status.oldest_age_seconds != null) {
-            oldest = oldest == null ? status.oldest_age_seconds : Math.max(oldest, status.oldest_age_seconds);
+            oldest =
+              oldest == null
+                ? status.oldest_age_seconds
+                : Math.max(oldest, status.oldest_age_seconds);
           }
         }
         setInbox({ count, oldestAgeSeconds: oldest });
@@ -168,9 +190,15 @@ export function Home() {
           totalReady += status.embeds.ready;
           totalPending += status.embeds.pending;
           totalFailed += status.embeds.failed;
-          if (status.embeds.enabled && status.embeds.pending > 0) allCaughtUp = false;
+          if (status.embeds.enabled && status.embeds.pending > 0)
+            allCaughtUp = false;
         }
-        setIndexAggregate({ totalReady, totalPending, totalFailed, allCaughtUp });
+        setIndexAggregate({
+          totalReady,
+          totalPending,
+          totalFailed,
+          allCaughtUp,
+        });
       })
       .catch((err: unknown) => {
         if (!cancelled) setVaultsError(describeApiError(err));
@@ -200,18 +228,35 @@ export function Home() {
   // "no refresh button anywhere" way ConnectPanel.tsx polls for a client's
   // first call — this tile just isn't event-stream-backed either. Stops
   // once a first memory is recorded; nothing left to wait for after that.
+  // Issue 384: backs off (3 s → … → 30 s) rather than asking every 3 s
+  // forever on a hub that never records a first memory.
+  const firstMemoryAt = funnel?.first_memory_at ?? null;
   useEffect(() => {
-    if (funnel?.first_memory_at) return;
-    const id = window.setInterval(() => {
+    if (firstMemoryAt) return;
+    let cancelled = false;
+    let delay = POLL_INITIAL_MS;
+    let timer = 0;
+    const tick = () => {
       api
         .funnelStatus()
-        .then(setFunnel)
+        .then((status) => {
+          if (!cancelled) setFunnel(status);
+        })
         .catch(() => {
           // a transient fetch failure just means the next tick tries again
+        })
+        .finally(() => {
+          if (cancelled) return;
+          delay = nextPollDelay(delay);
+          timer = window.setTimeout(tick, delay);
         });
-    }, 3000);
-    return () => window.clearInterval(id);
-  }, [funnel?.first_memory_at]);
+    };
+    timer = window.setTimeout(tick, delay);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [firstMemoryAt]);
 
   const isHealthy = stream.health?.status === "ok";
   // `sign_in` is typed `unknown` by the generated schema (see SignInInfo).
@@ -241,16 +286,17 @@ export function Home() {
                       : "The hub needs a look."}
           </h2>
           <p className="verdict__sub">
-            {vaults === null
-              ? (vaultsError ?? "Loading vaults…")
-              : hasVaults
-                ? `${vaults.length} vault${vaults.length === 1 ? "" : "s"}, ${totalNotes} note${totalNotes === 1 ? "" : "s"} on disk.`
-                : (
-                  <>
-                    No vault exists yet — <Link to="/onboarding">the setup wizard</Link> creates
-                    your first one in a minute.
-                  </>
-                )}
+            {vaults === null ? (
+              (vaultsError ?? "Loading vaults…")
+            ) : hasVaults ? (
+              `${vaults.length} vault${vaults.length === 1 ? "" : "s"}, ${totalNotes} note${totalNotes === 1 ? "" : "s"} on disk.`
+            ) : (
+              <>
+                No vault exists yet —{" "}
+                <Link to="/onboarding">the setup wizard</Link> creates your
+                first one in a minute.
+              </>
+            )}
           </p>
         </div>
         <div className="verdict__aside">
@@ -266,7 +312,10 @@ export function Home() {
           ) : (
             <>
               <span className="t-over">Connection</span>
-              <Badge variant={stream.connection === "open" ? "ok" : "warn"} live={stream.connection === "open"}>
+              <Badge
+                variant={stream.connection === "open" ? "ok" : "warn"}
+                live={stream.connection === "open"}
+              >
                 {stream.connection}
               </Badge>
             </>
@@ -275,13 +324,17 @@ export function Home() {
       </section>
 
       {funnel?.time_to_first_memory_display ? (
-        <section className="banner banner--ok" data-testid="first-memory-celebration">
+        <section
+          className="banner banner--ok"
+          data-testid="first-memory-celebration"
+        >
           <CheckIcon className="icon icon--sm" />
           <div>
             <p className="banner__title">Your first memory is in.</p>
             <p className="t-sm t-muted">
-              Set up in {funnel.time_to_first_memory_display} — from install to a client's
-              first successful write, timed by the hub itself. This number never leaves this hub.
+              Set up in {funnel.time_to_first_memory_display} — from install to
+              a client's first successful write, timed by the hub itself. This
+              number never leaves this hub.
             </p>
           </div>
         </section>
@@ -292,13 +345,23 @@ export function Home() {
           label="Hub"
           metric={info?.version ? String(info.version) : "…"}
           unit={info?.mode ? String(info.mode) : undefined}
-          sub={isHealthy ? "healthy" : stream.connection === "connecting" ? "connecting…" : "needs a look"}
+          sub={
+            isHealthy
+              ? "healthy"
+              : stream.connection === "connecting"
+                ? "connecting…"
+                : "needs a look"
+          }
         />
         <Tile
           label="Vaults"
           metric={vaults?.length ?? (vaultsError ? "—" : "…")}
           unit={vaults?.length === 1 ? "vault" : "vaults"}
-          sub={vaultsError ? "could not load" : `${totalNotes} note${totalNotes === 1 ? "" : "s"}`}
+          sub={
+            vaultsError
+              ? "could not load"
+              : `${totalNotes} note${totalNotes === 1 ? "" : "s"}`
+          }
         />
         <Tile
           label="Semantic search"
@@ -311,7 +374,11 @@ export function Home() {
                 ? "caught up"
                 : `${indexAggregate.totalPending}`
           }
-          unit={indexAggregate && !indexAggregate.allCaughtUp ? "embedding" : undefined}
+          unit={
+            indexAggregate && !indexAggregate.allCaughtUp
+              ? "embedding"
+              : undefined
+          }
           sub={
             indexAggregate === null
               ? vaultsError
@@ -351,12 +418,19 @@ export function Home() {
           label="Clients"
           metric={liveClients.length}
           unit="connected"
-          sub={tokens ? `${tokens.length} token${tokens.length === 1 ? "" : "s"} issued` : "…"}
+          sub={
+            tokens
+              ? `${tokens.length} token${tokens.length === 1 ? "" : "s"} issued`
+              : "…"
+          }
         />
       </section>
 
       <section className="home-grid">
-        <div className="card" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <div
+          className="card"
+          style={{ display: "flex", flexDirection: "column", minHeight: 0 }}
+        >
           <CardHead title="activity">
             <Badge variant="neutral" live={stream.connection === "open"}>
               live
@@ -365,9 +439,12 @@ export function Home() {
           <div className="feed scrollpane" style={{ maxHeight: 320 }}>
             {stream.recentChanges.length === 0 ? (
               <div style={{ padding: "var(--space-6) var(--space-4)" }}>
-                <EmptyState mark={<ExplorerIcon className="icon--lg" />} title="Nothing yet.">
-                  A note written, moved or deleted anywhere in a vault shows up here the moment
-                  it happens — no refresh needed.
+                <EmptyState
+                  mark={<ExplorerIcon className="icon--lg" />}
+                  title="Nothing yet."
+                >
+                  A note written, moved or deleted anywhere in a vault shows up
+                  here the moment it happens — no refresh needed.
                 </EmptyState>
               </div>
             ) : (
@@ -383,7 +460,9 @@ export function Home() {
                     </p>
                     <div className="feed__meta">
                       {entry.data.path ? (
-                        <span className="chip chip--mono">{entry.data.path}</span>
+                        <span className="chip chip--mono">
+                          {entry.data.path}
+                        </span>
                       ) : null}
                       <span className="t-meta">{formatAgo(entry.ts)}</span>
                     </div>
@@ -406,13 +485,21 @@ export function Home() {
                 .filter((t) => !t.revoked_at)
                 .map((token) => (
                   <div className="listrow" key={token.id}>
-                    <span className={["dot", token.last_used_at ? "dot--ok" : ""].filter(Boolean).join(" ")} />
+                    <span
+                      className={["dot", token.last_used_at ? "dot--ok" : ""]
+                        .filter(Boolean)
+                        .join(" ")}
+                    />
                     <div className="grow">
                       <div className="listrow__title">{token.name}</div>
-                      <div className="listrow__meta">profile: {token.profile}</div>
+                      <div className="listrow__meta">
+                        profile: {token.profile}
+                      </div>
                     </div>
                     <span className="t-meta">
-                      {token.last_used_at ? formatAgo(new Date(token.last_used_at).getTime()) : "waiting"}
+                      {token.last_used_at
+                        ? formatAgo(new Date(token.last_used_at).getTime())
+                        : "waiting"}
                     </span>
                   </div>
                 ))
@@ -439,16 +526,17 @@ export function Home() {
         <CardHead title="back up" />
         <CardBody className="stack stack--3">
           <p className="t-sm t-muted">
-            Downloads one file with everything this hub has saved — every memory, your sign-in
-            and connection setup, and any saved keys for tools you&rsquo;ve connected.
+            Downloads one file with everything this hub has saved — every
+            memory, your sign-in and connection setup, and any saved keys for
+            tools you&rsquo;ve connected.
           </p>
           <div className="banner banner--warn">
             <WarningIcon className="icon icon--sm" />
             <div>
               <p className="banner__title">This file can act as your hub.</p>
               <p className="t-sm t-muted">
-                Anyone who has it can read everything in it. Store it like you&rsquo;d store a
-                password — never somewhere shared or public.
+                Anyone who has it can read everything in it. Store it like
+                you&rsquo;d store a password — never somewhere shared or public.
               </p>
             </div>
           </div>
@@ -456,20 +544,31 @@ export function Home() {
         <CardFoot>
           {signIn?.required ? (
             <>
-              <Button variant="primary" size="sm" onClick={() => void backUp()} disabled={backingUp}>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => void backUp()}
+                disabled={backingUp}
+              >
                 {backingUp ? "Preparing the file…" : "Back up now"}
               </Button>
-              {backupError ? <p className="field__error">{backupError}</p> : null}
+              {backupError ? (
+                <p className="field__error">{backupError}</p>
+              ) : null}
             </>
           ) : (
             <span className="t-sm t-muted" data-testid="backup-needs-sign-in">
-              Downloading a backup needs the dashboard sign-in, which this hub has not turned
-              on. On the machine the hub runs on, <code>palaia-hub backup</code> writes the
-              same file.
+              Downloading a backup needs the dashboard sign-in, which this hub
+              has not turned on. On the machine the hub runs on,{" "}
+              <code>palaia-hub backup</code> writes the same file.
             </span>
           )}
           <span className="t-meta">
-            <a href={docsUrl("/backup-restore/")} target="_blank" rel="noreferrer">
+            <a
+              href={docsUrl("/backup-restore/")}
+              target="_blank"
+              rel="noreferrer"
+            >
               How restore works
             </a>
           </span>

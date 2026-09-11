@@ -38,6 +38,10 @@ import type {
   PlanPreview,
 } from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
+import {
+  SEARCH_DEBOUNCE_MS,
+  useDebouncedValue,
+} from "../lib/useDebouncedValue";
 import { InfoIcon, MarketplaceIcon, WarningIcon } from "../shell/icons";
 
 const HANDED_OFF_KINDS: MarketEntryKind[] = ["skill", "mcpb", "plugin"];
@@ -93,7 +97,8 @@ function InstallPanel({
   // time — show that command *before* asking for consent, derived by the
   // same code that will run it. Addresses and images are already on the
   // entry itself.
-  const needsPlan = entry.kind === "remote" && entry.source.type === "registry_ref";
+  const needsPlan =
+    entry.kind === "remote" && entry.source.type === "registry_ref";
   const [plan, setPlan] = useState<PlanPreview | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
   const mounts = declaredMounts(entry);
@@ -174,7 +179,8 @@ function InstallPanel({
         ) : null}
         {needsPlan && plan?.kind === "stdio" ? (
           <p className="t-xs t-muted" data-testid="install-plan">
-            Runs on this machine: <code>{[plan.command, ...plan.args].join(" ")}</code>
+            Runs on this machine:{" "}
+            <code>{[plan.command, ...plan.args].join(" ")}</code>
           </p>
         ) : null}
         {needsPlan && plan?.kind === "http" ? (
@@ -187,11 +193,17 @@ function InstallPanel({
         ) : null}
         {planError ? <p className="field__error">{planError}</p> : null}
         {mounts.length > 0 ? (
-          <p className="t-xs t-muted">Folders it will read and write: {mounts.join(", ")}</p>
+          <p className="t-xs t-muted">
+            Folders it will read and write: {mounts.join(", ")}
+          </p>
         ) : null}
       </div>
 
-      <ConfigSchemaForm schema={entry.config_schema} values={config} onChange={setConfig} />
+      <ConfigSchemaForm
+        schema={entry.config_schema}
+        values={config}
+        onChange={setConfig}
+      />
 
       {profiles.length > 0 ? (
         <div className="stack stack--2">
@@ -201,7 +213,9 @@ function InstallPanel({
               <input
                 type="checkbox"
                 checked={selectedProfiles.has(profile.path)}
-                onChange={(event) => toggleProfile(profile.path, event.target.checked)}
+                onChange={(event) =>
+                  toggleProfile(profile.path, event.target.checked)
+                }
               />
               <span className="t-sm">{profile.label ?? profile.path}</span>
             </label>
@@ -242,7 +256,12 @@ function EntryCard({
   return (
     <Card>
       <CardHead title={entry.name} meta={KIND_LABEL[entry.kind]}>
-        <Button variant="ghost" size="sm" onClick={onToggle} aria-expanded={open}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onToggle}
+          aria-expanded={open}
+        >
           {open ? "Close" : "Details"}
         </Button>
       </CardHead>
@@ -259,15 +278,19 @@ function EntryCard({
           handedOff ? (
             <div className="stack stack--2">
               <p className="t-sm t-muted">
-                Set this one up from the Clients page — it is delivered straight to the
-                client you connect, not through this hub.
+                Set this one up from the Clients page — it is delivered straight
+                to the client you connect, not through this hub.
               </p>
               <Link className="btn btn--primary" to="/clients">
                 Go to Clients
               </Link>
             </div>
           ) : (
-            <InstallPanel entry={entry} profiles={profiles} onInstalled={onInstalled} />
+            <InstallPanel
+              entry={entry}
+              profiles={profiles}
+              onInstalled={onInstalled}
+            />
           )
         ) : null}
       </CardBody>
@@ -275,7 +298,13 @@ function EntryCard({
   );
 }
 
-function InstalledRow({ addon, onChanged }: { addon: InstalledAddon; onChanged: () => void }) {
+function InstalledRow({
+  addon,
+  onChanged,
+}: {
+  addon: InstalledAddon;
+  onChanged: () => void;
+}) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -313,7 +342,9 @@ function InstalledRow({ addon, onChanged }: { addon: InstalledAddon; onChanged: 
         <div className="listrow__meta">{addon.status}</div>
       </div>
       <div className="row" style={{ gap: 6 }}>
-        <Badge variant={addon.up ? "ok" : "risk"}>{addon.up ? "running" : "not running"}</Badge>
+        <Badge variant={addon.up ? "ok" : "risk"}>
+          {addon.up ? "running" : "not running"}
+        </Badge>
         {addon.update_available ? (
           <Button size="sm" onClick={update} disabled={busy}>
             {busy ? "Updating…" : "Update"}
@@ -321,15 +352,30 @@ function InstalledRow({ addon, onChanged }: { addon: InstalledAddon; onChanged: 
         ) : null}
         {confirming ? (
           <>
-            <Button size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setConfirming(false)}
+              disabled={busy}
+            >
               Never mind
             </Button>
-            <Button size="sm" variant="risk" onClick={uninstall} disabled={busy}>
+            <Button
+              size="sm"
+              variant="risk"
+              onClick={uninstall}
+              disabled={busy}
+            >
               Yes, remove it
             </Button>
           </>
         ) : (
-          <Button size="sm" variant="risk" onClick={() => setConfirming(true)} disabled={busy}>
+          <Button
+            size="sm"
+            variant="risk"
+            onClick={() => setConfirming(true)}
+            disabled={busy}
+          >
             Remove
           </Button>
         )}
@@ -344,7 +390,9 @@ export function Marketplace() {
   // instead of installing anything itself (MASTERPLAN §5.7) — read once, as
   // the initial value of the one piece of state that already tracks which
   // card is open, rather than a separate effect fighting over it.
-  const [openId, setOpenId] = useState<string | null>(() => searchParams.get("install"));
+  const [openId, setOpenId] = useState<string | null>(() =>
+    searchParams.get("install"),
+  );
   const [query, setQuery] = useState("");
   const [source, setSource] = useState<MarketProvenance | "all">("all");
   const [entries, setEntries] = useState<MarketEntry[] | null>(null);
@@ -359,20 +407,34 @@ export function Marketplace() {
       .catch(() => setInstalled([]));
   }
 
+  // Issue 384: one request per pause in typing, not per keystroke — and the
+  // previous one is cancelled, so a slow answer for a shorter query can
+  // never overwrite the results of the query actually on screen.
+  const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
   useEffect(() => {
+    const controller = new AbortController();
     api
-      .searchMarket(query, source === "all" ? undefined : source)
+      .searchMarket(
+        debouncedQuery,
+        source === "all" ? undefined : source,
+        controller.signal,
+      )
       .then((result) => {
+        if (controller.signal.aborted) return;
         setEntries(result.entries);
         setStale(result.stale);
       })
       .catch(() => {
-        setEntries([]);
+        if (!controller.signal.aborted) setEntries([]);
       });
-  }, [query, source]);
+    return () => controller.abort();
+  }, [debouncedQuery, source]);
 
   useEffect(() => {
-    api.listGatewayProfiles().then(setProfiles).catch(() => setProfiles([]));
+    api
+      .listGatewayProfiles()
+      .then(setProfiles)
+      .catch(() => setProfiles([]));
     refreshInstalled();
   }, []);
 
@@ -381,7 +443,8 @@ export function Marketplace() {
   // and fold it in, so its consent panel (already open, above) has
   // something real to show.
   useEffect(() => {
-    if (!openId || entries === null || entries.some((e) => e.id === openId)) return;
+    if (!openId || entries === null || entries.some((e) => e.id === openId))
+      return;
     api
       .getMarketEntry(openId)
       .then((entry) => setEntries((prev) => [entry, ...(prev ?? [])]))
@@ -393,10 +456,13 @@ export function Marketplace() {
 
   return (
     <section className="stack stack--4">
-      <div className="row row--wrap" style={{ justifyContent: "space-between" }}>
+      <div
+        className="row row--wrap"
+        style={{ justifyContent: "space-between" }}
+      >
         <p className="t-sm t-muted" style={{ maxWidth: 560 }}>
-          Add-ons for every client at once: browse, install with one click, and see what needs
-          updating — all from here.
+          Add-ons for every client at once: browse, install with one click, and
+          see what needs updating — all from here.
         </p>
       </div>
 
@@ -421,13 +487,17 @@ export function Marketplace() {
         <div className="banner banner--warn">
           <InfoIcon className="icon icon--sm" />
           <p className="t-sm t-muted">
-            Showing the last copy palaia saved — it could not reach every source just now.
+            Showing the last copy palaia saved — it could not reach every source
+            just now.
           </p>
         </div>
       ) : null}
 
       {entries && entries.length === 0 ? (
-        <EmptyState mark={<MarketplaceIcon className="icon--lg" />} title="Nothing matched.">
+        <EmptyState
+          mark={<MarketplaceIcon className="icon--lg" />}
+          title="Nothing matched."
+        >
           Try a different search, or check back once the curated list grows.
         </EmptyState>
       ) : (
@@ -437,7 +507,9 @@ export function Marketplace() {
               key={entry.id}
               entry={entry}
               open={openId === entry.id}
-              onToggle={() => setOpenId((current) => (current === entry.id ? null : entry.id))}
+              onToggle={() =>
+                setOpenId((current) => (current === entry.id ? null : entry.id))
+              }
               profiles={profiles}
               onInstalled={() => {
                 setOpenId(null);
@@ -453,7 +525,11 @@ export function Marketplace() {
           <span className="field__label">Installed</span>
           <Card>
             {installed.map((addon) => (
-              <InstalledRow key={addon.upstream_key} addon={addon} onChanged={refreshInstalled} />
+              <InstalledRow
+                key={addon.upstream_key}
+                addon={addon}
+                onChanged={refreshInstalled}
+              />
             ))}
           </Card>
         </div>

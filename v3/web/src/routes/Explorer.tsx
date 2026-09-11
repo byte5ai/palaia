@@ -24,9 +24,19 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { EmptyState } from "../components/EmptyState";
 import { Skeleton } from "../components/Skeleton";
-import type { LocalGraph, NoteRecord, NoteSummary, SearchHit, VaultSummary } from "../lib/api/client";
+import type {
+  LocalGraph,
+  NoteRecord,
+  NoteSummary,
+  SearchHit,
+  VaultSummary,
+} from "../lib/api/client";
 import { api } from "../lib/api/client";
 import { describeApiError } from "../lib/errors";
+import {
+  SEARCH_DEBOUNCE_MS,
+  useDebouncedValue,
+} from "../lib/useDebouncedValue";
 import { ExplorerIcon, SearchIcon, VaultsIcon } from "../shell/icons";
 
 interface FolderGroup {
@@ -85,10 +95,13 @@ export function Explorer() {
 
   if (vaults.length === 0 || !vaultKey) {
     return (
-      <EmptyState mark={<ExplorerIcon className="icon--lg" />} title="No vault exists yet.">
-        <Link to="/onboarding">The setup wizard</Link> creates your first one — or an operator
-        can register one directly with the vault registry. Once a vault exists, its notes show up
-        here automatically.
+      <EmptyState
+        mark={<ExplorerIcon className="icon--lg" />}
+        title="No vault exists yet."
+      >
+        <Link to="/onboarding">The setup wizard</Link> creates your first one —
+        or an operator can register one directly with the vault registry. Once a
+        vault exists, its notes show up here automatically.
       </EmptyState>
     );
   }
@@ -143,16 +156,28 @@ function VaultView({
       .catch(() => setInboxCount(null));
   }, [vaultKey]);
 
-  function runSearch(text: string) {
-    setQuery(text);
-    if (!text.trim()) {
-      setSearchResults(null);
-      return;
-    }
+  // Issue 384: search once typing pauses, and cancel the request a newer
+  // keystroke made stale, so results never arrive out of order.
+  const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
+  useEffect(() => {
+    const text = debouncedQuery.trim();
+    if (!text) return;
+    const controller = new AbortController();
     api
-      .search(vaultKey, text)
-      .then(setSearchResults)
-      .catch(() => setSearchResults([]));
+      .search(vaultKey, text, controller.signal)
+      .then((hits) => {
+        if (!controller.signal.aborted) setSearchResults(hits);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setSearchResults([]);
+      });
+    return () => controller.abort();
+  }, [debouncedQuery, vaultKey]);
+
+  function onQueryChange(text: string) {
+    setQuery(text);
+    // Clearing the box clears the results at once — nothing to wait for.
+    if (!text.trim()) setSearchResults(null);
   }
 
   const groups = useMemo(() => groupByFolder(notes ?? []), [notes]);
@@ -178,11 +203,13 @@ function VaultView({
           <input
             ref={searchInput}
             value={query}
-            onChange={(event) => runSearch(event.target.value)}
+            onChange={(event) => onQueryChange(event.target.value)}
             placeholder={`Search ${vaultKey} — keywords, ${vault?.note_count ?? 0} notes`}
             aria-label="Search this vault"
           />
-          {searchResults ? <span className="t-meta">{searchResults.length} results</span> : null}
+          {searchResults ? (
+            <span className="t-meta">{searchResults.length} results</span>
+          ) : null}
         </label>
       </section>
 
@@ -191,7 +218,10 @@ function VaultView({
           <div className="pane__head">
             <span className="t-over">Notes</span>
             {inboxCount ? (
-              <span className="badge badge--warn" title="Captures waiting in the inbox folder below">
+              <span
+                className="badge badge--warn"
+                title="Captures waiting in the inbox folder below"
+              >
                 <span className="dot dot--warn" />
                 {inboxCount} uncurated
               </span>
@@ -207,7 +237,10 @@ function VaultView({
                     <button
                       key={hit.permalink}
                       type="button"
-                      className={["tree__row", hit.permalink === selected ? "tree__row--on" : ""]
+                      className={[
+                        "tree__row",
+                        hit.permalink === selected ? "tree__row--on" : "",
+                      ]
                         .filter(Boolean)
                         .join(" ")}
                       onClick={() => setSelected(hit.permalink)}
@@ -220,15 +253,24 @@ function VaultView({
             ) : notes === null ? (
               <Skeleton height={200} />
             ) : notesError ? (
-              <div className="empty" style={{ padding: "var(--space-6) var(--space-2)" }}>
-                <p className="t-sm t-muted">Could not load this vault's notes.</p>
+              <div
+                className="empty"
+                style={{ padding: "var(--space-6) var(--space-2)" }}
+              >
+                <p className="t-sm t-muted">
+                  Could not load this vault's notes.
+                </p>
                 <p className="t-xs t-subtle">{notesError}</p>
               </div>
             ) : groups.length === 0 ? (
-              <div className="empty" style={{ padding: "var(--space-6) var(--space-2)" }}>
+              <div
+                className="empty"
+                style={{ padding: "var(--space-6) var(--space-2)" }}
+              >
                 <p className="t-sm t-muted">No folders yet.</p>
                 <p className="t-xs t-subtle">
-                  Structure appears as knowledge arrives — nothing to design up front.
+                  Structure appears as knowledge arrives — nothing to design up
+                  front.
                 </p>
               </div>
             ) : (
@@ -236,13 +278,18 @@ function VaultView({
                 {groups.map((group) => (
                   <div key={group.folder || "·"}>
                     {group.folder ? (
-                      <div className="tree__row tree__row--dir">{group.folder}</div>
+                      <div className="tree__row tree__row--dir">
+                        {group.folder}
+                      </div>
                     ) : null}
                     {group.notes.map((item) => (
                       <button
                         key={item.permalink}
                         type="button"
-                        className={["tree__row", item.permalink === selected ? "tree__row--on" : ""]
+                        className={[
+                          "tree__row",
+                          item.permalink === selected ? "tree__row--on" : "",
+                        ]
                           .filter(Boolean)
                           .join(" ")}
                         onClick={() => setSelected(item.permalink)}
@@ -259,12 +306,20 @@ function VaultView({
         </div>
 
         {selected ? (
-          <NotePane key={selected} vaultKey={vaultKey} permalink={selected} onSelect={setSelected} />
+          <NotePane
+            key={selected}
+            vaultKey={vaultKey}
+            permalink={selected}
+            onSelect={setSelected}
+          />
         ) : (
           <>
             <div className="pane">
               <div className="pane__body">
-                <EmptyState mark={<ExplorerIcon className="icon--lg" />} title="Pick a note.">
+                <EmptyState
+                  mark={<ExplorerIcon className="icon--lg" />}
+                  title="Pick a note."
+                >
                   Select one from the tree on the left, or search above.
                 </EmptyState>
               </div>
@@ -275,8 +330,12 @@ function VaultView({
               </div>
               <div className="ctx__block">
                 <span className="t-over">Vault</span>
-                <p className="t-sm">{vault?.purpose ?? "No purpose set yet."}</p>
-                <p className="t-xs t-subtle">{vault?.note_count ?? 0} notes on disk.</p>
+                <p className="t-sm">
+                  {vault?.purpose ?? "No purpose set yet."}
+                </p>
+                <p className="t-xs t-subtle">
+                  {vault?.note_count ?? 0} notes on disk.
+                </p>
                 <Link className="btn btn--sm btn--primary" to="/clients">
                   <VaultsIcon className="icon--sm" />
                   Connect a client
@@ -303,7 +362,9 @@ function NotePane({
   const [noteError, setNoteError] = useState<string | null>(null);
   const [graph, setGraph] = useState<LocalGraph | null>(null);
   const [graphError, setGraphError] = useState<string | null>(null);
-  const [commits, setCommits] = useState<{ sha: string; subject: string }[] | null>(null);
+  const [commits, setCommits] = useState<
+    { sha: string; subject: string }[] | null
+  >(null);
 
   useEffect(() => {
     // Issue 378: a failed read used to leave the skeleton up for good.
@@ -340,7 +401,9 @@ function NotePane({
         {note === null ? (
           <div className="pane__body">
             {noteError ? (
-              <p className="t-sm t-muted">Could not load this note: {noteError}</p>
+              <p className="t-sm t-muted">
+                Could not load this note: {noteError}
+              </p>
             ) : (
               <Skeleton height={200} />
             )}
@@ -355,7 +418,9 @@ function NotePane({
                   {tag}
                 </span>
               ))}
-              {note.modified ? <span className="t-meta">updated {note.modified}</span> : null}
+              {note.modified ? (
+                <span className="t-meta">updated {note.modified}</span>
+              ) : null}
             </div>
             <p className="note__body">{note.body}</p>
           </article>
@@ -393,12 +458,16 @@ function NotePane({
             </div>
             {graph === null ? (
               graphError ? (
-                <p className="t-xs t-subtle">Could not load the graph: {graphError}</p>
+                <p className="t-xs t-subtle">
+                  Could not load the graph: {graphError}
+                </p>
               ) : (
                 <Skeleton height={60} />
               )
             ) : graph.outbound.length === 0 && graph.inbound.length === 0 ? (
-              <p className="t-xs t-subtle">Nothing links to or from this note yet.</p>
+              <p className="t-xs t-subtle">
+                Nothing links to or from this note yet.
+              </p>
             ) : (
               <>
                 {graph.outbound.length > 0 ? (
@@ -408,7 +477,11 @@ function NotePane({
                       {graph.outbound.map((n) => (
                         <li key={n.permalink}>
                           <span className="fact-dot" />
-                          <button type="button" className="wlink linklike" onClick={() => onSelect(n.permalink)}>
+                          <button
+                            type="button"
+                            className="wlink linklike"
+                            onClick={() => onSelect(n.permalink)}
+                          >
                             {n.title}
                           </button>
                         </li>
@@ -423,7 +496,11 @@ function NotePane({
                       {graph.inbound.map((n) => (
                         <li key={n.permalink}>
                           <span className="fact-dot" />
-                          <button type="button" className="wlink linklike" onClick={() => onSelect(n.permalink)}>
+                          <button
+                            type="button"
+                            className="wlink linklike"
+                            onClick={() => onSelect(n.permalink)}
+                          >
                             {n.title}
                           </button>
                         </li>
@@ -445,7 +522,9 @@ function NotePane({
                 {commits.slice(0, 5).map((commit) => (
                   <div className="commitrow" key={commit.sha}>
                     <code>{commit.sha.slice(0, 7)}</code>
-                    <span className="grow">{commit.subject.split("\n")[0]}</span>
+                    <span className="grow">
+                      {commit.subject.split("\n")[0]}
+                    </span>
                   </div>
                 ))}
               </div>

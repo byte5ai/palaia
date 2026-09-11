@@ -399,7 +399,12 @@ export interface NotificationRecord {
  * `market_service` is given to `create_app`), hand-written for the same
  * reason the other opt-in surfaces above are. Mirrors
  * `palaia_hub.market.models.MarketEntry`. */
-export type MarketEntryKind = "remote" | "container" | "mcpb" | "skill" | "plugin";
+export type MarketEntryKind =
+  | "remote"
+  | "container"
+  | "mcpb"
+  | "skill"
+  | "plugin";
 export type MarketProvenance = "registry" | "curated" | "manual";
 export type MarketSourceType = "registry_ref" | "image" | "url";
 
@@ -513,7 +518,12 @@ export interface DeregisterResult {
   deregistered: boolean;
 }
 
-export type MessageType = "request" | "inform" | "question" | "handoff" | "broadcast";
+export type MessageType =
+  | "request"
+  | "inform"
+  | "question"
+  | "handoff"
+  | "broadcast";
 export type Urgency = "low" | "normal" | "high";
 export type DeliveryState = "pending" | "delivered" | "acked";
 
@@ -665,6 +675,8 @@ interface RequestOptions {
   body?: unknown;
   /** Set false for a call with no response body to parse (a 204 DELETE). */
   expectJson?: boolean;
+  /** Issue 384: lets a screen cancel a request its next keystroke made stale. */
+  signal?: AbortSignal;
 }
 
 function signInUrlFrom(body: unknown): string | null {
@@ -687,6 +699,7 @@ async function request<T>(
   const response = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
+    ...(options.signal ? { signal: options.signal } : {}),
     ...(options.body === undefined
       ? {}
       : { body: JSON.stringify(options.body) }),
@@ -708,8 +721,8 @@ async function request<T>(
   return (await response.json()) as T;
 }
 
-function getJson<T>(path: string): Promise<T> {
-  return request<T>(path);
+function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return request<T>(path, { signal });
 }
 
 /** A file the hub served: its bytes and the name it suggested, if any. */
@@ -752,8 +765,12 @@ async function requestBlob(path: string): Promise<DownloadedFile> {
   };
 }
 
-function postJson<T>(path: string, body: unknown): Promise<T> {
-  return request<T>(path, { method: "POST", body });
+function postJson<T>(
+  path: string,
+  body: unknown,
+  signal?: AbortSignal,
+): Promise<T> {
+  return request<T>(path, { method: "POST", body, signal });
 }
 
 function patchJson<T>(path: string, body: unknown): Promise<T> {
@@ -781,9 +798,22 @@ function queryString(
   return `?${search.toString()}`;
 }
 
+/** Issue 384: the shell's mode indicator, the sidebar and Home all ask for
+ * `/api/info` on mount. One request answers everyone asking at the same
+ * moment; the next call after it settles fetches afresh, so nothing goes
+ * stale. */
+let infoInFlight: Promise<InfoResponse> | null = null;
+
 export const api = {
   health: () => getJson<HealthResponse>("/api/health"),
-  info: () => getJson<InfoResponse>("/api/info"),
+  info: (): Promise<InfoResponse> => {
+    if (!infoInFlight) {
+      infoInFlight = getJson<InfoResponse>("/api/info").finally(() => {
+        infoInFlight = null;
+      });
+    }
+    return infoInFlight;
+  },
   /** SPEC-501: "up to date" / "update available" / "could not check", plus
    * per-deployment guidance for the dashboard's update banner. */
   updateCheck: () => getJson<UpdateCheckResponse>("/api/update/check"),
@@ -852,15 +882,22 @@ export const api = {
     ),
   noteGraph: (vaultKey: string, permalink: string) =>
     getJson<LocalGraph>(`/api/vaults/${vaultKey}/notes/${permalink}/graph`),
-  search: (vaultKey: string, q: string) =>
-    getJson<SearchHit[]>(`/api/vaults/${vaultKey}/search${queryString({ q })}`),
+  search: (vaultKey: string, q: string, signal?: AbortSignal) =>
+    getJson<SearchHit[]>(
+      `/api/vaults/${vaultKey}/search${queryString({ q })}`,
+      signal,
+    ),
   inboxStatus: (vaultKey: string) =>
     getJson<InboxStatus>(`/api/vaults/${vaultKey}/inbox_status`),
   /** The review queue's dashboard mirror (SPEC-208, issue 375): the same
    * proposals and the same decision the review-queue app makes in a client. */
   listReviewQueue: (vaultKey: string) =>
     getJson<ReviewQueueResult>(`/api/vaults/${vaultKey}/review`),
-  decideReview: (vaultKey: string, permalink: string, decision: "approved" | "rejected") =>
+  decideReview: (
+    vaultKey: string,
+    permalink: string,
+    decision: "approved" | "rejected",
+  ) =>
     postJson<ReviewDecideResult>(
       `/api/vaults/${vaultKey}/review/${encodeURI(permalink)}/decision`,
       { decision },
@@ -906,14 +943,20 @@ export const api = {
   ) => patchJson<GatewayProfile>(`/api/gateway/profiles/${profilePath}`, body),
   deleteGatewayProfile: (profilePath: string) =>
     deleteRequest(`/api/gateway/profiles/${profilePath}`),
-  listGatewayVaults: () => getJson<GatewayVaultIdentity[]>("/api/gateway/vaults"),
+  listGatewayVaults: () =>
+    getJson<GatewayVaultIdentity[]>("/api/gateway/vaults"),
   updateGatewayVault: (
     vaultKey: string,
-    body: { name?: string; purpose?: string; tool_renames?: Record<string, string> },
+    body: {
+      name?: string;
+      purpose?: string;
+      tool_renames?: Record<string, string>;
+    },
   ) => patchJson<GatewayVaultIdentity>(`/api/gateway/vaults/${vaultKey}`, body),
   // SPEC-302's registry, read here so the profile editor (SPEC-304 follow-up)
   // can offer an upstream-server checkbox next to the vault checkboxes.
-  listGatewayUpstreams: () => getJson<GatewayUpstream[]>("/api/gateway/upstreams"),
+  listGatewayUpstreams: () =>
+    getJson<GatewayUpstream[]>("/api/gateway/upstreams"),
 
   // ---- SPEC-108's token surface, consumed here for "connected clients" ----
   listTokens: () => getJson<TokenInfo[]>("/api/auth/tokens"),
@@ -984,20 +1027,27 @@ export const api = {
   changeMode: (body: ModeChangeRequest) =>
     postJson<ModeStatus>("/api/mode", body),
   exposure: () => getJson<ExposureStatus>("/api/exposure"),
-  tunnelGuidance: (body: {
-    kind: "tailscale" | "cloudflared";
-    local_port?: number;
-    hostname?: string;
-  }) => postJson<TunnelGuidance>("/api/exposure/tunnel", body),
+  tunnelGuidance: (
+    body: {
+      kind: "tailscale" | "cloudflared";
+      local_port?: number;
+      hostname?: string;
+    },
+    signal?: AbortSignal,
+  ) => postJson<TunnelGuidance>("/api/exposure/tunnel", body, signal),
   selfTest: (publicUrl: string) =>
     postJson<SelfTestResult>("/api/exposure/selftest", {
       public_url: publicUrl,
     }),
 
   // ---- SPEC-303/304: the marketplace ----
-  searchMarket: (q = "", source?: MarketProvenance) =>
-    getJson<MarketSearchResult>(`/api/market/search${queryString({ q, source })}`),
-  getMarketEntry: (entryId: string) => getJson<MarketEntry>(`/api/market/entry/${entryId}`),
+  searchMarket: (q = "", source?: MarketProvenance, signal?: AbortSignal) =>
+    getJson<MarketSearchResult>(
+      `/api/market/search${queryString({ q, source })}`,
+      signal,
+    ),
+  getMarketEntry: (entryId: string) =>
+    getJson<MarketEntry>(`/api/market/entry/${entryId}`),
   createManualMarketEntry: (body: {
     id: string;
     name: string;
@@ -1010,7 +1060,8 @@ export const api = {
   }) => postJson<MarketEntry>("/api/market/manual", body),
   /** What an install would run or connect to, derived before anything
    * happens (issue 349) — the consent screen renders it. */
-  getMarketPlan: (entryId: string) => getJson<PlanPreview>(`/api/market/entry/${entryId}/plan`),
+  getMarketPlan: (entryId: string) =>
+    getJson<PlanPreview>(`/api/market/entry/${entryId}/plan`),
   /** The consent screen's own POST (SPEC-304 deliverable #3) — the token
    * it returns is what `installMarketEntry` below must be given; there is
    * no install path that skips this call. */
@@ -1046,7 +1097,12 @@ export const api = {
 
   // ---- SPEC-403/405: the messenger ----
   messageFlows: (
-    params: { handle?: string; type?: MessageType; state?: DeliveryState; limit?: number } = {},
+    params: {
+      handle?: string;
+      type?: MessageType;
+      state?: DeliveryState;
+      limit?: number;
+    } = {},
   ) => getJson<MessageFlowsResult>(`/api/messenger/${queryString(params)}`),
   messageThread: (envelopeId: string) =>
     getJson<ThreadMetadataResult>(`/api/messenger/threads/${envelopeId}`),
@@ -1071,5 +1127,8 @@ export const api = {
   /** Owner control (SPEC-405 deliverable #2): end a conversation — expires
    * the thread's still-undelivered envelopes. */
   endConversation: (envelopeId: string) =>
-    postJson<EndConversationResult>(`/api/messenger/threads/${envelopeId}/end`, {}),
+    postJson<EndConversationResult>(
+      `/api/messenger/threads/${envelopeId}/end`,
+      {},
+    ),
 };
