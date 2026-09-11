@@ -22,6 +22,7 @@ import {
 } from "../components";
 import type { CreatedHook, HookInfo } from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
+import { describeApiError } from "../lib/errors";
 import { AutomationsIcon, CopyIcon } from "../shell/icons";
 import { AutomationEditor } from "./AutomationEditor";
 
@@ -129,23 +130,33 @@ export function Automations() {
       setEvents("*");
       refresh();
     } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? String(err.body ?? err.message)
-          : "Could not create hook.",
-      );
+      // Issue 377: `String(err.body)` rendered "[object Object]" — the body
+      // is the hub's `{detail}` object, and the shared helper reads it.
+      setError(describeApiError(err));
     } finally {
       setCreating(false);
     }
   }
 
+  // Issue 376: a failed toggle/delete used to do nothing visible (an
+  // unhandled rejection in the console) — say what the hub answered.
   async function toggle(hook: HookInfo, enabled: boolean) {
-    await api.setHookEnabled(hook.id, enabled);
+    try {
+      await api.setHookEnabled(hook.id, enabled);
+    } catch (err) {
+      toast.show(describeApiError(err));
+      return;
+    }
     refresh();
   }
 
   async function remove(hook: HookInfo) {
-    await api.deleteHook(hook.id);
+    try {
+      await api.deleteHook(hook.id);
+    } catch (err) {
+      toast.show(describeApiError(err));
+      return;
+    }
     if (justCreated?.info.id === hook.id) setJustCreated(null);
     refresh();
   }

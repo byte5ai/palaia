@@ -48,4 +48,32 @@ describe("NotificationBell (SPEC-307)", () => {
 
     expect(await screen.findByText("Review needed: inbox/x")).toBeInTheDocument();
   });
+
+  it("shows the hub's refusal instead of silently doing nothing (issue 376)", async () => {
+    vi.spyOn(api, "unreadNotificationCount").mockResolvedValue({ count: 1 });
+    vi.spyOn(api, "listNotifications").mockResolvedValue([
+      {
+        id: 7,
+        title: "Something to look at",
+        body: "",
+        source: "automation",
+        created_at: new Date().toISOString(),
+        read: false,
+      },
+    ]);
+    vi.spyOn(api, "markNotificationRead").mockRejectedValue(
+      new ApiError("/api/notifications/7/read", 403, {
+        detail: "Your sign-in changed in another tab — reload this page.",
+      }),
+    );
+
+    render(<NotificationBell />);
+    await waitFor(() => expect(api.unreadNotificationCount).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button"));
+    fireEvent.click(await screen.findByText("Something to look at"));
+
+    expect(
+      await screen.findByText(/your sign-in changed in another tab/i),
+    ).toBeInTheDocument();
+  });
 });

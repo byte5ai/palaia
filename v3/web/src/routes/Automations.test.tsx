@@ -152,6 +152,51 @@ describe("Automations screen (SPEC-307)", () => {
  * `title` attribute. Scoped to exactly those control surfaces, same as
  * `Exposure.test.tsx`'s own lint.
  */
+describe("Automations screen — failures are shown, never swallowed (issues 376, 377)", () => {
+  const ENABLED: AutomationInfo = {
+    id: "a1",
+    name: "notify me",
+    trigger_event: "doctor.finding",
+    condition: [],
+    action: { kind: "notification", title_template: "x" },
+    enabled: true,
+    created_at: "2026-08-24T00:00:00Z",
+  };
+
+  it("renders the hub's own words when an outside address is refused, not [object Object]", async () => {
+    vi.spyOn(api, "listAutomations").mockResolvedValue([]);
+    vi.spyOn(api, "listHooks").mockResolvedValue([]);
+    vi.spyOn(api, "createHook").mockRejectedValue(
+      new ApiError("/api/hooks", 400, { detail: "The address must start with https://." }),
+    );
+
+    mount();
+    await screen.findByText(/try one of these/i);
+    fireEvent.change(screen.getByLabelText(/address/i), {
+      target: { value: "http://example.com/hook" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^connect$/i }));
+
+    expect(await screen.findByText(/the address must start with https/i)).toBeInTheDocument();
+    expect(screen.queryByText(/\[object Object\]/)).not.toBeInTheDocument();
+  });
+
+  it("tells the operator when turning an automation off is refused", async () => {
+    vi.spyOn(api, "listHooks").mockRejectedValue(NOT_MOUNTED);
+    vi.spyOn(api, "listAutomations").mockResolvedValue([ENABLED]);
+    vi.spyOn(api, "setAutomationEnabled").mockRejectedValue(
+      new ApiError("/api/automations/a1", 403, {
+        detail: "Your sign-in changed in another tab — reload this page.",
+      }),
+    );
+
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: /turn off/i }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent(/your sign-in changed/i);
+  });
+});
+
 describe("Automations screen copy — no jargon in the surface (system.md §3 rule 0)", () => {
   const BANNED = [
     /\bwebhook\b/i,

@@ -15,6 +15,7 @@ import {
   CardHead,
   EmptyState,
   LabeledInput,
+  useToast,
 } from "../components";
 import type {
   AutomationAction,
@@ -23,6 +24,7 @@ import type {
   DeliveryLogEntry,
 } from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
+import { describeApiError } from "../lib/errors";
 import { AutomationsIcon } from "../shell/icons";
 
 /** Plain-language labels for the event names a person is likely to pick as
@@ -489,22 +491,38 @@ function AutomationRow({
   automation: AutomationInfo;
   onChanged: () => void;
 }) {
+  const toast = useToast();
   const [testResult, setTestResult] = useState<DeliveryLogEntry | null>(null);
   const [showLog, setShowLog] = useState(false);
 
+  // Issue 376: these used to have no catch — a 403 (a sign-in cookie
+  // rotated by another tab) or any other refusal did nothing visible.
   async function toggle(enabled: boolean) {
-    await api.setAutomationEnabled(automation.id, enabled);
+    try {
+      await api.setAutomationEnabled(automation.id, enabled);
+    } catch (err) {
+      toast.show(describeApiError(err));
+      return;
+    }
     onChanged();
   }
 
   async function remove() {
-    await api.deleteAutomation(automation.id);
+    try {
+      await api.deleteAutomation(automation.id);
+    } catch (err) {
+      toast.show(describeApiError(err));
+      return;
+    }
     onChanged();
   }
 
   async function testFire() {
-    const result = await api.testFireAutomation(automation.id, {});
-    setTestResult(result);
+    try {
+      setTestResult(await api.testFireAutomation(automation.id, {}));
+    } catch (err) {
+      toast.show(describeApiError(err));
+    }
   }
 
   const triggerLabel =
