@@ -196,3 +196,46 @@ def test_no_release_shell_still_detects_prereleases_by_rc_or_beta_only() -> None
     for name, text in sources.items():
         assert "*rc*" not in text and "*beta*" not in text, f"{name} still tests for rc/beta"
         assert "== *-*" in text, f"{name} does not test for a SemVer suffix"
+
+
+# ---------------------------------------------------------------------------
+# Issue #387: the changelog-section guard. The cut workflow demanded
+# `^## <version> ` (trailing space) while the dry run accepted `## <version>`
+# anywhere — so a `## 3.0.0` header at end-of-line passed the dry run and
+# failed the cut, and the existing `## 3.0.0-rc1` line satisfied the dry run
+# for a `3.0.0` cut. Both now test `^## <version>( |$)`.
+# ---------------------------------------------------------------------------
+
+_CHANGELOG_GUARD = 'grep -qE "^## ${'
+
+
+def test_cut_workflow_and_dry_run_use_the_same_changelog_header_test() -> None:
+    assert f'{_CHANGELOG_GUARD}version}}( |$)"' in _cut_guard_script()
+    assert f'{_CHANGELOG_GUARD}VERSION}}( |$)"' in _DRY_RUN_PATH.read_text(encoding="utf-8")
+
+
+@_NEEDS_BASH
+@pytest.mark.parametrize(
+    ("changelog", "accepted"),
+    [
+        ("## 3.0.0 — 2026-09-15\n", True),
+        ("## 3.0.0\n", True),
+        ("## 3.0.0-rc1 — 2026-09-01\n", False),
+        ("### 3.0.0\n", False),
+        ("see ## 3.0.0 below\n", False),
+    ],
+)
+def test_the_changelog_header_test_accepts_exactly_the_documented_forms(
+    tmp_path: Path, changelog: str, accepted: bool
+) -> None:
+    """RELEASING.md §3 states the header form; this runs the guards' own
+    `grep` against each documented case, so the doc, the cut and the dry
+    run cannot drift apart again."""
+    path = tmp_path / "CHANGELOG.md"
+    path.write_text(changelog, encoding="utf-8")
+    result = subprocess.run(
+        ["bash", "-c", f'grep -qE "^## ${{version}}( |$)" "{path}"'],
+        env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "version": "3.0.0"},
+        check=False,
+    )
+    assert (result.returncode == 0) is accepted

@@ -66,9 +66,14 @@ whoever holds it.
       `npm run gen:synology`). `server/tests/test_version_drift.py` requires
       the notes while `VERSION` is a pre-release and refuses them once it is
       not, so a forgotten one fails CI rather than shipping.
-- [ ] Add a `## 3.0.0` section to `v3/CHANGELOG.md` — if nothing
-      user-visible changed since `rc1` beyond the version bump itself, say
-      so in one line rather than duplicating the `rc1` section.
+- [ ] Add a `## 3.0.0` section to `v3/CHANGELOG.md`. The header line must
+      start with `## 3.0.0` followed by a space or the end of the line
+      (`## 3.0.0 — 2026-09-15` or a bare `## 3.0.0`); both the cut
+      workflow's guard and `tools/release-dry-run.sh` test exactly
+      `^## <version>( |$)`, so the existing `## 3.0.0-rc1` header never
+      counts for `3.0.0`. If nothing user-visible changed since `rc1`
+      beyond the version bump itself, say so in one line rather than
+      duplicating the `rc1` section.
 - [ ] Run `v3/tools/release-dry-run.sh` once more against the bumped
       version — it re-runs the drift test, prints what the release
       workflow would tag/push, confirms the `CHANGELOG.md` section exists,

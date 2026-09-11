@@ -50,8 +50,12 @@ jobs:
             echo "Tag ${tag} already exists — a cut version is immutable; bump v3/VERSION instead." >&2
             exit 1
           fi
-          if ! grep -q "^## ${version} " v3/CHANGELOG.md; then
-            echo "v3/CHANGELOG.md has no '## ${version}' section." >&2
+          # The header is `## <version>` followed by a space or the end of the
+          # line — the same test tools/release-dry-run.sh runs, so a header that
+          # passes the dry run cannot fail here (#387). A `## 3.0.0-rc1` line
+          # never satisfies a `3.0.0` cut.
+          if ! grep -qE "^## ${version}( |$)" v3/CHANGELOG.md; then
+            echo "v3/CHANGELOG.md has no '## ${version}' section (header must be '## ${version}' followed by a space or end of line — RELEASING.md §3)." >&2
             exit 1
           fi
           notes="v3/docs/release-notes/${version}.md"

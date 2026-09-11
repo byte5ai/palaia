@@ -39,10 +39,13 @@ echo "                 the release workflow's own branch and by the drift test a
 echo ""
 
 echo "-- 3. CHANGELOG.md has an entry for this version --"
-if grep -q "## ${VERSION}" CHANGELOG.md; then
+# Same test as v3-cut-release.yml's guard (issue #387): a line that *is*
+# `## <version>`, followed by a space or the end of the line — so `## 3.0.0-rc1`
+# does not stand in for `3.0.0`, and a header without a date still counts.
+if grep -qE "^## ${VERSION}( |$)" CHANGELOG.md; then
   echo "OK: CHANGELOG.md has a '## ${VERSION}' section"
 else
-  echo "MISSING: CHANGELOG.md has no '## ${VERSION}' section" >&2
+  echo "MISSING: CHANGELOG.md has no '## ${VERSION}' section (header must be '## ${VERSION}' followed by a space or end of line)" >&2
   exit 1
 fi
 echo ""
