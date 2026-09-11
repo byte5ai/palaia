@@ -712,6 +712,46 @@ function getJson<T>(path: string): Promise<T> {
   return request<T>(path);
 }
 
+/** A file the hub served: its bytes and the name it suggested, if any. */
+export interface DownloadedFile {
+  blob: Blob;
+  filename: string | null;
+}
+
+function filenameFrom(disposition: string | null): string | null {
+  if (!disposition) return null;
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+/**
+ * Fetch a file through the same door as every JSON call (issue 382): a
+ * plain `<a href>` to a gated endpoint saved the gate's JSON refusal as
+ * the download, and a raw `fetch` skipped the 401 → sign-in redirect the
+ * rest of the dashboard relies on.
+ */
+async function requestBlob(path: string): Promise<DownloadedFile> {
+  const response = await fetch(`${API_BASE}${path}`);
+  if (!response.ok) {
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      body = "";
+    }
+    if (response.status === 401) {
+      const signInUrl = signInUrlFrom(body);
+      if (signInUrl) redirectToSignIn(signInUrl);
+    }
+    throw new ApiError(path, response.status, body);
+  }
+  const headers: Headers | undefined = response.headers;
+  return {
+    blob: await response.blob(),
+    filename: filenameFrom(headers?.get?.("content-disposition") ?? null),
+  };
+}
+
 function postJson<T>(path: string, body: unknown): Promise<T> {
   return request<T>(path, { method: "POST", body });
 }
@@ -786,6 +826,11 @@ export const api = {
    * does, and the admin gate answers 401 (redirecting to sign-in) exactly
    * like it would for a fetch call if that session is missing. */
   backupUrl: () => `${API_BASE}/api/backup`,
+  /** The archive itself, fetched like every other call (issue 382). */
+  downloadBackup: () => requestBlob("/api/backup"),
+  /** Any hub-served file by its dashboard-relative path — the Claude
+   * Desktop bundle, for one. */
+  downloadFile: (path: string) => requestBlob(path),
 
   // ---- SPEC-110: wizard + memory explorer ----
   listVaults: () => getJson<VaultSummary[]>("/api/vaults"),

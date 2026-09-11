@@ -1,9 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { FunnelStatus, InfoResponse, TokenInfo, VaultSummary } from "../lib/api/client";
-import { api } from "../lib/api/client";
+import { api, ApiError } from "../lib/api/client";
 import type { EventStreamState } from "../lib/events";
 import { Home } from "./Home";
 
@@ -290,16 +290,40 @@ describe("Home — SPEC-604 back up", () => {
     /\bfunnel\b/i,
   ];
 
-  it("shows a download link to the backup endpoint, and its warning", async () => {
+  it("downloads the backup through the client, and shows its warning (issue 382)", async () => {
     mockApi({ funnel: NO_FUNNEL });
+    const download = vi.spyOn(api, "downloadBackup").mockResolvedValue({
+      blob: new Blob(["archive bytes"]),
+      filename: "palaia-backup-20260911T100000Z.tar.gz",
+    });
+    const clickSpy = vi.fn();
+    const originalClick = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = clickSpy;
 
     mount();
 
     const card = await screen.findByTestId("backup-card");
-    const link = screen.getByRole("link", { name: /back up now/i });
-    expect(link).toHaveAttribute("href", api.backupUrl());
-    expect(link).toHaveAttribute("download");
     expect(card).toHaveTextContent(/store it like you.d store a password/i);
+    // No raw link to the gated endpoint: an expired session would have
+    // saved the gate's refusal as the file.
+    expect(screen.queryByRole("link", { name: /back up now/i })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /back up now/i }));
+
+    await waitFor(() => expect(download).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
+    HTMLAnchorElement.prototype.click = originalClick;
+  });
+
+  it("says in the hub's words when the backup is refused", async () => {
+    mockApi({ funnel: NO_FUNNEL });
+    vi.spyOn(api, "downloadBackup").mockRejectedValue(
+      new ApiError("/api/backup", 403, { detail: "Your sign-in changed — reload this page." }),
+    );
+
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: /back up now/i }));
+
+    expect(await screen.findByText(/your sign-in changed/i)).toBeInTheDocument();
   });
 
   it("the card's own text uses no in-house word", async () => {

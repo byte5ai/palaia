@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 
-import { Badge, CardBody, CardFoot, CardHead, EmptyState } from "../components";
+import { Badge, Button, CardBody, CardFoot, CardHead, EmptyState } from "../components";
 import type {
   FunnelStatus,
   InfoResponse,
@@ -11,6 +11,7 @@ import type {
 } from "../lib/api/client";
 import { api } from "../lib/api/client";
 import { docsUrl } from "../lib/docs";
+import { saveBlob } from "../lib/download";
 import { describeApiError } from "../lib/errors";
 import type { EventStreamState, VaultChangeEntry } from "../lib/events";
 import { CheckIcon, ClientsIcon, ExplorerIcon, WarningIcon } from "../shell/icons";
@@ -104,6 +105,25 @@ export function Home() {
   const [tokens, setTokens] = useState<TokenInfo[] | null>(null);
   const [indexAggregate, setIndexAggregate] = useState<IndexAggregate | null>(null);
   const [funnel, setFunnel] = useState<FunnelStatus | null>(null);
+  const [backingUp, setBackingUp] = useState(false);
+  const [backupError, setBackupError] = useState<string | null>(null);
+
+  // Issue 382: a plain link to the gated endpoint saved the gate's refusal
+  // as the download once the session had expired. Fetching through the
+  // client redirects to sign-in like every other call, and any other
+  // refusal is shown in the hub's own words.
+  async function backUp() {
+    setBackingUp(true);
+    setBackupError(null);
+    try {
+      const file = await api.downloadBackup();
+      saveBlob(file.blob, file.filename ?? "palaia-backup.tar.gz");
+    } catch (err) {
+      setBackupError(describeApiError(err));
+    } finally {
+      setBackingUp(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -435,9 +455,12 @@ export function Home() {
         </CardBody>
         <CardFoot>
           {signIn?.required ? (
-            <a className="btn btn--primary btn--sm" href={api.backupUrl()} download>
-              Back up now
-            </a>
+            <>
+              <Button variant="primary" size="sm" onClick={() => void backUp()} disabled={backingUp}>
+                {backingUp ? "Preparing the file…" : "Back up now"}
+              </Button>
+              {backupError ? <p className="field__error">{backupError}</p> : null}
+            </>
           ) : (
             <span className="t-sm t-muted" data-testid="backup-needs-sign-in">
               Downloading a backup needs the dashboard sign-in, which this hub has not turned

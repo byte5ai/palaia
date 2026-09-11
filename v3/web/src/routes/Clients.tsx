@@ -11,6 +11,8 @@ import { SkillPanel } from "../components/SkillPanel";
 import { useToast } from "../components/Toast";
 import type { GatewayProfile, TokenInfo } from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
+import { saveBlob } from "../lib/download";
+import { describeApiError } from "../lib/errors";
 import { CLIENTS, type DownloadClient, type HubMode, type NotYetClient } from "../lib/clients";
 import { CopyIcon, InfoIcon, WarningIcon } from "../shell/icons";
 
@@ -70,32 +72,16 @@ function DownloadCard({ client, profile }: { client: DownloadClient; profile: st
   const toast = useToast();
   const [downloading, setDownloading] = useState(false);
   const Icon = client.icon;
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
 
   async function download() {
     setDownloading(true);
     try {
-      const response = await fetch(client.downloadUrl(origin, profile));
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        toast.show(
-          typeof body?.detail === "string"
-            ? body.detail
-            : `The hub answered ${response.status} — could not build the bundle.`,
-        );
-        return;
-      }
-      const blob = await response.blob();
-      const href = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = href;
-      link.download = "palaia.mcpb";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(href);
-    } catch {
-      toast.show("Could not reach the hub to build the bundle.");
+      // Issue 382: through the API client, so an expired session redirects
+      // to sign-in instead of saving the refusal as the bundle.
+      const file = await api.downloadFile(client.downloadUrl("", profile));
+      saveBlob(file.blob, file.filename ?? "palaia.mcpb");
+    } catch (err) {
+      toast.show(describeApiError(err));
     } finally {
       setDownloading(false);
     }
