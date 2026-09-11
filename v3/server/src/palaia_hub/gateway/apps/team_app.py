@@ -229,7 +229,7 @@ _SCRIPT_JS = r"""
       + '<span class="t-xs t-muted">Ending a conversation or removing an agent '
       + 'happens from the dashboard.</span>';
     if (href) {
-      html += '<a class="btn" href="' + href + '" target="_blank" rel="noopener">'
+      html += '<a class="btn" href="' + escapeHtml(href) + '" target="_blank" rel="noopener">'
         + "Open dashboard</a>";
     }
     html += "</div>";

@@ -266,3 +266,31 @@ def test_dry_run_script_never_hardcodes_a_release_version() -> None:
         line for line in code_lines if re.search(r"\b\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?\b", line)
     ]
     assert offenders == [], f"release-dry-run.sh hardcodes a version: {offenders}"
+
+
+def _pep440(version: str) -> str:
+    """``3.0.0-rc1`` (SemVer, v3/VERSION) as Python packaging spells it."""
+    from packaging.version import Version
+
+    return str(Version(version))
+
+
+def test_sdk_reports_the_version_it_was_built_with() -> None:
+    """Issue #397: `palaia_addon_sdk.__version__` and the MCP clientInfo
+    version were literal "0.1.0" strings; both now come from the installed
+    distribution, which `test_sdk_package_version_matches` pins to VERSION."""
+    import palaia_addon_sdk
+
+    assert _pep440(palaia_addon_sdk.__version__) == _pep440(_read_version_file())
+
+
+@pytest.mark.parametrize("manifest", ["plugin.json", "marketplace.json"])
+def test_claude_plugin_manifests_carry_this_version(manifest: str) -> None:
+    """Issue #397: `clients/.claude-plugin/*.json` said 0.1.0 and nothing checked."""
+    data = json.loads(
+        (V3_ROOT / "clients" / ".claude-plugin" / manifest).read_text(encoding="utf-8")
+    )
+    version = data["version"] if "version" in data else data["metadata"]["version"]
+    assert version == _read_version_file(), f"{manifest} must carry v3/VERSION"
+    text = json.dumps(data)
+    assert "Phase 3" not in text and "Phase-3" not in text

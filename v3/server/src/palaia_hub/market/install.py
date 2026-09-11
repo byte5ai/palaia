@@ -117,6 +117,22 @@ class _ConsentEntry:
     used: bool = False
 
 
+def _upstream_config(**fields: Any) -> UpstreamConfig:
+    """Build the upstream config, turning a schema refusal into the install
+    error the caller already maps to a 400 (issue #397): a config field
+    named `api-key` becomes an env var `API-KEY`, which the upstream
+    schema rejects — that used to surface as a 500 after the secret was
+    already stored."""
+    try:
+        return UpstreamConfig(**fields)
+    except ValidationError as exc:
+        raise MarketInstallError(
+            f"this add-on's settings cannot be turned into a server configuration: {exc}. "
+            "Fix: the entry's config_schema field names must be usable as environment "
+            "variable names (letters, digits, underscores)."
+        ) from exc
+
+
 class ConsentStore:
     """Short-lived, single-use consent tokens (deliverable #3).
 
@@ -133,12 +149,20 @@ class ConsentStore:
         self._tokens: dict[str, _ConsentEntry] = {}
 
     def issue(self, entry_id: str, *, plan_hash: str = "") -> tuple[str, float]:
+        self._prune()
         token = secrets_module.token_urlsafe(24)
         expires_at = time.time() + self._ttl
         self._tokens[token] = _ConsentEntry(
             entry_id=entry_id, expires_at=expires_at, plan_hash=plan_hash
         )
         return token, expires_at
+
+    def _prune(self) -> None:
+        """Drop expired and used tokens (issue #397: nothing pruned them, so
+        every consent screen ever opened stayed in memory)."""
+        now = time.time()
+        for key in [k for k, entry in self._tokens.items() if entry.used or entry.expires_at < now]:
+            del self._tokens[key]
 
     def consume(self, token: str, entry_id: str) -> str:
         """Raise :class:`MarketInstallError` unless ``token`` was issued for
@@ -316,12 +340,10 @@ async def _resolve_registry_ref_plan(
     command, args = target.command or "", list(target.args)
     plain, secret_values, _mounts = _split_config(entry.config_schema, config)
     env = {k.upper(): v for k, v in plain.items()}
-    env_secrets: dict[str, str] = {}
-    for field_name, value in secret_values.items():
-        name = _secret_name(entry.id, field_name)
-        secret_store.put(name, value)
-        env_secrets[field_name.upper()] = name
-    upstream = UpstreamConfig(
+    env_secrets = {
+        field_name.upper(): _secret_name(entry.id, field_name) for field_name in secret_values
+    }
+    upstream = _upstream_config(
         key=key,
         kind="stdio",
         display_name=display_name,
@@ -330,6 +352,9 @@ async def _resolve_registry_ref_plan(
         env=env,
         env_secrets=env_secrets,
     )
+    # Only a config that validated stores anything (issue #397).
+    for field_name, value in secret_values.items():
+        secret_store.put(_secret_name(entry.id, field_name), value)
     return InstallPlan(upstream=upstream)
 
 
@@ -355,10 +380,8 @@ def _build_http_plan(
         # anticipate, and silently dropping it would be worse than storing
         # it unused.
         first_field = next(iter(secret_values))
-        for field_name, value in secret_values.items():
-            secret_store.put(_secret_name(entry.id, field_name), value)
         auth = UpstreamAuthConfig(secret_name=_secret_name(entry.id, first_field))
-    upstream = UpstreamConfig(
+    upstream = _upstream_config(
         key=key,
         kind="http",
         display_name=display_name,
@@ -366,6 +389,9 @@ def _build_http_plan(
         headers=headers,
         auth=auth,
     )
+    # Only a config that validated stores anything (issue #397).
+    for field_name, value in secret_values.items():
+        secret_store.put(_secret_name(entry.id, field_name), value)
     return InstallPlan(upstream=upstream)
 
 
@@ -383,11 +409,9 @@ async def _resolve_container_plan(
     await docker_runtime.ensure_image(image)
     plain, secret_values, mounts = _split_config(entry.config_schema, config)
     env = {k.upper(): v for k, v in plain.items()}
-    env_secrets: dict[str, str] = {}
-    for field_name, value in secret_values.items():
-        name = _secret_name(entry.id, field_name)
-        secret_store.put(name, value)
-        env_secrets[field_name.upper()] = name
+    env_secrets = {
+        field_name.upper(): _secret_name(entry.id, field_name) for field_name in secret_values
+    }
     container_name = _container_name(key)
     run_args = docker_runtime.build_stdio_run_args(
         image,
@@ -397,7 +421,7 @@ async def _resolve_container_plan(
         secret_env_vars=list(env_secrets.keys()),
         permissions=entry.permissions,
     )
-    upstream = UpstreamConfig(
+    upstream = _upstream_config(
         key=key,
         kind="stdio",
         display_name=display_name,
@@ -406,6 +430,9 @@ async def _resolve_container_plan(
         env={},
         env_secrets=env_secrets,
     )
+    # Only a config that validated stores anything (issue #397).
+    for field_name, value in secret_values.items():
+        secret_store.put(_secret_name(entry.id, field_name), value)
     return InstallPlan(
         upstream=upstream,
         image=image,
@@ -655,6 +682,8 @@ class InstallService:
         )
         self.consent = ConsentStore()
         self._publish = publish or (lambda event, data: None)
+        #: Upstream keys whose `addon.update_available` already fired (#397).
+        self._update_announced: set[str] = set()
 
     # ---------------------------------------------------------- consent
 
@@ -994,8 +1023,14 @@ class InstallService:
         on — called after the curated index refreshes (deliverable #4)."""
         changed: list[InstalledAddonOut] = []
         for out in await self._outs():
-            if out.update_available:
-                changed.append(out)
+            if not out.update_available:
+                self._update_announced.discard(out.upstream_key)
+                continue
+            changed.append(out)
+            if out.upstream_key not in self._update_announced:
+                # Issue #397: the event fires when availability *turns on*,
+                # not on every index refresh while it stays on.
+                self._update_announced.add(out.upstream_key)
                 self._publish(
                     "addon.update_available",
                     {
@@ -1051,6 +1086,8 @@ def wire_market_index_updates(event_bus: EventBus, service: InstallService) -> C
     it is logged, never raised into the publisher (same posture every
     other bus subscriber in this codebase takes)."""
 
+    _pending_checks: set[asyncio.Task[None]] = set()
+
     def _on_event(envelope: Envelope) -> None:
         if envelope.event != "market.index.updated":
             return
@@ -1061,7 +1098,10 @@ def wire_market_index_updates(event_bus: EventBus, service: InstallService) -> C
             except Exception:  # noqa: BLE001 - a failed check must not break the bus
                 logger.exception("checking for marketplace add-on updates failed")
 
-        asyncio.create_task(_run())
+        task = asyncio.create_task(_run())
+        # Issue #397: a bare create_task can be garbage-collected mid-flight.
+        _pending_checks.add(task)
+        task.add_done_callback(_pending_checks.discard)
 
     return event_bus.on(_on_event)
 

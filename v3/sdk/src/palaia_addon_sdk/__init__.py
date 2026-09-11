@@ -11,4 +11,4 @@ copies drifting apart.
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+from ._version import __version__ as __version__

@@ -289,6 +289,13 @@ argue with them; that is what the list is for.
    request arrives over TLS — see `docs/exposure.md`.
 8. **No hardware-backed key storage.** The signing key and the secret-store
    key are files, protected by file modes and by whatever the host provides.
+   Concretely for upstream credentials: `secrets.key` sits next to
+   `secrets.sqlite3` in the same owner-only home, and a backup archive
+   carries both — so at rest the encryption guards against a copied
+   *database file*, not against a reader of the whole home or of a backup.
+   That is the intended design (the key has to live somewhere the hub can
+   read unattended); treat the home directory and every backup as the
+   secret they contain.
 9. **A backup is not one atomic snapshot across every store.** Each
    individual file in the archive is internally consistent (every SQLite
    database goes through the engine's own online-backup API; every other

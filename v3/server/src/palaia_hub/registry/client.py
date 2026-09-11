@@ -28,6 +28,7 @@ import logging
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -166,7 +167,8 @@ class RegistryClient:
         return await self._fetch("/v0/servers", params)
 
     async def detail(self, server_id: str) -> RegistryServer | None:
-        result = await self._fetch(f"/v0/servers/{server_id}", {}, single=True)
+        # Issue #397: an id containing `/` or `?` must not rewrite the path.
+        result = await self._fetch(f"/v0/servers/{quote(server_id, safe='')}", {}, single=True)
         if not result.servers:
             return None
         return result.servers[0]

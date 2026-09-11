@@ -56,7 +56,11 @@ def _market_entry_from_registry(server: RegistryServer) -> MarketEntry:
         kind = "remote"
         source = SourceLocator(type="registry_ref", value=server.id)
 
-    maintainer = str(raw.get("repository", {}).get("url", "") or "unknown")
+    # `"repository": null` is a shape the registry does send (issue #397).
+    repository = raw.get("repository") or {}
+    maintainer = (
+        str(repository.get("url", "") or "unknown") if isinstance(repository, dict) else "unknown"
+    )
     return MarketEntry(
         id=server.id,
         name=server.name,

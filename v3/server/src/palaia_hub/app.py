@@ -914,6 +914,12 @@ def create_app(
                 token_store=token_store,
                 oauth_server=oauth_server,
                 home=hub_home,
+                public_url=config.exposure.public_url,
+                known_profiles=(
+                    (lambda: [p.path for p in dynamic_gateway.config.profiles])
+                    if dynamic_gateway is not None
+                    else None
+                ),
             )
         )
 

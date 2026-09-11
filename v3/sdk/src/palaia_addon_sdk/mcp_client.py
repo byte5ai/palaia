@@ -24,6 +24,8 @@ from dataclasses import dataclass
 from types import TracebackType
 from typing import Any
 
+from ._version import __version__
+
 #: The MCP protocol version this client negotiates. A server that speaks a
 #: different (but compatible) version still answers — MCP servers respond
 #: with the version *they* support, and this client accepts whatever a
@@ -196,7 +198,7 @@ class StdioMcpClient:
             {
                 "protocolVersion": PROTOCOL_VERSION,
                 "capabilities": {},
-                "clientInfo": {"name": CLIENT_NAME, "version": "0.1.0"},
+                "clientInfo": {"name": CLIENT_NAME, "version": __version__},
             },
         )
         self._notify("notifications/initialized")

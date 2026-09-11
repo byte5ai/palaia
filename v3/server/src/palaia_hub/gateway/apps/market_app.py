@@ -167,8 +167,8 @@ _SCRIPT_JS = r"""
           html += '<div class="t-xs t-muted">Permissions: ' + perms + '</div>';
         }
         if (href) {
-          html += '<a class="btn btn--primary" href="' + href + '" target="_blank" rel="noopener">'
-            + 'Install and connect' + '</a>';
+          html += '<a class="btn btn--primary" href="' + escapeHtml(href) + '"'
+            + ' target="_blank" rel="noopener">' + 'Install and connect' + '</a>';
         } else {
           html += '<p class="t-xs t-muted">Open this hub&rsquo;s dashboard, then Marketplace, '
             + 'to install.</p>';

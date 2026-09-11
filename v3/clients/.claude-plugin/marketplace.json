@@ -5,8 +5,8 @@
     "url": "https://github.com/byte5ai/palaia"
   },
   "metadata": {
-    "description": "palaia's own skill packages. Phase 3 turns this into a real marketplace served by the hub; today it exists so the manifest shape is settled and testable.",
-    "version": "0.1.0"
+    "description": "palaia's own skill packages, loadable as one Claude Code plugin. The hub's marketplace (the dashboard's Marketplace page and the curated index) distributes add-ons; this manifest is the plugin-marketplace shape for these skills.",
+    "version": "3.0.0-rc1"
   },
   "plugins": [
     {

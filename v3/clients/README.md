@@ -45,9 +45,10 @@ claude --plugin-dir v3/clients      # this session only
 ```
 
 [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) is the
-Phase-3 marketplace entry, here now so the manifest shape is settled and
-tested rather than invented at distribution time. Both manifests, and the
-skills' frontmatter, are linted in CI —
+Claude Code plugin-marketplace manifest for these skills (the hub's own
+add-on marketplace is the dashboard's Marketplace page). Both manifests
+carry `v3/VERSION`'s version — `server/tests/test_version_drift.py` refuses
+any other — and, with the skills' frontmatter, are linted in CI —
 `server/tests/clients/test_skill_format.py`, or by hand:
 
 ```bash
