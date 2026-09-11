@@ -531,15 +531,23 @@ class MessengerService:
 
     async def owner_ack(self, envelope_id: str) -> AckResult:
         """Close one envelope in the owner's inbox (issue #365)."""
-        item, expired = await asyncio.to_thread(self._store.ack, envelope_id, OWNER_HANDLE)
-        self._emit_expired(expired)
-        return AckResult(id=item.envelope.id, acked=True, state=item.state)
+        return await self._ack_as(OWNER_HANDLE, envelope_id)
 
     async def ack(self, handle: str, session_secret: str, envelope_id: str) -> AckResult:
         """Close one envelope in the caller's own inbox."""
         await self._authenticate(handle, session_secret)
-        item, expired = await asyncio.to_thread(self._store.ack, envelope_id, handle)
+        return await self._ack_as(handle, envelope_id)
+
+    async def _ack_as(self, recipient: str, envelope_id: str) -> AckResult:
+        item, expired, newly_delivered = await asyncio.to_thread(
+            self._store.ack, envelope_id, recipient
+        )
         self._emit_expired(expired)
+        if newly_delivered:
+            # Acked without a prior check (issue #396): the envelope still
+            # reached its recipient, so the delivery event fires here.
+            delivered = EnvelopeMetadata.of(item).model_copy(update={"state": "delivered"})
+            self._emit("message.received", delivered.model_dump())
         return AckResult(id=item.envelope.id, acked=True, state=item.state)
 
     async def thread(self, handle: str, session_secret: str, envelope_id: str) -> ThreadResult:
@@ -560,7 +568,11 @@ class MessengerService:
                 f"envelope {envelope_id!r} is not part of any thread you took part "
                 "in. Fix: pass an id from your own messenger_check result."
             )
-        return ThreadResult(root_id=mine[0].envelope.id, envelopes=[item.envelope for item in mine])
+        # The thread's true root (issue #396) — the same id
+        # ``thread_metadata`` reports, not the caller's first own copy.
+        return ThreadResult(
+            root_id=items[0].envelope.id, envelopes=[item.envelope for item in mine]
+        )
 
     # -- REST mirror (the owner's admin surface) --------------------------
 

@@ -44,7 +44,7 @@ from .models import (
     NotificationAction,
     StashSetAction,
 )
-from .outbox import AutomationOutbox, DeliveryRow
+from .outbox import AutomationOutbox, DeliveryRow, PendingDelivery
 from .store import LOOP_GUARD_PREFIX, AutomationStore
 from .templates import render
 
@@ -196,6 +196,10 @@ class AutomationDispatcher:
                 acting,
             )
             return
+        # Issue #396: matches are collected and queued in one transaction —
+        # the bus calls this synchronously on the event loop, so every
+        # commit here is a stall for whoever published.
+        pending: list[PendingDelivery] = []
         for automation in self._store.list_info():
             if not automation.enabled:
                 continue
@@ -214,13 +218,16 @@ class AutomationDispatcher:
                     envelope.event,
                 )
                 continue
-            self._outbox.enqueue(
-                automation_id=automation.id,
-                event_id=envelope.id,
-                event_name=envelope.event,
-                action_kind=automation.action.kind,
-                rendered_action=rendered,
+            pending.append(
+                PendingDelivery(
+                    automation_id=automation.id,
+                    event_id=envelope.id,
+                    event_name=envelope.event,
+                    action_kind=automation.action.kind,
+                    rendered_action=rendered,
+                )
             )
+        self._outbox.enqueue_many(pending)
 
     def _throttled(self, automation_id: str) -> bool:
         """True when ``automation_id`` already fired its minute's worth."""

@@ -744,3 +744,53 @@ async def test_envelope_summary_is_compact_and_names_type_urgency_refs(
     assert "memory://projects/api-gateway" in summary
     assert "reply expected" in summary
     assert "very long body" not in summary
+
+
+async def test_message_received_fires_when_an_envelope_is_acked_before_any_check(
+    service: MessengerService,
+    directory: DirectoryService,
+    events: list[tuple[str, dict[str, Any]]],
+) -> None:
+    """Issue #396: pending → acked without a check still reached the recipient."""
+    a_handle, a_secret = await _register(directory)
+    b_handle, b_secret = await _register(directory)
+    sent = await service.send(
+        sender=a_handle,
+        session_secret=a_secret,
+        message_type="request",
+        to=b_handle,
+        subject="ack me first",
+        body="the body",
+    )
+    envelope_id = sent.envelopes[0].id
+    await service.ack(b_handle, b_secret, envelope_id)
+    received = [data for name, data in events if name == "message.received"]
+    assert len(received) == 1
+    assert received[0]["state"] == "delivered"
+    assert received[0]["recipient"] == b_handle
+
+
+async def test_thread_root_is_the_true_root_for_every_participant(
+    service: MessengerService, directory: DirectoryService
+) -> None:
+    """Issue #396: `thread()` reported the caller's first own copy as root
+    while `thread_metadata()` reported the real one."""
+    a_handle, a_secret = await _register(directory)
+    b_handle, b_secret = await _register(directory)
+    root = await service.send(
+        sender=a_handle, session_secret=a_secret, message_type="request", to=b_handle, subject="q"
+    )
+    root_id = root.envelopes[0].id
+    reply = await service.send(
+        sender=b_handle,
+        session_secret=b_secret,
+        message_type="inform",
+        to=a_handle,
+        subject="re: q",
+        reply_to=root_id,
+    )
+    reply_id = reply.envelopes[0].id
+    for handle, secret in ((a_handle, a_secret), (b_handle, b_secret)):
+        thread = await service.thread(handle, secret, reply_id)
+        assert thread.root_id == root_id
+    assert (await service.thread_metadata(reply_id)).root_id == root_id

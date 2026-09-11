@@ -1,9 +1,15 @@
 """``palaia-hub`` command-line entry point.
 
-Currently one subcommand: ``serve``, which loads config, builds the app, and
-runs it under uvicorn with graceful shutdown (uvicorn drains in-flight
-requests on SIGTERM/SIGINT up to ``graceful_shutdown_timeout`` before
-exiting).
+Subcommands: ``serve`` (load config, build the app, run it under uvicorn with
+graceful shutdown — in-flight requests drain on SIGTERM/SIGINT up to
+``graceful_shutdown_timeout``), ``token`` (per-client bearer tokens),
+``oauth`` (the OAuth 2.1 server's owner password, machine clients, GC),
+``curator`` (inbox curation), ``import`` (v2 / basic-memory), ``update``
+(switch the compose file's channel) and ``backup``.
+
+Every subcommand shares one error boundary in :func:`main`: a broken
+``config.yaml`` or an unknown vault is a one-line ``palaia-hub: …`` message
+and exit code 1, never a traceback (issue #396).
 """
 
 from __future__ import annotations
@@ -40,8 +46,17 @@ from .oauth import (
     set_owner_password,
 )
 from .serve import build_production_app
-from .vault import EventBus, VaultRegistry
+from .vault import EventBus, VaultConfigError, VaultNotFoundError, VaultRegistry
 from .vault.engine import VaultEngine
+
+#: Issue #396: the help used to list only the vault family, although the
+#: token store accepts (and the team features need) the other three.
+_SCOPE_HELP = (
+    "Repeatable. 'vault:<key>:read' / 'vault:<key>:write' for a vault, "
+    "'stash:read' / 'stash:write' for the stash, 'directory:read' / "
+    "'directory:write' for the session directory, 'messenger:read' / "
+    "'messenger:send' for the messenger. Omit for everything the profile mounts."
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -63,7 +78,7 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="scopes",
         action="append",
         default=[],
-        help="'vault:<key>:read' or 'vault:<key>:write'; repeatable",
+        help=_SCOPE_HELP,
     )
 
     token_subparsers.add_parser("list", help="List known tokens (no secrets shown)")
@@ -151,7 +166,7 @@ def _add_oauth_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPa
         dest="scopes",
         action="append",
         default=[],
-        help="'vault:<key>:read' or 'vault:<key>:write'; repeatable",
+        help=_SCOPE_HELP,
     )
 
     oauth_subparsers.add_parser("clients", help="List registered clients (no secrets shown)")
@@ -718,9 +733,23 @@ def _backup(out: str | None) -> Path:
     return target
 
 
+#: Caller-facing failures every subcommand can hit while opening its
+#: stores: a config.yaml that does not validate, a gateway shape the config
+#: cannot resolve, a vault named on the command line that is not registered.
+_USER_FACING_ERRORS = (ConfigError, GatewaySettingsError, VaultConfigError, VaultNotFoundError)
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     parser = _build_parser()
     args = parser.parse_args(argv)
+    try:
+        _dispatch(args)
+    except _USER_FACING_ERRORS as exc:
+        print(f"palaia-hub: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+
+
+def _dispatch(args: argparse.Namespace) -> None:
     if args.command == "serve":
         serve(host=args.host, port=args.port)
     elif args.command == "token":

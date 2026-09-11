@@ -122,3 +122,18 @@ def test_count_pending(tmp_path: Path) -> None:
     )
     assert outbox.count_pending() == 2
     assert outbox.count_pending("a1") == 1
+
+
+def test_enqueue_many_queues_every_row_once_in_one_transaction(tmp_path: Path) -> None:
+    """Issue #396: one event matching several automations is one commit."""
+    from palaia_hub.automations.outbox import PendingDelivery
+
+    outbox = AutomationOutbox(tmp_path / "outbox.sqlite3")
+    rows = [
+        PendingDelivery("a1", "e1", "hub.started", "notification", {"title": "x"}),
+        PendingDelivery("a2", "e1", "hub.started", "notification", {"title": "y"}),
+    ]
+    outbox.enqueue_many(rows)
+    outbox.enqueue_many(rows)
+    assert sorted(row.automation_id for row in outbox.all_rows()) == ["a1", "a2"]
+    outbox.enqueue_many([])

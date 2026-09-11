@@ -185,10 +185,10 @@ def test_check_only_sees_its_own_inbox(store: MessengerStore) -> None:
 def test_ack_closes_the_envelope_and_is_idempotent(store: MessengerStore) -> None:
     items, _ = _send(store, to="b")
     envelope_id = items[0].envelope.id
-    first, _ = store.ack(envelope_id, "b")
+    first, _, _ = store.ack(envelope_id, "b")
     assert first.state == "acked"
     assert first.acked_at is not None
-    second, _ = store.ack(envelope_id, "b")
+    second, _, _ = store.ack(envelope_id, "b")
     assert second.acked_at == first.acked_at
 
 
@@ -348,3 +348,32 @@ def test_flows_respects_its_limit(store: MessengerStore) -> None:
     for _ in range(5):
         _send(store, to="b")
     assert len(store.flows(limit=2)[0]) == 2
+
+
+def test_ack_on_a_pending_envelope_records_the_delivery_too(store: MessengerStore) -> None:
+    """Issue #396: pending → acked used to skip `delivered`, so the
+    message.received event never fired for an envelope acked before any check."""
+    items, _ = _send(store, to="b")
+    envelope_id = items[0].envelope.id
+    item, _, newly_delivered = store.ack(envelope_id, "b")
+    assert newly_delivered is True
+    assert item.state == "acked"
+    assert item.delivered_at is not None
+    assert item.delivered_at == item.acked_at
+    _, _, again = store.ack(envelope_id, "b")
+    assert again is False
+
+
+def test_flows_filters_by_type_and_state_in_sql(store: MessengerStore) -> None:
+    """Issue #396: the observability feed used to load every envelope copy
+    and filter in Python per dashboard poll."""
+    first, _ = _send(store, sender="a", to="b")
+    _send(store, sender="c", to="d")
+    store.check("b")
+    delivered, _ = store.flows(state="delivered")
+    assert [item.envelope.id for item in delivered] == [first[0].envelope.id]
+    pending, _ = store.flows(state="pending")
+    assert len(pending) == 1
+    assert len(store.flows(state="acked")[0]) == 0
+    assert len(store.flows(handle="c")[0]) == 1
+    assert len(store.flows(limit=1)[0]) == 1

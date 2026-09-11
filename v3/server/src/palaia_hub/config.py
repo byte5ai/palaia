@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import binascii
 import ipaddress
+import logging
 import os
 import warnings
 from collections.abc import Mapping
@@ -30,6 +31,8 @@ from .security.files import harden_directory, harden_file
 # from the rest of `palaia_hub` and nothing from fastmcp, precisely so this
 # module can use it while still loading before any transport layer exists.
 from .upstream.models import UpstreamConfig as GatewayUpstreamSettings
+
+logger = logging.getLogger("palaia_hub.config")
 
 APP_NAME = "palaia-hub"
 
@@ -563,15 +566,18 @@ class OAuthSettings(BaseModel):
     @model_validator(mode="after")
     def _warn_deprecated_profiles(self) -> OAuthSettings:
         if self.profiles:
-            warnings.warn(
+            message = (
                 "config.yaml: `oauth.profiles` is deprecated and no longer read — "
                 "the OAuth server now always issues tokens for the gateway's own "
                 "profiles (the `gateway:` section, or the single 'default' profile "
                 "when that section is absent). Fix: remove `oauth.profiles` from "
-                "config.yaml.",
-                DeprecationWarning,
-                stacklevel=2,
+                "config.yaml."
             )
+            # Issue #396: a DeprecationWarning is hidden by Python's default
+            # filters outside __main__, so operators never saw it. The log
+            # line is what reaches them; the warning stays for tooling.
+            logger.warning(message)
+            warnings.warn(message, DeprecationWarning, stacklevel=2)
         return self
 
 

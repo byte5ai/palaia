@@ -1529,6 +1529,11 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+embeddings = [
+    { name = "fastembed" },
+]
+
+[package.dev-dependencies]
 dev = [
     { name = "anyio" },
     { name = "hypothesis" },
@@ -1538,34 +1543,35 @@ dev = [
     { name = "ruff" },
     { name = "types-pyyaml" },
 ]
-embeddings = [
-    { name = "fastembed" },
-]
 
 [package.metadata]
 requires-dist = [
-    { name = "anyio", marker = "extra == 'dev'", specifier = ">=4" },
     { name = "argon2-cffi", specifier = ">=23.1" },
     { name = "cryptography", specifier = ">=42" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "fastembed", marker = "extra == 'embeddings'", specifier = ">=0.4" },
     { name = "fastmcp", specifier = "==3.4.7" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.100" },
     { name = "joserfc", specifier = ">=1.0" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11" },
-    { name = "palaia-addon-sdk", marker = "extra == 'dev'", directory = "sdk" },
     { name = "platformdirs", specifier = ">=4.2" },
     { name = "pydantic", specifier = ">=2.7" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "sqlite-vec", specifier = ">=0.1.6" },
-    { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },
     { name = "uvicorn", specifier = ">=0.30" },
     { name = "watchfiles", specifier = ">=0.22" },
 ]
-provides-extras = ["dev", "embeddings"]
+provides-extras = ["embeddings"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "anyio", specifier = ">=4" },
+    { name = "hypothesis", specifier = ">=6.100" },
+    { name = "mypy", specifier = ">=1.11" },
+    { name = "palaia-addon-sdk", directory = "sdk" },
+    { name = "pytest", specifier = ">=8" },
+    { name = "ruff", specifier = ">=0.6" },
+    { name = "types-pyyaml", specifier = ">=6.0" },
+]
 
 [[package]]
 name = "palaia-v3-workspace"
@@ -1575,7 +1581,7 @@ source = { virtual = "." }
 [package.dev-dependencies]
 dev = [
     { name = "mypy" },
-    { name = "palaia-hub", extra = ["dev", "embeddings"] },
+    { name = "palaia-hub", extra = ["embeddings"] },
     { name = "pytest" },
     { name = "ruff" },
 ]
@@ -1585,7 +1591,7 @@ dev = [
 [package.metadata.requires-dev]
 dev = [
     { name = "mypy", specifier = ">=1.11" },
-    { name = "palaia-hub", extras = ["dev", "embeddings"], editable = "server" },
+    { name = "palaia-hub", extras = ["embeddings"], editable = "server" },
     { name = "pytest", specifier = ">=8" },
     { name = "ruff", specifier = ">=0.6" },
 ]

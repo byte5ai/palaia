@@ -303,8 +303,13 @@ class MessengerStore:
 
     def ack(
         self, envelope_id: str, recipient: str, *, now: float | None = None
-    ) -> tuple[InboxItem, list[EnvelopeMetadata]]:
+    ) -> tuple[InboxItem, list[EnvelopeMetadata], bool]:
         """Close one envelope in ``recipient``'s inbox.
+
+        Returns ``(item, expired, newly_delivered)``: the third is ``True``
+        when the envelope was still ``pending`` — it is marked delivered on
+        the way to ``acked`` (issue #396), so the caller can fire the
+        ``message.received`` it would otherwise never get.
 
         Idempotent: acking an already-acked envelope returns it unchanged
         rather than erroring. A row belonging to somebody else's inbox reads
@@ -324,17 +329,18 @@ class MessengerStore:
                     "run messenger_check first — an envelope past its expires_at is "
                     "gone, and an id from another session's inbox is not yours to ack."
                 )
+            newly_delivered = row["state"] == "pending"
             if row["state"] != "acked":
                 self._conn.execute(
-                    "UPDATE messenger_envelopes SET state = 'acked', acked_at = ? "
-                    "WHERE id = ?",
-                    (current, envelope_id),
+                    "UPDATE messenger_envelopes SET state = 'acked', acked_at = ?, "
+                    "delivered_at = COALESCE(delivered_at, ?) WHERE id = ?",
+                    (current, current, envelope_id),
                 )
                 self._conn.commit()
                 row = self._row_locked(envelope_id)
                 assert row is not None
             item = _row_to_item(row)
-        return item, expired
+        return item, expired, newly_delivered
 
     # -- read ------------------------------------------------------------
 
@@ -494,24 +500,29 @@ class MessengerStore:
         observability mirror's feed (SPEC-403 deliverable #6). ``handle``
         matches either side of a flow (sender *or* recipient)."""
         current = self._now(now)
+        # Issue #396: filters and the limit run in SQL — this used to load and
+        # sort every envelope copy in Python on each dashboard poll.
+        clauses: list[str] = []
+        params: list[object] = []
+        if handle is not None:
+            clauses.append("(sender = ? OR recipient = ?)")
+            params.extend((handle, handle))
+        if message_type is not None:
+            clauses.append("type = ?")
+            params.append(message_type)
+        if state is not None:
+            clauses.append("state = ?")
+            params.append(state)
+        where = f"WHERE {' AND '.join(clauses)} " if clauses else ""
         with self._lock:
             expired = self._sweep_locked(current)
             rows = self._conn.execute(
                 "SELECT rowid AS seq, * FROM messenger_envelopes "
-                "ORDER BY created_at DESC, seq DESC"
+                f"{where}ORDER BY created_at DESC, seq DESC LIMIT ?",
+                (*params, max(limit, 0)),
             ).fetchall()
             items = [_row_to_item(row) for row in rows]
-        if handle is not None:
-            items = [
-                item
-                for item in items
-                if item.envelope.from_ == handle or item.recipient == handle
-            ]
-        if message_type is not None:
-            items = [item for item in items if item.envelope.type == message_type]
-        if state is not None:
-            items = [item for item in items if item.state == state]
-        return items[: max(limit, 0)], expired
+        return items, expired
 
     def sweep(self, *, now: float | None = None) -> list[EnvelopeMetadata]:
         """Run the expiry sweep on its own, with no other work attached.

@@ -22,7 +22,7 @@ import contextlib
 import secrets
 
 from argon2 import PasswordHasher
-from argon2.exceptions import VerificationError, VerifyMismatchError
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 
 _hasher = PasswordHasher()
 
@@ -48,7 +48,9 @@ def verify_secret(secret: str, stored_hash: str) -> bool:
     """
     try:
         _hasher.verify(stored_hash, secret)
-    except (VerifyMismatchError, VerificationError):
+    except (VerifyMismatchError, VerificationError, InvalidHashError):
+        # InvalidHashError (issue #396): an empty or malformed stored hash
+        # used to escape as a ValueError, contradicting the docstring.
         return False
     return True
 

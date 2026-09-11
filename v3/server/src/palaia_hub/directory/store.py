@@ -218,9 +218,14 @@ class DirectoryStore:
         ``stale`` since the last sweep (for the caller to emit
         ``session.stale`` events on — each handle is returned at most once,
         ever, because this also flips ``stale_notified``)."""
+        # Only rows that can need attention (issue #396): tombstones, and
+        # sessions past their TTL. A live session within its TTL is neither
+        # stale nor prunable, so it is not read at all.
         rows = self._conn.execute(
             "SELECT handle, last_seen_at, ttl_seconds, stale_notified, pruned_at "
-            "FROM session_registry"
+            "FROM session_registry "
+            "WHERE pruned_at IS NOT NULL OR last_seen_at + ttl_seconds < ?",
+            (now,),
         ).fetchall()
         newly_stale: list[str] = []
         to_prune: list[str] = []

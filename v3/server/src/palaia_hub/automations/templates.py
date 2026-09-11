@@ -41,9 +41,16 @@ def _lookup(name: str, envelope: Envelope) -> str | None:
     if name == "permalink":
         return envelope.permalink
     key = name[len("data.") :]
-    if key not in envelope.data:
-        return None
-    value = envelope.data[key]
+    if key in envelope.data:
+        return _stringify(envelope.data[key])
+    # Issue #396: `data.a.b` used to look up the literal key "a.b" and render
+    # empty; a dotted path now walks nested mappings (a literal dotted key,
+    # checked first above, still wins).
+    value: Any = envelope.data
+    for part in key.split("."):
+        if not isinstance(value, dict) or part not in value:
+            return None
+        value = value[part]
     return _stringify(value)
 
 
@@ -75,8 +82,7 @@ def render(template: str, envelope: Envelope) -> str:
     rendered = _PLACEHOLDER_RE.sub(_sub, template)
     if missing:
         logger.warning(
-            "automation template referenced missing field(s) %s for event %r; "
-            "rendered empty",
+            "automation template referenced missing field(s) %s for event %r; rendered empty",
             sorted(set(missing)),
             envelope.event,
         )

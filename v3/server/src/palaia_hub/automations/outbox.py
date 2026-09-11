@@ -100,6 +100,17 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
+@dataclass(frozen=True, slots=True)
+class PendingDelivery:
+    """One delivery to queue — the arguments of :meth:`AutomationOutbox.enqueue`."""
+
+    automation_id: str
+    event_id: str
+    event_name: str
+    action_kind: str
+    rendered_action: dict[str, Any]
+
+
 class AutomationOutbox:
     """The durable delivery queue + log: one connection, one lock, WAL."""
 
@@ -135,21 +146,44 @@ class AutomationOutbox:
         rendered_action: dict[str, Any],
     ) -> None:
         """Queue one pending delivery. Idempotent per ``(automation_id, event_id)``."""
+        self.enqueue_many(
+            [
+                PendingDelivery(
+                    automation_id=automation_id,
+                    event_id=event_id,
+                    event_name=event_name,
+                    action_kind=action_kind,
+                    rendered_action=rendered_action,
+                )
+            ]
+        )
+
+    def enqueue_many(self, pending: Sequence[PendingDelivery]) -> None:
+        """Queue several deliveries in one transaction (issue #396): the bus
+        fans events out synchronously on the event loop, so one event that
+        matches several automations used to cost one fsync per match."""
+        if not pending:
+            return
+        now = time.time()
+        created = _now_iso()
         with self._lock:
-            self._conn.execute(
+            self._conn.executemany(
                 "INSERT INTO deliveries "
                 "(automation_id, event_id, event_name, action_kind, rendered_action, "
                 "next_attempt_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(automation_id, event_id) DO NOTHING",
-                (
-                    automation_id,
-                    event_id,
-                    event_name,
-                    action_kind,
-                    json.dumps(rendered_action),
-                    time.time(),
-                    _now_iso(),
-                ),
+                [
+                    (
+                        item.automation_id,
+                        item.event_id,
+                        item.event_name,
+                        item.action_kind,
+                        json.dumps(item.rendered_action),
+                        now,
+                        created,
+                    )
+                    for item in pending
+                ],
             )
             self._conn.commit()
 
