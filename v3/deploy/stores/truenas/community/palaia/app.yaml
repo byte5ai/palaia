@@ -18,7 +18,9 @@ maintainers:
   - name: byte5
     email: hello@byte5.ai
 app_version: "0.1.0"
-version: "1"
+# The catalog item's own version (semver, per the truenas/apps catalog);
+# bumped when this package changes, independently of app_version.
+version: "1.0.0"
 human_version: "0.1.0_1"
 capabilities: []
 # The image runs as its own non-root `palaia` user, pinned to uid/gid 1000

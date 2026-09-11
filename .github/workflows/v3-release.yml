@@ -158,8 +158,14 @@ jobs:
         # window expired. 10 minutes is the honest budget for emulated
         # arm64; native starts answer in seconds and exit the loop early.
         run: |
+          # The same hardening flags install.sh / docker-compose.yml document
+          # (SPEC-502), so the smoke proves the image boots *under them* on
+          # arm64 too, not only on amd64 (issue #400).
           docker run -d --name palaia-hub-arm64 --platform linux/arm64 \
-            -p 18420:8420 "${IMAGE}:edge-${{ steps.tags.outputs.short_sha }}"
+            -p 18420:8420 \
+            --security-opt no-new-privileges:true --cap-drop ALL \
+            --read-only --tmpfs /tmp --tmpfs /run \
+            "${IMAGE}:edge-${{ steps.tags.outputs.short_sha }}"
           deadline=$(( $(date +%s) + 600 ))
           until curl -fsS http://localhost:18420/api/health; do
             if [ "$(date +%s)" -ge "${deadline}" ]; then

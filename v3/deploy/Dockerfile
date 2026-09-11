@@ -15,6 +15,13 @@
 # the MCP mount point) to the hub process on a loopback-only internal port.
 # Runs as a non-root user. No embedding models are baked in: they download
 # on first use into the PALAIA_HOME volume (see v3/deploy/README.md).
+#
+# Base images (`node:22-slim`, `python:3.12-slim`, `uv:0.8`) are pinned by
+# tag, not digest (issue #400): a digest pin freezes security fixes in the
+# base layers until someone bumps it by hand, and this repository has no
+# bot doing that yet. Reproducibility of a given release is provided by the
+# published image itself (`ghcr.io/byte5ai/palaia-hub:v3.<version>`), not
+# by rebuilding from this file. Revisit once automated digest bumps exist.
 
 # ---------------------------------------------------------------------------
 # Stage 1: web build

@@ -52,7 +52,12 @@ http {
             proxy_set_header X-Forwarded-Proto $scheme;
             # MCP streaming responses (SSE-style) must not be buffered.
             proxy_buffering off;
+            # The hub's /api/events stream sends a comment frame every 15 s
+            # while idle (palaia_hub.events.bus, issue #400), so this
+            # timeout is never reached by a quiet dashboard.
             proxy_read_timeout 300s;
+            # MCP tool payloads can exceed nginx's 1 MB default body cap.
+            client_max_body_size 16m;
         }
 
         # Static dashboard (SPA). Falls back to index.html for client-side
@@ -63,20 +68,22 @@ http {
         # SPEC-502: the same browser-hardening headers the hub sets on the
         # responses it serves itself (palaia_hub.security.headers). nginx
         # serves the dashboard's static files without ever reaching the hub
-        # process, so without these lines the one surface a browser actually
+        # process, so without these the one surface a browser actually
         # renders in the packaged image would be the only one with no
         # policy on it. Kept byte-identical to DASHBOARD_CSP in that module.
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" always;
-        add_header X-Content-Type-Options "nosniff" always;
-        add_header Referrer-Policy "no-referrer" always;
-        add_header X-Frame-Options "DENY" always;
-        add_header Cross-Origin-Opener-Policy "same-origin" always;
-        add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+        #
+        # Set inside the two static locations, not at server level (issue
+        # #400): a server-level `add_header` inherits into every location
+        # that declares none — the proxy block above — so /api, /mcp,
+        # /oauth and /.well-known responses carried the dashboard policy a
+        # second time next to the hub's own API/OAuth-page policy, and any
+        # future relaxation of the hub's policy would have been silently
+        # overridden by packaging.
 
         location = /index.html {
             # `add_header` does not inherit into a block that declares one
-            # of its own, so the set above is repeated here rather than
-            # silently dropped for the one file every visit fetches.
+            # of its own, so the set is repeated here (and in `location /`)
+            # rather than silently dropped for the one file every visit fetches.
             add_header Cache-Control "no-cache";
             add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" always;
             add_header X-Content-Type-Options "nosniff" always;
@@ -88,6 +95,12 @@ http {
 
         location / {
             try_files $uri $uri/ /index.html;
+            add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" always;
+            add_header X-Content-Type-Options "nosniff" always;
+            add_header Referrer-Policy "no-referrer" always;
+            add_header X-Frame-Options "DENY" always;
+            add_header Cross-Origin-Opener-Policy "same-origin" always;
+            add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
         }
     }
 }

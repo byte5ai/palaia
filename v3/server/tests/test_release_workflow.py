@@ -303,3 +303,23 @@ def test_a_plain_manual_rebuild_on_main_still_works(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert outputs["channel"] == "edge"
     assert "ghcr.io/byte5ai/palaia-hub:edge" in outputs["tags"].split(",")
+
+
+# ---------------------------------------------------------------------------
+# Issue #400: the arm64 smoke boots the image under the documented hardening
+# flags, so the hardened posture is proven on both architectures.
+# ---------------------------------------------------------------------------
+
+
+def test_the_arm64_smoke_runs_under_the_documented_hardening_flags() -> None:
+    workflow = _load_workflow()
+    steps = workflow["jobs"]["build-and-push"]["steps"]
+    smoke = next(s for s in steps if "arm64 smoke" in s.get("name", ""))
+    script = smoke["run"]
+    for flag in (
+        "--security-opt no-new-privileges:true",
+        "--cap-drop ALL",
+        "--read-only",
+        "--tmpfs /tmp",
+    ):
+        assert flag in script, f"the arm64 smoke lacks {flag}"

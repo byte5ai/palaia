@@ -32,7 +32,12 @@ machine). Or use compose:
 cd v3/deploy && docker compose up -d
 ```
 
-Or the convenience script (never required — see `install.sh`):
+Or the convenience script (never required — see `install.sh`; it only
+wraps the `docker run` above). Piping a script from `main` into `bash` is
+the usual trade-off: to read it first, or to pin what you run, download it
+from a release tag instead —
+`curl -fsSLo install.sh https://raw.githubusercontent.com/byte5ai/palaia/v3.<version>/v3/deploy/install.sh`,
+read it, then `bash install.sh` (issue #400):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/byte5ai/palaia/main/v3/deploy/install.sh | bash
@@ -75,6 +80,13 @@ tailnet (SSH, or Tailscale SSH if you enabled it) and use the same two
 commands any other install uses — `docker pull` the new image tag, then
 recreate the container — or run `palaia-hub update` from the dashboard's
 own update banner (see "Updates" above); nothing here needs re-pasting.
+
+**Reboots.** The container is bound to the server's tailnet address, so
+after a reboot it can only start once `tailscaled` has that address. The
+file installs a systemd drop-in that starts Docker after `tailscaled`; if
+the address still arrives late, Docker's `--restart unless-stopped` retries
+the start with a short back-off — a minute or two of "connection refused"
+after a reboot is that retry, not a broken install (issue #400).
 
 **Backing up.** `docker run --rm -v palaia_home:/data -v
 $(pwd):/backup alpine tar czf /backup/palaia-backup.tar.gz -C /data .`

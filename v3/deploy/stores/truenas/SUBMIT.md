@@ -16,6 +16,12 @@ no TrueNAS instance, no docker daemon, and no checkout of that repo's own
 CI scripts. Treat every file here as a well-grounded first draft, not a
 verified one. Concretely, before submitting:
 
+- **`app.yaml` → `maintainers[0].email`** is `hello@byte5.ai`, which appears
+  nowhere else in this repository and which no test can verify is a
+  monitored mailbox (the owner has said no *security* mailbox exists —
+  `v3/RELEASING.md` §1). Confirm it is read, or replace it, before the
+  catalog PR: a maintainer contact nobody reads is worse than none (issue
+  #400).
 - **`app.yaml`**: no `lib_version`/`lib_version_hash` is set. Those pin a
   shared template library version from `truenas/apps`' own `library/`
   directory — fill them in from whatever that repo's current library

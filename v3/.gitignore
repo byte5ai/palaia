@@ -13,3 +13,6 @@ __pycache__/
 web/node_modules/
 web/dist/
 web/.vite/
+
+# v3-ci.yml's e2e job (`--basetemp=e2e-artifacts`) when run locally (issue #400).
+e2e-artifacts/

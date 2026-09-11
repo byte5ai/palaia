@@ -33,6 +33,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import time
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
@@ -178,17 +179,28 @@ async def stop_background_tasks(tasks: list[asyncio.Task[None]]) -> None:
             await task
 
 
+#: Issue #400: an idle stream used to send nothing at all, so a reverse
+#: proxy's read timeout (the packaged nginx: 300 s) cut every quiet dashboard
+#: off and made it reconnect. A comment frame this often keeps it open.
+SSE_KEEPALIVE_SECONDS = 15.0
+
+
 async def _stream(request: Request, bus: EventBus, initial: Envelope) -> AsyncIterator[str]:
     queue = bus.subscribe()
     try:
         yield initial.to_sse()
+        idle_since = time.monotonic()
         while True:
             if await request.is_disconnected():
                 break
             try:
                 envelope = await asyncio.wait_for(queue.get(), timeout=1.0)
             except TimeoutError:
+                if time.monotonic() - idle_since >= SSE_KEEPALIVE_SECONDS:
+                    idle_since = time.monotonic()
+                    yield ": keepalive\n\n"
                 continue
+            idle_since = time.monotonic()
             yield envelope.to_sse()
     finally:
         bus.unsubscribe(queue)

@@ -58,6 +58,15 @@ App Stores" instructions to register that repo's URL, gets palaia
 installable today — worth doing in parallel with the PR above, which can
 take a while to review.
 
+## Before the first submission: gallery images
+
+`umbrel-app.yml`'s `gallery` is an empty list. Umbrel's app-store PR
+checklist expects gallery screenshots (their contributor docs give the
+sizes); take them from a running hub — the dashboard's Home, Explorer and
+Connect pages are the natural three — and list the uploaded image URLs
+there before opening the PR (issue #400). Nothing in this repository can
+produce them: they need a browser in front of a live hub.
+
 ## What to update before every release
 
 `version` in `umbrel-app.yml` and the image tag in `docker-compose.yml`
