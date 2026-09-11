@@ -16,11 +16,12 @@ Three responsibilities:
    With no embedder, no sqlite-vec, or an undrained backlog, a hybrid query is
    an FTS query that says so.
 
-An :class:`EntityRenamed` event triggers a full reindex rather than a
-single-note update: a rename rewrites *inbound wikilinks across the whole
-vault* in one commit (format spec §4.2) and emits one event for all of it, so
-the only correct response is to re-walk the vault. That is affordable because
-:meth:`VaultIndex.reindex` skips notes whose checksum is unchanged.
+An :class:`EntityRenamed` event rewrites *inbound wikilinks across the
+whole vault* in one commit (format spec §4.2) and emits one event for all of
+it. The event names every file that changed (``rewritten_paths``, issue
+#403), so the index updates exactly those notes plus the renamed one — it
+used to re-walk and re-hash the whole vault per rename. A full
+:meth:`VaultIndex.reindex` remains the doctor's repair path.
 """
 
 from __future__ import annotations
@@ -173,14 +174,19 @@ class VaultIndex:
 
     # ------------------------------------------------------------- lifecycle
 
-    async def open(self, *, build: bool = True, start_worker: bool = True) -> int:
+    async def open(
+        self, *, build: bool = True, start_worker: bool = True, refresh_catalog: bool = True
+    ) -> int:
         """Open the index, optionally build it, and subscribe to change events.
 
         Returns the number of notes indexed by the initial build (0 when
-        ``build=False``).
+        ``build=False``). ``refresh_catalog=False`` builds from the catalog
+        the engine already holds — the hub's startup opens each engine (one
+        walk) and then its index, which used to walk the same files again
+        (issue #403).
         """
         await asyncio.to_thread(self.db.open)
-        indexed = await self.reindex() if build else 0
+        indexed = await self.reindex(refresh_catalog=refresh_catalog) if build else 0
         if self._engine.bus is not None:
             self._unsubscribe = self._engine.bus.subscribe(self._on_event)
         if start_worker and self._embedding.enabled:
@@ -212,7 +218,7 @@ class VaultIndex:
         """:class:`~palaia_hub.vault.IndexView` implementation (drift check)."""
         return self.writer.index_entries()
 
-    async def reindex(self) -> int:
+    async def reindex(self, *, refresh_catalog: bool = True) -> int:
         """Full rebuild from files via the doctor's reindex hook.
 
         The whole walk is one transaction (see :class:`~.writer.IndexWriter`),
@@ -227,7 +233,7 @@ class VaultIndex:
                 # land its write inside the rebuild's transaction.
                 self._rebuilding = True
             try:
-                count = await self._engine.reindex(self.writer)
+                count = await self._engine.reindex(self.writer, refresh=refresh_catalog)
             finally:
                 self._rebuilding = False
                 deferred, self._deferred = self._deferred, []
@@ -268,15 +274,13 @@ class VaultIndex:
 
     async def apply_event(self, event: ChangeEvent) -> None:
         """Apply one change event (public so tests can drive it directly)."""
-        if isinstance(event, EntityRenamed):
-            # A rename rewrote inbound links vault-wide under a single event.
-            await self.reindex()
-            return
         async with self._apply_lock:
             if self._rebuilding:
                 self._deferred.append(event)
                 return
-            if isinstance(event, NoteDeleted):
+            if isinstance(event, EntityRenamed):
+                await self._apply_rename(event)
+            elif isinstance(event, NoteDeleted):
                 await asyncio.to_thread(self.writer.delete_note, event.path)
             elif isinstance(event, NoteMoved):
                 note = await self._engine.read_note(event.path)
@@ -296,6 +300,26 @@ class VaultIndex:
                 return
             self._last_indexed_at = time.monotonic()
             self._wake.set()
+
+    async def _apply_rename(self, event: EntityRenamed) -> None:
+        """Re-index the renamed note and every note whose links were rewritten.
+
+        The renamed note's new identity is indexed first, so the rewritten
+        notes' relations resolve against it as they are re-read; anything
+        that referenced the old permalink and was *not* rewritten (a
+        ``memory://`` URL in prose, say) is unresolved by the identity
+        change and re-linked through the old title, which the rename keeps
+        as an alias (§4.2).
+        """
+        if event.previous_path and event.previous_path != event.path:
+            await asyncio.to_thread(self.writer.delete_note, event.previous_path)
+        for path in (event.path, *event.rewritten_paths):
+            try:
+                note = await self._engine.read_note(path)
+            except NoteNotFoundError:
+                await asyncio.to_thread(self.writer.delete_note, path)
+            else:
+                await asyncio.to_thread(self.writer.upsert_note, note)
 
     # ----------------------------------------------------------------- search
 

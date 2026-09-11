@@ -1337,6 +1337,8 @@ class VaultEngine:
                 title=new_title,
                 previous_title=old_title,
                 rewritten_links=result.rewritten_links,
+                previous_path=relative if target_relative != relative else "",
+                rewritten_paths=tuple(sorted(rewritten)),
             )
         ]
         commit = self._commit_changes(
@@ -1547,11 +1549,11 @@ class VaultEngine:
 
         return await VaultDoctor(self).repair()
 
-    async def reindex(self, sink: ReindexSink) -> int:
+    async def reindex(self, sink: ReindexSink, *, refresh: bool = True) -> int:
         """Feed every note to ``sink`` — the rebuild-from-files hook point."""
         from .doctor import VaultDoctor
 
-        return await VaultDoctor(self).reindex(sink)
+        return await VaultDoctor(self).reindex(sink, refresh=refresh)
 
     async def assign_missing_permalinks(self, *, attribution: Attribution = ENGINE) -> list[str]:
         """Assign permalinks to notes that lack one, in one attributed commit.

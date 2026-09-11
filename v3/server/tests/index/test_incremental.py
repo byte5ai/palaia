@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 
+from palaia_hub.index import EmbeddingConfig
 from palaia_hub.vault import VaultWatcher
 
 pytestmark = pytest.mark.anyio
@@ -212,3 +213,74 @@ async def _sleep(seconds: float) -> None:
     import asyncio
 
     await asyncio.sleep(seconds)
+
+
+async def test_a_rename_updates_exactly_the_rewritten_notes_without_a_reindex(
+    golden_work_vault: Path,
+) -> None:
+    """Issue #403: the rename event names the files it changed; the index
+    applies those instead of re-walking and re-hashing the whole vault."""
+    from palaia_hub.index import VaultIndex
+    from palaia_hub.vault import EventBus, VaultEngine
+
+    events: list[str] = []
+    engine = VaultEngine(golden_work_vault, "work", bus=EventBus())
+    await engine.open(purpose="rename test", create=True)
+    index = VaultIndex(
+        engine,
+        embedding=EmbeddingConfig(enabled=False),
+        on_event=lambda name, _data: events.append(name),
+    )
+    await index.open()
+    try:
+        assert events.count("index.reindexed") == 1  # the initial build
+        result = await engine.rename_entity("projects/vault-engine", "Vault Core")
+        assert result.rewritten_links > 0
+
+        assert events.count("index.reindexed") == 1, "a rename must not trigger a full rebuild"
+        with index.db.lock:
+            stale = index.db.conn.execute(
+                "SELECT COUNT(*) AS n FROM relations WHERE target_raw = 'Vault Engine'"
+            ).fetchone()["n"]
+        assert int(stale) == 0
+        assert _relation_row(index, "Vault Core")["target_permalink"] == "projects/vault-core"
+        # The doctor's file↔index drift check agrees the incremental update
+        # left nothing behind.
+        drift = [f for f in await index.verify() if f.code.startswith("index-")]
+        assert drift == []
+    finally:
+        await index.close()
+        await engine.close()
+
+
+async def test_the_startup_build_can_reuse_the_engines_fresh_catalog(
+    golden_work_vault: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #403: `engine.open()` walks the vault; the index's initial build
+    right after it need not walk (and hash) the same files a second time."""
+    from palaia_hub.index import VaultIndex
+    from palaia_hub.vault import EventBus, VaultEngine
+
+    walks = 0
+    original = VaultEngine._refresh_sync
+
+    def counting(self: VaultEngine) -> int:
+        nonlocal walks
+        walks += 1
+        return original(self)
+
+    monkeypatch.setattr(VaultEngine, "_refresh_sync", counting)
+    engine = VaultEngine(golden_work_vault, "work", bus=EventBus())
+    await engine.open(purpose="startup test", create=True)
+    after_open = walks
+    assert after_open >= 1
+
+    index = VaultIndex(engine, embedding=EmbeddingConfig(enabled=False))
+    try:
+        count = await index.open(refresh_catalog=False)
+        assert count == len(engine.catalog) > 0
+        assert walks == after_open, "the initial build walked the vault again"
+        assert [f for f in await index.verify() if f.code.startswith("index-")] == []
+    finally:
+        await index.close()
+        await engine.close()

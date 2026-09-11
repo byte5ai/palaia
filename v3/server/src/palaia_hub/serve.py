@@ -229,7 +229,10 @@ async def build_production_app(
     for record in registry.records():
         engine = await registry.get(record.name)
         index = VaultIndex(engine, on_event=_index_event_hook(event_bus, record.name))
-        await index.open()
+        # `registry.get` just opened the engine, which walked the vault; the
+        # initial build reads from that catalog instead of walking it again
+        # (issue #403).
+        await index.open(refresh_catalog=False)
         indexes[record.name] = index
         # Issue #316: the watcher publishes on the engine's own bus, which the
         # index just subscribed to in `open()` — so an external edit becomes

@@ -525,8 +525,12 @@ class VaultDoctor:
 
     # ---------------------------------------------------------------- reindex
 
-    async def reindex(self, sink: ReindexSink) -> int:
+    async def reindex(self, sink: ReindexSink, *, refresh: bool = True) -> int:
         """Feed every note in the vault to ``sink``; return the note count.
+
+        ``refresh=False`` skips the catalog rebuild and walks the catalog the
+        engine already holds — for the startup build right after
+        :meth:`VaultEngine.open` walked the very same files (issue #403).
 
         The rebuild-from-files path SPEC-104's "index is disposable" acceptance
         criterion depends on: notes are read from disk (never from the
@@ -537,7 +541,8 @@ class VaultDoctor:
         landing at the same moment (issue #331). The walk itself then reads a
         published snapshot, so it cannot observe a half-applied catalog.
         """
-        await self.engine.refresh()
+        if refresh:
+            await self.engine.refresh()
         return await asyncio.to_thread(self._reindex_sync, sink)
 
     def _reindex_sync(self, sink: ReindexSink) -> int:
