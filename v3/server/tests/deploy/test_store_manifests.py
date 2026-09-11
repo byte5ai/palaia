@@ -283,8 +283,13 @@ def test_home_assistant_config_has_the_required_fields() -> None:
     assert config.slug == "palaia"
     assert config.image == PINNED_IMAGE
     # "If you are using a docker image with the image option, this needs
-    # to match the tag" — the docs' own wording for `version`.
-    assert config.version == PINNED_CHANNEL
+    # to match the tag" — the docs' own wording for `version`. Since issue
+    # #394 that tag is the bare release version (v3-release.yml publishes
+    # it), not the `stable` channel: HA offers an update only when this
+    # field changes, so it moves with v3/VERSION.
+    version_file = (STORES_ROOT.parents[1] / "VERSION").read_text(encoding="utf-8").strip()
+    assert config.version == version_file
+    assert config.version != PINNED_CHANNEL
     _assert_no_jargon(config.description, source="home-assistant config.yaml description")
 
 
@@ -296,9 +301,7 @@ def test_home_assistant_evaluation_reaches_a_verdict() -> None:
 # ---------------------------------------------------------------------------
 # Every package: a SUBMIT.md exists and names the real submission target.
 # ---------------------------------------------------------------------------
-@pytest.mark.parametrize(
-    "store", ["umbrel", "casaos", "runtipi", "truenas"]
-)
+@pytest.mark.parametrize("store", ["umbrel", "casaos", "runtipi", "truenas"])
 def test_every_app_store_package_ships_a_submit_doc(store: str) -> None:
     submit = STORES_ROOT / store / "SUBMIT.md"
     assert submit.exists(), f"{store} is missing SUBMIT.md"
