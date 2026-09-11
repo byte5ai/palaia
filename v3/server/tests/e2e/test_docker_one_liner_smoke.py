@@ -198,25 +198,22 @@ def test_container_process_runs_as_the_pinned_non_root_uid(running_container: st
     image's user to 1000:1000 so a bind-mounted /data can be chowned to a
     known number (`server/tests/deploy/test_container_uid.py` pins the
     Dockerfile text; this asserts what the running container reports)."""
-    result = subprocess.run(  # noqa: S603 - fixed argv, no shell
-        ["docker", "exec", running_container, "id", "-u", "-g"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
+    # GNU `id` refuses `-u -g` in one call ("cannot print "only" of more
+    # than one choice"), so the uid and the gid are asked for separately.
     uid = subprocess.run(  # noqa: S603 - fixed argv, no shell
         ["docker", "exec", running_container, "id", "-u"],
         capture_output=True,
         text=True,
         timeout=10,
     )
+    assert uid.returncode == 0, uid.stdout + uid.stderr
     gid = subprocess.run(  # noqa: S603 - fixed argv, no shell
         ["docker", "exec", running_container, "id", "-g"],
         capture_output=True,
         text=True,
         timeout=10,
     )
+    assert gid.returncode == 0, gid.stdout + gid.stderr
     assert (int(uid.stdout.strip()), int(gid.stdout.strip())) == (1000, 1000), (
         uid.stdout,
         gid.stdout,
