@@ -42,7 +42,7 @@ from .models import (
 from .policy import ActiveCaptures
 from .prompt import CURATION_NOTE_PERMALINK, build_prompt
 from .session import SessionRequest, SessionRunner
-from .verify import verify_capture
+from .verify import VerificationScan
 
 logger = logging.getLogger("palaia_hub.curator.runner")
 
@@ -135,8 +135,7 @@ class CuratorRunner:
             capture_id = str(frontmatter.get("capture_id") or "")
             if not capture_id:
                 logger.warning(
-                    "curator: capture %s has no capture_id; skipping (nothing to "
-                    "verify against)",
+                    "curator: capture %s has no capture_id; skipping (nothing to verify against)",
                     entry.path,
                 )
                 continue
@@ -178,14 +177,20 @@ class CuratorRunner:
             await self._audit.run(report)
             return report
         curation_note = await self._curation_note()
+        # Issue #402: one scan of the vault per pass; after each session only
+        # the notes it changed are re-read. `pending_captures` refreshed the
+        # catalog a moment ago, so the scan trusts it.
+        scan = await VerificationScan.build(self._engine, refresh=False)
         for capture in captures:
-            record = await self._curate(capture, curation_note)
+            record = await self._curate(capture, curation_note, scan)
             report.records.append(record)
             report.sessions += 1
         await self._audit.run(report)
         return report
 
-    async def _curate(self, capture: PendingCapture, curation_note: str | None) -> CaptureRecord:
+    async def _curate(
+        self, capture: PendingCapture, curation_note: str | None, scan: VerificationScan
+    ) -> CaptureRecord:
         prompt = build_prompt(
             vault_name=self._engine.name,
             purpose=self._purpose or (self._engine.info().purpose or "a palaia memory vault"),
@@ -211,7 +216,8 @@ class CuratorRunner:
         finally:
             self._active_captures.release(capture.capture_id)
 
-        verification = await verify_capture(self._engine, capture)
+        await scan.update()
+        verification = scan.verify(capture)
         self_report = parse_self_report(session.stdout)
         record = CaptureRecord(
             vault=self._engine.name,
@@ -297,8 +303,7 @@ class CuratorRunner:
                 note = await self._engine.read_note(capture.path)
             except VaultError:
                 logger.warning(
-                    "curator: capture %s vanished before its failure could be "
-                    "recorded",
+                    "curator: capture %s vanished before its failure could be recorded",
                     capture.path,
                 )
                 return
