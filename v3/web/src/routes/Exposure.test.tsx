@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -93,6 +93,41 @@ describe("Exposure", () => {
  * explanatory prose) against the terms rule 0's own Don't/Do table bans
  * from view.
  */
+describe("Exposure — the sign-in switch (issue 374)", () => {
+  const LOCKED_MODE_STATUS: ModeStatus = {
+    ...OPEN_MODE_STATUS,
+    active_mode: "locked",
+    configured_mode: "locked",
+    host: "127.0.0.1",
+    auth_enabled: true,
+    public_url: null,
+    tunnel: null,
+  };
+
+  it("can be saved on its own", async () => {
+    vi.spyOn(api, "mode").mockResolvedValue(LOCKED_MODE_STATUS);
+    const change = vi
+      .spyOn(api, "changeMode")
+      .mockResolvedValue({ ...LOCKED_MODE_STATUS, auth_enabled: false });
+
+    mount();
+    const save = await screen.findByRole("button", { name: /no changes to save/i });
+    expect(save).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("switch", { name: /require sign-in/i }));
+
+    const armed = screen.getByRole("button", { name: /save this access mode/i });
+    expect(armed).toBeEnabled();
+    fireEvent.click(armed);
+
+    await waitFor(() =>
+      expect(change).toHaveBeenCalledWith({ mode: "locked", auth_enabled: false }),
+    );
+    // Saved: the switch's new position is the baseline again.
+    expect(await screen.findByRole("button", { name: /no changes to save/i })).toBeDisabled();
+  });
+});
+
 describe("Exposure wizard copy — no jargon in the surface (system.md §3 rule 0)", () => {
   const BANNED = [
     /\boidc\b/i,

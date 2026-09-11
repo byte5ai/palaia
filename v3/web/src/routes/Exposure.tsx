@@ -70,6 +70,11 @@ function errorDetail(err: unknown): string {
   return "Could not reach the hub.";
 }
 
+/** What the "Require sign-in" switch reflects for a saved status. */
+function signInRequired(status: ModeStatus): boolean {
+  return status.auth_enabled || status.oauth_enabled;
+}
+
 function copy(text: string, toast: ReturnType<typeof useToast>, what: string) {
   navigator.clipboard.writeText(text).then(
     () => toast.show(`${what} copied.`),
@@ -93,7 +98,7 @@ export function Exposure() {
         if (cancelled) return;
         setStatus(body);
         setDraftMode(body.configured_mode as Mode);
-        setRequireSignIn(body.auth_enabled || body.oauth_enabled);
+        setRequireSignIn(signInRequired(body));
       })
       .catch(() => {
         // No hub reachable — this page just stays on its loading state
@@ -113,6 +118,7 @@ export function Exposure() {
         auth_enabled: draftMode === "locked" ? requireSignIn : true,
       });
       setStatus(body);
+      setRequireSignIn(signInRequired(body));
       // Issue issue 343: the shell's footer shows the mode the hub is *running*.
       if (isHubMode(body.active_mode)) notifyModeChanged(body.active_mode);
       toast.show(
@@ -137,7 +143,11 @@ export function Exposure() {
     );
   }
 
-  const dirty = draftMode !== status.configured_mode;
+  // Issue 374: the sign-in switch is a change too — it used to leave the
+  // button at "No changes to save" when toggled on its own.
+  const dirty =
+    draftMode !== status.configured_mode ||
+    (draftMode === "locked" && requireSignIn !== signInRequired(status));
   const showTunnel = draftMode === "cloud" || draftMode === "open";
   const showChecklist = draftMode === "open";
 
