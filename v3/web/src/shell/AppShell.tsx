@@ -1,9 +1,10 @@
-import { useCallback, useEffect } from "react";
+import { Suspense, useCallback, useEffect } from "react";
 import { Outlet, useLocation, useMatches, useNavigate } from "react-router-dom";
 
 import { useEventStream } from "../lib/events";
 import { useHubMode } from "../lib/mode";
 import { initialsFor, useSession } from "../lib/session";
+import { ScreenLoading } from "../routes/ScreenLoading";
 import { NAV_GROUPS } from "./navConfig";
 import { Sidebar } from "./Sidebar";
 import { type HealthState, Topbar } from "./Topbar";
@@ -21,7 +22,10 @@ function currentPageTitle(pathname: string): string {
   return "palaia";
 }
 
-function healthStateFrom(status: string | undefined, connection: string): HealthState {
+function healthStateFrom(
+  status: string | undefined,
+  connection: string,
+): HealthState {
   if (connection !== "open") return "connecting";
   if (status === "ok") return "ok";
   if (status === "degraded") return "warn";
@@ -49,7 +53,10 @@ export function AppShell() {
   // Issue 380: the topbar's search used to be a button with no handler.
   // It, and ⌘K / Ctrl+K anywhere in the shell, open the explorer with its
   // search box focused — the one full-text search the dashboard has.
-  const openSearch = useCallback(() => navigate(EXPLORER_SEARCH_PATH), [navigate]);
+  const openSearch = useCallback(
+    () => navigate(EXPLORER_SEARCH_PATH),
+    [navigate],
+  );
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -76,7 +83,10 @@ export function AppShell() {
         />
         <div className="content">
           <UpdateBanner />
-          <Outlet context={stream} />
+          {/* Screens load lazily (issue 406); the shell stays put meanwhile. */}
+          <Suspense fallback={<ScreenLoading />}>
+            <Outlet context={stream} />
+          </Suspense>
         </div>
       </div>
     </div>

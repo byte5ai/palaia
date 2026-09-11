@@ -1,20 +1,24 @@
+import { Suspense } from "react";
 import { createBrowserRouter, type RouteObject } from "react-router-dom";
 
 import { AppShell } from "../shell/AppShell";
 import { NAV_GROUPS } from "../shell/navConfig";
-import { Agents } from "./Agents";
-import { Automations } from "./Automations";
-import { Clients } from "./Clients";
 import { ComingSoon } from "./ComingSoon";
-import { Explorer } from "./Explorer";
-import { Exposure } from "./Exposure";
 import { Home } from "./Home";
-import { Marketplace } from "./Marketplace";
-import { Onboarding } from "./onboarding/Onboarding";
-import { ReviewQueue } from "./ReviewQueue";
+import {
+  Agents,
+  Automations,
+  Clients,
+  Explorer,
+  Exposure,
+  Marketplace,
+  Onboarding,
+  ReviewQueue,
+  Settings,
+  ToolProfiles,
+} from "./lazyScreens";
 import { NotFound, RouteError } from "./RouteError";
-import { Settings } from "./Settings";
-import { ToolProfiles } from "./ToolProfiles";
+import { ScreenLoading } from "./ScreenLoading";
 
 // Paths SPEC-110/SPEC-201/SPEC-204/SPEC-205/SPEC-305/SPEC-304 build a real
 // screen for — everything else in NAV_GROUPS still falls through to
@@ -45,7 +49,15 @@ export const routes: RouteObject[] = [
   // The onboarding wizard is deliberately outside AppShell: it is a
   // full-page flow with its own rail (onboarding.html's `.wiz`), not a
   // destination inside the app's own navigation.
-  { path: "/onboarding", element: <Onboarding />, errorElement: <RouteError /> },
+  {
+    path: "/onboarding",
+    element: (
+      <Suspense fallback={<ScreenLoading />}>
+        <Onboarding />
+      </Suspense>
+    ),
+    errorElement: <RouteError />,
+  },
   {
     path: "/",
     element: <AppShell />,

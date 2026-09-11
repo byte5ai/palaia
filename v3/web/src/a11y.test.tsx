@@ -27,7 +27,8 @@ async function expectNoSeriousViolations(): Promise<void> {
     rules: { "color-contrast": { enabled: false } },
   });
   const seriousOrWorse = results.violations.filter(
-    (violation) => violation.impact === "critical" || violation.impact === "serious",
+    (violation) =>
+      violation.impact === "critical" || violation.impact === "serious",
   );
   if (seriousOrWorse.length > 0) {
     const details = seriousOrWorse
@@ -57,12 +58,16 @@ describe("app shell accessibility", () => {
     });
 
     const seriousOrWorse = results.violations.filter(
-      (violation) => violation.impact === "critical" || violation.impact === "serious",
+      (violation) =>
+        violation.impact === "critical" || violation.impact === "serious",
     );
 
     if (seriousOrWorse.length > 0) {
       const details = seriousOrWorse
-        .map((violation) => `${violation.id} (${violation.impact}): ${violation.help}`)
+        .map(
+          (violation) =>
+            `${violation.id} (${violation.impact}): ${violation.help}`,
+        )
         .join("\n");
       throw new Error(`axe-core found violations:\n${details}`);
     }
@@ -105,7 +110,13 @@ describe("feature screens accessibility (issue 383)", () => {
       </ThemeProvider>,
     );
     // Let the screen settle on its answered/failed state before scanning.
-    await waitFor(() => expect(document.body.textContent?.length ?? 0).toBeGreaterThan(0));
+    await waitFor(() =>
+      expect(document.body.textContent?.length ?? 0).toBeGreaterThan(0),
+    );
+    // Screens load lazily (issue 406): scan the screen, not its placeholder.
+    await waitFor(() =>
+      expect(document.body.textContent).not.toContain("Loading this screen"),
+    );
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     await expectNoSeriousViolations();
