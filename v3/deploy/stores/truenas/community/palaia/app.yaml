@@ -29,6 +29,16 @@ app_version: "0.1.0"
 # bumped when this package changes, independently of app_version.
 version: "1.0.0"
 human_version: "0.1.0_1"
+# The shared template library from truenas/apps' own `library/` directory
+# (issue #400). Both values are read off that repository, not guessed:
+# `library/hashes.yaml` @ master maps 2.3.13 to this digest, and shipped
+# community apps carry the same pair (e.g. ix-dev/community/arcane).
+# Caveat before submitting: declaring the library is not the same as using
+# it — `templates/docker-compose.yaml` here is still hand-written compose
+# rather than the `ix_lib.base.render.Render` form every listed app uses.
+# See SUBMIT.md.
+lib_version: 2.3.13
+lib_version_hash: 644cb2c53051941e9128fbd4d666094573af5c57a62c037bc56820d25427e454
 capabilities: []
 # The image runs as its own non-root `palaia` user, pinned to uid/gid 1000
 # (v3/deploy/Dockerfile, issue #329) — the same pair ix_values.yaml feeds

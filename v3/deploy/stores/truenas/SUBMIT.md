@@ -27,11 +27,23 @@ verified one. Concretely, before submitting:
   *maintainer* contact, not a security one: there is no security mailbox,
   and reports go through GitHub private vulnerability reporting
   (`v3/SECURITY.md`).
-- **`app.yaml`**: no `lib_version`/`lib_version_hash` is set. Those pin a
-  shared template library version from `truenas/apps`' own `library/`
-  directory — fill them in from whatever that repo's current library
-  version actually is (their contributor docs cover this); guessing a
-  hash here would be worse than leaving it out.
+- **`app.yaml` → `lib_version`/`lib_version_hash`** are now set to
+  `2.3.13` / `644cb2c5…27e454` (issue #400). These were read off
+  `truenas/apps` itself, not guessed: `library/hashes.yaml` on `master`
+  maps `2.3.13` to exactly that digest, and it is the pair currently
+  shipped apps carry (`ix-dev/community/arcane/app.yaml`). Re-check both
+  before the PR — the library moves, and their CI compares the hash
+  against the version you name.
+  **But declaring the library is not the same as using it:**
+  `templates/docker-compose.yaml` here is still hand-written compose
+  (`{{ ix_values.image.repository }}` and friends), while every listed
+  community app renders through the library instead —
+  `{% set tpl = ix_lib.base.render.Render(values) %}`, then
+  `tpl.add_container(...)`, `c1.add_storage(...)`,
+  `tpl.deps.perms(...)`, `{{ tpl.render() | tojson }}`. Porting this
+  template to that API is the real remaining work on this package, and it
+  is also what gets the dataset-permissions step below for free. Do it
+  against their repo's own render tooling, not from this description.
 - **`app.yaml`**: `run_as_context` declares uid/gid `1000:1000` — the pair
   `v3/deploy/Dockerfile` pins for its `palaia` user (issue #329), and the
   pair `ix_values.yaml` feeds the compose template's `user:`. Their schema
