@@ -58,9 +58,10 @@ ships in `3.0.0-rc1`; the full list is in [`CHANGELOG.md`](../CHANGELOG.md).
   one-click marketplace in the dashboard, plus support for any
   [external MCP server](external-servers.md) with its credentials in an encrypted
   store: entered once, never again in a client config file.
-- **An event bus with a rules editor.** A new note, a recall, a message, an idle
+- **An event bus with a rules editor.** A new note, a capture, a message, an idle
   session: hook any of it to webhooks, notifications, tool runs or memory writes
-  ([events](events.md)).
+  ([events](events.md)). Recall is not on the bus — retrieval happens when an agent
+  calls the `recall` tool, and emits no event today.
 - **An SDK for add-on authors**, with local testing and a submission flow
   ([`sdk/`](../sdk/README.md)).
 
