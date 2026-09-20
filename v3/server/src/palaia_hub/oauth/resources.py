@@ -36,6 +36,14 @@ path the gateway mounts a profile at (``/mcp/<profile>`` — see
 its resource indicator from the endpoint URL it is talking to lands there.
 Nothing outside the issuer's own origin (and base path, if the issuer has
 one) is ever accepted.
+
+That canonical audience is an ``aud`` claim, though, not a URL anyone
+dials. What RFC 9728 discovery advertises is :meth:`ResourceRegistry.
+resource_url` — the gateway's literal mount URL — because a client
+validates the metadata document's ``resource`` against the endpoint it
+connected to (issue #232). The two are resolved onto one another by
+:meth:`ResourceRegistry.resolve`, so echoing the advertised value back as
+an RFC 8707 ``resource`` parameter still yields a canonically-scoped token.
 """
 
 from __future__ import annotations
@@ -114,6 +122,31 @@ class ResourceRegistry:
         if profile not in self._profiles:
             raise KeyError(f"no MCP profile {profile!r} on this hub")
         return f"{self.issuer}/{profile}"
+
+    def resource_url(self, profile: str) -> str:
+        """The URL clients actually connect to for ``profile``.
+
+        This is what a protected-resource metadata document advertises as
+        its ``resource`` (RFC 9728 §2): the identifier of the resource the
+        document describes, which MCP clients check against the endpoint
+        they dialled. The gateway mounts a profile at ``/mcp/<profile>``
+        and serves it at the mount root (see
+        :func:`palaia_hub.gateway.build.build_gateway`), so that URL is
+        ``<issuer>/mcp/<profile>/``.
+
+        Deliberately *not* :meth:`audience`: reporting the canonical
+        audience here made ``claude mcp get``/``claude mcp list`` print
+        "Failed to connect" for a perfectly working profile, because the
+        advertised resource never equalled the mount URL (issue #232). The
+        ``aud`` claim keeps its canonical shape — :meth:`resolve` maps this
+        URL onto it like any other indicator a client sends.
+
+        Raises:
+            KeyError: ``profile`` is not served by this hub.
+        """
+        if profile not in self._profiles:
+            raise KeyError(f"no MCP profile {profile!r} on this hub")
+        return f"{self.issuer}/{_MCP_SEGMENT}/{profile}/"
 
     def audiences(self) -> dict[str, str]:
         """``{profile: canonical audience}`` for every served profile."""

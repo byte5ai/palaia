@@ -7,16 +7,6 @@ This page covers real, observed issues — not a generic "check your
 connection" list. If something else goes wrong, the exact behavior matters
 more than a guess, so start with what you actually saw.
 
-## "It says Failed to connect, but the connection actually works"
-
-If you check a newly added connection's status *before* signing in, Claude
-Code's own status check can report a scary-looking failure — an address
-mismatch — even though nothing is actually broken. Sign in (or finish
-whatever setup step comes next for that tool), then check the status again:
-it flips to connected. This is a cosmetic bug in how the status check
-reports itself before sign-in exists at all, not a sign that anything needs
-fixing on your end.
-
 ## "Sign-in fails immediately, every time, for every AI tool"
 
 If your hub runs somewhere that routes its own outbound internet traffic

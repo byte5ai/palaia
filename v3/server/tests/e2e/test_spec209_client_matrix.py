@@ -20,11 +20,13 @@ Three things, building on each other:
    OAuth-protected profile. Purely local — no outbound network beyond the
    loopback hub.
 
-2. :func:`test_claude_mcp_get_reports_failed_to_connect_before_any_token_exists`
-   documents byte5ai/palaia#232: ``claude mcp get``/``list`` runs a
-   connectivity probe that fails a strict RFC 9728 ``resource``-field check
-   palaia's canonical audience shape never satisfies, reporting a scary
-   "Failed to connect" on a hub that is otherwise working fine. Also local.
+2. :func:`test_claude_mcp_get_does_not_report_a_resource_mismatch` covers
+   byte5ai/palaia#232 and its fix: ``claude mcp get``/``list`` run a
+   connectivity probe with a strict RFC 9728 ``resource``-field check that
+   palaia's canonical audience shape never satisfied, reporting a scary
+   "Failed to connect … does not match expected" on a hub that was working
+   fine. Discovery now advertises the profile's literal mount URL, so the
+   mismatch is gone. Also local.
 
 3. :func:`test_claude_code_cli_native_oauth_login_completes_on_the_default_path`
    covers byte5ai/palaia#233 and its fix: Claude Code's real, published
@@ -395,15 +397,29 @@ def test_a_real_oauth_token_lets_claude_code_round_trip_write_search_read(
         _run_claude(["mcp", "remove", server_name, "-s", "local"], cwd=work_dir)
 
 
-def test_claude_mcp_get_reports_failed_to_connect_before_any_token_exists(
+def test_claude_mcp_get_does_not_report_a_resource_mismatch(
     oauth_hub: int, tmp_path: Path
 ) -> None:
-    """byte5ai/palaia#232: a real, but non-blocking, status-display bug."""
+    """byte5ai/palaia#232, fixed: the advertised `resource` is the mount URL.
+
+    Before the fix, ``claude mcp get`` on a freshly added OAuth profile (no
+    token stored yet) printed ``Failed to connect`` with ``Protected
+    resource <issuer>/default does not match expected
+    <issuer>/mcp/default/``, because RFC 9728 discovery advertised the
+    canonical ``aud`` audience instead of the URL the client had dialled.
+    The probe still cannot *connect* without a token — what must be gone is
+    the bogus mismatch verdict.
+    """
     port = oauth_hub
     server_name = "palaia-spec209-status"
     work_dir = tmp_path / "claude-project-status"
     work_dir.mkdir()
     mcp_url = f"http://127.0.0.1:{port}/mcp/default/"
+
+    metadata = httpx.get(
+        f"http://127.0.0.1:{port}/.well-known/oauth-protected-resource/default", timeout=10.0
+    ).json()
+    assert metadata["resource"] == mcp_url, metadata
 
     add_result = _run_claude(
         ["mcp", "add", "--transport", "http", server_name, mcp_url, "--scope", "local"],
@@ -413,9 +429,7 @@ def test_claude_mcp_get_reports_failed_to_connect_before_any_token_exists(
 
     try:
         get_result = _run_claude(["mcp", "get", server_name], cwd=work_dir)
-        assert "Failed to connect" in get_result.stdout, get_result.stdout
-        assert "does not match expected" in get_result.stdout, get_result.stdout
-        assert f"http://127.0.0.1:{port}/mcp/default/" in get_result.stdout, get_result.stdout
+        assert "does not match expected" not in get_result.stdout, get_result.stdout
     finally:
         _run_claude(["mcp", "remove", server_name, "-s", "local"], cwd=work_dir)
 

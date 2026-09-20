@@ -266,15 +266,23 @@ class AuthorizationServer:
         }
 
     def protected_resource_metadata(self, profile: str) -> dict[str, object]:
-        """RFC 9728 protected-resource metadata for one MCP profile."""
+        """RFC 9728 protected-resource metadata for one MCP profile.
+
+        ``resource`` is the profile's literal mount URL, not its canonical
+        ``aud`` audience — clients validate it against the endpoint they
+        connected to (see :meth:`ResourceRegistry.resource_url` and issue
+        #232). ``resolve()`` accepts it back unchanged, so a client that
+        echoes it as its RFC 8707 ``resource`` parameter still gets a token
+        scoped to the canonical audience.
+        """
         try:
-            audience = self.resources.audience(profile)
+            resource = self.resources.resource_url(profile)
         except KeyError as exc:
             raise OAuthError(
                 "invalid_target", f"this hub serves no MCP profile named {profile!r}."
             ) from exc
         return {
-            "resource": audience,
+            "resource": resource,
             "authorization_servers": [self.issuer],
             "scopes_supported": list(self._profile_scopes.get(profile, ())),
             "bearer_methods_supported": ["header"],
