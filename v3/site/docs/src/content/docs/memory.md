@@ -22,6 +22,28 @@ every possible relationship. The dashboard's explorer shows a note alongside
 the handful of others it's directly connected to, so you can follow a thread
 without getting lost in everything else that's ever been saved.
 
+## Open them in your own editor, today
+
+Because a memory is just a folder of Markdown files, you can point a
+note-taking app straight at it — Obsidian opens the folder as a working
+library with no export, no conversion and no plugin, and the links between
+notes light up in its graph the way they would in any other library. Any
+other Markdown editor works the same way; so does a plain text editor, and
+so does `grep`.
+
+Two things worth knowing if you do:
+
+- **Edit freely.** palaia watches the folder, so a note you change in
+  Obsidian is picked up and searchable within moments — you are not editing
+  a copy.
+- **It is not a second backup.** Reading the folder from another app is
+  convenient, not protective: the same disk failure takes both. Use
+  [Back up & restore](/backup-restore/) for that.
+
+The folder lives wherever your hub keeps its data (on the usual setups, a
+`vaults/` directory inside it); the dashboard shows the exact path for each
+memory.
+
 ## How something you say becomes a note
 
 When a connected AI tool saves something on your behalf — a decision, a

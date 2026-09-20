@@ -20,7 +20,7 @@ import asyncio
 import getpass
 import json
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import uvicorn
@@ -28,8 +28,17 @@ import uvicorn
 from .auth import TokenError, TokenStore
 from .auth.scopes import vault_scope
 from .backup import archive_filename, iter_archive_bytes
+from .backup_targets import BackupTarget, BackupTargetError, run_target
+from .backup_targets import build_targets as build_backup_targets
 from .compose_update import DEFAULT_IMAGE, rewrite_compose_channel
-from .config import ConfigError, HubConfig, apply_config_overrides, load_config, palaia_home
+from .config import (
+    ConfigError,
+    HubConfig,
+    apply_config_overrides,
+    config_file_path,
+    load_config,
+    palaia_home,
+)
 from .curator import CURATOR_PROFILE_PATH, ApplyReport, CuratorRunReport, ProposalApplier
 from .curator.wiring import TOKEN_ENV, CuratorWiring, build_curator
 from .doctor import (
@@ -122,7 +131,8 @@ def _build_parser() -> argparse.ArgumentParser:
             "Write everything this hub has saved — every vault, config, sign-in and "
             "connection setup, and the keys for connected tools — as one tar.gz on this "
             "machine. The same archive the dashboard's Back up action downloads; this is "
-            "the way to take one on a hub whose dashboard has no sign-in turned on."
+            "the way to take one on a hub whose dashboard has no sign-in turned on. With "
+            "--target, writes it into a destination configured in config.yaml instead."
         ),
     )
     backup_parser.add_argument(
@@ -132,6 +142,28 @@ def _build_parser() -> argparse.ArgumentParser:
             "Where to write the archive (a file, or a directory to put a timestamped file "
             "in). Default: a timestamped file in the current directory."
         ),
+    )
+    backup_parser.add_argument(
+        "--target",
+        dest="targets",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help=(
+            "Write to a destination configured under `backup.targets` in config.yaml "
+            "instead (repeatable), applying its retention. Use --list-targets to see "
+            "which are configured."
+        ),
+    )
+    backup_parser.add_argument(
+        "--all-targets",
+        action="store_true",
+        help="Write to every configured destination, in config.yaml order.",
+    )
+    backup_parser.add_argument(
+        "--list-targets",
+        action="store_true",
+        help="List the configured destinations and exit, writing nothing.",
     )
 
     import_parser = subparsers.add_parser("import", help="Import notes from another store")
@@ -813,10 +845,102 @@ def _backup(out: str | None) -> Path:
     return target
 
 
+def _backup_command(args: argparse.Namespace) -> None:
+    """``palaia-hub backup`` — to a file here, or to a configured target.
+
+    Without ``--target``/``--all-targets`` this is exactly what it has
+    always been (issue #317): one archive, written where ``--out`` says.
+    With them it runs the destinations from ``backup.targets`` in
+    ``config.yaml`` (issue #297) — the same code path, and the same events,
+    the dashboard's run action uses, so a hub whose dashboard has no
+    sign-in has the full feature too.
+    """
+    if not (args.list_targets or args.all_targets or args.targets):
+        # The plain path, untouched — and deliberately reached without
+        # loading config.yaml, which `load_config` would *create* from the
+        # template if it were missing. Taking a backup must not write into
+        # the home it is about to archive.
+        _backup(args.out)
+        return
+    if args.out is not None:
+        raise ConfigError(
+            "backup: --out writes one archive to a path you name, --target writes to a "
+            "destination configured in config.yaml. Fix: pass one or the other."
+        )
+    targets = build_backup_targets(load_config().backup)
+    if args.list_targets:
+        _backup_list_targets(targets)
+        return
+    _backup_to_targets(targets, requested=args.targets, run_all=args.all_targets)
+
+
+def _backup_list_targets(targets: Mapping[str, BackupTarget]) -> None:
+    if not targets:
+        print(
+            "No backup destinations are configured. Add them under `backup.targets` in "
+            f"{config_file_path()} — see that file's own comments for the shape."
+        )
+        return
+    for target in targets.values():
+        described = target.describe()
+        keep = described.get("keep_last")
+        retention = "keeps every archive" if keep is None else f"keeps the newest {keep}"
+        print(f"{target.name}  {target.kind}  {target.destination}  ({retention})")
+
+
+def _backup_to_targets(
+    targets: Mapping[str, BackupTarget], *, requested: Sequence[str], run_all: bool
+) -> None:
+    """Run the named targets (or all of them), reporting each outcome.
+
+    Every requested target is attempted even after one fails — a hub with a
+    local disk and an unmounted share should still get the local copy — and
+    the command exits non-zero if any of them did not complete, so a cron
+    entry or a systemd timer wrapping this notices.
+    """
+    if run_all and not targets:
+        raise ConfigError(
+            "backup --all-targets: no backup destinations are configured. Fix: add them "
+            f"under `backup.targets` in {config_file_path()}, or use --out."
+        )
+    selected = list(targets) if run_all else list(dict.fromkeys(requested))
+    unknown = [name for name in selected if name not in targets]
+    if unknown:
+        known = ", ".join(sorted(targets)) or "none are configured"
+        raise ConfigError(
+            f"backup: no destination named {unknown[0]!r} (configured: {known}). Fix: add "
+            f"it under `backup.targets` in {config_file_path()}, or correct the name."
+        )
+    home = palaia_home()
+    failed = 0
+    for name in selected:
+        try:
+            run = run_target(targets[name], home)
+        except BackupTargetError as exc:
+            failed += 1
+            print(f"palaia-hub: {exc}", file=sys.stderr)
+            continue
+        pruned = f", deleted {len(run.pruned)} older" if run.pruned else ""
+        print(
+            f"Wrote {run.destination}/{run.artifact} ({run.bytes_written} bytes{pruned}). "
+            "This file can act as your hub — anyone who has it can read everything in it, "
+            "so keep that destination as private as a password."
+        )
+    if failed:
+        raise SystemExit(1)
+
+
 #: Caller-facing failures every subcommand can hit while opening its
 #: stores: a config.yaml that does not validate, a gateway shape the config
-#: cannot resolve, a vault named on the command line that is not registered.
-_USER_FACING_ERRORS = (ConfigError, GatewaySettingsError, VaultConfigError, VaultNotFoundError)
+#: cannot resolve, a vault named on the command line that is not registered,
+#: a backup destination that could not be written (issue #297).
+_USER_FACING_ERRORS = (
+    ConfigError,
+    GatewaySettingsError,
+    VaultConfigError,
+    VaultNotFoundError,
+    BackupTargetError,
+)
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -865,7 +989,7 @@ def _dispatch(args: argparse.Namespace) -> None:
     elif args.command == "update":
         _update_compose(args.channel, args.file)
     elif args.command == "backup":
-        _backup(args.out)
+        _backup_command(args)
 
 
 if __name__ == "__main__":
