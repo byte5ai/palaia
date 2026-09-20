@@ -33,6 +33,10 @@ Restart the gateway after changing config:
 openclaw gateway restart
 ```
 
+Running OpenClaw's native Active Memory plugin as well? See
+[OpenClaw Active Memory + palaia](../../docs/openclaw-active-memory.md) for how the two
+arrangements differ and which one to pick.
+
 ### Plugin Options
 
 All options are optional — sensible defaults are used:
