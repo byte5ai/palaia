@@ -47,7 +47,7 @@ All options are optional — sensible defaults are used:
         tier: "hot",                      // default: "hot" (hot|warm|all)
         maxResults: 10,                   // default: 10
         timeoutMs: 3000,                  // default: 3000
-        memoryInject: false,              // default: false (inject HOT into context)
+        memoryInject: true,               // default: true (inject HOT into context)
         maxInjectedChars: 4000,           // default: 4000
       }
     }
@@ -100,8 +100,11 @@ memory_write({ content: "Important finding", scope: "team", tags: ["project-x"] 
 - **WAL-backed writes** — Crash-safe, recovers on startup
 - **Tier routing** — HOT → WARM → COLD with automatic decay
 - **Scope isolation** — private, team, shared:X, public
-- **BM25 search** — Fast local search, no external API needed
-- **HOT memory injection** — Opt-in: inject active memory into agent context
+- **Hybrid search** — BM25 keyword + semantic embeddings, ranked together; BM25
+  alone still works when no embedding provider is available, so no external API
+  is required
+- **HOT memory injection** — On by default: active memory is injected into agent
+  context (`memoryInject: false` turns it off)
 - **Auto binary detection** — Finds `palaia` in PATH, pipx, or venv
 
 ## Architecture
