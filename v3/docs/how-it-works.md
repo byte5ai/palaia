@@ -22,6 +22,12 @@ ships in `3.0.0-rc1`; the full list is in [`CHANGELOG.md`](../CHANGELOG.md).
   recall, graph traversal ("continue where we left off"), and context assembly that
   respects a token budget. Embeddings are optional and local; without them, search
   falls back to text-only instead of breaking.
+- **Looking something up costs no model call.** Recall is an index query — full-text,
+  vectors, and a rank fusion over the two — not a second AI deciding what to fetch.
+  There is no extra API request and no token bill beyond the text you get back, and
+  once the local embedding model is cached, it keeps working with the network off.
+  (Filing what an agent learned is the other half, and that one *does* use a model:
+  the curator, asynchronously, off the request path.)
 - **An inbox and a curator.** Agents drop what they learn mid-work without deciding
   where it belongs; an asynchronous curator files, merges and de-duplicates it.
   Adding knowledge is autonomous; rewriting or retiring existing notes only ever
