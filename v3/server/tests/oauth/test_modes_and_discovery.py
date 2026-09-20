@@ -193,8 +193,11 @@ async def test_each_profile_has_its_own_protected_resource_document(
             beta = await http.get("/.well-known/oauth-protected-resource/beta")
             missing = await http.get("/.well-known/oauth-protected-resource/nope")
 
-    assert alpha.json()["resource"] == harness.audience("alpha")
-    assert beta.json()["resource"] == harness.audience("beta")
+    # The advertised resource is the profile's mount URL, which is what a
+    # client compares against the endpoint it dialled — issue #232.
+    assert alpha.json()["resource"] == f"{harness.server.issuer}/mcp/alpha/"
+    assert alpha.json()["resource"] == harness.resource_url("alpha")
+    assert beta.json()["resource"] == harness.resource_url("beta")
     assert alpha.json()["resource"] != beta.json()["resource"]
     assert alpha.json()["authorization_servers"] == [harness.server.issuer]
     assert alpha.json()["bearer_methods_supported"] == ["header"]

@@ -102,6 +102,9 @@ class Harness:
     def audience(self, profile: str) -> str:
         return self.resources.audience(profile)
 
+    def resource_url(self, profile: str) -> str:
+        return self.resources.resource_url(profile)
+
 
 def build_harness(
     home: Path,

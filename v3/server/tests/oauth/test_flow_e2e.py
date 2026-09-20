@@ -199,7 +199,13 @@ async def test_dcr_client_completes_the_whole_flow_and_calls_a_tool(harness: Har
         async with scripted.http:
             metadata_url = await scripted.discover_from_401("alpha")
             resource_metadata = await scripted.protected_resource_metadata(metadata_url)
-            assert resource_metadata["resource"] == harness.audience("alpha")
+            # The advertised resource is the endpoint's own URL (issue #232),
+            # and it still resolves to the canonical audience below — the
+            # `resource=` this flow sends is exactly this string.
+            assert resource_metadata["resource"] == harness.resource_url("alpha")
+            assert harness.resources.resolve(str(resource_metadata["resource"])) == (
+                harness.audience("alpha")
+            )
             assert resource_metadata["authorization_servers"] == [harness.server.issuer]
 
             as_metadata = await scripted.authorization_server_metadata(

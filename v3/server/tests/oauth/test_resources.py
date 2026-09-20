@@ -94,6 +94,35 @@ def test_issuer_base_path_is_honored_on_both_sides() -> None:
         proxied.resolve("https://example.com/work")
 
 
+def test_advertised_resource_is_the_mount_url_not_the_audience(
+    registry: ResourceRegistry,
+) -> None:
+    """Issue #232: `claude mcp get` compares it against the URL it dialled."""
+    assert registry.resource_url("work") == "https://hub.test/mcp/work/"
+    assert registry.resource_url("work") != registry.audience("work")
+
+
+def test_the_advertised_resource_resolves_back_to_the_canonical_audience(
+    registry: ResourceRegistry,
+) -> None:
+    for profile in registry.profiles:
+        assert registry.resolve(registry.resource_url(profile)) == registry.audience(profile)
+
+
+def test_the_advertised_resource_of_a_proxied_hub_keeps_the_base_path() -> None:
+    proxied = ResourceRegistry("https://example.com/palaia", ["work"])
+
+    assert proxied.resource_url("work") == "https://example.com/palaia/mcp/work/"
+    assert proxied.resolve(proxied.resource_url("work")) == proxied.audience("work")
+
+
+def test_no_advertised_resource_for_a_profile_this_hub_does_not_serve(
+    registry: ResourceRegistry,
+) -> None:
+    with pytest.raises(KeyError):
+        registry.resource_url("nope")
+
+
 def test_protected_resource_metadata_url_follows_rfc_9728(registry: ResourceRegistry) -> None:
     assert registry.metadata_url("work") == (
         "https://hub.test/.well-known/oauth-protected-resource/work"

@@ -106,11 +106,11 @@ per-tool scope enforcement both work end to end with the actual CLI as the
 MCP client — SPEC-203's engine and SPEC-209's client both proven together,
 over a real socket.
 
-### 2.2 A real, but non-blocking, status-display bug — filed as #232
+### 2.2 A real, but non-blocking, status-display bug — filed as #232, now fixed
 
-`test_claude_mcp_get_reports_failed_to_connect_before_any_token_exists`:
-before any token exists for a profile, `claude mcp get <name>` runs its own
-connectivity probe and reports:
+`test_claude_mcp_get_does_not_report_a_resource_mismatch`: before the fix,
+with no token yet stored for a profile, `claude mcp get <name>` ran its own
+connectivity probe and reported:
 
 ```
 Status: × Failed to connect
@@ -118,10 +118,10 @@ Issue: Protected resource http://127.0.0.1:<port>/default does not match
        expected http://127.0.0.1:<port>/mcp/default/ (or origin)
 ```
 
-Root cause: palaia's canonical audience shape
-(`palaia_hub.oauth.resources.ResourceRegistry.audience` — deliberately
+Root cause: the RFC 9728 protected-resource document advertised palaia's
+canonical audience shape (`ResourceRegistry.audience` — deliberately
 `<issuer>/<profile>`, fixing a named production incident, see that
-module's docstring) never equals the gateway's actual mount URL,
+module's docstring), which never equals the gateway's actual mount URL,
 `<issuer>/mcp/<profile>/`. Confirmed **not** a login blocker — §2.3 logs in
 against the exact same profile moments later and `mcp get` then reports
 `√ Connected` for it. Filed as
@@ -129,6 +129,12 @@ against the exact same profile moments later and `mcp get` then reports
 UX/trust issue (a user who checks status before signing in sees a
 scary-sounding, wrong verdict on a hub that works fine), not a functional
 one.
+
+**Fix:** discovery now advertises `ResourceRegistry.resource_url` — the
+literal mount URL the client dialled — while the `aud` claim keeps its
+canonical shape. `resolve()` maps the advertised value back onto the
+canonical audience, so a client that echoes it as its RFC 8707 `resource`
+parameter still receives an unchanged, canonically-scoped token.
 
 ### 2.3 The default-path login blocker — filed as #233, now fixed
 
