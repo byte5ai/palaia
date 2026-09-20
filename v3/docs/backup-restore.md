@@ -3,7 +3,9 @@
 > **Normative.** Implements [SPEC-604](../specs/SPEC-604-backup-restore.md):
 > `GET /api/backup` (`server/src/palaia_hub/backup.py`,
 > `server/src/palaia_hub/backup_api.py`), the dashboard's "Back up" action
-> (`web/src/routes/Home.tsx`), and the offline restore path documented here.
+> (`web/src/routes/Home.tsx`), and the offline restore path documented here
+> — plus the first of issue #297's **backup targets**
+> (`server/src/palaia_hub/backup_targets.py`), §5 below.
 > The user-facing version of this page (no repository-internal terms) is
 > [Back up & restore](../site/docs/src/content/docs/backup-restore.md) on
 > the docs site.
@@ -153,7 +155,98 @@ grew there naturally.
 - The dashboard's "Back up" button carries the warning in plain language:
   *this file can act as your hub — store it like you would a password.*
 
-## 5. Verifying this yourself
+## 5. Backup targets (issue #297)
+
+SPEC-604's floor needs a person at either end: a browser session for the
+download, a shell for `palaia-hub backup`. The owner decision on 2026-09-01
+is that a hub must also write its archive **itself**, into a destination
+named once — starting with a local directory, "which must always work".
+
+### 5.1 The abstraction
+
+`server/src/palaia_hub/backup_targets.py`. A target declares two class-level
+facts about what it moves and implements one method that moves it:
+
+| | `carries_full_archive` | `secret_safe` |
+|---|---|---|
+| `LocalDirectoryTarget` (built) | yes — the whole hub home | yes — a path on the operator's own filesystem, the same place `palaia-hub backup` already writes these bytes |
+| user-defined external target (not built) | yes | must be answered by whoever builds it |
+| per-vault git remote (not built) | **no** — notes only; no hub secret has ever lived in a vault | n/a |
+
+`BackupTarget.run` refuses, before building a single byte, any target whose
+`carries_full_archive` is not matched by `secret_safe`. That is issue #297's
+"never pushed to a git remote or any target the operator hasn't explicitly
+designated as secret-safe", enforced as an invariant rather than as a
+comment — `server/tests/backup/test_targets.py::
+test_a_target_that_would_move_the_full_archive_somewhere_unsafe_is_refused`
+proves a deliberately misdeclared target class fails on its first call.
+
+### 5.2 The local-directory target
+
+Configured under `backup.targets` in `config.yaml`
+(`palaia_hub.config.BackupSettings`):
+
+```yaml
+backup:
+  targets:
+    - type: local_directory
+      name: nas
+      path: /mnt/nas/palaia-backups
+      keep_last: 7
+```
+
+- `name` — the handle used by `--target`, by
+  `POST /api/backup/targets/{name}/run` and in every `backup.target.*`
+  event. Slug-shaped, unique.
+- `path` — absolute (the hub runs as a service and in a container, where a
+  relative path resolves against an unpredictable cwd). Created on first
+  run; `~` is expanded.
+- `keep_last` — retention, `null` to keep everything. Only files matching
+  `palaia-backup-*.tar.gz` are candidates, ordered **by name** (the
+  timestamp is fixed-width UTC, so lexicographic order is chronological and
+  no mtime a copy rewrote is trusted). Anything else in that directory is
+  never touched.
+
+The archive is written through a `.part` sibling renamed into place only
+once complete, `chmod 0600` **before** the rename, exactly like
+`palaia-hub backup`. A directory inside the hub home is refused: each
+archive would contain every archive before it, and none would survive
+losing that directory.
+
+### 5.3 Surfaces
+
+| Surface | |
+|---|---|
+| `GET /api/backup/targets` | the configured destinations (`backup_api.py`) |
+| `POST /api/backup/targets/{name}/run` | writes one now, on a worker thread; 404 unknown, 500 with the reason when the destination failed |
+| `palaia-hub backup --target NAME` | the same run on the host (repeatable) |
+| `palaia-hub backup --all-targets` | every one, continuing past a failure, exit 1 if any failed |
+| `palaia-hub backup --list-targets` | what is configured; writes nothing |
+
+Both REST routes carry the same admin gate as the download itself (issue
+#317) and refuse with a 403 naming the CLI on a hub with no sign-in.
+
+### 5.4 Events
+
+`backup.target.succeeded` / `backup.target.failed`, origin `backup` — issue
+#297's "failures surface as events/notifications, never silently", and
+routable by SPEC-307 automations like any other event. See
+[`events.md` §3.9](events.md). A publish that itself raises is logged and
+never turns a completed backup into a reported failure. The CLI path has no
+bus attached (one-shot process): it reports on stdout/stderr and exits
+non-zero instead, which is what a `cron`/`systemd` wrapper reads.
+
+### 5.5 Not built in this pass
+
+The user-defined external target and the per-vault git remote push, and a
+**scheduler** (retention shipped; the interval did not — `cron`/`systemd`
+around `--all-targets` is the honest interim, and the docs site says so).
+A `config.yaml` naming an unimplemented `type` is refused at load with a
+message saying it does not exist yet, rather than validating into a hub
+that would never produce that backup. The dashboard shows no target UI yet
+either; the REST surface it will use is the one above.
+
+## 6. Verifying this yourself
 
 ```bash
 cd v3

@@ -215,6 +215,26 @@ owner-only writes land. What SPEC-405 actually adds:
   dashboard for anything destructive, same pattern as the marketplace
   app's "Install" link (SPEC-304).
 
+### 3.9 Backup target events (issue #297, additive)
+
+`origin` is `backup`. Both names fire once per run of one configured
+destination through the running hub —
+`POST /api/backup/targets/{name}/run` (`palaia_hub.backup_targets.
+run_target`). The owner decision behind them: *backup failures surface as
+events/notifications, never silently* — and the success event is what makes
+"my backups quietly stopped" visible at all. Neither carries a path from
+inside the archive or anything about its contents.
+
+`palaia-hub backup --target` runs the same code in a one-shot process with
+no bus attached, so it publishes nothing; it reports the same outcome on
+stdout/stderr and exits non-zero on a failure, which is what a `cron` entry
+or a `systemd` timer around it reads.
+
+| Event | `data` fields | Fires when |
+|---|---|---|
+| `backup.target.succeeded` | `target`, `kind`, `destination`, `artifact`, `bytes_written`, `pruned`, `duration_seconds` | A destination received a complete archive. `pruned` names the older archives that destination's retention deleted. |
+| `backup.target.failed` | `target`, `kind`, `destination`, `reason` | The run did not complete — an unmounted share, a full disk, a destination refused by the secret-safety rule. `reason` is the same plain-language message the CLI prints and the REST route returns. |
+
 ## 4. Outbound webhooks
 
 Configured per hook: a target `url`, an event-name filter (`["*"]` for

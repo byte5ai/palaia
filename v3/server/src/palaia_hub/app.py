@@ -38,6 +38,8 @@ from .automations import (
 )
 from .automations.outbox import OUTBOX_RELATIVE_PATH as AUTOMATIONS_OUTBOX_RELATIVE_PATH
 from .backup_api import build_backup_router
+from .backup_targets import EVENT_ORIGIN as BACKUP_EVENT_ORIGIN
+from .backup_targets import build_targets as build_backup_targets
 from .config import HubConfig, load_config, palaia_home
 from .curator import CuratorScheduler
 from .curator.wiring import CuratorWiring
@@ -811,7 +813,20 @@ def create_app(
     # actually wraps it — without the gate it refuses outright, because the
     # archive is key material, not "the vault" the locked-mode LAN posture
     # was written for.
-    app.include_router(build_backup_router(home=hub_home, session_gated=admin_session_enforced))
+    # Issue #297: the same router carries the configured backup targets.
+    # Building them here has no filesystem side effect — a target creates
+    # nothing until it is actually run.
+    def _publish_backup(action: str, data: dict[str, Any]) -> None:
+        publish_event(event_bus, action, origin=BACKUP_EVENT_ORIGIN, data=data)
+
+    app.include_router(
+        build_backup_router(
+            home=hub_home,
+            session_gated=admin_session_enforced,
+            targets=build_backup_targets(config.backup),
+            publish=_publish_backup,
+        )
+    )
 
     if token_store is not None:
         app.include_router(build_auth_router(token_store, dynamic_gateway=dynamic_gateway))

@@ -32,6 +32,56 @@ up, so leaving it out costs you nothing.
 <!-- screenshot: the "Back up" action on the dashboard home screen, with
      its warning text visible -->
 
+## Have palaia write the file for you
+
+Downloading needs a browser and you. You can instead name a folder once and
+have palaia write the very same file there itself — an external drive, or a
+folder on your network storage that the machine running palaia can reach.
+Nothing goes through your browser, so the size of the file stops mattering.
+
+Add it to `config.yaml` on the machine palaia runs on:
+
+```yaml
+backup:
+  targets:
+    - type: local_directory
+      name: nas
+      path: /mnt/nas/palaia-backups
+      keep_last: 7
+```
+
+`name` is how you'll refer to that folder; `path` has to be the full path,
+and the folder is created if it isn't there. `keep_last` deletes palaia's
+own older files in that folder once there are more than that many — files
+palaia didn't write are never touched. Write `keep_last: null` to keep
+every one of them.
+
+Restart palaia, then take a backup whenever you like:
+
+```bash
+palaia-hub backup --target nas     # one folder
+palaia-hub backup --all-targets    # every folder you've configured
+palaia-hub backup --list-targets   # which ones are configured
+```
+
+Running in Docker, put `docker exec palaia-hub` in front, e.g.
+`docker exec palaia-hub palaia-hub backup --target nas`.
+
+**The same warning applies, and more so:** that file can act as your hub.
+Only point this at a place you'd be comfortable storing a password — an
+encrypted drive, or a share only you can read. A folder inside palaia's own
+saved data is refused outright: every backup would contain every earlier
+one, and losing that disk would take all of them at once.
+
+If a backup fails — the drive isn't mounted, the share is full — you'll
+hear about it rather than find out later: the command says exactly what
+went wrong and exits with an error, so a scheduler wrapping it notices. A
+backup started from the running hub also raises an event, which you can
+route to a notification like any other.
+
+<!-- screenshot: the configured backup folders on the dashboard, with the
+     "Back up now" action next to one -->
+
 ## Restore
 
 Restoring is a few manual steps rather than a button, on purpose — bringing
@@ -93,5 +143,17 @@ restore steps against it before connecting anything.
 
 Restoring by uploading a file straight from the dashboard isn't available
 yet — the offline steps above are the only path back in this release.
-There's also no automatic or scheduled backup: **Back up** downloads one
-file, once, whenever you choose to run it.
+
+Backups don't run on a timer yet either: a folder you configure above is
+written when you ask for it, not on a schedule. Until that lands, a `cron`
+entry or a `systemd` timer around `palaia-hub backup --all-targets` does
+the job — it exits with an error if any folder failed, so your scheduler
+notices.
+
+Two other places to send a backup are planned and not built: a destination
+you define yourself, and pushing a memory to a remote copy of its own
+history (which would carry your notes only, never any of your keys).
+
+To restore from a folder palaia wrote to, use the newest
+`palaia-backup-*.tar.gz` file in it — it is byte-for-byte the same file the
+**Back up** button hands you, and the steps above work unchanged.
