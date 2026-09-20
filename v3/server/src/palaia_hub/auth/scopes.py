@@ -167,6 +167,42 @@ def required_scope_for_messenger_action(action: str) -> str:
     return messenger_scope(permission)
 
 
+# Issue #411 (the Telegram connector): hub-level again, and it borrows the
+# messenger's ``read``/``send`` vocabulary rather than ``read``/``write``
+# because it is the same distinction — looking at what this hub can reach
+# versus putting words in front of a human on the other end.
+#
+# Note what a scope here does *not* buy, exactly as with the messenger: it
+# says the *client* may use the connector, not which bots and chats it may
+# address. That second fence is the per-profile
+# :class:`palaia_hub.telegram.models.TelegramGrant`, checked in
+# :class:`palaia_hub.telegram.service.TelegramService` on every outbound
+# call, and it is default-deny — a token with ``telegram:send`` and no grant
+# sends nothing.
+TelegramPermission = Literal["read", "send"]
+
+TELEGRAM_READ_ACTIONS: frozenset[str] = frozenset({"telegram_list_chats"})
+TELEGRAM_SEND_ACTIONS: frozenset[str] = frozenset(
+    {"telegram_send", "telegram_reply", "telegram_edit", "telegram_delete"}
+)
+
+
+def telegram_scope(permission: TelegramPermission) -> str:
+    """The scope string for ``permission`` on the Telegram tool family."""
+    return f"telegram:{permission}"
+
+
+def required_scope_for_telegram_action(action: str) -> str:
+    """The scope a token needs to call Telegram-tool ``action``.
+
+    Fail-closed, same as every other family above: an action name this
+    module does not recognize requires ``telegram:send``, the stronger of
+    the two.
+    """
+    permission: TelegramPermission = "read" if action in TELEGRAM_READ_ACTIONS else "send"
+    return telegram_scope(permission)
+
+
 def readable_vault_keys(scopes: Iterable[str]) -> frozenset[str]:
     """Which vaults these scopes grant *read* access to.
 
@@ -193,9 +229,12 @@ __all__ = [
     "READ_ACTIONS",
     "STASH_READ_ACTIONS",
     "STASH_WRITE_ACTIONS",
+    "TELEGRAM_READ_ACTIONS",
+    "TELEGRAM_SEND_ACTIONS",
     "WRITE_ACTIONS",
     "MessengerPermission",
     "Permission",
+    "TelegramPermission",
     "directory_scope",
     "messenger_scope",
     "readable_vault_keys",
@@ -203,6 +242,8 @@ __all__ = [
     "required_scope_for_directory_action",
     "required_scope_for_messenger_action",
     "required_scope_for_stash_action",
+    "required_scope_for_telegram_action",
     "stash_scope",
+    "telegram_scope",
     "vault_scope",
 ]

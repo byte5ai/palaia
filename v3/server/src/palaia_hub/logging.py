@@ -67,6 +67,22 @@ _OAUTH_SECRET_RE = re.compile(
 )
 
 
+# Issue #411: a Telegram bot token is `<bot id>:<35-char secret>` and it
+# travels in the URL *path* (`/bot<token>/sendMessage`) — the one place none
+# of the patterns above look, because there is no key name next to it and no
+# `Bearer` in front of it. Matched by shape instead, which is safe here: the
+# `\d{6,}:` prefix followed by 20+ token characters is not something an
+# ordinary diagnostic line contains. `palaia_hub.telegram.api` scrubs the
+# same shape before raising, so this is the second line of defense there,
+# and the first for anything that logs a URL it built itself.
+#
+# No word boundaries on purpose — see the same pattern in
+# `palaia_hub.telegram.api`: `\b` matches at neither end of
+# `…/bot123456789:AAH…/sendMessage`, which is the only place this ever
+# actually appears.
+_TELEGRAM_TOKEN_RE = re.compile(r"\d{6,}:[A-Za-z0-9_-]{20,}")
+
+
 def _mask(match: re.Match[str]) -> str:
     quote = match.group(3) or ""
     return f"{match.group(1)}{match.group(2)}{quote}{REDACTED}{quote}"
@@ -77,6 +93,7 @@ def redact(message: str) -> str:
     message = _BEARER_RE.sub(f"Bearer {REDACTED}", message)
     message = _KV_SECRET_RE.sub(_mask, message)
     message = _OAUTH_SECRET_RE.sub(_mask, message)
+    message = _TELEGRAM_TOKEN_RE.sub(REDACTED, message)
     return message
 
 

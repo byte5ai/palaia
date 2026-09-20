@@ -151,6 +151,18 @@ class ProfileConfig(BaseModel):
     #: Never settable on the curator profile — see
     #: :meth:`_no_messenger_on_the_curator` below.
     messenger: bool = False
+    #: Mount the Telegram tool family (``telegram_send``/``telegram_reply``/
+    #: ``telegram_edit``/``telegram_delete``/``telegram_list_chats``, issue
+    #: #411) inside this profile, same opt-in shape as the three flags
+    #: above. What the flag mounts is only half the permission: which bots
+    #: and chats this profile may address is the per-profile
+    #: :class:`palaia_hub.telegram.models.TelegramGrant`, and it is
+    #: default-deny — a profile with ``telegram: true`` and no grant gets
+    #: the tools and is refused by name on every send.
+    #:
+    #: Never settable on the curator profile — see
+    #: :meth:`_no_telegram_on_the_curator` below.
+    telegram: bool = False
     #: Final (post-namespace) tool names to hide from this profile's own
     #: surface, e.g. ``"work_memory_delete"`` (SPEC-305 deliverable #3): a
     #: profile can mount a whole vault family yet not expose one of its
@@ -226,6 +238,26 @@ class ProfileConfig(BaseModel):
                 "both a way out for their content and a way in for somebody else's "
                 "instructions. Fix: put `messenger: true` on a profile your own "
                 "clients connect to instead."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _no_telegram_on_the_curator(self) -> ProfileConfig:
+        """The curator never gets a Telegram tool (issue #411).
+
+        The messenger fence above, applied to a channel that reaches a
+        human's phone instead of another agent's inbox — so the argument is
+        the same one, only louder: an unattended model running over the
+        operator's own notes must not have an outbound channel to the
+        outside world.
+        """
+        if self.path == CURATOR_PROFILE_PATH and self.telegram:
+            raise ValueError(
+                "the curator profile never carries Telegram tools: it runs a model "
+                "over your own notes unattended, and a channel that reaches people "
+                "outside this hub is an exfiltration path with a delivery receipt. "
+                "Fix: put `telegram: true` on a profile your own clients connect "
+                "to instead."
             )
         return self
 

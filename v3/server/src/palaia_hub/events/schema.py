@@ -126,6 +126,23 @@ EventName = Literal[
     "message.sent",
     "message.received",
     "message.expired",
+    # Issue #411 (the Telegram connector). Additive to the v1 vocabulary,
+    # same rule as every addition above.
+    #
+    # `telegram.message.received` and `telegram.message.dropped` carry
+    # `InboundMessage.metadata()` — the message *without its text*, for the
+    # reason the three `message.*` events above withhold a body: a human's
+    # words on a bus are a human's words in every webhook receiver's logs.
+    # `telegram.message.sent` carries what an agent sent, by the same rule.
+    #
+    # `telegram.routed` is the exception, and the only one: a route
+    # configured with `kind: event` puts the message text on the bus,
+    # because that is precisely what the operator asked for by writing it.
+    # See v3/docs/telegram.md.
+    "telegram.message.received",
+    "telegram.message.dropped",
+    "telegram.message.sent",
+    "telegram.routed",
     "health",
 ]
 

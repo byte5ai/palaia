@@ -299,6 +299,8 @@ def _profile_scopes(profiles: Sequence[ProfileConfig]) -> dict[str, list[str]]:
             scopes += ["directory:read", "directory:write"]
         if profile.messenger:
             scopes += ["messenger:read", "messenger:send"]
+        if profile.telegram:
+            scopes += ["telegram:read", "telegram:send"]
         return scopes
 
     return {profile.path: scopes_for(profile) for profile in profiles}

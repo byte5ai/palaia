@@ -26,6 +26,12 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 # below. Stdlib only, so it is safe to import this early.
 from .security.files import harden_directory, harden_file
 
+# Issue #411: the Telegram connector's schema, imported for the same reason
+# and under the same rule — `palaia_hub.telegram.models` imports nothing
+# from the rest of `palaia_hub` and nothing from httpx/fastapi/fastmcp, so
+# the `telegram:` section can be validated before any transport exists.
+from .telegram.models import TelegramConfigError, TelegramSettings
+
 # SPEC-302: the external-server schema, imported rather than duplicated.
 # `palaia_hub.upstream.models` (and its package `__init__`) import nothing
 # from the rest of `palaia_hub` and nothing from fastmcp, precisely so this
@@ -685,6 +691,12 @@ class GatewayProfileSettings(BaseModel):
     #: same opt-in shape again. Refused on the curator profile — see
     #: ``palaia_hub.gateway.config.ProfileConfig``.
     messenger: bool = False
+    #: Mount the Telegram tool family inside this profile (issue #411), same
+    #: opt-in shape again. Refused on the curator profile, and it grants
+    #: nothing on its own: which bots and chats the profile may address is
+    #: ``telegram.grants`` below, default-deny. See
+    #: ``palaia_hub.gateway.config.ProfileConfig``.
+    telegram: bool = False
     #: Final (post-namespace) tool names hidden from this profile (SPEC-305
     #: deliverable #3). See ``palaia_hub.gateway.config.ProfileConfig``.
     hidden_tools: list[str] = Field(default_factory=list)
@@ -878,6 +890,32 @@ class HubConfig(BaseModel):
     #: parses to) means "today's zero-config behavior": every vault on one
     #: ``default`` profile. See :class:`GatewaySettings`.
     gateway: GatewaySettings | None = None
+    #: The Telegram connector (issue #411). ``None`` (the default, and what
+    #: a config.yaml with no ``telegram:`` section parses to) means the
+    #: connector does not exist on this hub: no poller, no webhook endpoint,
+    #: and every profile's ``telegram: true`` flag mounts nothing. Bot
+    #: tokens are never stored here — a bot names the *secret* that holds
+    #: its token, exactly as an upstream does. See
+    #: :class:`palaia_hub.telegram.models.TelegramSettings`.
+    telegram: TelegramSettings | None = None
+
+    @model_validator(mode="after")
+    def _check_telegram_references(self) -> HubConfig:
+        """Refuse a ``telegram:`` section whose cross-references dangle.
+
+        Pydantic has already checked every model's own shape by the time
+        this runs; what it cannot see is a route naming a bot that is not
+        configured — which is not a crash but something worse, a rule that
+        silently never matches. Raised as a ``ValueError`` so it arrives
+        through :func:`load_config`'s ordinary validation-error path, with
+        the file path and the key named.
+        """
+        if self.telegram is not None:
+            try:
+                self.telegram.check_consistency()
+            except TelegramConfigError as exc:
+                raise ValueError(str(exc)) from exc
+        return self
 
     def curator_endpoint(self) -> str:
         """The base URL a curation session reaches this hub at (SPEC-206)."""
