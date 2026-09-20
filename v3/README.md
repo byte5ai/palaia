@@ -18,6 +18,7 @@ product until then; v2 hotfixes happen on the `v2-maintenance` branch.
 | [IMPLEMENTATION.md](IMPLEMENTATION.md) | Work breakdown, execution protocol for agents, model/effort matrix, phase gates |
 | [specs/](specs/) | Executable SPECs (one SPEC = one branch = one PR), Phase 0 + 1 |
 | [research/](research/) | Research dossiers the plan is grounded in |
+| [docs/intel/](docs/intel/) | Competitive reads on neighbouring products, and what they mean for our roadmap |
 | [decisions/](decisions/) | Architecture Decision Records (ADRs) for v3 |
 | [docs/design/](docs/design/) | UX north star: design system, principles, and HTML mockups of the key screens |
 | [docs/external-servers.md](docs/external-servers.md) | Connecting other people's MCP servers, and where their credentials live |
