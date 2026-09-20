@@ -101,3 +101,10 @@ When using palaia as an OpenClaw plugin, additional settings go in `openclaw.jso
 | `showMemorySources` | `true` | Show memory source footnotes |
 | `recallMode` | `query` | How to build recall queries |
 | `recallMinScore` | `0.7` | Minimum score threshold |
+| `maxInjectedChars` | `4000` | Max characters of injected recall context |
+| `recallRecencyBoost` | `0.3` | Boost for entries younger than ~24h (`0` = off) |
+
+`memoryInject` (Auto-Recall) changes the prompt prefix on every successful
+recall and therefore invalidates the provider's prompt cache. See
+[Prompt Caching vs. Auto-Recall](prompt-caching.md) for the trade-off and how to
+configure it.

@@ -104,7 +104,8 @@ memory_write({ content: "Important finding", scope: "team", tags: ["project-x"] 
   alone still works when no embedding provider is available, so no external API
   is required
 - **HOT memory injection** — On by default: active memory is injected into agent
-  context (`memoryInject: false` turns it off)
+  context (`memoryInject: false` turns it off — note the [prompt-caching
+  trade-off](../../docs/prompt-caching.md))
 - **Auto binary detection** — Finds `palaia` in PATH, pipx, or venv
 
 ## Architecture
