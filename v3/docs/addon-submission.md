@@ -16,6 +16,14 @@ page is about. It is a plain JSON file with one entry per add-on, signed
 by the index maintainer's private key so a hub can tell a real update
 from a tampered one.
 
+> **Current state for 3.0.0 (issue #409):** palaia does not publish a
+> curated index yet — there is no index URL and no signing key, so a hub
+> with default settings shows the add-ons bundled with the release and
+> says so. The flow below is the one submissions will go through, and it
+> is worth preparing against, but a merged entry cannot reach hubs until
+> the index is published for the first time. Ask the maintainer where a
+> submission stands before you build a release around it.
+
 ## Before you open a PR
 
 1. Your add-on has a `manifest.json` that passes:
