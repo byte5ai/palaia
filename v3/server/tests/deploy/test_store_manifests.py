@@ -22,6 +22,7 @@ EVALUATION.md for exactly what that leaves unverified).
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Literal
 
@@ -87,6 +88,20 @@ def test_umbrel_manifest_matches_the_real_app_schema() -> None:
     assert manifest.id == "palaia"
     _assert_no_jargon(manifest.tagline, source="umbrel/umbrel-app.yml tagline")
     _assert_no_jargon(manifest.description, source="umbrel/umbrel-app.yml description")
+
+
+def test_umbrel_gallery_entries_are_bare_filenames() -> None:
+    """Issue #400: `gallery` is empty because gallery images are screenshots
+    of a running hub — nothing in this repository can produce them, and
+    umbrel/SUBMIT.md says so. What this test pins is the *shape* for
+    whoever fills it in: a currently-listed app (immich/umbrel-app.yml in
+    getumbrel/umbrel-apps) carries `[1.jpg, 2.jpg, 3.jpg]` — bare
+    filenames, not the image URLs an earlier draft of SUBMIT.md described.
+    """
+    data = _load_yaml(STORES_ROOT / "umbrel" / "umbrel-app.yml")
+    for entry in data["gallery"]:
+        assert "/" not in entry, f"gallery entry {entry!r} is a path/URL, not a filename"
+        assert entry.endswith((".jpg", ".jpeg", ".png")), f"gallery entry {entry!r} is not an image"
 
 
 def test_umbrel_compose_pins_the_stable_channel() -> None:
@@ -209,8 +224,10 @@ def test_runtipi_description_markdown_has_no_jargon() -> None:
 # TrueNAS SCALE — field set from truenas/apps' own app.yaml documentation
 # (DeepWiki-mirrored field reference, https://deepwiki.com/truenas/apps/
 # 2.1-app.yaml-app-metadata) — see truenas/SUBMIT.md for what a live
-# instance still needs to confirm (lib_version, run_as_context, the
-# questions.yaml/template schemas proper).
+# instance still needs to confirm (run_as_context, the questions.yaml
+# schema proper, and porting the compose template to `ix_lib`, which the
+# lib_version pinned since issue #400 names but this package's hand-written
+# template does not yet use).
 # ---------------------------------------------------------------------------
 class TrueNasMaintainer(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -235,6 +252,8 @@ class TrueNasAppYaml(BaseModel):
     app_version: str
     version: str
     human_version: str
+    lib_version: str
+    lib_version_hash: str
 
 
 def test_truenas_app_yaml_matches_the_documented_schema() -> None:
@@ -243,6 +262,27 @@ def test_truenas_app_yaml_matches_the_documented_schema() -> None:
     assert app.name == "palaia"
     assert app.train == "community"
     _assert_no_jargon(app.description, source="truenas app.yaml description")
+
+
+def test_truenas_catalog_version_is_semver() -> None:
+    """`version` is the catalog item's own version and the catalog reads it
+    as semver — `"1"` (what stood here before issue #400) is not.
+    """
+    data = _load_yaml(STORES_ROOT / "truenas" / "community" / "palaia" / "app.yaml")
+    assert re.fullmatch(r"\d+\.\d+\.\d+", str(data["version"])), data["version"]
+
+
+def test_truenas_lib_version_is_pinned_with_a_real_looking_hash() -> None:
+    """Issue #400: `lib_version`/`lib_version_hash` pin the shared template
+    library from truenas/apps' own `library/` directory. The pair here was
+    read off that repository (`library/hashes.yaml` on master, and the same
+    pair in ix-dev/community/arcane) rather than guessed — this test only
+    keeps the shape honest, since a hash of the wrong length or a
+    non-semver library version could only ever be an invention.
+    """
+    data = _load_yaml(STORES_ROOT / "truenas" / "community" / "palaia" / "app.yaml")
+    assert re.fullmatch(r"\d+\.\d+\.\d+", str(data["lib_version"])), data["lib_version"]
+    assert re.fullmatch(r"[0-9a-f]{64}", data["lib_version_hash"]), data["lib_version_hash"]
 
 
 def test_truenas_ix_values_pins_the_stable_channel() -> None:

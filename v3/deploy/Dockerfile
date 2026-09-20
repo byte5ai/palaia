@@ -29,6 +29,13 @@
 # to be resolved once against the registry. A digest is deliberately NOT
 # written in by hand: the lockfile records none, so any digest added without
 # that registry round-trip would be invented — worse than an honest tag pin.
+# What the round-trip needs, so the next attempt does not rediscover it:
+# outbound access to auth.docker.io/registry-1.docker.io for the two Docker
+# Hub images, and for `ghcr.io/astral-sh/uv` either the same to ghcr.io or a
+# token carrying `read:packages` (the GitHub API refuses
+# `/orgs/astral-sh/packages/...` without it). A sandboxed agent session has
+# neither; the resolution belongs in CI or an owner shell, e.g.
+# `docker buildx imagetools inspect node:22-slim --format '{{.Manifest.Digest}}'`.
 # The GitHub Actions in .github/workflows/v3-*.yml no longer share this
 # problem: their SHAs resolve over the GitHub API and are pinned (see the
 # note at the top of v3-release.yml).

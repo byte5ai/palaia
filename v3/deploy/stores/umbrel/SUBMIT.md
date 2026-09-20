@@ -60,12 +60,22 @@ take a while to review.
 
 ## Before the first submission: gallery images
 
-`umbrel-app.yml`'s `gallery` is an empty list. Umbrel's app-store PR
-checklist expects gallery screenshots (their contributor docs give the
-sizes); take them from a running hub — the dashboard's Home, Explorer and
-Connect pages are the natural three — and list the uploaded image URLs
-there before opening the PR (issue #400). Nothing in this repository can
-produce them: they need a browser in front of a live hub.
+`umbrel-app.yml`'s `gallery` is an empty list, and it has to stay that
+way here: gallery images are screenshots of a running hub, and nothing in
+this repository can produce them — they need a browser in front of a live
+instance (issue #400). So this is the one field of the package a machine
+cannot finish; fill it in before opening the PR.
+
+The entries are **bare filenames, not URLs** — verified against a
+currently-listed app (`immich/umbrel-app.yml` in `getumbrel/umbrel-apps`
+carries `gallery: [1.jpg, 2.jpg, 3.jpg]`), and the image files themselves
+do not live next to the manifest in that repository, so they go through
+the same separate asset pipeline as the icon (see step 3 above). Three
+screenshots is the shipped convention; the dashboard's Home, Explorer and
+Connect pages are the natural three. That repository's own `AGENTS.md`
+and `.claude/skills/` hold the current sizes and the upload route — read
+them rather than assuming, since this paragraph pins a convention, not a
+published schema.
 
 ## What to update before every release
 
