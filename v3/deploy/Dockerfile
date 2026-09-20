@@ -18,19 +18,20 @@
 #
 # Base images (`node:22-slim`, `python:3.12-slim`, `uv:0.8`) are pinned by
 # tag, not digest (issue #400): a digest pin freezes security fixes in the
-# base layers until someone bumps it by hand, and this repository has no
-# bot doing that yet. Reproducibility of a given release is provided by the
-# published image itself (`ghcr.io/byte5ai/palaia-hub:v3.<version>`), not
+# base layers until something bumps it. Reproducibility of a given release
+# is provided by the published image itself (`ghcr.io/byte5ai/palaia-hub:v3.<version>`), not
 # by rebuilding from this file.
 #
-# TODO(#400): pin these three by digest once something bumps them
-# automatically (Dependabot/Renovate covers Docker base images and GitHub
-# Actions alike). A digest was deliberately NOT written in by hand here: the
-# lockfile records no base-image digests and resolving a real one needs a
-# registry round-trip, so any digest added without that lookup would be
-# invented — worse than an honest tag pin. The same reasoning applies to the
-# GitHub Actions in .github/workflows/v3-*.yml, which are pinned by major
-# tag (see the note at the top of v3-release.yml).
+# TODO(#400): pin these three by digest. The bot half of the problem is
+# solved — .github/dependabot.yml now watches this directory, so a digest
+# written here would be kept current rather than rotting — but Dependabot
+# does not convert a bare tag pin into a digest pin, and a digest still has
+# to be resolved once against the registry. A digest is deliberately NOT
+# written in by hand: the lockfile records none, so any digest added without
+# that registry round-trip would be invented — worse than an honest tag pin.
+# The GitHub Actions in .github/workflows/v3-*.yml no longer share this
+# problem: their SHAs resolve over the GitHub API and are pinned (see the
+# note at the top of v3-release.yml).
 
 # ---------------------------------------------------------------------------
 # Stage 1: web build

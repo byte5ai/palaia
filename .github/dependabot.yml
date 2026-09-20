@@ -1,0 +1,39 @@
+# Dependabot — the bot the SHA pins depend on (issue #400).
+#
+# A commit-SHA pin on a third-party action, and a digest pin on a base image,
+# only improve the supply chain while something keeps them current: an
+# unmaintained pin rots into a frozen, unpatched version. That was the
+# standing reason the v3 workflows stayed on major tags. This config is that
+# something, so the pins in .github/workflows/v3-*.yml can be (and now are)
+# real SHAs.
+#
+# Scope note: `github-actions` has no per-track scoping — the only supported
+# directory is the repository root, and Dependabot reads every workflow under
+# .github/workflows/. It therefore also raises PRs for the v2 workflows
+# (ci.yml, publish.yml). That is a bot opening PRs, not this track editing v2
+# files; each such PR is a v2-track change reviewed on its own.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      # One PR per week for the routine bumps instead of ten; a security
+      # update still comes through on its own, immediately.
+      actions:
+        patterns: ["*"]
+
+  # The v3 hub image's base images (node:22-slim, python:3.12-slim,
+  # ghcr.io/astral-sh/uv:0.8). Dependabot keeps a tag current and, once a
+  # digest is written next to a tag, keeps that digest current too — it does
+  # not convert a bare tag pin into a digest pin on its own, so the initial
+  # digest lookup for those three remains open in issue #400.
+  - package-ecosystem: docker
+    directory: "/v3/deploy"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(v3)"
