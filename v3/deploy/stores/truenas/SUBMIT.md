@@ -16,12 +16,17 @@ no TrueNAS instance, no docker daemon, and no checkout of that repo's own
 CI scripts. Treat every file here as a well-grounded first draft, not a
 verified one. Concretely, before submitting:
 
-- **`app.yaml` → `maintainers[0].email`** is `hello@byte5.ai`, which appears
-  nowhere else in this repository and which no test can verify is a
-  monitored mailbox (the owner has said no *security* mailbox exists —
-  `v3/RELEASING.md` §1). Confirm it is read, or replace it, before the
-  catalog PR: a maintainer contact nobody reads is worse than none (issue
-  #400).
+- **`app.yaml` → `maintainers[0].email`** is now `hello@byte5.de`, the one
+  byte5 address this repository actually attests (the project author in the
+  root `pyproject.toml`). It replaces `hello@byte5.ai`, which appeared
+  nowhere else here and which nothing could show is a monitored mailbox
+  (issue #400) — a maintainer contact nobody reads is worse than none, and
+  the schema makes the field mandatory, so the honest move was to fall back
+  to the attested address rather than invent or drop one. Still confirm
+  with the owner that it is read before the catalog PR. Note this is a
+  *maintainer* contact, not a security one: there is no security mailbox,
+  and reports go through GitHub private vulnerability reporting
+  (`v3/SECURITY.md`).
 - **`app.yaml`**: no `lib_version`/`lib_version_hash` is set. Those pin a
   shared template library version from `truenas/apps`' own `library/`
   directory — fill them in from whatever that repo's current library

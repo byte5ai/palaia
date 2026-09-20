@@ -21,7 +21,16 @@
 # base layers until someone bumps it by hand, and this repository has no
 # bot doing that yet. Reproducibility of a given release is provided by the
 # published image itself (`ghcr.io/byte5ai/palaia-hub:v3.<version>`), not
-# by rebuilding from this file. Revisit once automated digest bumps exist.
+# by rebuilding from this file.
+#
+# TODO(#400): pin these three by digest once something bumps them
+# automatically (Dependabot/Renovate covers Docker base images and GitHub
+# Actions alike). A digest was deliberately NOT written in by hand here: the
+# lockfile records no base-image digests and resolving a real one needs a
+# registry round-trip, so any digest added without that lookup would be
+# invented — worse than an honest tag pin. The same reasoning applies to the
+# GitHub Actions in .github/workflows/v3-*.yml, which are pinned by major
+# tag (see the note at the top of v3-release.yml).
 
 # ---------------------------------------------------------------------------
 # Stage 1: web build

@@ -9,6 +9,16 @@ name: v3 hub image
 #                               alpha, dev — any SemVer suffix, issue #386)
 # Independent of the v2 root `publish.yml` (PyPI/npm) — this workflow never
 # touches v2 code or v2 release tags.
+#
+# TODO(#400): the actions used here and in the other v3 workflows are pinned
+# by major tag (`actions/checkout@v4`, `docker/build-push-action@v6`, …), not
+# by commit SHA, so a compromised or retagged release of a third-party action
+# would be picked up on the next run of a workflow that holds `packages:
+# write` and a GHCR login. Pin them by SHA together with the base-image
+# digests in v3/deploy/Dockerfile, once a bot keeps both current — an
+# unmaintained SHA pin rots into a frozen, unpatched action. No SHA is
+# written in here by hand: resolving a real one needs a network lookup this
+# repository's checks cannot do, and a guessed SHA simply fails to resolve.
 on:
   push:
     branches: [main]
