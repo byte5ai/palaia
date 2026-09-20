@@ -47,7 +47,7 @@ All options are optional — sensible defaults are used:
         tier: "hot",                      // default: "hot" (hot|warm|all)
         maxResults: 10,                   // default: 10
         timeoutMs: 3000,                  // default: 3000
-        memoryInject: false,              // default: false (inject HOT into context)
+        memoryInject: true,               // default: true (Auto-Recall injection)
         maxInjectedChars: 4000,           // default: 4000
       }
     }
@@ -101,7 +101,9 @@ memory_write({ content: "Important finding", scope: "team", tags: ["project-x"] 
 - **Tier routing** — HOT → WARM → COLD with automatic decay
 - **Scope isolation** — private, team, shared:X, public
 - **BM25 search** — Fast local search, no external API needed
-- **HOT memory injection** — Opt-in: inject active memory into agent context
+- **HOT memory injection** — Inject active memory into agent context
+  (`memoryInject`, on by default — note the [prompt-caching
+  trade-off](../../docs/prompt-caching.md))
 - **Auto binary detection** — Finds `palaia` in PATH, pipx, or venv
 
 ## Architecture
