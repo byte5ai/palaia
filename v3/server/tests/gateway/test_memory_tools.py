@@ -162,6 +162,53 @@ async def test_write_returns_dual_text_and_json_output(server) -> None:  # noqa:
 
 
 @pytest.mark.anyio
+async def test_search_result_carries_per_hit_and_per_result_provenance(server) -> None:  # noqa: ANN001
+    """Issue #294: the tool boundary no longer drops how a hit was found."""
+    async with Client(server) as client:
+        await server_write(client)
+        result = await client.call_tool("search", {"query": "onboarding"})
+
+    structured = result.structured_content
+    assert structured is not None
+    # Per result: which mode ran, and whether that was less than was asked.
+    # The fake vault is a substring scan, so it reports itself degraded.
+    assert structured["mode"] == "hybrid"
+    assert structured["effective_mode"] == "scan"
+    assert structured["degraded"] is True
+    assert structured["degraded_reason"]
+    # Per hit: the channel(s) that produced it.
+    assert structured["hits"]
+    assert structured["hits"][0]["matched"] == ["text"]
+    json.dumps(structured)
+
+    # The text half says so too, for a model that only reads `content`.
+    assert "via text" in result.content[0].text
+    assert "degraded" in result.content[0].text
+
+
+@pytest.mark.anyio
+async def test_search_description_explains_the_provenance_fields(server) -> None:  # noqa: ANN001
+    async with Client(server) as client:
+        tools = {t.name: t for t in await client.list_tools()}
+    description = tools["search"].description or ""
+    assert "meaning" in description
+    assert "degraded" in description
+
+
+@pytest.mark.anyio
+async def test_ai_assistant_guide_explains_how_to_read_search_provenance(
+    server,  # noqa: ANN001
+) -> None:
+    async with Client(server) as client:
+        resources = await client.list_resources()
+        guide_uri = next(r.uri for r in resources if r.name == "ai_assistant_guide")
+        contents = await client.read_resource(guide_uri)
+    guide = contents[0].text
+    for field in ("matched", "fts_rank", "vector_rank", "effective_mode", "degraded_reason"):
+        assert field in guide, field
+
+
+@pytest.mark.anyio
 async def test_read_missing_permalink_is_a_tool_error_not_an_exception(server) -> None:  # noqa: ANN001
     async with Client(server) as client:
         result = await client.call_tool(

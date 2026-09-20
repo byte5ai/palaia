@@ -60,6 +60,7 @@ from .vault_protocol import (
     ReviewDecideResult,
     ReviewQueueResult,
     SearchHit,
+    SearchResponse,
     VaultService,
     VaultServiceError,
 )
@@ -86,7 +87,7 @@ class FakeVaultService:
         """Directly insert a note (fixture setup helper, bypasses write())."""
         self._notes[note.permalink] = note
 
-    async def search(self, query: str, *, limit: int = 10) -> list[SearchHit]:
+    async def search(self, query: str, *, limit: int = 10) -> SearchResponse:
         needle = query.lower()
         hits: list[SearchHit] = []
         for note in self._notes.values():
@@ -101,10 +102,19 @@ class FakeVaultService:
                         title=note.title,
                         snippet=snippet,
                         score=1.0 if needle in note.title.lower() else 0.5,
+                        matched=["text"],
                     )
                 )
         hits.sort(key=lambda h: h.score, reverse=True)
-        return hits[:limit]
+        # Substring matching, no vectors — reported as honestly as the real
+        # adapter's index-less path does (see wiring.EngineVaultService).
+        return SearchResponse(
+            hits=hits[:limit],
+            mode="hybrid",
+            effective_mode="scan",
+            degraded=True,
+            degraded_reason="in-memory test vault — substring scan only",
+        )
 
     async def read(self, permalink: str) -> NoteRecord:
         note = self._notes.get(permalink)

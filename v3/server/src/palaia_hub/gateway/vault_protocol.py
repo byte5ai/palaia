@@ -23,7 +23,7 @@ format spec §7) to this same protocol, kept as their own
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Literal, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -136,13 +136,88 @@ class InboxStatusResult(BaseModel):
     last_captured_at: str | None = None
 
 
+#: The retrieval channels a hit can come from, in the agent-facing wording:
+#: ``text`` is the full-text/BM25 channel, ``meaning`` the vector/semantic one.
+SearchChannel = Literal["text", "meaning"]
+
+#: The search modes a caller can ask for. Mirrors
+#: :data:`palaia_hub.index.models.SearchMode`, restated here rather than
+#: imported — this module deliberately depends on nothing from that lane
+#: (see the module docstring).
+RequestedSearchMode = Literal["fts", "vector", "hybrid"]
+
+#: How a result set was actually produced: the requested modes plus ``scan``,
+#: the index-less substring fallback an adapter uses when no index is open.
+EffectiveSearchMode = Literal["fts", "vector", "hybrid", "scan"]
+
+
+def matched_channels(
+    *,
+    fts_rank: int | None,
+    vector_rank: int | None,
+    effective_mode: str,
+) -> list[SearchChannel]:
+    """Which retrieval channel(s) produced a hit, in agent-facing wording.
+
+    The index populates ``fts_rank``/``vector_rank`` only on the fused
+    hybrid path — a single-channel result set (an FTS-only query, or a
+    hybrid one degraded to FTS) leaves both unset, and every hit in it then
+    belongs to that one channel by construction. Deriving the fallback from
+    ``effective_mode`` here keeps that from surfacing as "matched by
+    nothing".
+    """
+    channels: list[SearchChannel] = []
+    if fts_rank is not None:
+        channels.append("text")
+    if vector_rank is not None:
+        channels.append("meaning")
+    if channels:
+        return channels
+    if effective_mode == "vector":
+        return ["meaning"]
+    if effective_mode in ("fts", "scan"):
+        return ["text"]
+    return []
+
+
 class SearchHit(BaseModel):
-    """One search result: a note plus why it matched."""
+    """One search result: a note plus why it matched.
+
+    The provenance fields (SPEC-104's per-hit ranks, passed through here)
+    let an agent weigh a hit by *how* it was found: ``matched`` names the
+    channel(s) in plain words, and ``fts_rank``/``vector_rank`` are its
+    rank within each channel — **1-based**, so rank 1 is that channel's
+    best answer (the index counts from zero internally; the adapter shifts
+    it once, here at the agent-facing boundary, rather than publishing an
+    off-by-one that every reader has to know about). A rank is unset when
+    the hit did not come from that channel, or when the result set used a
+    single channel throughout (see :func:`matched_channels`).
+    """
 
     permalink: str
     title: str
     snippet: str = ""
     score: float = 0.0
+    matched: list[SearchChannel] = Field(default_factory=list)
+    fts_rank: int | None = None
+    vector_rank: int | None = None
+
+
+class SearchResponse(BaseModel):
+    """A search result page plus how it was produced.
+
+    The honesty half of SPEC-104 at the tool boundary: ``mode`` is what was
+    asked for, ``effective_mode`` what actually ran, and ``degraded``/
+    ``degraded_reason`` say so when the two differ — a hybrid query answered
+    from full-text alone because vectors are still pending reports that
+    instead of pretending it was semantic.
+    """
+
+    hits: list[SearchHit] = Field(default_factory=list)
+    mode: RequestedSearchMode = "hybrid"
+    effective_mode: EffectiveSearchMode = "hybrid"
+    degraded: bool = False
+    degraded_reason: str = ""
 
 
 class ProposalSummary(BaseModel):
@@ -204,8 +279,13 @@ class VaultService(Protocol):
     propagates as an unexpected error.
     """
 
-    async def search(self, query: str, *, limit: int = 10) -> list[SearchHit]:
-        """Return notes matching ``query``, best match first."""
+    async def search(self, query: str, *, limit: int = 10) -> SearchResponse:
+        """Return notes matching ``query``, best match first.
+
+        The response carries the hits *and* how they were produced (which
+        channel matched each hit, which mode actually ran, whether it
+        degraded) — see :class:`SearchResponse`.
+        """
         ...
 
     async def read(self, permalink: str) -> NoteRecord:
