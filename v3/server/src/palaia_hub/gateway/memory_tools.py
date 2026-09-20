@@ -36,6 +36,14 @@ Deliverable #4 (tool ergonomics) is implemented here directly on each tool:
 Errors from the :class:`VaultService` (not-found, etc.) become
 ``ToolResult(is_error=True, ...)`` rather than an uncaught exception, per
 MCP convention (isError, not a transport-level failure).
+
+Issue #301 (Smart Nudges) adds one more thing to every *successful* result:
+deterministic guidance, when there is any. Each success path goes through
+:func:`_ok` instead of constructing its own ``ToolResult``, which runs the
+detectors in :mod:`palaia_hub.nudges` over the result the call just produced
+and attaches what the rate policy allows. Nothing extra is read or computed
+to make that decision, and a call that trips no detector returns exactly the
+``ToolResult`` it did before.
 """
 
 from __future__ import annotations
@@ -49,6 +57,7 @@ from mcp.types import ToolAnnotations
 from pydantic import AliasChoices, BaseModel, Field
 
 from ..auth.enforcement import missing_scope_error
+from ..nudges import NudgeEngine
 from ..recall import budget as recall_budget
 from ..recall.models import ContextResult, RecallResult
 from ..recall.service import DEFAULT_RECALL_LIMIT, recall_text, render_context
@@ -56,6 +65,7 @@ from ..recall.traversal import DEFAULT_DEPTH, MAX_DEPTH
 from .apps.recall_app import RESOURCE_URI as RECALL_EXPLORER_URI
 from .apps.review_app import RESOURCE_URI as REVIEW_QUEUE_URI
 from .config import VaultMountConfig
+from .guidance import current_session_key, nudged_result
 from .inbox import missing_capture_fields, missing_fields_message
 from .naming import compose_tool_name
 from .vault_protocol import (
@@ -183,9 +193,8 @@ def _error_result(exc: VaultServiceError) -> ToolResult:
     return ToolResult(content=str(exc), is_error=True)
 
 
-def _note_result(action: str, note: NoteRecord) -> ToolResult:
-    text = f"{action}: {note.title!r} ({note.permalink})"
-    return ToolResult(content=text, structured_content=note)
+def _note_text(verb: str, note: NoteRecord) -> str:
+    return f"{verb}: {note.title!r} ({note.permalink})"
 
 
 def vault_identity_block(vault: VaultMountConfig) -> str:
@@ -216,7 +225,12 @@ def vault_identity_block(vault: VaultMountConfig) -> str:
     )
 
 
-def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMCP:
+def build_vault_server(
+    vault: VaultMountConfig,
+    service: VaultService,
+    *,
+    nudges: NudgeEngine | None = None,
+) -> FastMCP:
     """Build the memory tool family for one vault, backed by ``service``.
 
     The returned server's tools are named exactly the eight base action
@@ -226,15 +240,32 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
     (``work_memory_search``). Building the tool names here without any
     namespace baked in keeps this function reusable across profiles: the
     same server object mounts into every profile that includes this vault.
+
+    ``nudges`` is this vault's Smart Nudge engine (issue #301), created here
+    by default and injectable for tests. One engine per vault server is the
+    right granularity: the same server object is what mounts into every
+    profile carrying this vault, so its rate-limit state follows the vault
+    rather than fragmenting per profile, and a nudge about *this* vault's
+    inbox is never suppressed by one about another's.
     """
     purpose = vault.purpose
     server = FastMCP(
         name=f"palaia-vault-{vault.key}",
         instructions=vault_identity_block(vault),
     )
+    engine = nudges if nudges is not None else NudgeEngine(session_key=current_session_key)
 
     def desc(detail: str) -> str:
         return f"{purpose}\n\n{detail}"
+
+    def _ok(action: str, text: str, payload: BaseModel) -> ToolResult:
+        """A successful result for ``action``, plus any guidance it earned."""
+        return nudged_result(
+            engine, action=action, text=text, payload=payload, vault_key=vault.key
+        )
+
+    def _note_ok(action: str, verb: str, note: NoteRecord) -> ToolResult:
+        return _ok(action, _note_text(verb, note), note)
 
     def scope_error(action: str) -> ToolResult | None:
         """``None`` if this call's token (if any) covers ``action``; else a
@@ -301,7 +332,7 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
             degraded_reason=response.degraded_reason,
             pick_tool=recall_pick_tool_name,
         )
-        return ToolResult(content=text, structured_content=result)
+        return _ok("search", text, result)
 
     @server.tool(
         name="read",
@@ -320,7 +351,7 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         # should see what the rate limit *is*, not that there is an embed
         # pointing at it. `structured_content.body` stays the note as
         # written, for anything about to edit it.
-        return ToolResult(content=note.resolved_body or note.body, structured_content=note)
+        return _ok("read", note.resolved_body or note.body, note)
 
     @server.tool(
         name="write",
@@ -342,7 +373,7 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
             note = await service.write(title, body, folder=folder, type=type, tags=tags)
         except VaultServiceError as exc:
             return _error_result(exc)
-        return _note_result("created", note)
+        return _note_ok("write", "created", note)
 
     @server.tool(
         name="edit",
@@ -361,7 +392,7 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
             note = await service.edit(permalink, body=body, append=append, tags=tags)
         except VaultServiceError as exc:
             return _error_result(exc)
-        return _note_result("updated", note)
+        return _note_ok("edit", "updated", note)
 
     @server.tool(
         name="move",
@@ -375,7 +406,7 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
             note = await service.move(permalink, folder)
         except VaultServiceError as exc:
             return _error_result(exc)
-        return _note_result("moved", note)
+        return _note_ok("move", "moved", note)
 
     @server.tool(
         name="delete",
@@ -387,9 +418,7 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
             return err
         deleted = await service.delete(permalink)
         text = f"deleted {permalink!r}" if deleted else f"nothing to delete at {permalink!r}"
-        return ToolResult(
-            content=text, structured_content=DeleteResult(permalink=permalink, deleted=deleted)
-        )
+        return _ok("delete", text, DeleteResult(permalink=permalink, deleted=deleted))
 
     @server.tool(
         name="list",
@@ -401,7 +430,7 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
             return err
         notes = await service.list_notes(folder=folder)
         text = f"{len(notes)} note(s)" + (f" in {folder!r}" if folder else "")
-        return ToolResult(content=text, structured_content=ListResult(folder=folder, notes=notes))
+        return _ok("list", text, ListResult(folder=folder, notes=notes))
 
     @server.tool(
         name="recent_activity",
@@ -413,7 +442,7 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
             return err
         notes = await service.recent_activity(limit=limit)
         text = f"{len(notes)} recently modified note(s)"
-        return ToolResult(content=text, structured_content=RecentActivityResult(notes=notes))
+        return _ok("recent_activity", text, RecentActivityResult(notes=notes))
 
     @server.tool(
         name="recall",
@@ -446,7 +475,7 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         except VaultServiceError as exc:
             return _error_result(exc)
         result = result.model_copy(update={"pick_tool": recall_pick_tool_name})
-        return ToolResult(content=recall_text(result), structured_content=result)
+        return _ok("recall", recall_text(result), result)
 
     @server.tool(
         name="build_context",
@@ -509,7 +538,7 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
             )
         except VaultServiceError as exc:
             return _error_result(exc)
-        return ToolResult(content=render_context(result), structured_content=result)
+        return _ok("build_context", render_context(result), result)
 
     @server.tool(
         name="capture",
@@ -557,7 +586,7 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
             if result.duplicate
             else f"captured to {result.permalink!r} (capture_id {result.capture_id})"
         )
-        return ToolResult(content=text, structured_content=result)
+        return _ok("capture", text, result)
 
     @server.tool(
         name="inbox_status",
@@ -576,7 +605,7 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
             text += f", oldest {status.oldest_age_seconds:.0f}s old"
         if status.last_capture_id:
             text += f", last capture {status.last_capture_id!r}"
-        return ToolResult(content=text, structured_content=status)
+        return _ok("inbox_status", text, status)
 
     @server.tool(
         name="review_queue",
@@ -597,7 +626,7 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
         result = await service.review_queue()
         result = result.model_copy(update={"decide_tool": review_decide_tool_name})
         text = f"{len(result.proposals)} proposal(s) awaiting review"
-        return ToolResult(content=text, structured_content=result)
+        return _ok("review_queue", text, result)
 
     @server.tool(
         name="review_decide",
@@ -620,7 +649,7 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
             result = await service.review_decide(permalink, decision)
         except VaultServiceError as exc:
             return _error_result(exc)
-        return ToolResult(content=f"{permalink!r} marked {decision}", structured_content=result)
+        return _ok("review_decide", f"{permalink!r} marked {decision}", result)
 
     @server.tool(
         name="recall_pick",
@@ -645,7 +674,7 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
             except VaultServiceError as exc:
                 return _error_result(exc)
         text = f"picked {len(notes)} note(s) for context"
-        return ToolResult(content=text, structured_content=RecallPickResult(notes=notes))
+        return _ok("recall_pick", text, RecallPickResult(notes=notes))
 
     @server.resource(
         f"guide://{vault.key}/ai_assistant_guide",
