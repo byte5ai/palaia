@@ -10,6 +10,54 @@ ADRs, phase-gate records, SPEC index docs, CI and release plumbing) are left
 out on purpose; they moved the project forward but nothing in them is a
 capability a user would notice.
 
+## 3.0.0-rc2 — 2026-09-20 (release candidate)
+
+The second release candidate. Everything below is new relative to `rc1`;
+nothing already listed under `rc1` is repeated. Still a pre-release for
+testing — the `:beta` channel, same caveats as `rc1`.
+
+### Memory & search
+
+- Search now tells you *how* it found each hit: every result carries its
+  provenance (full-text / vector, or both) and a per-result `degraded` signal
+  when semantic search was unavailable and the query fell back to text-only —
+  so an agent can weigh the hits instead of trusting them blindly.
+- Smart Nudges: short, deterministic, rule-based guidance is attached to the
+  output of a successful memory tool (no extra model call) — for example, a
+  note when a search ran degraded. Error results stay untouched.
+
+### Operations
+
+- `palaia doctor`: a whole-hub diagnose command — a check framework with real
+  checks across the hub, run from the CLI, reporting problems in one place.
+- Backup targets: a backup-destination abstraction with a built-in
+  secret-safety invariant (a destination that isn't secret-safe is refused
+  before a byte is written), plus a local-directory target end-to-end — CLI
+  (`palaia-hub backup`), REST (`/api/backup/targets`), and
+  `backup.target.succeeded` / `backup.target.failed` events. External and
+  per-vault git-remote targets, scheduling and a dashboard panel are tracked
+  as follow-ups (#438).
+
+### Fixes
+
+- `claude mcp get` / `claude mcp list` no longer reports "Failed to connect"
+  against a working OAuth profile: the protected-resource metadata now
+  advertises the gateway mount URL as its RFC 9728 `resource`, which is what
+  MCP clients validate against (the `aud` audience is unchanged).
+- Docs corrected: the nonexistent "recall" hook-event claim in how-it-works,
+  and the plugin README's `memoryInject` default and search description.
+
+### Under the hood
+
+- Supply chain: v3 workflow actions pinned by commit SHA, base images pinned
+  by digest, and Dependabot added to keep both current; store manifests
+  (TrueNAS template library, Umbrel gallery shape) corrected.
+- A preview **Telegram connector** landed in the codebase (inbound routing per
+  bot/chat, outbound send tools, message-text redaction). It is **not yet
+  wired into the running hub** — daemon wiring and a dashboard panel are the
+  remaining work (#439) — so it does nothing in this image yet; it ships early
+  so its shape can be reviewed.
+
 ## 3.0.0-rc1 — 2026-09-01 (release candidate)
 
 The first v3 release. Everything below is new relative to v2, since this is

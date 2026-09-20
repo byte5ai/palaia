@@ -7,7 +7,7 @@ name: palaia
 # `stable` meant HA never offered one while the dashboard said "update via
 # Home Assistant". server/tests/test_version_drift.py pins it to v3/VERSION,
 # so the release bump in RELEASING.md §3 carries it along.
-version: "3.0.0-rc1"
+version: "3.0.0-rc2"
 slug: palaia
 description: Shared memory for every AI assistant you use
 url: https://github.com/byte5ai/palaia
