@@ -168,9 +168,13 @@ ClawHub and GitHub Release NEVER get dev/beta versions.
 | Workflow | Trigger | What it does |
 |----------|---------|-------------|
 | `ci.yml` | Push to main, PRs | Ruff lint + pytest (3.9-3.12) + vitest |
-| `publish.yml` | `v*` tags | PyPI publish (all tags) + npm publish (stable only) |
+| `publish.yml` | `v2.*` tags | PyPI publish (all v2 tags) + npm publish (stable only) |
 
 npm is skipped for dev/beta tags (contains `dev`, `b`, or `rc` in tag name).
+
+`publish.yml` is v2-only: the tag filter is `v2.*` (and every job re-checks the
+`refs/tags/v2.` prefix), so a v3 release tag — `v3.*`, e.g. `v3.3.0.0` — never
+triggers a v2 PyPI/npm publish. v3 releases run through `v3-cut-release.yml`.
 
 ## Architecture
 

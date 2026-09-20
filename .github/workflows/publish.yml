@@ -1,12 +1,24 @@
 name: Publish to PyPI & npm
 
+# v2 track only (issue #391). This builds the root `pyproject.toml` package
+# and `packages/openclaw-plugin` — v2 code. The v3 track releases through
+# `v3-cut-release.yml` → `v3-release.yml`/`v3-pi-image.yml` and owns the
+# `v3.*` tag namespace (e.g. `v3.3.0.0`). A `v3.*` tag must never reach this
+# workflow: it would `twine upload` the v2 root package under a v3 release,
+# i.e. an accidental v2 PyPI/npm publish or a duplicate-upload failure.
+# Hence the `v2.*` tag filter, plus the per-job `refs/tags/v2.` guard as a
+# second gate. (`tags` and `tags-ignore` cannot be combined on one push
+# event, so the allowlist is the filter.)
 on:
   push:
     tags:
-      - 'v*'
+      - 'v2.*'
 
 jobs:
   publish-pypi:
+    # Second gate behind the `v2.*` trigger: keeps a widened trigger or a
+    # later `workflow_dispatch` from publishing v2 artifacts off a non-v2 ref.
+    if: ${{ startsWith(github.ref, 'refs/tags/v2.') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,8 +36,10 @@ jobs:
         run: twine upload dist/*
 
   publish-npm:
-    # npm only for stable releases (no dev/beta tags)
-    if: ${{ !contains(github.ref, 'dev') && !contains(github.ref, 'b') && !contains(github.ref, 'rc') }}
+    # npm only for stable v2 releases (no dev/beta tags); the
+    # `refs/tags/v2.` prefix is the same second gate as publish-pypi's —
+    # the dev/b/rc exclusions alone would happily pass a `v3.*` tag.
+    if: ${{ startsWith(github.ref, 'refs/tags/v2.') && !contains(github.ref, 'dev') && !contains(github.ref, 'b') && !contains(github.ref, 'rc') }}
     runs-on: ubuntu-latest
     needs: publish-pypi
     steps:
