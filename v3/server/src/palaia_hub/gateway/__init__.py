@@ -45,6 +45,7 @@ from .vault_protocol import (
     NoteRecord,
     NoteSummary,
     SearchHit,
+    SearchResponse,
     VaultService,
     VaultServiceError,
 )
@@ -69,6 +70,7 @@ __all__ = [
     "NoteSummary",
     "ProfileConfig",
     "SearchHit",
+    "SearchResponse",
     "StashGatewayASGI",
     "VaultMountConfig",
     "VaultService",

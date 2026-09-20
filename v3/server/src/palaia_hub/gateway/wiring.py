@@ -70,8 +70,10 @@ from .vault_protocol import (
     ReviewDecideResult,
     ReviewQueueResult,
     SearchHit,
+    SearchResponse,
     VaultService,
     VaultServiceError,
+    matched_channels,
 )
 
 logger = logging.getLogger("palaia_hub.gateway.wiring")
@@ -107,6 +109,16 @@ def _tag_list(value: Any) -> list[str]:
 
 def _folder_of(path: str) -> str:
     return path.rsplit("/", 1)[0] if "/" in path else ""
+
+
+def _one_based(rank: int | None) -> int | None:
+    """The index's 0-based channel rank as the 1-based one agents are told about.
+
+    See :class:`palaia_hub.gateway.vault_protocol.SearchHit` — the shift
+    happens once, here, so "rank 1" means "this channel's best answer"
+    everywhere outside the index.
+    """
+    return None if rank is None else rank + 1
 
 
 def _is_meta(note: Note) -> bool:
@@ -200,12 +212,12 @@ class EngineVaultService:
             else None
         )
 
-    async def search(self, query: str, *, limit: int = 10) -> list[SearchHit]:
+    async def search(self, query: str, *, limit: int = 10) -> SearchResponse:
         if self._index is not None:
             return await self._indexed_search(query, limit=limit)
         return await self._scan_search(query, limit=limit)
 
-    async def _indexed_search(self, query: str, *, limit: int) -> list[SearchHit]:
+    async def _indexed_search(self, query: str, *, limit: int) -> SearchResponse:
         """Hybrid search through the SPEC-104 index.
 
         ``meta`` notes are excluded here rather than filtered afterwards
@@ -217,6 +229,11 @@ class EngineVaultService:
         note-level on purpose — that is the tool contract SPEC-105 froze and
         SPEC-113 snapshots — so a sub-note hit reports its note's permalink
         and lets its snippet carry the matched line.
+
+        The index's per-hit channel ranks and the result set's
+        mode/``degraded`` pair are passed through (ranks shifted to 1-based,
+        see :func:`_one_based`): the index knows which channel found what,
+        and the agent asking is the one that has to weigh it.
         """
         assert self._index is not None
         results = await self._index.search(
@@ -225,17 +242,30 @@ class EngineVaultService:
             limit=limit,
             filters=SearchFilters(exclude_types=("meta",)),
         )
-        return [
-            SearchHit(
-                permalink=hit.permalink,
-                title=hit.title,
-                snippet=hit.snippet,
-                score=round(hit.score, 6),
-            )
-            for hit in results.hits
-        ]
+        return SearchResponse(
+            hits=[
+                SearchHit(
+                    permalink=hit.permalink,
+                    title=hit.title,
+                    snippet=hit.snippet,
+                    score=round(hit.score, 6),
+                    matched=matched_channels(
+                        fts_rank=hit.fts_rank,
+                        vector_rank=hit.vector_rank,
+                        effective_mode=results.effective_mode,
+                    ),
+                    fts_rank=_one_based(hit.fts_rank),
+                    vector_rank=_one_based(hit.vector_rank),
+                )
+                for hit in results.hits
+            ],
+            mode=results.mode,
+            effective_mode=results.effective_mode,
+            degraded=results.degraded,
+            degraded_reason=results.degraded_reason,
+        )
 
-    async def _scan_search(self, query: str, *, limit: int) -> list[SearchHit]:
+    async def _scan_search(self, query: str, *, limit: int) -> SearchResponse:
         needle = query.lower()
         hits: list[SearchHit] = []
         # Snapshot before iterating: every step below `await`s (read_note),
@@ -259,10 +289,20 @@ class EngineVaultService:
                     title=note.title,
                     snippet=snippet,
                     score=1.0 if needle in note.title.lower() else 0.5,
+                    matched=["text"],
                 )
             )
         hits.sort(key=lambda h: h.score, reverse=True)
-        return hits[:limit]
+        # No index open means no full-text ranking and no vectors at all —
+        # a plain substring walk. That is a degraded answer to a hybrid
+        # question, so it says so rather than passing itself off as search.
+        return SearchResponse(
+            hits=hits[:limit],
+            mode="hybrid",
+            effective_mode="scan",
+            degraded=True,
+            degraded_reason="no index open for this vault — substring scan only",
+        )
 
     async def read(self, permalink: str) -> NoteRecord:
         try:

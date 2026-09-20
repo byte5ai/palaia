@@ -102,8 +102,20 @@ async def test_read_missing_permalink_raises_service_error(service: EngineVaultS
 
 async def test_search_finds_body_text(service: EngineVaultService) -> None:
     await service.write("Findable", "a distinctive phrase lives here")
-    hits = await service.search("distinctive phrase")
-    assert [h.permalink for h in hits] == ["findable"]
+    response = await service.search("distinctive phrase")
+    assert [h.permalink for h in response.hits] == ["findable"]
+
+
+async def test_search_without_index_reports_the_scan_fallback_honestly(
+    service: EngineVaultService,
+) -> None:
+    """Issue #294: no index open means no ranking and no vectors — say so."""
+    await service.write("Findable", "a distinctive phrase lives here")
+    response = await service.search("distinctive phrase")
+    assert response.effective_mode == "scan"
+    assert response.degraded is True
+    assert "no index" in response.degraded_reason
+    assert response.hits[0].matched == ["text"]
 
 
 # --- SPEC-201: the "inbox.captured" hub-event hook point ---------------

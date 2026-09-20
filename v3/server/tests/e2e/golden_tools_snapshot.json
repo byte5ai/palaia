@@ -404,7 +404,7 @@
       "readOnlyHint": true,
       "title": null
     },
-    "description": "A palaia memory vault.\n\nSearch this vault's notes. Returns best matches first.",
+    "description": "A palaia memory vault.\n\nSearch this vault's notes. Returns best matches first. Each hit reports which retrieval channel found it ('text' = full-text/BM25, 'meaning' = semantic/vector, both = found by both) plus that channel's rank; the result reports the search mode that actually ran and whether it was degraded (e.g. semantic search unavailable, answered from full-text alone) \u2014 weigh the hits accordingly.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {

@@ -50,8 +50,8 @@ async def test_reindex_reproduces_identical_query_results(golden_work_vault: Pat
 
     before: dict[str, set[str]] = {}
     for query in CANONICAL_QUERIES:
-        hits = await service.search(query, limit=100)
-        before[query] = {hit.permalink for hit in hits}
+        response = await service.search(query, limit=100)
+        before[query] = {hit.permalink for hit in response.hits}
     note_count_before = len(engine.catalog)
 
     # Simulate "delete the index": drop the in-memory catalog and the
@@ -65,8 +65,8 @@ async def test_reindex_reproduces_identical_query_results(golden_work_vault: Pat
     rebuilt_service = EngineVaultService(engine)
     after: dict[str, set[str]] = {}
     for query in CANONICAL_QUERIES:
-        hits = await rebuilt_service.search(query, limit=100)
-        after[query] = {hit.permalink for hit in hits}
+        response = await rebuilt_service.search(query, limit=100)
+        after[query] = {hit.permalink for hit in response.hits}
 
     assert after == before
 

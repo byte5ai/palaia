@@ -24,9 +24,9 @@ async def test_write_then_search_finds_it() -> None:
     vault = FakeVaultService()
     await vault.write("Rate Limit Decision", "capped ingest at 100 req/min")
 
-    hits = await vault.search("rate limit")
-    assert len(hits) == 1
-    assert hits[0].permalink == "rate-limit-decision"
+    response = await vault.search("rate limit")
+    assert len(response.hits) == 1
+    assert response.hits[0].permalink == "rate-limit-decision"
 
 
 @pytest.mark.anyio
