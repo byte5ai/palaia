@@ -44,9 +44,9 @@ The folder lives wherever your hub keeps its data (on the usual setups, a
 `vaults/` directory inside it); the dashboard shows the exact path for each
 memory.
 
-For the full setup — pointing Obsidian at the folder when palaia runs on the
-same machine, or syncing with git when the hub runs on another box — see
-[Edit in Obsidian](/edit-in-obsidian/).
+For the full setup — syncing with git when the hub runs on its own box (the
+usual case), or pointing Obsidian straight at the folder when palaia runs on
+your own machine — see [Edit in Obsidian](/edit-in-obsidian/).
 
 ## How something you say becomes a note
 

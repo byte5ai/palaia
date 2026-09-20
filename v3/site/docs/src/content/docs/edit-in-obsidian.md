@@ -1,6 +1,6 @@
 ---
 title: Edit in Obsidian
-description: Your memory is a folder of Markdown files in a git repo — so you can open it in Obsidian and edit alongside your AI. Here's the local setup and the remote (git) setup.
+description: Your memory is a folder of Markdown files in a git repo — so you can open it in Obsidian and edit alongside your AI. Here's the git setup for a hub on your network, and the local shortcut.
 ---
 
 palaia stores every memory as plain Markdown files in a git repository — not
@@ -19,31 +19,19 @@ both:
   and let git carry changes between your machine and the hub. This page is
   about that path.
 
-Which setup you use depends on **where palaia runs relative to Obsidian**.
+## The normal setup: hub on your network, Obsidian on your machine
 
-## If palaia runs on the same machine as Obsidian
+palaia earns its keep as an always-on hub — a shared memory that every AI tool
+and every device reaches at one endpoint, the way Home Assistant sits on your
+network. So it almost always runs on a **separate box** (a NAS, a homelab
+server, a Raspberry Pi), not on the laptop you happen to be typing on. Obsidian
+runs on that laptop.
 
-This is the simple case. The vault is already a local folder, so just point
-Obsidian at it:
-
-1. In palaia's dashboard, open the memory and note the **vault path** it shows
-   (on the usual setups, a `vaults/<name>` directory inside the hub's data
-   directory).
-2. In Obsidian: **Open folder as vault** → choose that folder.
-
-That's it. Edit freely — palaia watches the folder and re-indexes a changed
-note within moments, so what you write in Obsidian is immediately searchable
-by your AI tools. Wikilinks light up in Obsidian's graph; palaia auto-commits
-every change to git in the background, so you keep a full, browsable history.
-
-## If palaia runs on another machine (NAS, homelab server, Raspberry Pi)
-
-This is the common case: the hub is an appliance on your network, and Obsidian
-is on your laptop. Obsidian only opens **local** folders, and palaia
-deliberately does **not** expose the vault as a network drive — that would work
-against its local-first, files-are-the-source-of-truth design. The bridge is
-**git**, which is why palaia makes every vault a real git repository with
-attributed auto-commits.
+Obsidian only opens **local** folders, and palaia deliberately does **not**
+expose the vault as a network drive — that would work against its local-first,
+files-are-the-source-of-truth design. The bridge is **git**, which is exactly
+why palaia makes every vault a real git repository with attributed
+auto-commits.
 
 The shape of the setup:
 
@@ -65,6 +53,22 @@ pushes to the hub, palaia's file watcher and git layer pick the change up and
 re-index it. palaia's background auto-commits flow the other way on your next
 pull. This is what "Obsidian-git compatible" means — git is the sync channel,
 not a live network mount.
+
+## The shortcut: palaia on the same machine as Obsidian
+
+Running palaia on the very machine you edit from is uncommon — a hub that only
+serves the one laptop it lives on gives up most of what palaia is for (always
+on, reachable from your phone and your other tools). But if that is your setup,
+skip git entirely: the vault is already a local folder.
+
+1. In palaia's dashboard, open the memory and note the **vault path** it shows
+   (on the usual setups, a `vaults/<name>` directory inside the hub's data
+   directory).
+2. In Obsidian: **Open folder as vault** → choose that folder.
+
+Edit freely — palaia watches the folder and re-indexes a changed note within
+moments, and still auto-commits every change to git in the background, so you
+keep the same browsable history.
 
 ## Good to know
 
