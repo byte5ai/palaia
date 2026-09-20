@@ -67,7 +67,29 @@ def test_dependabot_keeps_the_pins_current() -> None:
     config = yaml.safe_load(_DEPENDABOT.read_text(encoding="utf-8"))
     ecosystems = {entry["package-ecosystem"] for entry in config["updates"]}
     assert "github-actions" in ecosystems
-    # The v3 hub image's base images, still tag-pinned (see the note in
-    # v3/deploy/Dockerfile) but watched, so the day a digest is written in it
-    # is maintained from the start.
+    # The v3 hub image's base images are digest-pinned (see the note in
+    # v3/deploy/Dockerfile) and watched here, so Dependabot keeps each digest
+    # current instead of letting it rot into a frozen, unpatched base.
     assert "docker" in ecosystems
+
+
+_DOCKERFILE = _REPO_ROOT / "v3" / "deploy" / "Dockerfile"
+# A registry image reference in `FROM`/`COPY --from=` — as opposed to a
+# build-stage alias like `hub-build`, which carries no tag, registry or digest.
+_STAGE_ALIAS = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+_IMAGE_REF = re.compile(r"^(?:FROM\s+(\S+)|COPY\s+--from=(\S+))", re.MULTILINE)
+
+
+def test_dockerfile_base_images_are_pinned_by_digest() -> None:
+    assert _DOCKERFILE.exists(), "issue #400: v3/deploy/Dockerfile moved?"
+    text = _DOCKERFILE.read_text(encoding="utf-8")
+    refs = [m.group(1) or m.group(2) for m in _IMAGE_REF.finditer(text)]
+    assert refs, "no FROM/COPY --from references found — did the Dockerfile move?"
+    images = [r for r in refs if not _STAGE_ALIAS.match(r)]
+    assert images, "expected at least one registry image reference"
+    for image in images:
+        assert "@sha256:" in image, (
+            f"v3/deploy/Dockerfile: base image `{image}` is not pinned by digest "
+            "(issue #400). Resolve the tag against the registry and pin it as "
+            "`image:tag@sha256:<hex>`; keep the tag for readability."
+        )
