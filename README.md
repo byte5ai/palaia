@@ -34,7 +34,7 @@ plain files on hardware you control.
 Think Home Assistant, for your AI tools.
 
 > [!NOTE]
-> **palaia v3 is a release candidate (`3.0.0-rc1`).** Everything below works and is
+> **palaia v3 is a release candidate (`3.0.0-rc2`).** Everything below works and is
 > tested, but it has not had an outside security review yet. Try it, keep backups, and
 > [tell us what breaks](https://github.com/byte5ai/palaia/issues). If you are running
 > palaia v2 today, it stays [supported](#already-using-palaia-v2).
