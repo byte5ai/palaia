@@ -16,7 +16,14 @@ sources:
   - https://github.com/byte5ai/palaia/pkgs/container/palaia-hub
 maintainers:
   - name: byte5
-    email: hello@byte5.ai
+    # The one byte5 contact this repository actually attests (the project
+    # author in the root `pyproject.toml`). The address that stood here
+    # before, `hello@byte5.ai`, appeared nowhere else in the repository and
+    # nothing could show it is read (issue #400). The schema requires a
+    # maintainer email, so this is a replacement, not a removal — security
+    # reports still go through GitHub private vulnerability reporting, the
+    # only monitored channel (v3/SECURITY.md).
+    email: hello@byte5.de
 app_version: "0.1.0"
 # The catalog item's own version (semver, per the truenas/apps catalog);
 # bumped when this package changes, independently of app_version.
