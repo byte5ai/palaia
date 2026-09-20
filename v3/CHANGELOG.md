@@ -60,9 +60,13 @@ v3's first release candidate rather than a diff against an earlier v3 version.
 
 ### Marketplace & add-ons
 
-- A curated add-on index and a one-click marketplace inside the dashboard —
-  install a tool once, and every connected AI tool has it, with no per-client
-  reconfiguration.
+- A one-click marketplace inside the dashboard — install a tool once, and
+  every connected AI tool has it, with no per-client reconfiguration. For
+  3.0.0 it browses the official MCP registry, anything you add by hand, and
+  the add-ons bundled with this release; palaia publishes no curated index of
+  its own yet, and the marketplace page says so rather than implying a list
+  that isn't there. An operator who publishes their own signed index can
+  point a hub at it (`v3/tools/README.md`).
 - Support for external MCP servers and an encrypted secret store for their
   credentials.
 - An SDK for third-party add-on authors, with local testing and a submission
