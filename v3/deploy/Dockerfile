@@ -17,33 +17,23 @@
 # on first use into the PALAIA_HOME volume (see v3/deploy/README.md).
 #
 # Base images (`node:22-slim`, `python:3.12-slim`, `uv:0.8`) are pinned by
-# tag, not digest (issue #400): a digest pin freezes security fixes in the
-# base layers until something bumps it. Reproducibility of a given release
-# is provided by the published image itself (`ghcr.io/byte5ai/palaia-hub:v3.<version>`), not
-# by rebuilding from this file.
+# tag AND digest (issue #400): the tag stays for readability, the `@sha256:`
+# freezes the exact image so a rebuild is reproducible and cannot silently
+# pull a re-tagged layer. .github/dependabot.yml watches this directory, so
+# Dependabot keeps each digest current — without a bot a digest pin rots into
+# a frozen, unpatched base, which is why the pin and the bot ship together.
 #
-# TODO(#400): pin these three by digest. The bot half of the problem is
-# solved — .github/dependabot.yml now watches this directory, so a digest
-# written here would be kept current rather than rotting — but Dependabot
-# does not convert a bare tag pin into a digest pin, and a digest still has
-# to be resolved once against the registry. A digest is deliberately NOT
-# written in by hand: the lockfile records none, so any digest added without
-# that registry round-trip would be invented — worse than an honest tag pin.
-# What the round-trip needs, so the next attempt does not rediscover it:
-# outbound access to auth.docker.io/registry-1.docker.io for the two Docker
-# Hub images, and for `ghcr.io/astral-sh/uv` either the same to ghcr.io or a
-# token carrying `read:packages` (the GitHub API refuses
-# `/orgs/astral-sh/packages/...` without it). A sandboxed agent session has
-# neither; the resolution belongs in CI or an owner shell, e.g.
-# `docker buildx imagetools inspect node:22-slim --format '{{.Manifest.Digest}}'`.
-# The GitHub Actions in .github/workflows/v3-*.yml no longer share this
-# problem: their SHAs resolve over the GitHub API and are pinned (see the
-# note at the top of v3-release.yml).
+# The digests were resolved against the registry (Docker Hub / ghcr.io),
+# never hand-written. To refresh one by hand, resolve it again — e.g.
+# `docker buildx imagetools inspect node:22-slim --format '{{.Manifest.Digest}}'`
+# — and update tag and digest together; never edit a digest to a value you
+# have not resolved. The GitHub Actions in .github/workflows/v3-*.yml are
+# likewise SHA-pinned (see the note at the top of v3-release.yml).
 
 # ---------------------------------------------------------------------------
 # Stage 1: web build
 # ---------------------------------------------------------------------------
-FROM node:22-slim AS web-build
+FROM node:22-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9 AS web-build
 WORKDIR /web
 # .npmrc must ride along: it carries legacy-peer-deps=true (see its own
 # comment), without which `npm ci` fails peer resolution inside this image
@@ -64,8 +54,8 @@ RUN npm run build
 # ---------------------------------------------------------------------------
 # Stage 2: hub build (uv-managed venv, no dev dependencies)
 # ---------------------------------------------------------------------------
-FROM python:3.12-slim AS hub-build
-COPY --from=ghcr.io/astral-sh/uv:0.8 /uv /uvx /usr/local/bin/
+FROM python:3.12-slim@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9 AS hub-build
+COPY --from=ghcr.io/astral-sh/uv:0.8@sha256:1d31be550ff927957472b2a491dc3de1ea9b5c2d319a9cea5b6a48021e2990a6 /uv /uvx /usr/local/bin/
 WORKDIR /src
 # The venv's console-script shebangs and the python symlink embed the path
 # it was created at, so it must be built at the exact path the runtime
@@ -92,7 +82,7 @@ RUN uv pip install --python "${UV_PROJECT_ENVIRONMENT}" "zeroconf>=0.140,<1"
 # ---------------------------------------------------------------------------
 # Stage 3: runtime
 # ---------------------------------------------------------------------------
-FROM python:3.12-slim AS runtime
+FROM python:3.12-slim@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9 AS runtime
 
 # nginx: single public entry point (static dashboard + reverse proxy to the
 # hub's internal port). curl: used by the HEALTHCHECK below. gettext-base:
