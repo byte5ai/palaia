@@ -14,13 +14,23 @@ Three acceptance criteria live here:
   form of that guarantee.
 * **Garbage never raises.** Across a spread of adversarial and random inputs,
   ``parse_note`` always returns a ``ParsedNote`` — never an exception.
-* **Parse time stays flat.** A corpus-sized note parses in well under a
-  millisecond at the median; this guards against catastrophic regex
-  backtracking creeping in as the grammar grows.
+* **Parse time stays linear in note size.** Ten times the body costs roughly
+  ten times the parse, not a hundred; this guards against catastrophic regex
+  backtracking creeping in as the grammar grows. The guard is a *ratio*
+  measured on the machine running the test, not a wall-clock budget: an
+  absolute millisecond bound is a property of the host, not of the parser,
+  and turned the check into a false red on any runner slower than the one it
+  was tuned on (issue #420). The absolute number is still available, printed
+  by the same test and asserted only when a budget is opted into:
+
+    # p50 on this machine, with the historical 1 ms budget enforced
+    PALAIA_PARSE_BUDGET_MS=1.0 uv run pytest \
+        server/tests/vault/test_parse_roundtrip.py -s -k parse_time
 """
 
 from __future__ import annotations
 
+import os
 import random
 import statistics
 import time
@@ -133,8 +143,24 @@ def test_random_markdown_shaped_garbage_never_raises() -> None:
 
 
 # --------------------------------------------------------------------------
-# Performance: p50 parse time on a corpus-sized note
+# Performance: parse time grows linearly with note size
 # --------------------------------------------------------------------------
+
+#: Optional wall-clock budget in milliseconds for the p50 of the small note.
+#: Unset by default: the budget is a property of the machine, not of the
+#: parser (issue #420). Set it on a host whose speed is known if you want the
+#: historical 1 ms bound enforced.
+BUDGET_MS = float(os.environ.get("PALAIA_PARSE_BUDGET_MS", "0"))
+
+#: Body-size multiple between the two measured notes.
+SIZE_FACTOR = 10
+
+#: Tolerated growth of the p50 across that multiple. Linear parsing lands at
+#: ~SIZE_FACTOR; the bound leaves generous room for timer noise and per-call
+#: fixed cost (which *shrinks* the ratio) while staying far below what any
+#: super-linear blowup would produce — quadratic backtracking over 10x the
+#: body is 100x the time, not 25x.
+MAX_GROWTH = 2.5 * SIZE_FACTOR
 
 
 def _sized_note(observation_count: int) -> str:
@@ -155,16 +181,48 @@ def _sized_note(observation_count: int) -> str:
     return "\n".join(lines) + "\n"
 
 
-def test_parse_time_p50_under_one_millisecond() -> None:
+def _parse_p50_ms(text: str, *, runs: int = 200, batches: int = 3) -> float:
+    """Median parse time in ms, taken as the best of several batch medians.
+
+    A scheduler hiccup can inflate any single batch on a shared runner, so the
+    reading kept is the cheapest batch: noise only ever adds time.
+    """
+    parse_note(text, "perf-note.md")  # warm up caches and the regex engine
+    medians: list[float] = []
+    for _ in range(batches):
+        timings: list[float] = []
+        for _ in range(runs):
+            started = time.perf_counter()
+            parse_note(text, "perf-note.md")
+            timings.append((time.perf_counter() - started) * 1000)
+        medians.append(statistics.median(timings))
+    return min(medians)
+
+
+def test_parse_time_grows_linearly_with_note_size(capsys: pytest.CaptureFixture[str]) -> None:
     # "Corpus-sized": the largest golden file (case 03) is 27 lines; 15
     # observation pairs (30 body lines + the frontmatter block) is already
     # bigger than any real corpus fixture, so this is a comfortable margin
-    # above what the SPEC calls "corpus-sized", not a best case.
-    text = _sized_note(observation_count=15)
-    timings: list[float] = []
-    for _ in range(200):
-        started = time.perf_counter()
-        parse_note(text, "perf-note.md")
-        timings.append((time.perf_counter() - started) * 1000)
-    p50 = statistics.median(timings)
-    assert p50 < 1.0, f"parse p50 {p50:.3f} ms exceeds the 1 ms budget"
+    # above what the SPEC calls "corpus-sized", not a best case. The large
+    # note is the same shape, SIZE_FACTOR times the body.
+    small_p50 = _parse_p50_ms(_sized_note(observation_count=15))
+    large_p50 = _parse_p50_ms(_sized_note(observation_count=15 * SIZE_FACTOR))
+
+    growth = large_p50 / small_p50
+    with capsys.disabled():
+        print(
+            f"\nparse p50: {small_p50:.3f} ms at 15 observations, "
+            f"{large_p50:.3f} ms at {15 * SIZE_FACTOR} (growth {growth:.1f}x "
+            f"for {SIZE_FACTOR}x the body)"
+        )
+
+    assert growth < MAX_GROWTH, (
+        f"parse time grew {growth:.1f}x for {SIZE_FACTOR}x the body "
+        f"({small_p50:.3f} ms -> {large_p50:.3f} ms) — super-linear parsing "
+        "suggests catastrophic backtracking in the grammar"
+    )
+    if BUDGET_MS:
+        assert small_p50 < BUDGET_MS, (
+            f"parse p50 {small_p50:.3f} ms exceeds the {BUDGET_MS} ms budget "
+            "set via PALAIA_PARSE_BUDGET_MS"
+        )
