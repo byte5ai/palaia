@@ -89,6 +89,22 @@ off" tool — use it when resuming work, not when answering a fresh question.
 If recall comes back empty, say so plainly and carry on. An empty memory is
 information too, and it usually means you have something worth capturing.
 
+## How a hit was found
+
+A `search` result tells you *how* it was found, and that changes how much to
+trust it. Each hit's `matched` names the channel: `text` means the words you
+typed are literally in the note, `meaning` means it was found by similarity
+without sharing the words, and both together is the strongest signal there is.
+`fts_rank` and `vector_rank` give the position inside each channel, best first.
+
+The result as a whole says which search actually ran (`effective_mode`) and
+whether that was less than was asked for (`degraded`, with a
+`degraded_reason`). `degraded: true` usually means the semantic half was not
+available — a new memory still working through its notes, or one with semantic
+search switched off. Then a miss proves nothing: try the words the note itself
+would use, or ask `recall`, before you tell the person a memory has nothing on
+the subject.
+
 ## Which memory
 
 If several memories are mounted, they are separate on purpose — work knowledge

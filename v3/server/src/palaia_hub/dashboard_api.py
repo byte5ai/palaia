@@ -364,7 +364,10 @@ def build_dashboard_router(
         if not q.strip():
             return []
         index = indexes.get(vault_key) if indexes is not None else None
-        return await EngineVaultService(engine, index).search(q, limit=limit)
+        # The dashboard's REST shape stays a plain list of hits; the hits
+        # themselves now carry their per-hit provenance (issue #294).
+        response = await EngineVaultService(engine, index).search(q, limit=limit)
+        return response.hits
 
     @router.get("/api/vaults/{vault_key}/index_status", response_model=IndexStatusOut)
     async def index_status(vault_key: str) -> IndexStatusOut:

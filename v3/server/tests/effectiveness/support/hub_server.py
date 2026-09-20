@@ -41,7 +41,7 @@ from palaia_hub.gateway.vault_protocol import (
     InboxStatusResult,
     NoteRecord,
     NoteSummary,
-    SearchHit,
+    SearchResponse,
     VaultService,
 )
 from palaia_hub.gateway.wiring import EngineVaultService
@@ -70,7 +70,7 @@ class RecordingService:
         with self._log_path.open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
 
-    async def search(self, query: str, *, limit: int = 10) -> list[SearchHit]:
+    async def search(self, query: str, *, limit: int = 10) -> SearchResponse:
         self._record("search", query=query, limit=limit)
         return await self._inner.search(query, limit=limit)
 

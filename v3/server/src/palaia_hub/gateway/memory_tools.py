@@ -60,9 +60,11 @@ from .inbox import missing_capture_fields, missing_fields_message
 from .naming import compose_tool_name
 from .vault_protocol import (
     CaptureResult,
+    EffectiveSearchMode,
     InboxStatusResult,
     NoteRecord,
     NoteSummary,
+    RequestedSearchMode,
     ReviewDecideResult,
     ReviewQueueResult,
     SearchHit,
@@ -134,6 +136,20 @@ ModelParam = Annotated[
 class SearchResult(BaseModel):
     query: str
     hits: list[SearchHit]
+
+    mode: RequestedSearchMode = "hybrid"
+    """The search mode that was asked for."""
+
+    effective_mode: EffectiveSearchMode = "hybrid"
+    """The mode that actually ran — ``fts`` when a hybrid query had no
+    vectors to work with, ``scan`` when no index was open at all."""
+
+    degraded: bool = False
+    degraded_reason: str = ""
+    """SPEC-104's honesty signal, passed through so an agent can weigh the
+    hits accordingly: a hybrid query answered from full-text alone says so
+    (and each hit's ``matched`` names the channel that found it)."""
+
     pick_tool: str = ""
     """SPEC-208: this vault's mounted ``recall_pick`` tool name — see
     ``vault_protocol.ReviewQueueResult``'s docstring for why the
@@ -241,7 +257,14 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
 
     @server.tool(
         name="search",
-        description=desc("Search this vault's notes. Returns best matches first."),
+        description=desc(
+            "Search this vault's notes. Returns best matches first. Each hit "
+            "reports which retrieval channel found it ('text' = full-text/BM25, "
+            "'meaning' = semantic/vector, both = found by both) plus that "
+            "channel's rank; the result reports the search mode that actually "
+            "ran and whether it was degraded (e.g. semantic search unavailable, "
+            "answered from full-text alone) — weigh the hits accordingly."
+        ),
         annotations=ToolAnnotations(
             readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False
         ),
@@ -250,14 +273,34 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
     async def search(query: QueryParam, limit: int = 10) -> ToolResult:
         if (err := scope_error("search")) is not None:
             return err
-        hits = await service.search(query, limit=limit)
+        response = await service.search(query, limit=limit)
+        hits = response.hits
         text = (
             f"{len(hits)} match(es) for {query!r}: "
-            + ", ".join(f"{h.title!r} ({h.permalink})" for h in hits)
+            + ", ".join(
+                f"{h.title!r} ({h.permalink}, via {'+'.join(h.matched) or 'unknown'})"
+                for h in hits
+            )
             if hits
             else f"no matches for {query!r}"
         )
-        result = SearchResult(query=query, hits=hits, pick_tool=recall_pick_tool_name)
+        # The degraded note rides in the human-readable half too: a model
+        # that only reads `content` should not have to infer that this
+        # answer came from full-text alone.
+        if response.degraded:
+            text += (
+                f"\n[degraded: {response.mode} search ran as "
+                f"{response.effective_mode} — {response.degraded_reason}]"
+            )
+        result = SearchResult(
+            query=query,
+            hits=hits,
+            mode=response.mode,
+            effective_mode=response.effective_mode,
+            degraded=response.degraded,
+            degraded_reason=response.degraded_reason,
+            pick_tool=recall_pick_tool_name,
+        )
         return ToolResult(content=text, structured_content=result)
 
     @server.tool(
@@ -640,6 +683,23 @@ def build_vault_server(vault: VaultMountConfig, service: VaultService) -> FastMC
             "decision (format spec §8); **review_decide** and **recall_pick** "
             "are app-only helpers for the review-queue and recall-explorer "
             "MCP Apps, not something you would normally call directly.\n\n"
+            "## Reading a search result\n"
+            "`search` tells you *how* every hit was found, so you can weigh "
+            "it: each hit's `matched` lists its retrieval channel(s) — "
+            "`text` (full-text/BM25, the words are literally there) and/or "
+            "`meaning` (semantic/vector, related without sharing the words) — "
+            "and `fts_rank`/`vector_rank` give its rank within each channel "
+            "(1-based, so 1 = that channel's best answer; unset means the "
+            "channel did not produce this hit). A hit "
+            "matched by both channels is the strongest signal there is.\n"
+            "The result as a whole reports `mode` (asked for) vs. "
+            "`effective_mode` (what ran: `hybrid`, `fts`, `vector`, or "
+            "`scan` when no index is open) plus `degraded` and "
+            "`degraded_reason`. `degraded: true` means you got less than you "
+            "asked for — typically semantic search unavailable or still "
+            "embedding, answered from full-text alone. Then a *missing* note "
+            "is not evidence it does not exist: rephrase in the words the "
+            "note would use, or try `recall`, before concluding anything.\n\n"
             "## Parameter notes\n"
             "`search`'s query, every `folder` parameter, and recall's `ref` / "
             "`model` accept a few common misnamings (e.g. `q`, `dir`, `path`, "
