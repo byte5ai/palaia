@@ -11,11 +11,78 @@ on:
     branches: [main]
     paths: ['v3/**', '.github/workflows/v3-*.yml']
 
+# Issue #421: a new push to the same PR (or branch) cancels the in-flight run
+# instead of letting a now-superseded full matrix run to completion on the
+# shared runner quota.
+concurrency:
+  group: v3-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 defaults:
   run:
     shell: bash
 
 jobs:
+  # Issue #421: path-scope the heavy lanes. A change confined to one area
+  # (the dashboard, the sdk, the docs site, the bundle tooling, …) no longer
+  # spins up every job. The `python` job is deliberately NOT gated here: the
+  # doc/copy-lint tests are woven through the suite (server/tests/docs_site,
+  # *_copy_lint.py, test_migration_guide_*, clients/skill_lint.py,
+  # deploy/test_store_manifests.py, …), so making docs-only PRs skip it would
+  # silently drop coverage. Splitting those out so docs PRs can skip the full
+  # suite is tracked separately. Every filter also lists the v3 workflow files
+  # so that editing this file re-runs the lanes it governs.
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+      docs_site: ${{ steps.filter.outputs.docs_site }}
+      mcpb: ${{ steps.filter.outputs.mcpb }}
+      sdk: ${{ steps.filter.outputs.sdk }}
+      e2e: ${{ steps.filter.outputs.e2e }}
+      deps: ${{ steps.filter.outputs.deps }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # Generous on purpose: over-running a fast lane is cheap, skipping a
+          # lane that was actually affected is not. `clients/**` feeds both the
+          # dashboard and the docs-site generated "Connect your AI" pages.
+          filters: |
+            web:
+              - 'v3/web/**'
+              - 'v3/clients/**'
+              - '.github/workflows/v3-*.yml'
+            docs_site:
+              - 'v3/site/**'
+              - 'v3/clients/**'
+              - '.github/workflows/v3-*.yml'
+            mcpb:
+              - 'v3/tools/build-mcpb/**'
+              - 'v3/server/**'
+              - '.github/workflows/v3-*.yml'
+            sdk:
+              - 'v3/sdk/**'
+              - '.github/workflows/v3-*.yml'
+            e2e:
+              - 'v3/server/**'
+              - 'v3/clients/**'
+              - 'v3/tools/**'
+              - 'v3/pyproject.toml'
+              - 'v3/uv.lock'
+              - '.github/workflows/v3-*.yml'
+            deps:
+              - 'v3/**/pyproject.toml'
+              - 'v3/**/uv.lock'
+              - 'v3/**/package.json'
+              - 'v3/**/package-lock.json'
+              - '.github/workflows/v3-*.yml'
+
   python:
     runs-on: ubuntu-latest
     defaults:
@@ -73,6 +140,8 @@ jobs:
     # no dependency on palaia_hub — see v3/justfile). Until issue #401 only
     # `ruff check .` from the workspace root ever looked at it in CI; its
     # tests and its own mypy run were `just sdk-test`/`sdk-lint`, by hand.
+    needs: changes
+    if: ${{ needs.changes.outputs.sdk == 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -105,6 +174,8 @@ jobs:
     # SPEC-113: the Phase-1 exit-criterion harness (S1-S5) — real hub
     # subprocesses over the golden vault fixture, real streamable HTTP,
     # amd64 (this runner's arch).
+    needs: changes
+    if: ${{ needs.changes.outputs.e2e == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -157,6 +228,8 @@ jobs:
     # MCPB manifest schema, and the build is reproducible in CI — proven
     # by actually running it here, not by running `build.mjs` only on a
     # developer's machine.
+    needs: changes
+    if: ${{ needs.changes.outputs.mcpb == 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -202,6 +275,8 @@ jobs:
           retention-days: 14
 
   web:
+    needs: changes
+    if: ${{ needs.changes.outputs.web == 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -242,6 +317,8 @@ jobs:
     #
     # `uv lock --check` is the exception and DOES gate: a manifest edited
     # without re-locking is this repository's own mistake, not the world's.
+    needs: changes
+    if: ${{ needs.changes.outputs.deps == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -311,6 +388,8 @@ jobs:
     # build above — a separate job (its own npm project/lockfile, no
     # shared build tooling with v3/web) rather than a step, so a docs-site
     # failure is attributed clearly and the two builds run in parallel.
+    needs: changes
+    if: ${{ needs.changes.outputs.docs_site == 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:
