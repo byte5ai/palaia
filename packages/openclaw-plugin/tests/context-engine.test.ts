@@ -123,6 +123,61 @@ describe("ContextEngine privacy stripping", () => {
   });
 });
 
+describe("ContextEngine compact()", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRun.mockResolvedValue("");
+  });
+
+  it("runs `palaia gc`", async () => {
+    const engine = createPalaiaContextEngine(createMockApi(), baseConfig);
+
+    await engine.compact({ sessionId: "s1", sessionFile: "/tmp/s1.jsonl" } as any);
+
+    expect(mockRun).toHaveBeenCalledWith(["gc"], expect.anything());
+  });
+
+  // Regression: #418 — `palaia gc` only compacts the memory store. Since the
+  // engine declares ownsCompaction, claiming `compacted: true` here would make
+  // the host skip its own compaction while the transcript keeps growing.
+  it("reports compacted:false because the transcript is not reduced", async () => {
+    const engine = createPalaiaContextEngine(createMockApi(), baseConfig);
+
+    const result = await engine.compact({
+      sessionId: "s1",
+      sessionFile: "/tmp/s1.jsonl",
+      currentTokenCount: 120_000,
+    } as any);
+
+    expect(result.ok).toBe(true);
+    expect(result.compacted).toBe(false);
+    expect(result.reason).toBeTruthy();
+    // No reduction happened, so the token count must be reported unchanged.
+    expect(result.result?.tokensBefore).toBe(120_000);
+    expect(result.result?.tokensAfter).toBe(120_000);
+  });
+
+  it("omits token figures when the host supplies no current count", async () => {
+    const engine = createPalaiaContextEngine(createMockApi(), baseConfig);
+
+    const result = await engine.compact({ sessionId: "s1", sessionFile: "/tmp/s1.jsonl" } as any);
+
+    expect(result.compacted).toBe(false);
+    expect(result.result).toBeUndefined();
+  });
+
+  it("reports ok:false when gc fails", async () => {
+    mockRun.mockRejectedValueOnce(new Error("gc boom"));
+    const engine = createPalaiaContextEngine(createMockApi(), baseConfig);
+
+    const result = await engine.compact({ sessionId: "s1", sessionFile: "/tmp/s1.jsonl" } as any);
+
+    expect(result.ok).toBe(false);
+    expect(result.compacted).toBe(false);
+    expect(result.reason).toContain("gc boom");
+  });
+});
+
 /**
  * Direct unit test for stripPrivateBlocks — the function used by runAutoCapture.
  */

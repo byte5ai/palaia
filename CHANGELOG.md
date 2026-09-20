@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **ContextEngine `compact()` no longer claims a compaction it did not do** (#418) — `compact()` runs `palaia gc`, which garbage-collects the memory store without touching the conversation transcript, yet it returned `compacted: true`. Since palaia declares `ownsCompaction: true`, the host trusted that signal and skipped its own compaction while the context window kept filling. `compact()` now returns `compacted: false` with a `reason`, and reports `tokensBefore`/`tokensAfter` unchanged when the host supplies a current token count.
+
+---
+
 ## v2.8.0 — 2026-05-12
 
 ### Changed
