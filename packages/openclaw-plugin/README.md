@@ -33,6 +33,10 @@ Restart the gateway after changing config:
 openclaw gateway restart
 ```
 
+Running OpenClaw's native Active Memory plugin as well? See
+[OpenClaw Active Memory + palaia](../../docs/openclaw-active-memory.md) for how the two
+arrangements differ and which one to pick.
+
 ### Plugin Options
 
 All options are optional — sensible defaults are used:
@@ -47,7 +51,7 @@ All options are optional — sensible defaults are used:
         tier: "hot",                      // default: "hot" (hot|warm|all)
         maxResults: 10,                   // default: 10
         timeoutMs: 3000,                  // default: 3000
-        memoryInject: false,              // default: false (inject HOT into context)
+        memoryInject: true,               // default: true (inject HOT into context)
         maxInjectedChars: 4000,           // default: 4000
       }
     }
