@@ -59,7 +59,7 @@ to them.
                                             local container or remote)         proposing vault edits)
 ```
 
-Six boundaries, and what each one is:
+Seven boundaries, and what each one is:
 
 | # | Boundary | Who is on the far side | What crosses it |
 |---|---|---|---|
@@ -69,6 +69,7 @@ Six boundaries, and what each one is:
 | B4 | **Upstreams** | Someone else's MCP server, reached over http or spawned as a `stdio` child | The hub's own credentials go out; that server's tool results come back |
 | B5 | **Marketplace installs** | A container image from a registry | Code that runs on the user's machine |
 | B6 | **The curator** | A model with a narrowed tool profile | Vault content out, proposed vault edits back in |
+| B7 | **The Telegram connector** (issue #411) | Telegram's servers, and through them anyone who can write into a chat a configured bot is in | **In:** third-party text aimed at an agent, plus (in webhook mode) unauthenticated HTTP from the internet. **Out:** whatever an agent sends to a person's phone, under the hub's bot identity |
 
 The **modes table** (MASTERPLAN §5.5) decides how much of B1–B3 is reachable
 from where. It is the single most load-bearing control in this document:
@@ -107,9 +108,15 @@ profiles change; each profile under it carries its own verifier) plus six
 hub-wide servers with their own mount paths: `/mcp/stash`, `/mcp/directory`,
 `/mcp/messenger`, `/mcp/hub`, `/mcp/market`, `/mcp/team`, which share one
 hub-wide verifier (issue #313). The tool families are `memory_tools`,
-`stash_tools`, `directory_tools` and `messenger_tools` under
-`server/src/palaia_hub/gateway/`, plus the MCP Apps in
+`stash_tools`, `directory_tools`, `messenger_tools` and `telegram_tools`
+under `server/src/palaia_hub/gateway/`, plus the MCP Apps in
 `server/src/palaia_hub/gateway/apps/`.
+
+`telegram_tools` (issue #411) has no mount path of its own: it is mounted
+per profile only, by the `telegram: true` flag, because the profile *is* the
+identity its outbound grant is keyed by. It is the one family that reaches
+outside the hub to a person, so it carries a second fence of its own — see
+[§7.3a](#73a-the-telegram-connector-b7).
 
 | Threat | Mitigation as built | Where |
 |---|---|---|
@@ -237,6 +244,50 @@ was not given. *Enforced by* `server/src/palaia_hub/curator/profile.py` and
 `server/src/palaia_hub/curator/middleware.py`; *proven by*
 `server/tests/curator/test_guard_matrix.py`.
 
+### 7.3a The Telegram connector (B7)
+
+New in issue #411, and the first boundary where **the far side is the general
+public**: anyone who can write into a group a configured bot sits in can put
+text in front of an agent, and in webhook mode Telegram's servers reach an
+HTTP endpoint on the hub directly. Four controls, in the order they apply:
+
+1. **Inbound text never becomes an agent's own initiative.** There is no tool
+   that reads Telegram. A message reaches an agent only through a destination
+   the operator wrote down — a messenger envelope, a vault `inbox/` capture
+   awaiting curation, or a hub event — each of which is a surface built for
+   somebody else's words. The reasoning, and the MCP-App channel view that
+   was considered and deferred, are in
+   [ADR-006](../../decisions/006-telegram-reading-surface.md).
+2. **The webhook endpoint's only credential is Telegram's secret token**, and
+   it is the first thing checked, in constant time
+   (`hmac.compare_digest`). The URL is not a secret — it carries the bot key,
+   which is in `config.yaml`, the logs and the dashboard. A webhook bot with
+   no configured secret is refused by the config schema; one whose secret
+   store entry is empty answers `503` rather than degrading into accepting
+   anything. *Enforced by* `server/src/palaia_hub/telegram/webhook.py`;
+   *proven by* `server/tests/telegram/test_webhook.py` (absent, empty, wrong,
+   prefix and extended headers all refused with nothing delivered).
+3. **Outbound is default-deny, per MCP profile.** A `telegram.grants` entry
+   names the bots and chats one profile may address; a profile with no entry
+   sends nothing, whatever scopes its token carries, and the profile identity
+   is fixed when the tool server is built rather than taken from a tool
+   argument. The curator profile can never carry these tools at all — the
+   same fence SPEC-403 puts around the messenger, for a channel that reaches
+   further. *Proven by* `server/tests/telegram/test_outbound.py` and
+   `test_tools.py`.
+4. **The bot token is in the secret store and nowhere else.** Its own shape
+   is redacted from logs, because a Telegram token travels in the URL *path*
+   (`/bot<token>/sendMessage`) where the `Bearer`/`key=value` patterns never
+   looked. *Proven by* `server/tests/telegram/test_token_never_leaks.py`,
+   which asserts all three halves the issue names (config, logs, tool
+   output).
+
+The residual risk is stated rather than solved: **a routed Telegram message
+is untrusted text that a model will read.** The controls above decide *where*
+it lands and that it arrives labelled as another party's words; they do not
+make it safe to follow. That is the same posture B1 takes toward tool
+arguments, and it belongs in §8 rather than being claimed as closed here.
+
 ### 7.4 Everything on disk (A3)
 
 One rule, one implementation: **`0600` files inside `0700` directories, for
@@ -318,6 +369,19 @@ argue with them; that is what the list is for.
     under the home, so this only affects an operator who deliberately chose
     a custom location — documented in `v3/docs/backup-restore.md`, not
     silently missed.
+11. **A routed Telegram message is untrusted text a model will read** (B7,
+    §7.3a). It is risk 1 with a new and much wider entrance: anyone in a
+    group a configured bot sits in can write it, no install and no vault
+    access required. The answer is the same one — containment, not detection:
+    the text lands only where the operator routed it, arrives framed as
+    another party's words, and the agent that reads it has whatever narrow
+    profile its client connected with. Two things narrow the blast radius
+    specifically: the connector exposes no tool that *reads* Telegram, so an
+    injected agent cannot go looking for more; and the send fence is
+    per-profile default-deny, so an injected agent cannot answer through a
+    bot or into a chat the operator did not grant it. An operator putting a
+    bot in a *public* group should assume every message in it reaches the
+    destination they configured.
 
 ---
 

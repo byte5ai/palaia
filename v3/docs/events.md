@@ -235,6 +235,34 @@ or a `systemd` timer around it reads.
 | `backup.target.succeeded` | `target`, `kind`, `destination`, `artifact`, `bytes_written`, `pruned`, `duration_seconds` | A destination received a complete archive. `pruned` names the older archives that destination's retention deleted. |
 | `backup.target.failed` | `target`, `kind`, `destination`, `reason` | The run did not complete — an unmounted share, a full disk, a destination refused by the secret-safety rule. `reason` is the same plain-language message the CLI prints and the REST route returns. |
 
+### 3.10 Telegram connector events (issue #411, additive)
+
+Emitted by `palaia_hub.telegram.TelegramService`. Three of the four carry
+**metadata only, never the message text** — a dump of
+`palaia_hub.telegram.models.InboundMessage.metadata()`, a method that has no
+`text` key at all, for the same reason §3.7's envelopes have no `body`: this
+bus feeds every SSE listener and every outbound webhook the hub is configured
+with, and a human's words are more sensitive there than an agent's, not less.
+`text_chars` is the honest substitute.
+
+| Event | Origin | `data` fields | Fires when |
+|---|---|---|---|
+| `telegram.message.received` | `telegram` | `bot`, `chat_id`, `chat_type`, `chat_username`, `message_id`, `sender_id`, `sender_username`, `text_chars`, `attachments` (kinds only), `reply_to_message_id`, `edited`, `date` | Any inbound message is normalised — **before** routing, so it fires whether or not a rule claims it |
+| `telegram.message.dropped` | `telegram` | the same, plus `candidates`: the three chat keys a rule could have used | No route claimed the message. A normal outcome; the `candidates` list is what an operator copies into `config.yaml` to fix it |
+| `telegram.message.sent` | `telegram` | `bot`, `chat_id`, `message_id`, `reply_to_message_id`, `text_chars`, `profile` | An agent sends through `telegram_send`/`telegram_reply`. `profile` is the MCP profile that sent it |
+| `telegram.routed` | `telegram` | the received shape, plus `label` **and `text`** | A route configured with `kind: event` delivered a message |
+
+`telegram.routed` is the one event in this vocabulary that carries the
+message text, and it is not an oversight: it exists because an operator wrote
+`kind: event` in the routing table, which is precisely a request to put the
+message on this bus. It is also how a Telegram message triggers an automation
+(§7 — automations match on event names, so there is no `kind: automation`
+destination). To trigger an automation *without* the text leaving for every
+webhook receiver, route the message to `inbox` or `messenger` and match the
+automation on `telegram.message.received` instead.
+
+Full setup, routing and permissions: [`docs/telegram.md`](telegram.md).
+
 ## 4. Outbound webhooks
 
 Configured per hook: a target `url`, an event-name filter (`["*"]` for

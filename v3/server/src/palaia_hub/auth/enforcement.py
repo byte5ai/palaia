@@ -27,6 +27,7 @@ from .scopes import (
     required_scope_for_directory_action,
     required_scope_for_messenger_action,
     required_scope_for_stash_action,
+    required_scope_for_telegram_action,
 )
 
 
@@ -114,6 +115,28 @@ def missing_messenger_scope_error(action: str) -> str | None:
         f"this token is missing scope {needed!r} "
         f"(it has: {sorted(access_token.scopes)!r}). Fix: create or use a token "
         f"that includes {needed!r} for the messenger."
+    )
+
+
+def missing_telegram_scope_error(action: str) -> str | None:
+    """Same contract as :func:`missing_scope_error`, for the Telegram tool
+    family (issue #411) — hub-level ``telegram:read``/``telegram:send``.
+
+    Half of the connector's authorization, like the messenger's above:
+    passing this says the *client* may use the connector, not that it may
+    address a particular bot or chat. That is the per-profile grant, checked
+    in :class:`palaia_hub.telegram.service.TelegramService` and default-deny.
+    """
+    access_token = get_access_token()
+    if access_token is None:
+        return None
+    needed = required_scope_for_telegram_action(action)
+    if needed in access_token.scopes:
+        return None
+    return (
+        f"this token is missing scope {needed!r} "
+        f"(it has: {sorted(access_token.scopes)!r}). Fix: create or use a token "
+        f"that includes {needed!r} for the Telegram connector."
     )
 
 

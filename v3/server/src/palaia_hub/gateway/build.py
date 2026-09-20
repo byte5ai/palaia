@@ -41,6 +41,7 @@ from starlette.types import ASGIApp
 from ..directory.service import DirectoryService
 from ..messenger.service import MessengerService
 from ..stash.service import StashService
+from ..telegram.service import TelegramService
 from ..upstream.models import UpstreamConfig
 from .apps.recall_app import RESOURCE_URI as RECALL_EXPLORER_URI
 from .apps.recall_app import render_recall_explorer_html
@@ -53,6 +54,7 @@ from .messenger_tools import build_messenger_server
 from .naming import resolve_tool_names
 from .semantic_routing import build_semantic_routing_server
 from .stash_tools import build_stash_server
+from .telegram_tools import build_telegram_server
 from .vault_protocol import VaultService
 
 # `combine_lifespans`'s return type is generic over the ASGI app it will be
@@ -152,6 +154,7 @@ def _build_profile_server(
     upstream_mounts: Mapping[str, UpstreamMount] | None = None,
     directory_service: DirectoryService | None = None,
     messenger_service: MessengerService | None = None,
+    telegram_service: TelegramService | None = None,
 ) -> FastMCP:
     # SPEC-302 deliverable #6, second half of the fence: `ProfileConfig`
     # already refuses to *hold* upstreams on the curator path, so reaching
@@ -167,6 +170,15 @@ def _build_profile_server(
     # channel — in or out — inside the curator's unattended session. Also
     # refused by `ProfileConfig` itself; this is the half that holds even if
     # a future caller constructs the profile some other way.
+    # Issue #411, the same fence for the Telegram connector: the curator
+    # never gets a channel to a person outside this hub. `ProfileConfig`
+    # already refuses to hold the flag on that path; this is the second half.
+    if profile.path == CURATOR_PROFILE_PATH and profile.telegram:
+        raise GatewayConfigError(
+            "refusing to mount Telegram tools on the curator profile: it runs a "
+            "model over the operator's own notes unattended, and a channel that "
+            "reaches people outside this hub is an exfiltration path"
+        )
     if profile.path == CURATOR_PROFILE_PATH and profile.messenger:
         raise GatewayConfigError(
             "refusing to mount messenger tools on the curator profile: the curator "
@@ -233,6 +245,13 @@ def _build_profile_server(
     # ordinary profile a client connects to.
     if profile.messenger and messenger_service is not None:
         server.mount(build_messenger_server(messenger_service))
+    # `profile.telegram` (issue #411): same opt-in shape again, with one
+    # difference that matters — the tools are built *for this profile path*,
+    # because the path is the identity the connector's outbound grant is
+    # keyed by. There is no ambient caller here; a profile can only ever
+    # send as itself.
+    if profile.telegram and telegram_service is not None:
+        server.mount(build_telegram_server(telegram_service, profile=profile.path))
     # SPEC-302: external servers, namespaced and renamable exactly like a
     # vault's tool family. `tool_names` values are pre-namespace (FINDINGS
     # Q4) — the one composition rule `gateway.naming` owns, applied here
@@ -303,6 +322,7 @@ def build_gateway(
     upstream_mounts: Mapping[str, UpstreamMount] | None = None,
     directory_service: DirectoryService | None = None,
     messenger_service: MessengerService | None = None,
+    telegram_service: TelegramService | None = None,
 ) -> GatewayASGI:
     """Build the full gateway from a validated config and its backing services.
 
@@ -333,6 +353,11 @@ def build_gateway(
             any profile whose ``messenger`` flag is set — same contract
             again. Never onto the curator profile: that combination is
             refused, both here and by ``ProfileConfig`` itself.
+        telegram_service: the hub-wide Telegram connector (issue #411),
+            mounted into any profile whose ``telegram`` flag is set — same
+            contract again, and never onto the curator. The tools are built
+            per profile path, because that path is what the connector's
+            outbound grant is keyed by.
         upstream_mounts: external MCP servers ready to mount (SPEC-302),
             keyed by upstream key — built by the async caller via
             :meth:`palaia_hub.upstream.service.UpstreamService.proxy_for`.
@@ -364,6 +389,7 @@ def build_gateway(
             upstream_mounts,
             directory_service,
             messenger_service,
+            telegram_service,
         )
         profile_servers[profile.path] = server
         asgi_app = server.http_app(path="/")
