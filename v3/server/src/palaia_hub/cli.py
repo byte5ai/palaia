@@ -4,8 +4,9 @@ Subcommands: ``serve`` (load config, build the app, run it under uvicorn with
 graceful shutdown — in-flight requests drain on SIGTERM/SIGINT up to
 ``graceful_shutdown_timeout``), ``token`` (per-client bearer tokens),
 ``oauth`` (the OAuth 2.1 server's owner password, machine clients, GC),
-``curator`` (inbox curation), ``import`` (v2 / basic-memory), ``update``
-(switch the compose file's channel) and ``backup``.
+``curator`` (inbox curation), ``doctor`` (check the whole hub and perform
+the safe repairs), ``import`` (v2 / basic-memory), ``update`` (switch the
+compose file's channel) and ``backup``.
 
 Every subcommand shares one error boundary in :func:`main`: a broken
 ``config.yaml`` or an unknown vault is a one-line ``palaia-hub: …`` message
@@ -31,6 +32,15 @@ from .compose_update import DEFAULT_IMAGE, rewrite_compose_channel
 from .config import ConfigError, HubConfig, apply_config_overrides, load_config, palaia_home
 from .curator import CURATOR_PROFILE_PATH, ApplyReport, CuratorRunReport, ProposalApplier
 from .curator.wiring import TOKEN_ENV, CuratorWiring, build_curator
+from .doctor import (
+    HubDoctor,
+    HubReport,
+    RepairOutcome,
+    default_checks,
+    open_doctor_context,
+    render_repairs,
+    render_report,
+)
 from .gateway.config import DEFAULT_GATEWAY_PROFILE, ProfileConfig, VaultMountConfig
 from .gateway.settings_bridge import GatewaySettingsError, resolve_full_gateway_profiles
 from .importers import ImportReport, ImportRunner, v2_source
@@ -88,6 +98,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     _add_oauth_parser(subparsers)
     _add_curator_parser(subparsers)
+    _add_doctor_parser(subparsers)
 
     update_parser = subparsers.add_parser(
         "update",
@@ -198,6 +209,39 @@ def _add_curator_parser(subparsers: argparse._SubParsersAction[argparse.Argument
         "token", help="Mint the curator's own token, bound to the curator profile"
     )
     token_parser.add_argument("--name", default="curator", help="Human-readable name for the token")
+
+
+def _add_doctor_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """The ``palaia-hub doctor`` surface (issue #296).
+
+    Runs on a hub that is not running: it opens everything read-only and
+    never starts a background worker, so an operator whose hub will not
+    come up can still ask what is wrong with it.
+    """
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        help=(
+            "Check this whole hub — vaults, search, connected clients, configuration, "
+            "storage — and say what to do about anything it finds"
+        ),
+    )
+    doctor_parser.add_argument(
+        "--vault",
+        dest="vaults",
+        action="append",
+        default=[],
+        help="Only check this vault; repeatable. Default: every registered vault.",
+    )
+    doctor_parser.add_argument(
+        "--fix",
+        action="store_true",
+        help=(
+            "Also perform the repairs that cannot lose anything (clear a stale git lock, "
+            "sweep crash leftovers, rebuild the search index from the files, narrow file "
+            "permissions), then report what was done."
+        ),
+    )
+    doctor_parser.add_argument("--json", action="store_true", help="Print the report as JSON")
 
 
 def _add_curator_common_args(parser: argparse.ArgumentParser) -> None:
@@ -582,6 +626,42 @@ def _curator_token(name: str) -> None:
     print(f"  export {TOKEN_ENV}={created.token}")
 
 
+async def _run_doctor(
+    vault_keys: Sequence[str], *, fix: bool
+) -> tuple[HubReport, list[RepairOutcome]]:
+    """One doctor pass, plus the safe repairs when ``--fix`` asked for them.
+
+    The diagnosis runs *before* the repairs on purpose: the operator gets to
+    see what was wrong, not only what changed. ``--fix`` then reports what
+    it did and says to re-run — which is also the only honest way to show
+    the result, since a repair can reveal a second finding underneath.
+    """
+    doctor = HubDoctor(default_checks())
+    async with open_doctor_context(vault_keys=vault_keys) as context:
+        report = await doctor.run(context)
+        repairs = await doctor.repair(context) if fix else []
+    return report, repairs
+
+
+def _doctor(args: argparse.Namespace) -> None:
+    report, repairs = asyncio.run(_run_doctor(args.vaults, fix=args.fix))
+    if args.json:
+        payload: dict[str, object] = dict(report.as_dict())
+        if args.fix:
+            payload["repairs"] = [outcome.as_dict() for outcome in repairs]
+        print(json.dumps(payload, indent=2))
+    else:
+        print(render_report(report), end="")
+        if args.fix:
+            print()
+            print(render_repairs(repairs), end="")
+    if report.status == "error":
+        # Exit 1 only for findings that actually break something, so this
+        # command is usable as a health gate in a script without a warning
+        # about a pending embed backlog failing the whole deployment.
+        raise SystemExit(1)
+
+
 async def _open_engine_and_index(
     vault_root: str, vault_name: str, *, dry_run: bool
 ) -> tuple[VaultEngine, VaultIndex | None]:
@@ -775,6 +855,8 @@ def _dispatch(args: argparse.Namespace) -> None:
             _curator_apply(args)
         elif args.curator_command == "token":
             _curator_token(args.name)
+    elif args.command == "doctor":
+        _doctor(args)
     elif args.command == "import":
         if args.import_source == "v2":
             _import_v2(args)

@@ -322,6 +322,38 @@ the command's stdin and `{mcp_config}`, `{allowed_tools}`, `{endpoint}`,
 `{vault}` and `{capture_id}` are substituted per session, so any CLI that
 reads a prompt from stdin works.
 
+## The guided doctor (issue #296)
+
+`palaia_hub.doctor` is the whole-hub layer above `palaia_hub.vault.doctor`
+(which stays the single-vault one: files, git, index projection, and the two
+repairs SPEC-003 proved safe). It runs five checks — configuration, vaults,
+search, connected clients, storage — and renders them with the fix named
+under every finding.
+
+```bash
+uv run palaia-hub doctor                 # diagnose; changes nothing
+uv run palaia-hub doctor --vault work    # one vault only; repeatable
+uv run palaia-hub doctor --json          # the same report, machine-readable
+uv run palaia-hub doctor --fix           # also perform the safe repairs
+```
+
+Three rules hold it together, and the tests in `tests/doctor/` pin all three:
+
+- **A finding is data.** The doctor reports; the caller decides. The
+  dashboard surface will consume the same `HubReport`.
+- **No fake green.** A check that cannot answer raises `CheckSkipped` and is
+  rendered as *not checked*, never as passing; a check that crashes reports
+  that its area is now unknown and every other check still runs.
+- **Repairs are opt-in and safe.** Only `--fix` changes anything, and only
+  what cannot lose data: a stale git lock, crash residue, a rebuild of the
+  *disposable* index, a file permission narrowed. Pruning clients or
+  revoking tokens is reported with the command, never performed.
+
+A plain run also writes nothing at all — not even the default `config.yaml`
+every other subcommand creates on the way past — so it is usable on a hub
+that will not start. `--json` plus the exit code (1 only for `error`-severity
+findings) makes it a health gate in a script.
+
 ## Running it
 
 ```bash
