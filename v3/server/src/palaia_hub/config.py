@@ -13,6 +13,7 @@ import binascii
 import ipaddress
 import logging
 import os
+import re
 import warnings
 from collections.abc import Mapping
 from pathlib import Path
@@ -20,7 +21,14 @@ from typing import Any, Literal
 
 import yaml
 from platformdirs import user_data_dir
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 # SPEC-502: the hub's one on-disk posture rule, applied to `config.yaml`
 # below. Stdlib only, so it is safe to import this early.
@@ -348,6 +356,25 @@ curator:
 market:
   index_url: null
   public_key: null
+
+# Where this hub writes its own backups. Empty (as below) means it writes
+# none by itself: you download one from the dashboard, or run
+# `palaia-hub backup` on this machine. Name a directory here and
+# `palaia-hub backup --target <name>` (or the dashboard's run action)
+# writes the very same archive into it — no browser involved, which is what
+# makes a mounted NAS path work.
+#
+# That archive is EVERYTHING, including the keys for connected tools: only
+# point a target at a place you would store a password. `keep_last` deletes
+# this hub's own older archives in that directory once there are more than
+# that many; set it to null to keep every one of them.
+#
+# backup:
+#   targets:
+#     - type: local_directory
+#       name: nas
+#       path: /mnt/nas/palaia-backups
+#       keep_last: 7
 
 # SPEC-501: which release stream this hub tracks, and where it is running.
 # Neither is meant to be hand-edited on a normal install — the container
@@ -847,6 +874,133 @@ class MarketSettings(BaseModel):
         return self
 
 
+#: A backup target's name: lowercase, digits and dashes. It is the operator's
+#: handle for one destination — it appears in ``palaia-hub backup --target``,
+#: in the ``/api/backup/targets/{name}/run`` path and in every
+#: ``backup.target.*`` event — so it is kept to the same slug shape every
+#: other path segment in this hub uses rather than accepting spaces and
+#: slashes that would have to be escaped at three call sites.
+_BACKUP_TARGET_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
+
+#: The target kinds this release can actually write to. Issue #297 designs
+#: three; only the first is implemented, and a config naming one of the
+#: others is refused loudly (see :meth:`LocalDirectoryBackupTarget.
+#: _reject_unimplemented_kind`) rather than accepted and silently never run.
+IMPLEMENTED_BACKUP_TARGET_KINDS = ("local_directory",)
+
+
+class LocalDirectoryBackupTarget(BaseModel):
+    """A directory this hub writes its own archive into (issue #297).
+
+    The first of the three targets that issue designs, and the one that
+    "must always work": no browser, no network, no credentials — the hub
+    writes the same ``tar.gz`` ``GET /api/backup`` streams (and
+    ``palaia-hub backup`` writes by hand) into a directory the operator
+    chose, typically a mounted NAS share.
+
+    ``path`` must be **absolute**: this runs in a container and under a
+    service manager, where a relative path resolves against a working
+    directory neither the operator nor this code can predict.
+
+    ``keep_last`` is the retention half of "a simple interval/retention
+    setting" the issue asks for — how many of *this target's own* archives
+    to keep in that directory. Nothing else there is ever touched; see
+    :meth:`palaia_hub.backup_targets.LocalDirectoryTarget.prune`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["local_directory"] = "local_directory"
+    #: The operator's handle for this destination. Unique across targets.
+    name: str
+    #: The absolute directory to write into. ``~`` is expanded when the
+    #: target is built (:func:`palaia_hub.backup_targets.build_targets`).
+    path: str
+    #: Keep this many of this target's archives, deleting the oldest beyond
+    #: it. ``null`` keeps every archive forever — honest, and a real choice
+    #: for a directory an operator prunes with their own tooling.
+    keep_last: int | None = Field(default=7, ge=1, le=1000)
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def _reject_unimplemented_kind(cls, value: object) -> object:
+        """Name the two targets that are designed but not built yet.
+
+        Pydantic's own message for a ``Literal`` mismatch ("Input should be
+        'local_directory'") would leave an operator who wrote
+        ``type: git_remote`` — straight out of issue #297's own description
+        — guessing whether they mistyped it or whether it does not exist
+        yet. It does not exist yet, and this says so.
+        """
+        if isinstance(value, str) and value not in IMPLEMENTED_BACKUP_TARGET_KINDS:
+            raise ValueError(
+                f"backup target type {value!r} is not implemented in this release. The one "
+                f"kind a hub can write to today is 'local_directory' — a directory on this "
+                f"machine or a mounted share. A user-defined external target and a "
+                f"per-vault git remote push are designed (issue #297) but not built, and "
+                f"are refused here rather than accepted into a config that would then "
+                f"never produce a backup."
+            )
+        return value
+
+    @field_validator("name")
+    @classmethod
+    def _check_name(cls, value: str) -> str:
+        if not _BACKUP_TARGET_NAME_RE.match(value):
+            raise ValueError(
+                f"backup target name {value!r} is not usable: it names a URL path segment "
+                f"and a command-line argument. Fix: use lowercase letters, digits and "
+                f"dashes, starting with a letter or digit (e.g. 'nas')."
+            )
+        return value
+
+    @field_validator("path")
+    @classmethod
+    def _check_path(cls, value: str) -> str:
+        expanded = Path(value).expanduser()
+        if not expanded.is_absolute():
+            raise ValueError(
+                f"backup target path {value!r} must be absolute — the hub runs as a "
+                f"service (and in a container), where a relative path resolves against a "
+                f"working directory you cannot predict. Fix: write the full path, e.g. "
+                f"'/mnt/nas/palaia-backups'."
+            )
+        return value
+
+
+class BackupSettings(BaseModel):
+    """Where this hub writes its own backups (issue #297).
+
+    Empty by default: SPEC-604's floor — the dashboard download and
+    ``palaia-hub backup`` — keeps working untouched with no ``backup:``
+    section at all, and a hub only ever writes an archive somewhere on its
+    own once an operator has named that somewhere here.
+
+    **Every archive here is the full one**, secret store and key included
+    (see :mod:`palaia_hub.backup` for what that means), which is why a
+    target type may only carry it when it is secret-safe by construction —
+    a rule enforced in code, not by a comment, in
+    :meth:`palaia_hub.backup_targets.BackupTarget.run`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    targets: list[LocalDirectoryBackupTarget] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_names_are_unique(self) -> BackupSettings:
+        seen: set[str] = set()
+        for target in self.targets:
+            if target.name in seen:
+                raise ValueError(
+                    f"two backup targets are both named {target.name!r}. A name picks one "
+                    f"destination on the command line and in the REST path, so it has to "
+                    f"mean one thing. Fix: rename one of them."
+                )
+            seen.add(target.name)
+        return self
+
+
 class HubConfig(BaseModel):
     """Validated hub configuration, merged from defaults/file/env."""
 
@@ -883,6 +1037,8 @@ class HubConfig(BaseModel):
     curator: CuratorSettings = Field(default_factory=CuratorSettings)
     exposure: ExposureSettings = Field(default_factory=ExposureSettings)
     market: MarketSettings = Field(default_factory=MarketSettings)
+    #: Where this hub writes its own backups (issue #297). Empty by default.
+    backup: BackupSettings = Field(default_factory=BackupSettings)
     #: The dashboard's admin session gate (SPEC-401).
     dashboard: DashboardSettings = Field(default_factory=DashboardSettings)
     #: The gateway's profiles/vault-identity shape (SPEC-301). ``None`` (the

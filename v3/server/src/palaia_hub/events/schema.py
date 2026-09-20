@@ -126,6 +126,16 @@ EventName = Literal[
     "message.sent",
     "message.received",
     "message.expired",
+    # Issue #297 (backup targets): one event per run of one configured
+    # target, either way round — "failures surface as events/notifications,
+    # never silently" is the owner decision this pair implements, and the
+    # success event is what makes "my backups stopped happening" visible at
+    # all. Additive to the v1 vocabulary, same rule as the events above.
+    # `data` is a `palaia_hub.backup_targets.BackupRun` dump on success and
+    # `{target, kind, destination, reason}` on failure — never a path
+    # inside the archive, never anything about its contents.
+    "backup.target.succeeded",
+    "backup.target.failed",
     # Issue #411 (the Telegram connector). Additive to the v1 vocabulary,
     # same rule as every addition above.
     #
