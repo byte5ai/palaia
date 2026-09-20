@@ -555,14 +555,33 @@ export function createPalaiaContextEngine(
 
     /**
      * Compact: trigger `palaia gc` via runner.
+     *
+     * `palaia gc` garbage-collects the *memory store*; it does not touch the
+     * conversation transcript. Because palaia declares `ownsCompaction: true`
+     * (see `info` above), the host routes compaction here and reads
+     * `compacted` to decide whether the context window actually shrank —
+     * so reporting `compacted: true` for a store-only GC would make the host
+     * skip its own compaction while the transcript keeps growing. Report
+     * `compacted: false` until transcript reduction is implemented here.
      */
-    async compact(_params) {
+    async compact(params) {
       try {
         await run(["gc"], { ...opts, timeoutMs: 30_000 });
-        logger.info("[palaia] GC compaction completed");
-        return { ok: true, compacted: true };
+        logger.info(
+          "[palaia] Memory-store GC completed — transcript unchanged, " +
+          "host compaction still required",
+        );
+        const tokensBefore = params?.currentTokenCount;
+        return {
+          ok: true,
+          compacted: false,
+          reason: "palaia gc compacts the memory store only; the transcript was not reduced",
+          ...(typeof tokensBefore === "number"
+            ? { result: { tokensBefore, tokensAfter: tokensBefore } }
+            : {}),
+        };
       } catch (error) {
-        logger.warn(`[palaia] GC compaction failed: ${error}`);
+        logger.warn(`[palaia] Memory-store GC failed: ${error}`);
         return { ok: false, compacted: false, reason: String(error) };
       }
     },
