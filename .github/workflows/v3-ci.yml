@@ -45,9 +45,9 @@ jobs:
       e2e: ${{ steps.filter.outputs.e2e }}
       deps: ${{ steps.filter.outputs.deps }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
         id: filter
         with:
           # Generous on purpose: over-running a fast lane is cheap, skipping a
@@ -89,10 +89,10 @@ jobs:
       run:
         working-directory: v3
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
         with:
           version: "0.8.x"
           # Issue #405: cache the resolved environment between runs instead
@@ -111,7 +111,7 @@ jobs:
       # skip cleanly rather than fail, but skipping in CI would silently
       # stop proving the acceptance criterion, so it is installed here.
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: 'npm'
@@ -147,10 +147,10 @@ jobs:
       run:
         working-directory: v3/sdk
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
         with:
           version: "0.8.x"
           # Issue #405: cache the resolved environment between runs instead
@@ -182,10 +182,10 @@ jobs:
       run:
         working-directory: v3
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
         with:
           version: "0.8.x"
           # Issue #405: cache the resolved environment between runs instead
@@ -203,7 +203,7 @@ jobs:
       # Node subprocess. No `npm ci` needed here — the proxy is a
       # self-contained script (Node builtins only).
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
 
@@ -217,7 +217,7 @@ jobs:
 
       - name: upload failure artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: e2e-failure-bundle
           path: v3/e2e-artifacts
@@ -235,10 +235,10 @@ jobs:
       run:
         working-directory: v3/tools/build-mcpb
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: 'npm'
@@ -268,7 +268,7 @@ jobs:
           "
 
       - name: upload the built bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: palaia-mcpb
           path: v3/tools/build-mcpb/dist/palaia.mcpb
@@ -282,10 +282,10 @@ jobs:
       run:
         working-directory: v3/web
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: 'npm'
@@ -321,10 +321,10 @@ jobs:
     if: ${{ needs.changes.outputs.deps == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
         with:
           version: "0.8.x"
           # Issue #405: cache the resolved environment between runs instead
@@ -340,7 +340,7 @@ jobs:
         run: uv lock --check
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           # Issue #405: the two `npm ci` below used to fetch cold every run.
@@ -395,10 +395,10 @@ jobs:
       run:
         working-directory: v3/site/docs
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: 'npm'

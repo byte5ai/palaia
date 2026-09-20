@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Free up disk space
         # A customized Pi Lite image, built twice for the reproducibility
@@ -37,7 +37,7 @@ jobs:
           df -h /
 
       - name: Set up QEMU (arm64 emulation)
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
         with:
           platforms: arm64
 
@@ -59,7 +59,7 @@ jobs:
         run: sudo chown -R "$(id -u):$(id -g)" /tmp/pi-image-build/out
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: palaia-appliance-image
           path: |

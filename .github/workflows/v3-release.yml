@@ -10,15 +10,15 @@ name: v3 hub image
 # Independent of the v2 root `publish.yml` (PyPI/npm) — this workflow never
 # touches v2 code or v2 release tags.
 #
-# TODO(#400): the actions used here and in the other v3 workflows are pinned
-# by major tag (`actions/checkout@v4`, `docker/build-push-action@v6`, …), not
-# by commit SHA, so a compromised or retagged release of a third-party action
-# would be picked up on the next run of a workflow that holds `packages:
-# write` and a GHCR login. Pin them by SHA together with the base-image
-# digests in v3/deploy/Dockerfile, once a bot keeps both current — an
-# unmaintained SHA pin rots into a frozen, unpatched action. No SHA is
-# written in here by hand: resolving a real one needs a network lookup this
-# repository's checks cannot do, and a guessed SHA simply fails to resolve.
+# Issue #400: the actions used here and in the other v3 workflows are pinned
+# by commit SHA, not by major tag, so a compromised or retagged release of a
+# third-party action is not picked up on the next run of a workflow that holds
+# `packages: write` and a GHCR login. The trailing `# vX.Y.Z` comment is what
+# the SHA resolved to at pinning time — decoration for humans and for
+# Dependabot, never the thing that is fetched. .github/dependabot.yml keeps
+# these current; without it a SHA pin would rot into a frozen, unpatched
+# action. The base images in v3/deploy/Dockerfile are still tag-pinned (see
+# the note there).
 on:
   push:
     branches: [main]
@@ -62,7 +62,7 @@ jobs:
     outputs:
       build: ${{ steps.decide.outputs.build }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
       - id: decide
@@ -86,18 +86,18 @@ jobs:
     if: needs.changes.outputs.build == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up QEMU (arm64 emulation)
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
         with:
           platforms: arm64
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -168,7 +168,7 @@ jobs:
           echo "annotation_version=${annotation_version}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push (amd64 + arm64)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: v3/deploy/Dockerfile
@@ -240,7 +240,7 @@ jobs:
         # branch, which no longer supports those old pinned versions: run
         # 33516927595 died in "Install Trivy" resolving v0.64.1. The latest
         # action pins a current trivy (v0.70.x) that its installer supports.
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.IMAGE }}:edge-${{ steps.tags.outputs.short_sha }}
           scanners: secret
