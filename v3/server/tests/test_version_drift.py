@@ -114,12 +114,19 @@ def test_mcpb_build_script_never_hardcodes_a_release_version() -> None:
     assert '"0.0.0-dev"' in build_source
 
 
-#: Every install path that pins the `stable` channel tag carries a note
-#: telling a release-candidate reader to use `beta` instead (issue #326).
-#: The generated Synology page is included: its generator emits the note.
+#: Every install path that behaves differently during a release candidate
+#: carries an `rc-channel-note` (issue #326): the ones a person types and can
+#: adjust pin the `stable` channel tag and add a note to use `beta` instead;
+#: the unattended ones (cloud-init.yaml, setup.sh — see
+#: ``_UNATTENDED_IMAGE_FILES`` below) pin `beta` directly and their note
+#: explains that the final tag flips them to `stable`. Either way the note is
+#: present only while `VERSION` is a pre-release. The generated Synology page
+#: is included: its generator emits the note.
 _RC_CHANNEL_NOTE_FILES = (
     "deploy/README.md",
     "deploy/docker-compose.yml",
+    "deploy/cloud-init.yaml",
+    "deploy/setup.sh",
     "docs/how-it-works.md",
     "site/docs/src/content/docs/install.md",
     "site/docs/src/content/docs/install-synology.md",
@@ -149,6 +156,41 @@ def test_compose_pins_the_stable_channel_tag_not_a_literal_version() -> None:
     match = re.search(r"image:\s*(\S+)", compose_text)
     assert match is not None, "docker-compose.yml has no image: line"
     assert match.group(1) == "ghcr.io/byte5ai/palaia-hub:stable"
+
+
+#: The install paths consumed UNATTENDED: cloud-init.yaml is pasted into a
+#: provider's user-data field and boots without anyone watching, and setup.sh
+#: is run once over SSH on an existing box. Unlike the `docker run`/compose
+#: commands a person types (and can adjust from `stable` to `beta` after
+#: reading the note next to them), these must pull a tag that *exists at the
+#: moment they run* — a `stable` alias that the release workflow only creates
+#: on the final tag would 404 silently mid-boot. So they pin the release
+#: channel that matches `VERSION` directly — `beta` during a pre-release,
+#: `stable` once final — the same reasoning
+#: ``test_home_assistant_addon_version_is_this_version`` applies to the HA
+#: add-on. `RELEASING.md` §3 flips these on the final tag; this test is what
+#: forces that flip (and forbids shipping a dead `:stable` during an RC).
+_UNATTENDED_IMAGE_FILES = (
+    "deploy/cloud-init.yaml",
+    "deploy/setup.sh",
+)
+
+_PALAIA_HUB_IMAGE_RE = re.compile(r"ghcr\.io/byte5ai/palaia-hub:([A-Za-z0-9][\w.-]*)")
+
+
+def test_unattended_install_paths_pin_the_channel_matching_version() -> None:
+    version = _read_version_file()
+    expected_tag = "beta" if "-" in version else "stable"
+    for relative in _UNATTENDED_IMAGE_FILES:
+        text = (V3_ROOT / relative).read_text(encoding="utf-8")
+        tags = _PALAIA_HUB_IMAGE_RE.findall(text)
+        assert tags, f"{relative} names no ghcr.io/byte5ai/palaia-hub image"
+        for tag in tags:
+            assert tag == expected_tag, (
+                f"{relative} pins ':{tag}' but VERSION {version!r} needs ':{expected_tag}' — "
+                "an unattended install must pull a tag that exists now, and RELEASING.md §3 "
+                "flips these on the final tag"
+            )
 
 
 def test_install_sh_defaults_to_the_stable_channel_tag() -> None:

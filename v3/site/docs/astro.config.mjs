@@ -50,6 +50,21 @@ export default defineConfig({
       title: "palaia docs",
       description:
         "Set up palaia and connect your AI tools to one shared memory — the user guide for 3.0.",
+      // Default to dark, matching palaia.ai (which is dark-only), while
+      // keeping Starlight's toggle. This runs in the <head> just before
+      // Starlight's own theme script and, only when the reader has made no
+      // explicit choice yet, seeds the stored theme to dark — so Starlight
+      // reads "dark" instead of falling back to the OS preference, the theme
+      // picker stays consistent ("Dark", not "Auto"), and there is no flash.
+      // A later explicit Light/Auto choice overwrites this and is respected.
+      // (custom.css's dark palette is the palaia.ai key.)
+      head: [
+        {
+          tag: "script",
+          content:
+            "try{if(!localStorage.getItem('starlight-theme'))localStorage.setItem('starlight-theme','dark')}catch(e){}",
+        },
+      ],
       social: [
         { icon: "github", label: "GitHub", href: "https://github.com/byte5ai/palaia" },
       ],

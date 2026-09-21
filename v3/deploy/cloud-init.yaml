@@ -63,7 +63,16 @@ write_files:
       log() { echo "palaia cloud-init: $*"; }
 
       TAILSCALE_AUTH_KEY="tskey-REPLACE_ME"
-      IMAGE="ghcr.io/byte5ai/palaia-hub:stable"
+      # rc-channel-note — during the 3.0.0 release candidate the `stable`
+      # image does not exist yet (the release workflow only creates it on the
+      # final tag), so this file pulls `:beta`, the pre-release channel, which
+      # is a real published image. Unlike the `docker run`/compose commands a
+      # person types and can adjust, this file is pasted once and boots
+      # unattended — so it pins a tag that actually exists now rather than a
+      # note asking the reader to swap one. RELEASING.md §3 flips this back to
+      # `:stable` on the final tag; server/tests/test_version_drift.py enforces
+      # which tag is correct for the current v3/VERSION.
+      IMAGE="ghcr.io/byte5ai/palaia-hub:beta"
       CONTAINER_NAME="palaia-hub"
       VOLUME="palaia_home"
       PORT=8420
