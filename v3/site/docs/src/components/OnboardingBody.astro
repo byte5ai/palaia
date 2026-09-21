@@ -62,7 +62,7 @@ const STORES = [
 
   <!-- PRIMARY: let your AI set it up -->
   <section class="op-ai">
-    <h2>{t.ai.h2}</h2>
+    <h2 id="let-your-ai-set-it-up">{t.ai.h2}</h2>
     <p>{t.ai.intro}</p>
     <div class="op-prompt">
       <span class="op-prompt-label">{t.ai.promptLabel}</span>
@@ -83,7 +83,7 @@ const STORES = [
 
   <!-- Everything below: do-it-yourself -->
   <section class="op-manual-head">
-    <h2>{t.manual.h2}</h2>
+    <h2 id="set-it-up-yourself">{t.manual.h2}</h2>
     <p class="op-fine">{t.manual.intro}</p>
   </section>
 
@@ -211,7 +211,7 @@ const STORES = [
   <h2 id="open-your-hub">{t.open.h2}</h2>
   <p set:html={html(t.open.body)} />
 
-  <h2>{t.wizard.h2}</h2>
+  <h2 id="the-wizard-takes-over">{t.wizard.h2}</h2>
   <p set:html={html(t.wizard.body)} />
 </div>
 
