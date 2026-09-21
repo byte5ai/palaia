@@ -2,68 +2,57 @@
 page specifically.
 
 ``test_docs_jargon_lint.py`` (SPEC-503) only scans ``.md`` files under
-``src/content/docs`` — the onboarding page is a custom Astro component
-(``src/pages/onboarding.astro``, not a content-collection entry; see that
-file's own docstring for why), so it needs its own coverage rather than
-falling out of that discovery loop by accident.
+``src/content/docs`` — the onboarding page is a custom Astro component, so it
+needs its own coverage rather than falling out of that discovery loop by
+accident.
 
-Only the rendered template is checked, not the whole file: the frontmatter
-script fence (``---...---``) and the ``<script>``/``<style>`` blocks are
-developer-facing code (comments naming this SPEC, CSS selectors, a
-``dataset.copyTarget`` property access) that a reader never sees — the
-same reasoning ``find_jargon``'s own ``strip_code`` already applies to
-Markdown code fences, extended here to this file's two other "not prose"
-regions.
+The onboarding page is now localized (en/de/fr/es/it — the languages the
+palaia.ai homepage offers) and its visible English prose lives in
+``src/i18n/onboarding/en.json``, rendered by ``src/components/OnboardingBody.astro``.
+So this checks the English dictionary: every string a reader actually sees. The
+install commands are read from ``v3/deploy`` at build time and never appear in
+the dictionary, so there is no developer-facing code here to strip — the whole
+file is prose (with the occasional inline ``<code>``/``<a>`` HTML, which
+``find_jargon`` tolerates exactly as it did in the rendered template before).
+Non-English dictionaries are not linted: the jargon rules are English.
 """
 
 from __future__ import annotations
 
-import re
+import json
 from pathlib import Path
 
 from palaia_addon_sdk.jargon import find_jargon
 
 # v3/server/tests/docs_site -> v3/server/tests -> v3/server -> v3 -> v3/site/docs
-ONBOARDING_PAGE = (
-    Path(__file__).resolve().parents[3]
-    / "site"
-    / "docs"
-    / "src"
-    / "pages"
-    / "onboarding.astro"
-)
-
-_FRONTMATTER_RE = re.compile(r"^---\n.*?\n---\n", re.DOTALL)
-_SCRIPT_RE = re.compile(r"<script\b.*?</script>", re.DOTALL)
-_STYLE_RE = re.compile(r"<style\b.*?</style>", re.DOTALL)
-# `<StarlightPage frontmatter={{ title: ..., template: "splash" }}>` — an
-# opening tag's own prop object, never rendered text (Starlight reads
-# `frontmatter`/`template` as component configuration; neither word reaches
-# the page). Not a Markdown code fence `find_jargon`'s own `strip_code`
-# would catch, so stripped here the same way the script/style blocks above
-# are: syntax a reader never sees, not prose.
-_COMPONENT_OPEN_TAG_RE = re.compile(r"<StarlightPage\b.*?}}>", re.DOTALL)
+DOCS_ROOT = Path(__file__).resolve().parents[3] / "site" / "docs"
+ONBOARDING_EN = DOCS_ROOT / "src" / "i18n" / "onboarding" / "en.json"
+ONBOARDING_PAGE = DOCS_ROOT / "src" / "pages" / "onboarding.astro"
 
 
-def _rendered_template(source: str) -> str:
-    """The part of an .astro file an end reader actually sees."""
-    without_frontmatter = _FRONTMATTER_RE.sub("", source, count=1)
-    without_script = _SCRIPT_RE.sub("", without_frontmatter)
-    without_style = _STYLE_RE.sub("", without_script)
-    return _COMPONENT_OPEN_TAG_RE.sub("", without_style)
+def _all_strings(value: object) -> list[str]:
+    """Every string leaf in the (nested) dictionary — all the visible prose."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for v in value.values() for s in _all_strings(v)]
+    if isinstance(value, list):
+        return [s for v in value for s in _all_strings(v)]
+    return []
 
 
 def test_onboarding_page_exists() -> None:
     assert ONBOARDING_PAGE.is_file(), f"no onboarding page at {ONBOARDING_PAGE}"
+    assert ONBOARDING_EN.is_file(), f"no English dictionary at {ONBOARDING_EN}"
 
 
-def test_onboarding_page_template_has_no_jargon() -> None:
-    source = ONBOARDING_PAGE.read_text(encoding="utf-8")
-    template = _rendered_template(source)
-    assert template.strip(), "stripping frontmatter/script/style left nothing to check"
+def test_onboarding_english_copy_has_no_jargon() -> None:
+    strings = _all_strings(json.loads(ONBOARDING_EN.read_text(encoding="utf-8")))
+    assert strings, "the English onboarding dictionary has no strings to check"
 
-    hits = find_jargon(template)
+    text = "\n".join(strings)
+    hits = find_jargon(text)
     assert not hits, (
-        f"onboarding.astro's rendered template uses in-house word(s) {hits} — wrap the term "
-        f"as code, or rephrase in plain language"
+        f"the onboarding page's English copy uses in-house word(s) {hits} — wrap the "
+        f"term as code, or rephrase in plain language (edit src/i18n/onboarding/en.json)"
     )
