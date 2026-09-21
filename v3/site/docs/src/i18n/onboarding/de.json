@@ -1,0 +1,78 @@
+{
+  "meta": {
+    "title": "palaia zum Laufen bringen",
+    "description": "Am einfachsten lässt Du es Dir von einem KI-Assistenten einrichten. Wege für Cloud-Server, NAS, Docker und Compose findest Du hier ebenfalls."
+  },
+  "lede": "palaia lebt auf einer Kiste, die immer läuft und die Deine KI-Tools von überall erreichen — ein kleiner Cloud-Server, ein NAS, ein übriger Mini-PC. Am einfachsten richtest Du es ein, indem Du es einen KI-Assistenten für Dich machen lässt; jeden Selbermach-Weg findest Du weiter unten.",
+  "ai": {
+    "h2": "Lass Deine KI es einrichten",
+    "intro": "Du musst kein Terminal anfassen. Kopier den Prompt unten, füg ihn in einen KI-Assistenten ein, den Du schon nutzt, und er liest die Anleitung und führt Dich durch — Schritt für Schritt, in einfacher Sprache.",
+    "promptLabel": "Füg das in Deinen KI-Assistenten ein",
+    "prompt": "Richte palaia für mich ein. Lies zuerst get.palaia.ai/skill und führ mich dann Schritt für Schritt durch — ich bin kein Techniker, erklär mir alles einfach.",
+    "copy": "Prompt kopieren",
+    "copied": "Kopiert — jetzt einfügen",
+    "hint": "Funktioniert in Claude, ChatGPT oder Gemini. Der Assistent fragt, wo palaia laufen soll, und macht den Rest."
+  },
+  "manual": {
+    "h2": "Lieber selbst einrichten?",
+    "intro": "Alle diese Wege enden beim selben hub. Der Cloud-Server-Weg braucht kein Terminal; die anderen sind für Leute, die mit einer Kommandozeile oder Docker vertraut sind."
+  },
+  "jump": {
+    "cloudTitle": "Cloud-Server",
+    "cloudSub": "kein Terminal · eine Datei einfügen",
+    "existingTitle": "Vorhandener Server",
+    "existingSub": "ein Befehl über SSH",
+    "ownedTitle": "Deine eigene Maschine",
+    "ownedSub": "Pi · NAS · Mac",
+    "devTitle": "Docker & Compose",
+    "devSub": "für Entwickler"
+  },
+  "cloud": {
+    "h2": "Ein Cloud-Server in drei Schritten",
+    "fine": "Kein Terminal, kein SSH. Du fügst eine Datei ein, während Du den Server erstellst, und er richtet sich selbst ein. Jeder kleine Anbieter geht — Hetzner Cloud und DigitalOcean sind gute, günstige Optionen; die kleinste Größe reicht dicke.",
+    "step1H3": "Beginn, einen Server zu erstellen",
+    "step1Body": "Melde Dich bei Deinem Anbieter an und beginn, einen neuen Server zu erstellen (einen \"Cloud Server\" oder ein \"Droplet\"). Wähl irgendein aktuelles Ubuntu- oder Debian-Image und die kleinste Größe — lass die Seite an dem Schritt offen, an dem sie ein Feld <strong>Cloud config</strong> oder <strong>User data</strong> anbietet. In dieses Feld kommt die Datei aus Schritt 3.",
+    "step2H3": "Hol Dir einen Tailscale-Schlüssel",
+    "step2Body": "palaia tritt einem <em>tailnet</em> bei — einem kleinen, privaten Netzwerk aus nur Deinen eigenen Geräten (über <a href=\"https://tailscale.com/\">Tailscale</a>, für den privaten Gebrauch kostenlos), damit Dein hub von Deinem Handy und Laptop erreichbar ist, aber nie aus dem offenen Internet. Erstell ein kostenloses Tailscale-Konto, öffne dann <a href=\"https://login.tailscale.com/admin/settings/keys\">die Seite mit den Auth-Keys</a> und erzeug einen Schlüssel (ein wiederverwendbarer, kurzlebiger Schlüssel eignet sich gut). Kopier ihn — im nächsten Schritt fügst Du ihn in die Datei ein.",
+    "step3H3": "Diese Datei einfügen, den Schlüssel ersetzen, den Server erstellen",
+    "step3Body": "Kopier die Datei unten in das Feld <strong>Cloud config</strong> / <strong>User data</strong> des Anbieters. Änder die eine Zeile, die sie markiert — <code>TAILSCALE_AUTH_KEY=\"tskey-REPLACE_ME\"</code> weiter oben — auf den Schlüssel aus Schritt 2. Sonst musst Du nichts bearbeiten. Dann erstell den Server.",
+    "afterNote": "Ein paar Minuten nach dem Start des Servers installiert er alles und startet den hub von selbst. Dann <a href=\"#open-your-hub\">öffne Deinen hub</a> unter seiner tailnet-Adresse. Falls er nicht hochkommt, steht in der Datei <code>/var/log/cloud-init-output.log</code> des Servers das vollständige Log dessen, was gelaufen ist."
+  },
+  "existing": {
+    "h2": "Schon einen Server? Ein Befehl über SSH",
+    "body": "Die Datei oben läuft nur beim <em>ersten</em> Start eines Servers, deshalb passiert nichts, wenn Du sie in eine Kiste einfügst, die schon läuft. Für einen Server, den Du schon hast, verbinde Dich per SSH und führ diese eine Zeile aus — der Installer richtet Docker, Tailscale, die nur-tailnet-Firewall und den gehärteten hub ein und bittet Dich beim Ausführen, einen <a href=\"https://login.tailscale.com/admin/settings/keys\">Tailscale-Schlüssel</a> einzufügen:"
+  },
+  "owned": {
+    "h2": "Oder eine Maschine, die Du schon hast",
+    "fine": "Die Entwickler-Optionen unten installieren denselben hub auf jeder davon:",
+    "machineRaspberry": "<strong>Raspberry Pi</strong> oder eine andere kleine Kiste, die immer läuft — geht heute mit installiertem 64-Bit Raspberry Pi OS und Docker, dann folgt der Docker-Befehl unten. Ein Karten-Image zum Aufspielen und Starten, das sogar diese Schritte spart, ist <a href=\"https://github.com/byte5ai/palaia/issues/280\">geplant und wird öffentlich verfolgt</a>.",
+    "machineSynology": "<strong>Synology NAS</strong> — sein Container Manager führt eine Compose-Datei als \"Projekt\" aus; kein Terminal auf dem NAS selbst. Siehe die <a href=\"%BASE%/install-synology/\">Schritt-für-Schritt-Anleitung für Synology</a>.",
+    "machineDesktop": "<strong>Mac oder Windows</strong> — installier einmal <a href=\"https://www.docker.com/products/docker-desktop/\">Docker Desktop</a>, dann ist der Docker-Befehl unten die ganze Installation. (Am besten, um palaia auszuprobieren — für den täglichen Gebrauch gewinnt eine Kiste, die durchläuft.)"
+  },
+  "dev": {
+    "h2": "Für Entwickler: Docker & Compose",
+    "fine": "Betreibst Du schon Container? Installier den hub direkt aus dem Image.",
+    "rcNote": "<strong>Release Candidate.</strong> Die Befehle hier nennen noch das <code>:stable</code>-Image, das erst veröffentlicht wird, wenn 3.0.0 final ist. Bis dahin nutz stattdessen <code>:beta</code> — z. B. <code>ghcr.io/byte5ai/palaia-hub:beta</code>. Die Cloud-Server-Datei und der <code>get.palaia.ai</code>-Einzeiler oben zielen schon auf <code>:beta</code>, dort gibt es also nichts zu ändern.",
+    "tabDocker": "Docker",
+    "tabCompose": "Compose-Datei",
+    "tabStores": "App-Stores selbst hosten",
+    "dockerH3": "Ein Befehl",
+    "dockerBody": "Mit installiertem Docker (Docker Desktop unter macOS/Windows oder Docker Engine unter Linux) ist das die ganze Installation:",
+    "curlFine": "Willst Du ein Skript, das Docker und Tailscale für Dich installiert und am Ende die Adresse ausgibt? Das ist der <a href=\"#already-have-a-server\">eine Befehl über SSH</a> oben — <code>curl … get.palaia.ai | sh</code>.",
+    "composeH3": "Eine Datei, die Du behältst",
+    "composeBody": "Lieber eine Konfigurationsdatei, die Du bearbeiten und einchecken kannst, oder betreibst Du schon andere Container so? Klon das Repository und starte es mit Compose:",
+    "composeFine": "Eine fertige <code>docker-compose.yml</code> liegt in diesem Repository unter <code>v3/deploy/</code> — Du musst nichts selbst schreiben.",
+    "storesH3": "App-Stores selbst hosten",
+    "storesBody": "Pakete für diese Plattformen werden im Repository gebaut und aktuell gehalten, aber noch ist keins in einem offiziellen App-Katalog gelistet — ein Einreichungsschritt, der noch aussteht und öffentlich verfolgt wird. Bis ein Listing live geht, installieren Docker oder Compose oben dasselbe Image auf jeder von ihnen, denn unter der Haube laufen sie alle mit Containern.",
+    "storesStatus": "noch nicht gelistet",
+    "storesLink": "Paketquelle"
+  },
+  "open": {
+    "h2": "Dann öffne Deinen hub",
+    "body": "Bei einer Cloud- oder SSH-Einrichtung öffne <code>http://&lt;your-tailnet-address&gt;:8420/</code> von einem beliebigen Gerät in Deinem tailnet (die Einrichtung gibt die Adresse aus, wenn sie fertig ist). Auf einer Maschine in Deinem eigenen Netzwerk öffne <code>http://palaia.local</code> — oder, falls diese Adresse noch nicht auflöst (manche Einrichtungen brauchen ein Netzwerk-Flag; siehe <a href=\"%BASE%/install/#finding-it-on-your-network-palaialocal\">Installieren</a> für den Einzeiler zur Behebung), die Adresse <code>http://&lt;host&gt;:8420</code>, die ins eigene Log des Containers geschrieben wird und immer funktioniert."
+  },
+  "wizard": {
+    "h2": "Der Assistent übernimmt",
+    "body": "Von da an läuft ein kurzer Einrichtungs-Assistent im Browser: eine Administrator-Anmeldung, Deine erste Erinnerung und das Verbinden des ersten KI-Tools, das Du nutzt — kein Bearbeiten von Dateien, keine zusätzlichen Befehle. Siehe <a href=\"%BASE%/first-shared-memory/\">Deine erste geteilte Erinnerung</a>, wie das von Anfang bis Ende aussieht, oder <a href=\"%BASE%/install/\">Installieren</a> für die ausführliche Fassung von allem auf dieser Seite."
+  }
+}

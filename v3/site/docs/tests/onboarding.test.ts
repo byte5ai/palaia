@@ -71,12 +71,14 @@ describe("onboarding page snippets", () => {
     // a phone viewport, or a code block with no scroll container of its
     // own — both are things the stylesheet text itself proves or disproves
     // directly, with no DOM required.
+    // The page's markup and styles live in the shared body component now that
+    // the page is localized (onboarding.astro is a thin per-locale wrapper).
     const page = readFileSync(
-      path.join(__dirname, "..", "src", "pages", "onboarding.astro"),
+      path.join(__dirname, "..", "src", "components", "OnboardingBody.astro"),
       "utf8",
     );
     const styleMatch = page.match(/<style>([\s\S]*?)<\/style>/);
-    expect(styleMatch, "onboarding.astro has a <style> block").not.toBeNull();
+    expect(styleMatch, "OnboardingBody.astro has a <style> block").not.toBeNull();
     const style = styleMatch![1];
 
     // No rule sets an element to a fixed width wider than the narrowest
@@ -155,13 +157,20 @@ describe("onboarding page snippets", () => {
     // The page only shows the "use :beta" note while v3/VERSION is a
     // pre-release — the same gating deploy/README.md's own rc-channel-note
     // has, driven here by isPrerelease() rather than duplicated as a literal.
-    const page = readFileSync(
-      path.join(__dirname, "..", "src", "pages", "onboarding.astro"),
+    // The gate (isPrerelease / `prerelease &&`) lives in the shared body
+    // component; the note's own text — including the :beta image — lives in the
+    // English dictionary now that the page is localized.
+    const body = readFileSync(
+      path.join(__dirname, "..", "src", "components", "OnboardingBody.astro"),
       "utf8",
     );
-    expect(page).toContain("isPrerelease");
-    expect(page).toMatch(/prerelease\s*&&/);
-    expect(page).toContain("palaia-hub:beta");
+    expect(body).toContain("isPrerelease");
+    expect(body).toMatch(/prerelease\s*&&/);
+    const en = readFileSync(
+      path.join(__dirname, "..", "src", "i18n", "onboarding", "en.json"),
+      "utf8",
+    );
+    expect(en).toContain("palaia-hub:beta");
   });
 
   it("throws instead of returning an empty snippet if the source shape ever changes", () => {

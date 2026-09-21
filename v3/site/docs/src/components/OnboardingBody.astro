@@ -1,0 +1,550 @@
+---
+// The onboarding page body, shared by every language. The English page
+// (src/pages/onboarding.astro) and the localized routes
+// (src/pages/onboarding/[lang].astro) both render this with a per-locale
+// dictionary from src/i18n/onboarding/<lang>.json — so the markup, styles and
+// copy-button script live once and only the words change per language.
+//
+// The PRIMARY path is "let your AI set it up": paste one prompt into an AI
+// assistant, which reads get.palaia.ai/skill and guides the person through it.
+// Everything under it — a cloud server, an existing server, a machine you own,
+// Docker/Compose — is kept as the do-it-yourself alternatives, reached from a
+// jump nav.
+//
+// Every install COMMAND is still read out of v3/deploy's real files at build
+// time (scripts/lib/deploy-snippets.mjs) — never retyped and never translated,
+// so tests/onboarding.test.ts's drift guarantees still hold across all locales.
+// This component (not onboarding.astro, now a thin per-locale wrapper) is where
+// the <style> block and the isPrerelease/`prerelease &&` gate live, so the
+// layout and rc-note tests read it here.
+import {
+  isPrerelease,
+  loadCloudInitTemplate,
+  loadDeploySnippets,
+  loadGetPalaiaCommand,
+} from "../../scripts/lib/deploy-snippets.mjs";
+
+interface Props {
+  t: Record<string, any>;
+  lang?: string;
+}
+const { t, lang = "en" } = Astro.props;
+
+const snippets = loadDeploySnippets();
+const cloudInit = loadCloudInitTemplate();
+const prerelease = isPrerelease();
+// The `curl … get.palaia.ai | sh` one-liner, read from get-palaia.sh's header.
+// During a pre-release the `stable` image does not exist yet, so the shown
+// command carries PALAIA_CHANNEL=beta until 3.0.0 is final, the bare one after.
+const getPalaiaBase = loadGetPalaiaCommand();
+const installCommand = prerelease
+  ? getPalaiaBase.replace(/\|\s*sh\s*$/, "| PALAIA_CHANNEL=beta sh")
+  : getPalaiaBase;
+
+const REPO = "https://github.com/byte5ai/palaia";
+// Site base, normalized without a trailing slash. In-site links in the
+// dictionaries are written with a %BASE% token; resolve it here. Those links
+// point at the English docs pages (the rest of the docs site is English-only),
+// the same targets in every language.
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+const html = (s: string): string => (s ?? "").replaceAll("%BASE%", BASE);
+
+const STORES = [
+  { name: "Umbrel", dir: "umbrel" },
+  { name: "CasaOS", dir: "casaos" },
+  { name: "Runtipi", dir: "runtipi" },
+  { name: "TrueNAS SCALE", dir: "truenas" },
+] as const;
+---
+
+<div class="op" lang={lang} data-copied-label={t.ai.copied}>
+  <p class="op-lede">{t.lede}</p>
+
+  <!-- PRIMARY: let your AI set it up -->
+  <section class="op-ai">
+    <h2>{t.ai.h2}</h2>
+    <p>{t.ai.intro}</p>
+    <div class="op-prompt">
+      <span class="op-prompt-label">{t.ai.promptLabel}</span>
+      <p class="op-prompt-text" id="op-ai-prompt">{t.ai.prompt}</p>
+    </div>
+    <button type="button" class="op-prompt-copy" data-copy-target="op-ai-prompt">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span class="op-copy-text">{t.ai.copy}</span>
+    </button>
+    <p class="op-fine">{t.ai.hint}</p>
+  </section>
+
+  <!-- Everything below: do-it-yourself -->
+  <section class="op-manual-head">
+    <h2>{t.manual.h2}</h2>
+    <p class="op-fine">{t.manual.intro}</p>
+  </section>
+
+  <nav class="op-jump" aria-label={t.manual.h2}>
+    <a href="#cloud-server">
+      <span class="op-jump-title">{t.jump.cloudTitle}</span>
+      <span class="op-jump-sub">{t.jump.cloudSub}</span>
+    </a>
+    <a href="#already-have-a-server">
+      <span class="op-jump-title">{t.jump.existingTitle}</span>
+      <span class="op-jump-sub">{t.jump.existingSub}</span>
+    </a>
+    <a href="#your-own-machine">
+      <span class="op-jump-title">{t.jump.ownedTitle}</span>
+      <span class="op-jump-sub">{t.jump.ownedSub}</span>
+    </a>
+    <a href="#for-developers">
+      <span class="op-jump-title">{t.jump.devTitle}</span>
+      <span class="op-jump-sub">{t.jump.devSub}</span>
+    </a>
+  </nav>
+
+  <section class="op-primary">
+    <h2 id="cloud-server">{t.cloud.h2}</h2>
+    <p class="op-fine">{t.cloud.fine}</p>
+    <ol class="op-steps">
+      <li>
+        <h3>{t.cloud.step1H3}</h3>
+        <p set:html={html(t.cloud.step1Body)} />
+      </li>
+      <li>
+        <h3>{t.cloud.step2H3}</h3>
+        <p set:html={html(t.cloud.step2Body)} />
+      </li>
+      <li>
+        <h3>{t.cloud.step3H3}</h3>
+        <p set:html={html(t.cloud.step3Body)} />
+        <div class="op-snippet op-snippet-file">
+          <pre><code>{cloudInit}</code></pre>
+          <button type="button" class="op-copy" data-copy-target="op-code-cloud-init">{t.ai.copy}</button>
+        </div>
+        <code id="op-code-cloud-init" class="op-copy-source" hidden>{cloudInit}</code>
+        <p class="op-fine" set:html={html(t.cloud.afterNote)} />
+      </li>
+    </ol>
+  </section>
+
+  <section class="op-existing">
+    <h2 id="already-have-a-server">{t.existing.h2}</h2>
+    <p set:html={html(t.existing.body)} />
+    <div class="op-snippet">
+      <pre><code>{installCommand}</code></pre>
+      <button type="button" class="op-copy" data-copy-target="op-code-install">{t.ai.copy}</button>
+    </div>
+    <code id="op-code-install" class="op-copy-source" hidden>{installCommand}</code>
+  </section>
+
+  <section class="op-owned">
+    <h2 id="your-own-machine">{t.owned.h2}</h2>
+    <p class="op-fine">{t.owned.fine}</p>
+    <ul class="op-machines">
+      <li set:html={html(t.owned.machineRaspberry)} />
+      <li set:html={html(t.owned.machineSynology)} />
+      <li set:html={html(t.owned.machineDesktop)} />
+    </ul>
+  </section>
+
+  <section class="op-dev">
+    <h2 id="for-developers">{t.dev.h2}</h2>
+    <p class="op-fine">{t.dev.fine}</p>
+
+    {prerelease && <aside class="op-rc" set:html={html(t.dev.rcNote)} />}
+
+    <div class="op-tabs" role="tablist">
+      <input type="radio" name="op-platform" id="op-tab-docker" checked />
+      <input type="radio" name="op-platform" id="op-tab-compose" />
+      <input type="radio" name="op-platform" id="op-tab-stores" />
+
+      <div class="op-tabbar">
+        <label for="op-tab-docker">{t.dev.tabDocker}</label>
+        <label for="op-tab-compose">{t.dev.tabCompose}</label>
+        <label for="op-tab-stores">{t.dev.tabStores}</label>
+      </div>
+
+      <section class="op-panel" id="op-panel-docker">
+        <h3>{t.dev.dockerH3}</h3>
+        <p>{t.dev.dockerBody}</p>
+        <div class="op-snippet">
+          <pre><code>{snippets.dockerRun}</code></pre>
+          <button type="button" class="op-copy" data-copy-target="op-code-docker">{t.ai.copy}</button>
+        </div>
+        <code id="op-code-docker" class="op-copy-source" hidden>{snippets.dockerRun}</code>
+        <p class="op-fine" set:html={html(t.dev.curlFine)} />
+      </section>
+
+      <section class="op-panel" id="op-panel-compose">
+        <h3>{t.dev.composeH3}</h3>
+        <p>{t.dev.composeBody}</p>
+        <div class="op-snippet">
+          <pre><code>git clone {REPO}.git
+{snippets.compose}</code></pre>
+          <button type="button" class="op-copy" data-copy-target="op-code-compose">{t.ai.copy}</button>
+        </div>
+        <code id="op-code-compose" class="op-copy-source" hidden>git clone {REPO}.git
+{snippets.compose}</code>
+        <p class="op-fine" set:html={html(t.dev.composeFine)} />
+      </section>
+
+      <section class="op-panel" id="op-panel-stores">
+        <h3>{t.dev.storesH3}</h3>
+        <p>{t.dev.storesBody}</p>
+        <ul class="op-stores">
+          {STORES.map((store) => (
+            <li>
+              <span class="op-stores-name">{store.name}</span>
+              <span class="op-stores-status">{t.dev.storesStatus}</span>
+              <a href={`${REPO}/tree/main/v3/deploy/stores/${store.dir}`}>{t.dev.storesLink}</a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </div>
+  </section>
+
+  <h2 id="open-your-hub">{t.open.h2}</h2>
+  <p set:html={html(t.open.body)} />
+
+  <h2>{t.wizard.h2}</h2>
+  <p set:html={html(t.wizard.body)} />
+</div>
+
+<script>
+  // Progressive enhancement only: the prompt and commands are plain, selectable
+  // text without this script — copy buttons are a convenience, not a
+  // requirement to finish setup.
+  const copiedLabel =
+    document.querySelector<HTMLElement>(".op")?.dataset.copiedLabel ?? "Copied";
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-copy-target]")) {
+    button.addEventListener("click", async () => {
+      const source = document.getElementById(button.dataset.copyTarget ?? "");
+      if (!source?.textContent) return;
+      try {
+        await navigator.clipboard.writeText(source.textContent.trim());
+        const label = button.querySelector(".op-copy-text") ?? button;
+        const original = label.textContent;
+        label.textContent = copiedLabel;
+        setTimeout(() => {
+          label.textContent = original;
+        }, 1500);
+      } catch {
+        // clipboard access can be refused (older browser, insecure context) —
+        // the text is still right there, selectable by hand.
+      }
+    });
+  }
+</script>
+
+<style>
+  /* Phone-friendly by construction: nothing here sets a fixed pixel width,
+     every code block scrolls inside its own box (never the page), and the
+     tab bar wraps instead of forcing a wider viewport — SPEC-504
+     deliverable #1's "no horizontal scroll on phones". */
+  .op {
+    max-width: 46rem;
+  }
+  .op-lede {
+    font-size: var(--sl-text-lg);
+    color: var(--sl-color-gray-2);
+  }
+
+  .op section {
+    margin-block: 2.5rem;
+  }
+
+  /* PRIMARY path: let your AI set it up. */
+  .op-ai {
+    border: 1px solid var(--sl-color-accent);
+    border-radius: 0.7rem;
+    padding: 1.5rem;
+    background: var(--sl-color-accent-low);
+  }
+  .op-ai > h2 {
+    margin-top: 0;
+  }
+  .op-prompt {
+    margin-block: 1rem 0.75rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--sl-color-accent);
+    border-radius: 0.5rem;
+    background: var(--sl-color-black);
+  }
+  .op-prompt-label {
+    display: block;
+    font-size: var(--sl-text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--sl-color-gray-3);
+    margin-bottom: 0.5rem;
+  }
+  .op-prompt-text {
+    margin: 0;
+    font-size: var(--sl-text-base);
+    line-height: 1.5;
+    color: var(--sl-color-white);
+  }
+  /* The prompt's own copy button is the primary call to action — a full
+     accent button under the box, not the small corner button the code
+     snippets use. */
+  .op-prompt-copy {
+    position: static;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    padding: 0.55rem 1.1rem;
+    font-size: var(--sl-text-base);
+    font-weight: 600;
+    border: none;
+    border-radius: 0.5rem;
+    background: var(--sl-color-accent);
+    color: var(--sl-color-black);
+  }
+  .op-prompt-copy:hover {
+    background: var(--sl-color-accent-high);
+  }
+
+  .op-manual-head {
+    border-top: 1px solid var(--sl-color-hairline);
+    padding-top: 1.5rem;
+    margin-bottom: 0;
+  }
+  .op-manual-head > h2 {
+    margin-bottom: 0.25rem;
+  }
+
+  /* Jump nav to the do-it-yourself paths. */
+  .op-jump {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 0.6rem;
+    margin-block: 1rem 2.5rem;
+  }
+  .op-jump a {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.9rem 2.4rem 0.9rem 1.1rem;
+    /* Cyan-tinted border even at rest so the tiles read as interactive
+       choices, not decoration, against the near-black page. */
+    border: 1px solid rgba(0, 159, 227, 0.4);
+    border-radius: 0.7rem;
+    background: var(--sl-color-gray-6);
+    text-decoration: none;
+    color: var(--sl-color-white);
+    transition: border-color 0.15s ease, background 0.15s ease,
+      transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  /* An arrow that says "go here" — the affordance that marks the tile as a
+     jump, and slides on hover. */
+  .op-jump a::after {
+    content: "→";
+    position: absolute;
+    top: 50%;
+    right: 1rem;
+    transform: translateY(-50%);
+    color: var(--sl-color-accent);
+    font-weight: 700;
+    font-size: 1.1rem;
+    transition: transform 0.15s ease;
+  }
+  .op-jump a:hover,
+  .op-jump a:focus-visible {
+    border-color: var(--sl-color-accent);
+    background: var(--sl-color-accent-low);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 159, 227, 0.18);
+  }
+  .op-jump a:hover::after,
+  .op-jump a:focus-visible::after {
+    transform: translateY(-50%) translateX(4px);
+  }
+  .op-jump-title {
+    font-weight: 700;
+    /* Link-cyan, so the title itself signals the tile is clickable. */
+    color: var(--sl-color-accent-high);
+  }
+  .op-jump-sub {
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-2);
+  }
+
+  /* Anchor targets clear Starlight's sticky header when jumped to. */
+  .op [id] {
+    scroll-margin-top: 5rem;
+  }
+
+  /* Cloud path: the numbered three steps. */
+  .op-steps {
+    list-style: none;
+    counter-reset: op-step;
+    padding: 0;
+    display: grid;
+    gap: 1rem;
+    margin-block: 1.5rem;
+  }
+  .op-steps > li {
+    counter-increment: op-step;
+    position: relative;
+    padding: 1rem 1rem 1rem 3.5rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.6rem;
+    background: var(--sl-color-gray-6);
+  }
+  .op-steps > li::before {
+    content: counter(op-step);
+    position: absolute;
+    left: 1rem;
+    top: 1rem;
+    width: 1.9rem;
+    height: 1.9rem;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--sl-color-accent);
+    color: var(--sl-color-black);
+    font-weight: 700;
+    font-size: var(--sl-text-sm);
+  }
+  .op-steps > li h3 {
+    margin-top: 0;
+    font-size: var(--sl-text-base);
+  }
+
+  /* Release-candidate channel note (only rendered while v3/VERSION is a
+     pre-release). */
+  .op-rc {
+    border: 1px solid var(--sl-color-accent);
+    border-left-width: 4px;
+    border-radius: 0.4rem;
+    padding: 0.75rem 1rem;
+    margin-block: 1rem;
+    background: var(--sl-color-accent-low);
+    font-size: var(--sl-text-sm);
+  }
+
+  .op-tabs {
+    margin-block: 1.5rem;
+  }
+  .op-tabs input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .op-tabbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 0.5rem;
+    border-bottom: 1px solid var(--sl-color-hairline);
+    margin-bottom: 1.5rem;
+  }
+  .op-tabbar label {
+    cursor: pointer;
+    padding: 0.5rem 0.9rem;
+    border-radius: 0.4rem 0.4rem 0 0;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    color: var(--sl-color-gray-2);
+    font-size: var(--sl-text-sm);
+    user-select: none;
+  }
+  .op-tabbar label:hover {
+    color: var(--sl-color-white);
+  }
+  .op-panel {
+    display: none;
+    margin-block: 0;
+  }
+  #op-tab-docker:checked ~ .op-tabbar label[for="op-tab-docker"],
+  #op-tab-compose:checked ~ .op-tabbar label[for="op-tab-compose"],
+  #op-tab-stores:checked ~ .op-tabbar label[for="op-tab-stores"] {
+    color: var(--sl-color-accent-high);
+    border-bottom-color: var(--sl-color-accent);
+  }
+  #op-tab-docker:checked ~ #op-panel-docker,
+  #op-tab-compose:checked ~ #op-panel-compose,
+  #op-tab-stores:checked ~ #op-panel-stores {
+    display: block;
+  }
+
+  .op-snippet {
+    position: relative;
+    max-width: 100%;
+    overflow-x: auto;
+    background: var(--sl-color-black);
+    border: 1px solid var(--sl-color-hairline);
+    border-radius: 0.5rem;
+    padding: 1rem 5.5rem 1rem 1rem;
+  }
+  .op-snippet pre {
+    margin: 0;
+    white-space: pre;
+  }
+  .op-copy {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    font-size: var(--sl-text-xs);
+    padding: 0.3rem 0.6rem;
+    border-radius: 0.3rem;
+    border: 1px solid var(--sl-color-hairline);
+    background: var(--sl-color-gray-6);
+    color: var(--sl-color-white);
+    cursor: pointer;
+  }
+  .op-copy:hover {
+    background: var(--sl-color-gray-5);
+  }
+  .op-copy-source {
+    display: none;
+  }
+  .op-fine {
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-3);
+  }
+
+  /* The cloud-init file is much longer than the other snippets — scrolls
+     inside its own fixed-height box instead of stretching the page. */
+  .op-snippet-file {
+    max-height: 16rem;
+    overflow-y: auto;
+  }
+
+  .op-stores {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: 0.6rem;
+  }
+  .op-stores li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.6rem;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--sl-color-hairline);
+    border-radius: 0.4rem;
+  }
+  .op-stores-name {
+    font-weight: 600;
+    min-width: 8rem;
+  }
+  .op-stores-status {
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-3);
+  }
+
+  .op-machines {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: 0.6rem;
+  }
+  .op-machines li {
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--sl-color-hairline);
+    border-radius: 0.4rem;
+  }
+</style>

@@ -1,0 +1,31 @@
+---
+// The localized onboarding routes — /onboarding/de, /onboarding/fr,
+// /onboarding/es, /onboarding/it — one per non-English language the palaia.ai
+// homepage offers. English is the sibling /onboarding (../onboarding.astro).
+// The Starlight chrome (header, search) stays English; only the page's own
+// content is translated, from ../../i18n/onboarding/<lang>.json.
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import OnboardingBody from "../../components/OnboardingBody.astro";
+import de from "../../i18n/onboarding/de.json";
+import fr from "../../i18n/onboarding/fr.json";
+import es from "../../i18n/onboarding/es.json";
+import it from "../../i18n/onboarding/it.json";
+
+const DICTS = { de, fr, es, it } as const;
+type Lang = keyof typeof DICTS;
+
+export function getStaticPaths() {
+  return (["de", "fr", "es", "it"] as Lang[]).map((lang) => ({ params: { lang } }));
+}
+
+const { lang } = Astro.params;
+const t = DICTS[lang as Lang];
+---
+
+<StarlightPage frontmatter={{
+  title: t.meta.title,
+  description: t.meta.description,
+  template: "splash",
+}}>
+  <OnboardingBody t={t} lang={lang} />
+</StarlightPage>
