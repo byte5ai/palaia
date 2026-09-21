@@ -66,10 +66,21 @@ not block the cut (issue #388).
       other artifact disagrees; fix forward until it's green again).
 - [ ] Remove every `rc-channel-note` (the "until 3.0.0 is final, use `:beta`"
       notes in the install docs, `deploy/README.md`, `deploy/docker-compose.yml`,
-      the root README and the generated Synology page — regenerate it with
-      `npm run gen:synology`). `server/tests/test_version_drift.py` requires
-      the notes while `VERSION` is a pre-release and refuses them once it is
-      not, so a forgotten one fails CI rather than shipping.
+      `deploy/cloud-init.yaml`, `deploy/setup.sh`, the root README and the
+      generated Synology page — regenerate it with `npm run gen:synology`).
+      `server/tests/test_version_drift.py` requires the notes while `VERSION`
+      is a pre-release and refuses them once it is not, so a forgotten one
+      fails CI rather than shipping.
+- [ ] Flip the two *unattended* install paths from the `beta` channel to
+      `stable`: `deploy/cloud-init.yaml`'s `IMAGE=` line and `deploy/setup.sh`'s
+      `PALAIA_IMAGE` default. Unlike the `docker run`/compose commands a reader
+      types (and can adjust after reading the note next to them), these boot
+      without anyone watching, so during the RC they pin `:beta` — a tag that
+      exists — rather than a `:stable` alias that would 404 mid-setup. On the
+      final tag `:stable` exists, and they must point at it.
+      `test_version_drift.py`'s
+      `test_unattended_install_paths_pin_the_channel_matching_version` fails
+      until both say `:stable`.
 - [ ] Add a `## 3.0.0` section to `v3/CHANGELOG.md`. The header line must
       start with `## 3.0.0` followed by a space or the end of the line
       (`## 3.0.0 — 2026-09-15` or a bare `## 3.0.0`); both the cut
@@ -143,11 +154,13 @@ not block the cut (issue #388).
       — the one-liner, `deploy/install.sh`, and `deploy/docker-compose.yml`
       need no edits; they already pin the `stable` channel tag on
       purpose (`deploy/README.md`/`deploy/stores/README.md` — never a
-      literal version). The same holds for `deploy/cloud-init.yaml`, the
-      Pi image (`deploy/pi-image/`: systemd unit, README, `BOOT-TEST.md`)
-      and the generated Synology page — all pin `:stable`. The Pi
-      appliance `.img.xz` itself is attached to the release by
-      `v3-pi-image.yml` (§3).
+      literal version). The Pi image (`deploy/pi-image/`: systemd unit,
+      README, `BOOT-TEST.md`) and the generated Synology page also pin
+      `:stable`. The two unattended paths (`deploy/cloud-init.yaml`,
+      `deploy/setup.sh`) were flipped from `:beta` to `:stable` in §3 — they
+      pin a real channel tag rather than the moving alias, so a paste-and-boot
+      never 404s mid-setup. The Pi appliance `.img.xz` itself is attached to
+      the release by `v3-pi-image.yml` (§3).
 - [ ] Check the GitHub release the cut workflow created: title from the
       notes' first line, body from the rest, no pre-release badge for a
       final version. Nothing to publish by hand — §3's dispatch did it.
