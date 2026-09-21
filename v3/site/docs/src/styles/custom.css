@@ -150,19 +150,23 @@
   --sl-font: 'Nunito Sans', 'Avenir Next', Avenir, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --sl-font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, 'Liberation Mono', monospace;
 
-  --sl-color-white: #f7f8fa;
-  --sl-color-gray-1: #d7dbe2;
-  --sl-color-gray-2: #b4bac6;
-  --sl-color-gray-3: #8b93a4;
-  --sl-color-gray-4: #5a6373;
-  --sl-color-gray-5: #2a3342;
-  --sl-color-gray-6: #131b28;
+  /* Exact homepage tokens: white text (--white), gray-100 secondary,
+     gray-900 surfaces, gray-950 page background. The mid greys are derived in
+     the same navy hue so the scale reads as one system. */
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #eef1f5;
+  --sl-color-gray-2: #e8ecf1;
+  --sl-color-gray-3: #9aa3b1;
+  --sl-color-gray-4: #5a6474;
+  --sl-color-gray-5: #1b2431;
+  --sl-color-gray-6: #0a0f1a;
   --sl-color-black: #060a12;
 
-  /* cyan accent (homepage --cyan / --cyan-light) */
-  --sl-color-accent-low: #062a3f;
+  /* Exact homepage cyan: --cyan #009FE3 (accents/buttons) and
+     --cyan-light #00BDF2 (links, hover). */
+  --sl-color-accent-low: #0a2434;
   --sl-color-accent: #009fe3;
-  --sl-color-accent-high: #8fd6f7;
+  --sl-color-accent-high: #00bdf2;
 }
 
 :root[data-theme='light'] {
@@ -182,13 +186,19 @@
   --sl-color-accent-high: #04618f;
 }
 
-/* ---- Headings in the display face ------------------------------------ */
-/* Days One is a single-weight display face — pin weight 400 so the browser
-   never synthesises a heavier one, exactly as the homepage uses it. */
-h1, h2, h3, h4, h5, h6,
+/* ---- Brand display face: logo only ----------------------------------- */
+/* Days One is the wordmark face. The homepage reserves it for the "palaia"
+   logo and the hero claim — not for section headings. In the docs that means
+   the site title (the logo) only; content headings use the body face
+   (Nunito Sans), just heavier, so a page full of headings never reads as
+   blocks of display type. */
 .site-title {
   font-family: 'Days One', var(--sl-font);
   font-weight: 400;
+  letter-spacing: 0.01em;
+}
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 700;
   letter-spacing: -0.01em;
 }
 
