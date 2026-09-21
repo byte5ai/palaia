@@ -15,7 +15,7 @@ import {
   isPrerelease,
   loadCloudInitTemplate,
   loadDeploySnippets,
-  loadSetupCommand,
+  loadGetPalaiaCommand,
   loadVersion,
 } from "../scripts/lib/deploy-snippets.mjs";
 
@@ -135,18 +135,16 @@ describe("onboarding page snippets", () => {
     }
   });
 
-  it("the existing-server command reads v3/deploy/setup.sh, not a hand-copied string", () => {
-    // Same proof shape as the README/cloud-init tests: the command the page
-    // shows for a server the reader already has is lifted out of setup.sh's
-    // own "Usage" header, so it can only be right if it was really read from
-    // the file. (setup.sh is the authoritative copy of that command.)
-    const setup = readFileSync(path.join(DEPLOY_ROOT, "setup.sh"), "utf8");
-    const command = loadSetupCommand();
-    for (const line of command.split("\n")) {
-      expect(setup).toContain(line);
-    }
-    expect(command).toContain("setup.sh");
-    expect(command).toContain("TAILSCALE_AUTH_KEY");
+  it("the get.palaia.ai command reads v3/deploy/get-palaia.sh, not a hand-copied string", () => {
+    // Same proof shape as the README/cloud-init tests: the existing-server
+    // command the page shows is lifted out of get-palaia.sh's own header, so
+    // it can only be right if it was really read from the file. get-palaia.sh
+    // is the universal installer that get.palaia.ai serves.
+    const script = readFileSync(path.join(DEPLOY_ROOT, "get-palaia.sh"), "utf8");
+    const command = loadGetPalaiaCommand();
+    expect(script).toContain(command);
+    expect(command).toContain("get.palaia.ai");
+    expect(command).toMatch(/^curl\b/);
   });
 
   it("isPrerelease() agrees with v3/VERSION", () => {
