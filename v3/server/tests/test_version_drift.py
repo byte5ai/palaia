@@ -117,16 +117,17 @@ def test_mcpb_build_script_never_hardcodes_a_release_version() -> None:
 #: Every install path that behaves differently during a release candidate
 #: carries an `rc-channel-note` (issue #326): the ones a person types and can
 #: adjust pin the `stable` channel tag and add a note to use `beta` instead;
-#: the unattended ones (cloud-init.yaml, setup.sh — see
-#: ``_UNATTENDED_IMAGE_FILES`` below) pin `beta` directly and their note
-#: explains that the final tag flips them to `stable`. Either way the note is
-#: present only while `VERSION` is a pre-release. The generated Synology page
-#: is included: its generator emits the note.
+#: the unattended one (cloud-init.yaml — see ``_UNATTENDED_IMAGE_FILES`` below)
+#: pins `beta` directly and its note explains that the final tag flips it to
+#: `stable`. Either way the note is present only while `VERSION` is a
+#: pre-release. The generated Synology page is included: its generator emits
+#: the note. (get-palaia.sh is not here: it defaults to `stable` and, rather
+#: than a note, fails loudly with a "re-run with PALAIA_CHANNEL=beta" message
+#: if the `:stable` pull 404s during an RC.)
 _RC_CHANNEL_NOTE_FILES = (
     "deploy/README.md",
     "deploy/docker-compose.yml",
     "deploy/cloud-init.yaml",
-    "deploy/setup.sh",
     "docs/how-it-works.md",
     "site/docs/src/content/docs/install.md",
     "site/docs/src/content/docs/install-synology.md",
@@ -158,22 +159,20 @@ def test_compose_pins_the_stable_channel_tag_not_a_literal_version() -> None:
     assert match.group(1) == "ghcr.io/byte5ai/palaia-hub:stable"
 
 
-#: The install paths consumed UNATTENDED: cloud-init.yaml is pasted into a
-#: provider's user-data field and boots without anyone watching, and setup.sh
-#: is run once over SSH on an existing box. Unlike the `docker run`/compose
-#: commands a person types (and can adjust from `stable` to `beta` after
-#: reading the note next to them), these must pull a tag that *exists at the
-#: moment they run* — a `stable` alias that the release workflow only creates
-#: on the final tag would 404 silently mid-boot. So they pin the release
-#: channel that matches `VERSION` directly — `beta` during a pre-release,
-#: `stable` once final — the same reasoning
+#: The install path consumed UNATTENDED: cloud-init.yaml is pasted into a
+#: provider's user-data field and boots without anyone watching. Unlike the
+#: `docker run`/compose commands a person types (and can adjust from `stable`
+#: to `beta` after reading the note next to them), it must pull a tag that
+#: *exists at the moment it runs* — a `stable` alias that the release workflow
+#: only creates on the final tag would 404 silently mid-boot. So it pins the
+#: release channel that matches `VERSION` directly — `beta` during a
+#: pre-release, `stable` once final — the same reasoning
 #: ``test_home_assistant_addon_version_is_this_version`` applies to the HA
-#: add-on. `RELEASING.md` §3 flips these on the final tag; this test is what
+#: add-on. `RELEASING.md` §3 flips it on the final tag; this test is what
 #: forces that flip (and forbids shipping a dead `:stable` during an RC).
-_UNATTENDED_IMAGE_FILES = (
-    "deploy/cloud-init.yaml",
-    "deploy/setup.sh",
-)
+#: (get-palaia.sh is the interactive SSH counterpart: it defaults to `stable`
+#: but fails loudly with a re-run hint, so it needs no pinning here.)
+_UNATTENDED_IMAGE_FILES = ("deploy/cloud-init.yaml",)
 
 _PALAIA_HUB_IMAGE_RE = re.compile(r"ghcr\.io/byte5ai/palaia-hub:([A-Za-z0-9][\w.-]*)")
 

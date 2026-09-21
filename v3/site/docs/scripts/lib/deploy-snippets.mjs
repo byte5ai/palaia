@@ -42,31 +42,30 @@ export function isPrerelease() {
 }
 
 /**
- * The two-line "already have a server" SSH command, read straight out of
- * `v3/deploy/setup.sh`'s own header "Usage" comment — the same extract-don't-
- * copy rule the snippets above follow. `setup.sh` is the authoritative copy of
- * that command; the onboarding page shows exactly what its header documents.
+ * The one-line `get.palaia.ai` install command, read straight out of
+ * `v3/deploy/get-palaia.sh`'s own header — the same extract-don't-copy rule
+ * the snippets above follow. `get-palaia.sh` is the universal installer that
+ * `get.palaia.ai` serves; its header documents the exact command, and the
+ * onboarding page shows that verbatim rather than a hand-typed raw-GitHub URL.
  */
-export function loadSetupCommand() {
-  const setupPath = path.join(DEPLOY_ROOT, "setup.sh");
-  const lines = readFileSync(setupPath, "utf8").split("\n");
-  const start = lines.findIndex((line) => line.startsWith("# Usage"));
-  const command = [];
-  if (start !== -1) {
-    for (const line of lines.slice(start + 1)) {
-      const match = line.match(/^#\s{2,}(\S.*)$/);
-      if (match) command.push(match[1]);
-      else if (command.length) break;
+export function loadGetPalaiaCommand() {
+  const scriptPath = path.join(DEPLOY_ROOT, "get-palaia.sh");
+  const lines = readFileSync(scriptPath, "utf8").split("\n");
+  let command = null;
+  for (const line of lines) {
+    const match = line.match(/^#\s+(curl\s.*get\.palaia\.ai.*)$/);
+    if (match) {
+      command = match[1].trim();
+      break;
     }
   }
-  const text = command.join("\n");
-  if (!text.includes("setup.sh") || !text.includes("TAILSCALE_AUTH_KEY")) {
+  if (!command || !command.includes("get.palaia.ai")) {
     throw new Error(
-      `deploy-snippets: could not extract the SSH setup command from ${setupPath}'s ` +
-        `"Usage" comment — its shape changed; update this extractor to match (never hand-copy).`,
+      `deploy-snippets: could not extract the get.palaia.ai command from ${scriptPath}'s ` +
+        `header — its shape changed; update this extractor to match (never hand-copy).`,
     );
   }
-  return text;
+  return command;
 }
 
 function bashFences(text) {

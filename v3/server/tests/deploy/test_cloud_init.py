@@ -31,10 +31,6 @@ import pytest
 # v3/server/tests/deploy -> v3/server/tests -> v3/server -> v3 -> v3/deploy
 DEPLOY_ROOT = Path(__file__).resolve().parents[3] / "deploy"
 CLOUD_INIT_PATH = DEPLOY_ROOT / "cloud-init.yaml"
-#: The existing-server counterpart to cloud-init.yaml: SSH in and run it on a
-#: box that is already up (cloud-init only fires on first boot). It must give
-#: the identical hardened, tailnet-only container the cloud-init path does.
-SETUP_SH_PATH = DEPLOY_ROOT / "setup.sh"
 
 # The exact pinned tag `test_cloud_init_schema_validates` installs cloud-init
 # from. 24.1.3 is the last tagged release still shipping a setuptools
@@ -122,44 +118,6 @@ def test_hub_port_is_bound_to_the_tailnet_address_only() -> None:
     # Layer 2: a firewall rule scoped to the tailscale interface.
     assert "tailscale0" in cloud_init
     assert "ufw allow in on tailscale0" in cloud_init
-
-
-def test_setup_sh_exists_and_documents_the_ssh_command() -> None:
-    assert SETUP_SH_PATH.is_file(), f"no existing-server script at {SETUP_SH_PATH}"
-    text = SETUP_SH_PATH.read_text(encoding="utf-8")
-    assert "TAILSCALE_AUTH_KEY" in text
-    # The onboarding page lifts the SSH command out of this "# Usage" header,
-    # so the header's shape is load-bearing (deploy-snippets.mjs' loadSetupCommand).
-    assert "# Usage" in text
-    assert "bash setup.sh" in text
-
-
-def test_setup_sh_reuses_install_sh_hardening_flags_verbatim() -> None:
-    """Same drift test as cloud-init.yaml, applied to the existing-server
-    path: setup.sh must reuse install.sh's own hardening flag list, never a
-    second copy — so both entry points end at the same container posture."""
-    install_sh = (DEPLOY_ROOT / "install.sh").read_text(encoding="utf-8")
-    setup_sh = SETUP_SH_PATH.read_text(encoding="utf-8")
-
-    flags = _extract_hardening_flags(install_sh)
-    assert flags, "no hardening flags extracted from install.sh"
-    for flag in flags:
-        assert flag in setup_sh, (
-            f"setup.sh is missing install.sh's own {flag!r} flag — the existing-server "
-            "path must not fork this list from cloud-init.yaml / install.sh"
-        )
-
-
-def test_setup_sh_binds_the_hub_to_the_tailnet_only_like_cloud_init() -> None:
-    """setup.sh must bind the published port to the tailnet address (not every
-    interface) and add the same tailscale-scoped firewall rule cloud-init does
-    — an existing box must not end up more exposed than a freshly created one."""
-    setup_sh = SETUP_SH_PATH.read_text(encoding="utf-8")
-
-    assert '-p "${TAILSCALE_IP}:${PORT}:8420"' in setup_sh
-    assert "-p 0.0.0.0" not in setup_sh
-    assert '-p "${PORT}:8420"' not in setup_sh
-    assert "ufw allow in on tailscale0" in setup_sh
 
 
 def test_cloud_init_schema_validates() -> None:

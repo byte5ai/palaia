@@ -5,7 +5,8 @@
 // Tailscale key, paste the cloud-config, create the server — and Docker /
 // Compose are demoted to a clearly-labelled "For developers" section. A
 // third path covers a server the reader already has (cloud-init only runs on
-// first boot, so an existing box is set up over SSH with setup.sh instead).
+// first boot, so an existing box is set up over SSH with the universal
+// installer, `curl … get.palaia.ai | sh` — v3/deploy/get-palaia.sh).
 //
 // Same toolchain and theme as the rest of this site (Astro + Starlight, this
 // project's `custom.css` tokens). `StarlightPage` (not a `src/content/docs/*`
@@ -24,17 +25,24 @@ import {
   isPrerelease,
   loadCloudInitTemplate,
   loadDeploySnippets,
-  loadSetupCommand,
+  loadGetPalaiaCommand,
 } from "../../scripts/lib/deploy-snippets.mjs";
 
 const snippets = loadDeploySnippets();
 const cloudInit = loadCloudInitTemplate();
-const setupCommand = loadSetupCommand();
 // During a release candidate the `stable` image does not exist yet; the dev
 // commands below (read verbatim from v3/deploy) still name it, so the page
 // carries the same `:beta` note deploy/README.md does — but only while
 // v3/VERSION is a pre-release, gated here the same way that file's own note is.
 const prerelease = isPrerelease();
+// The `curl … get.palaia.ai | sh` one-liner, read from get-palaia.sh's header.
+// The universal installer defaults to the `stable` channel; during a
+// pre-release that image does not exist yet, so the shown command carries
+// PALAIA_CHANNEL=beta until 3.0.0 is final, and is the bare command after.
+const getPalaiaBase = loadGetPalaiaCommand();
+const installCommand = prerelease
+  ? getPalaiaBase.replace(/\|\s*sh\s*$/, "| PALAIA_CHANNEL=beta sh")
+  : getPalaiaBase;
 
 const STORES = [
   { name: "Umbrel", dir: "umbrel" },
@@ -59,14 +67,30 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
   <div class="op">
     <p class="op-lede">
       palaia lives on an always-on box that your AI tools reach from anywhere —
-      a small cloud server, a NAS, a spare mini-PC. The simplest way, with no
-      terminal at all, is a cloud server you set up by pasting one file. That is
-      the path below; if you would rather run it on hardware you already own, or
-      you are comfortable with Docker, those are further down.
+      a small cloud server, a NAS, a spare mini-PC. Pick how you want to run it:
     </p>
 
+    <nav class="op-jump" aria-label="Ways to install">
+      <a href="#cloud-server">
+        <span class="op-jump-title">Cloud server</span>
+        <span class="op-jump-sub">no terminal · paste one file</span>
+      </a>
+      <a href="#already-have-a-server">
+        <span class="op-jump-title">Existing server</span>
+        <span class="op-jump-sub">one command over SSH</span>
+      </a>
+      <a href="#your-own-machine">
+        <span class="op-jump-title">Your own machine</span>
+        <span class="op-jump-sub">Pi · NAS · Mac</span>
+      </a>
+      <a href="#for-developers">
+        <span class="op-jump-title">Docker &amp; Compose</span>
+        <span class="op-jump-sub">for developers</span>
+      </a>
+    </nav>
+
     <section class="op-primary">
-      <h2>The simple way: a cloud server in three steps</h2>
+      <h2 id="cloud-server">The simple way: a cloud server in three steps</h2>
       <p class="op-fine">
         No terminal, no SSH. You paste one file when you create the server and
         it sets itself up. Any small provider works — Hetzner Cloud and
@@ -122,24 +146,23 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
     </section>
 
     <section class="op-existing">
-      <h2>Already have a server? Set it up over SSH</h2>
+      <h2 id="already-have-a-server">Already have a server? One command over SSH</h2>
       <p>
         The file above only runs on a server's <em>first</em> boot, so pasting it
         into a box that is already running does nothing. For a server you already
-        have, SSH in and run this instead — it does the same thing (Docker,
-        Tailscale, the tailnet-only firewall and the hardened hub), ending at the
-        identical setup. Replace <code>tskey-…</code> with a{" "}
-        <a href={TAILSCALE_KEYS_URL}>Tailscale key</a> first:
+        have, SSH in and run this one line — the installer sets up Docker,
+        Tailscale, the tailnet-only firewall and the hardened hub, and asks you
+        to paste a <a href={TAILSCALE_KEYS_URL}>Tailscale key</a> when it runs:
       </p>
       <div class="op-snippet">
-        <pre><code>{setupCommand}</code></pre>
-        <button type="button" class="op-copy" data-copy-target="op-code-setup">Copy</button>
+        <pre><code>{installCommand}</code></pre>
+        <button type="button" class="op-copy" data-copy-target="op-code-install">Copy</button>
       </div>
-      <code id="op-code-setup" class="op-copy-source" hidden>{setupCommand}</code>
+      <code id="op-code-install" class="op-copy-source" hidden>{installCommand}</code>
     </section>
 
     <section class="op-owned">
-      <h2>Or a machine you already own</h2>
+      <h2 id="your-own-machine">Or a machine you already own</h2>
       <p class="op-fine">The developer options below install the same hub on any of these:</p>
       <ul class="op-machines">
         <li>
@@ -163,7 +186,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
     </section>
 
     <section class="op-dev">
-      <h2>For developers: Docker &amp; Compose</h2>
+      <h2 id="for-developers">For developers: Docker &amp; Compose</h2>
       <p class="op-fine">
         Already run containers? Install the hub straight from the image.
       </p>
@@ -173,8 +196,9 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
           <strong>Release candidate.</strong> The commands here still name the{" "}
           <code>:stable</code> image, which is not published until 3.0.0 is final.
           Until then use <code>:beta</code> instead — e.g.{" "}
-          <code>ghcr.io/byte5ai/palaia-hub:beta</code>. The cloud-server file above
-          already uses <code>:beta</code>, so there is nothing to change there.
+          <code>ghcr.io/byte5ai/palaia-hub:beta</code>. The cloud-server file and
+          the <code>get.palaia.ai</code> one-liner above already target
+          <code>:beta</code>, so there is nothing to change there.
         </aside>
       )}
 
@@ -202,14 +226,10 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
           <code id="op-code-docker" class="op-copy-source" hidden>{snippets.dockerRun}</code>
 
           <p class="op-fine">
-            Prefer a script that checks Docker is installed and running first, then
-            prints the address to open at the end?
+            Want a script that installs Docker and Tailscale for you and prints the
+            address at the end? That is the <a href="#already-have-a-server">one
+            command over SSH</a> above — <code>curl … get.palaia.ai | sh</code>.
           </p>
-          <div class="op-snippet">
-            <pre><code>{snippets.curlInstall}</code></pre>
-            <button type="button" class="op-copy" data-copy-target="op-code-curl">Copy</button>
-          </div>
-          <code id="op-code-curl" class="op-copy-source" hidden>{snippets.curlInstall}</code>
         </section>
 
         <section class="op-panel" id="op-panel-compose">
@@ -314,6 +334,46 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   .op section {
     margin-block: 2.5rem;
+  }
+
+  /* Jump nav: the install paths in a row, each anchoring to its section, so a
+     reader picks a path without scrolling the whole page first. Auto-fit grid
+     — a row on desktop, wrapping to a stack on a phone (no fixed pixel width,
+     so no horizontal scroll). */
+  .op-jump {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 0.6rem;
+    margin-block: 1.5rem 2.5rem;
+  }
+  .op-jump a {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.8rem 1rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.6rem;
+    background: var(--sl-color-gray-6);
+    text-decoration: none;
+    color: var(--sl-color-white);
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .op-jump a:hover,
+  .op-jump a:focus-visible {
+    border-color: var(--sl-color-accent);
+    background: var(--sl-color-accent-low);
+  }
+  .op-jump-title {
+    font-weight: 700;
+  }
+  .op-jump-sub {
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-3);
+  }
+
+  /* Anchor targets clear Starlight's sticky header when jumped to. */
+  .op [id] {
+    scroll-margin-top: 5rem;
   }
 
   /* Primary path: the numbered three steps. */

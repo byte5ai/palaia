@@ -57,18 +57,21 @@ second, hand-typed one.
 
 **Already have a server?** cloud-init only ever runs on a machine's *first*
 boot, so pasting `cloud-init.yaml` into a box that is already running does
-nothing. For that case [`setup.sh`](setup.sh) does the same install over SSH —
-Docker, Tailscale, the tailnet-only firewall and the hardened container,
-ending at the identical hub. On the server:
+nothing. For that case the universal installer
+[`get-palaia.sh`](get-palaia.sh) — served at `get.palaia.ai` — does the same
+install over SSH (Docker, Tailscale, the tailnet-only firewall and the hardened
+container), ending at the identical hub. On the server:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/byte5ai/palaia/main/v3/deploy/setup.sh
-sudo TAILSCALE_AUTH_KEY="tskey-..." bash setup.sh
+curl -fsSL https://get.palaia.ai | sh
 ```
 
-Its hardening flags come from the same `install.sh` list cloud-init.yaml uses,
-checked by `server/tests/deploy/test_cloud_init.py`'s drift test. The
-onboarding page's "already have a server" step shows this same command.
+It prompts for a Tailscale auth key interactively, or takes `PALAIA_TSKEY` /
+`PALAIA_NO_TAILSCALE` non-interactively (see the script header). During the
+release candidate the `stable` image does not exist yet, so pass
+`PALAIA_CHANNEL=beta` (`curl -fsSL https://get.palaia.ai | PALAIA_CHANNEL=beta
+sh`) — the script says so too if the `:stable` pull 404s. The onboarding page's
+"already have a server" step shows this same command.
 
 What it does, in order: installs Docker and Tailscale, joins your tailnet
 with the key you provided, then starts the hub with the exact hardening
