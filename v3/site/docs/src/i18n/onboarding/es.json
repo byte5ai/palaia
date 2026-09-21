@@ -11,7 +11,8 @@
     "prompt": "Configúrame palaia. Primero lee get.palaia.ai/skill y luego guíame paso a paso. No soy una persona técnica, así que explícamelo todo de forma sencilla.",
     "copy": "Copiar mensaje",
     "copied": "Copiado: ahora pégalo",
-    "hint": "Funciona en Claude, ChatGPT o Gemini. El asistente te pregunta dónde debe funcionar palaia y hace el resto."
+    "worksWith": "Funciona en",
+    "hint": "El asistente te pregunta dónde debe funcionar palaia y hace el resto."
   },
   "manual": {
     "h2": "¿Prefieres configurarlo tú mismo?",

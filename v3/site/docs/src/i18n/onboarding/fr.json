@@ -11,7 +11,8 @@
     "prompt": "Installe palaia pour moi. Lis d'abord get.palaia.ai/skill, puis guide-moi étape par étape — je ne suis pas technique, alors explique-moi tout simplement.",
     "copy": "Copier l'instruction",
     "copied": "Copié — collez-la maintenant",
-    "hint": "Fonctionne dans Claude, ChatGPT ou Gemini. L'assistant vous demande où palaia doit tourner et fait le reste."
+    "worksWith": "Fonctionne dans",
+    "hint": "L'assistant vous demande où palaia doit tourner et fait le reste."
   },
   "manual": {
     "h2": "Vous préférez l'installer vous-même ?",

@@ -11,7 +11,8 @@
     "prompt": "Set palaia up for me. First read get.palaia.ai/skill, then walk me through it step by step — I'm not technical, so explain everything simply.",
     "copy": "Copy prompt",
     "copied": "Copied — now paste it",
-    "hint": "Works in Claude, ChatGPT or Gemini. The assistant asks where palaia should run and does the rest."
+    "worksWith": "Works in",
+    "hint": "The assistant asks where palaia should run and does the rest."
   },
   "manual": {
     "h2": "Rather set it up yourself?",
