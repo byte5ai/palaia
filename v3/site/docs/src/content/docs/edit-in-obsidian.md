@@ -15,7 +15,7 @@ both:
 - **The default path — the dashboard.** The explorer in palaia's web UI
   (`http://palaia.local`) reads and shows your notes in the browser, wherever
   the hub runs. Nothing to install. This is covered on [Your memory](/memory/).
-- **The power path — Obsidian + git.** Open the vault as an Obsidian library
+- **The power path — Obsidian + git.** Open your memory as an Obsidian library
   and let git carry changes between your machine and the hub. This page is
   about that path.
 
@@ -28,20 +28,20 @@ server, a Raspberry Pi), not on the laptop you happen to be typing on. Obsidian
 runs on that laptop.
 
 Obsidian only opens **local** folders, and palaia deliberately does **not**
-expose the vault as a network drive — that would work against its local-first,
+expose that memory as a network drive — that would work against its local-first,
 files-are-the-source-of-truth design. The bridge is **git**, which is exactly
-why palaia makes every vault a real git repository with attributed
+why palaia makes every memory a real git repository with attributed
 auto-commits.
 
 The shape of the setup:
 
-1. **Get the vault repo onto your machine.** Clone the vault's git repository
+1. **Get the memory repo onto your machine.** Clone the memory's git repository
    from the hub to a folder on your laptop, over whatever git access you have
    to the host (for a box you control, that is typically SSH). A turnkey
-   per-vault git remote served by the hub itself is on the roadmap
+   per-memory git remote served by the hub itself is on the roadmap
    ([issue #438](https://github.com/byte5ai/palaia/issues/438)); until then you
    clone over your own access to the host.
-2. **Open the clone as an Obsidian vault** — *Open folder as vault* on the
+2. **Open the clone in Obsidian** — `Open folder as vault` on the
    cloned folder.
 3. **Install the [Obsidian Git](https://github.com/Vinzent03/obsidian-git)
    community plugin** and point it at the clone. Set it to pull on startup and
@@ -59,12 +59,12 @@ not a live network mount.
 Running palaia on the very machine you edit from is uncommon — a hub that only
 serves the one laptop it lives on gives up most of what palaia is for (always
 on, reachable from your phone and your other tools). But if that is your setup,
-skip git entirely: the vault is already a local folder.
+skip git entirely: the memory is already a local folder.
 
-1. In palaia's dashboard, open the memory and note the **vault path** it shows
+1. In palaia's dashboard, open the memory and note the **folder path** it shows
    (on the usual setups, a `vaults/<name>` directory inside the hub's data
    directory).
-2. In Obsidian: **Open folder as vault** → choose that folder.
+2. In Obsidian: `Open folder as vault` → choose that folder.
 
 Edit freely — palaia watches the folder and re-indexes a changed note within
 moments, and still auto-commits every change to git in the background, so you
@@ -72,7 +72,7 @@ keep the same browsable history.
 
 ## Good to know
 
-- **Editor state stays out of your history.** palaia's vault `.gitignore`
+- **Editor state stays out of your history.** palaia's memory `.gitignore`
   ignores Obsidian's own `.obsidian/` workspace files (and `.trash/`), so
   Obsidian's constantly-rewritten config never becomes a commit in your memory
   history and is never mistaken for a note you wrote.
@@ -80,5 +80,5 @@ keep the same browsable history.
   not protective — a real backup is a separate, restorable copy. See
   [Back up & restore](/backup-restore/).
 - **Formatting.** palaia and Obsidian share the same Markdown dialect
-  (wikilinks, tags). Obsidian-specific extras render fine in Obsidian; palaia
+  (`[[wikilinks]]`, tags). Obsidian-specific extras render fine in Obsidian; palaia
   reads the plain Markdown underneath.
