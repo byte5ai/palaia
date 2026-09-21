@@ -15,11 +15,12 @@
 import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
 import OnboardingBody from "../components/OnboardingBody.astro";
 import t from "../i18n/onboarding/en.json";
+import { onboardingHeadings } from "../i18n/onboarding-headings";
 ---
 
 <StarlightPage frontmatter={{
   title: t.meta.title,
   description: t.meta.description,
-}}>
+}} headings={onboardingHeadings(t)}>
   <OnboardingBody t={t} lang="en" />
 </StarlightPage>

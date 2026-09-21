@@ -6,6 +6,7 @@
 // content is translated, from ../../i18n/onboarding/<lang>.json.
 import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
 import OnboardingBody from "../../components/OnboardingBody.astro";
+import { onboardingHeadings } from "../../i18n/onboarding-headings";
 import de from "../../i18n/onboarding/de.json";
 import fr from "../../i18n/onboarding/fr.json";
 import es from "../../i18n/onboarding/es.json";
@@ -25,6 +26,6 @@ const t = DICTS[lang as Lang];
 <StarlightPage frontmatter={{
   title: t.meta.title,
   description: t.meta.description,
-}}>
+}} headings={onboardingHeadings(t)}>
   <OnboardingBody t={t} lang={lang} />
 </StarlightPage>
