@@ -22,8 +22,52 @@ import path from "node:path";
 // `import.meta.url` instead because they run standalone, never bundled.
 // v3/site/docs -> v3/site -> v3 -> v3/deploy
 export const DEPLOY_ROOT = path.resolve(process.cwd(), "../../deploy");
+// v3/site/docs -> v3/site -> v3 (holds VERSION)
+export const V3_ROOT = path.resolve(process.cwd(), "../..");
 
 const FENCE_RE = /```bash\n([\s\S]*?)```/g;
+
+/**
+ * `v3/VERSION`'s content — the single source of truth the onboarding page
+ * reads to decide whether the release-candidate channel note applies. A
+ * pre-release carries a SemVer suffix (`-rc2`, `-beta1`), the same test
+ * `server/tests/test_version_drift.py` uses to gate every `rc-channel-note`.
+ */
+export function loadVersion() {
+  return readFileSync(path.join(V3_ROOT, "VERSION"), "utf8").trim();
+}
+
+export function isPrerelease() {
+  return loadVersion().includes("-");
+}
+
+/**
+ * The two-line "already have a server" SSH command, read straight out of
+ * `v3/deploy/setup.sh`'s own header "Usage" comment — the same extract-don't-
+ * copy rule the snippets above follow. `setup.sh` is the authoritative copy of
+ * that command; the onboarding page shows exactly what its header documents.
+ */
+export function loadSetupCommand() {
+  const setupPath = path.join(DEPLOY_ROOT, "setup.sh");
+  const lines = readFileSync(setupPath, "utf8").split("\n");
+  const start = lines.findIndex((line) => line.startsWith("# Usage"));
+  const command = [];
+  if (start !== -1) {
+    for (const line of lines.slice(start + 1)) {
+      const match = line.match(/^#\s{2,}(\S.*)$/);
+      if (match) command.push(match[1]);
+      else if (command.length) break;
+    }
+  }
+  const text = command.join("\n");
+  if (!text.includes("setup.sh") || !text.includes("TAILSCALE_AUTH_KEY")) {
+    throw new Error(
+      `deploy-snippets: could not extract the SSH setup command from ${setupPath}'s ` +
+        `"Usage" comment — its shape changed; update this extractor to match (never hand-copy).`,
+    );
+  }
+  return text;
+}
 
 function bashFences(text) {
   return [...text.matchAll(FENCE_RE)].map((m) => m[1].trimEnd());

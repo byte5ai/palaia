@@ -10,7 +10,14 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { DEPLOY_ROOT, loadCloudInitTemplate, loadDeploySnippets } from "../scripts/lib/deploy-snippets.mjs";
+import {
+  DEPLOY_ROOT,
+  isPrerelease,
+  loadCloudInitTemplate,
+  loadDeploySnippets,
+  loadSetupCommand,
+  loadVersion,
+} from "../scripts/lib/deploy-snippets.mjs";
 
 describe("onboarding page snippets", () => {
   it("reads v3/deploy/README.md, not a hand-copied string", () => {
@@ -126,6 +133,37 @@ describe("onboarding page snippets", () => {
         flag,
       );
     }
+  });
+
+  it("the existing-server command reads v3/deploy/setup.sh, not a hand-copied string", () => {
+    // Same proof shape as the README/cloud-init tests: the command the page
+    // shows for a server the reader already has is lifted out of setup.sh's
+    // own "Usage" header, so it can only be right if it was really read from
+    // the file. (setup.sh is the authoritative copy of that command.)
+    const setup = readFileSync(path.join(DEPLOY_ROOT, "setup.sh"), "utf8");
+    const command = loadSetupCommand();
+    for (const line of command.split("\n")) {
+      expect(setup).toContain(line);
+    }
+    expect(command).toContain("setup.sh");
+    expect(command).toContain("TAILSCALE_AUTH_KEY");
+  });
+
+  it("isPrerelease() agrees with v3/VERSION", () => {
+    expect(isPrerelease()).toBe(loadVersion().includes("-"));
+  });
+
+  it("gates the release-candidate :beta note on the same pre-release signal", () => {
+    // The page only shows the "use :beta" note while v3/VERSION is a
+    // pre-release — the same gating deploy/README.md's own rc-channel-note
+    // has, driven here by isPrerelease() rather than duplicated as a literal.
+    const page = readFileSync(
+      path.join(__dirname, "..", "src", "pages", "onboarding.astro"),
+      "utf8",
+    );
+    expect(page).toContain("isPrerelease");
+    expect(page).toMatch(/prerelease\s*&&/);
+    expect(page).toContain("palaia-hub:beta");
   });
 
   it("throws instead of returning an empty snippet if the source shape ever changes", () => {
