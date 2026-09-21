@@ -11,7 +11,8 @@
     "prompt": "Configura palaia per me. Prima leggi get.palaia.ai/skill, poi guidami passo dopo passo — non sono un tecnico, quindi spiega tutto in modo semplice.",
     "copy": "Copia il testo",
     "copied": "Copiato — ora incollalo",
-    "hint": "Funziona con Claude, ChatGPT o Gemini. L'assistente ti chiede dove far girare palaia e fa tutto il resto."
+    "worksWith": "Funziona con",
+    "hint": "L'assistente ti chiede dove far girare palaia e fa tutto il resto."
   },
   "manual": {
     "h2": "Preferisci configurarlo da solo?",

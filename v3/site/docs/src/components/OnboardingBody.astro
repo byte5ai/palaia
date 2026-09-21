@@ -72,6 +72,12 @@ const STORES = [
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
       <span class="op-copy-text">{t.ai.copy}</span>
     </button>
+    <p class="op-tools">
+      <span class="op-tools-label">{t.ai.worksWith}</span>
+      <span class="op-tool">Claude</span>
+      <span class="op-tool">ChatGPT</span>
+      <span class="op-tool">Gemini</span>
+    </p>
     <p class="op-fine">{t.ai.hint}</p>
   </section>
 
@@ -302,6 +308,38 @@ const STORES = [
   }
   .op-prompt-copy:hover {
     background: var(--sl-color-accent-high);
+  }
+
+  /* The three AI tools the prompt works in — named chips next to the copy
+     button, so the reader sees at a glance where to paste it. */
+  .op-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-block: 1rem 0.5rem;
+  }
+  .op-tools-label {
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-3);
+  }
+  .op-tool {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.75rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 999px;
+    background: var(--sl-color-gray-6);
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-white);
+  }
+  .op-tool::before {
+    content: "";
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 50%;
+    background: var(--sl-color-accent);
   }
 
   .op-manual-head {
