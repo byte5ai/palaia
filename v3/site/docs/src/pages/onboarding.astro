@@ -347,28 +347,53 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
     margin-block: 1.5rem 2.5rem;
   }
   .op-jump a {
+    position: relative;
     display: flex;
     flex-direction: column;
-    gap: 0.15rem;
-    padding: 0.8rem 1rem;
-    border: 1px solid var(--sl-color-gray-5);
-    border-radius: 0.6rem;
+    gap: 0.2rem;
+    padding: 0.9rem 2.4rem 0.9rem 1.1rem;
+    /* Cyan-tinted border even at rest so the tiles read as interactive
+       choices, not decoration, against the near-black page. */
+    border: 1px solid rgba(0, 159, 227, 0.4);
+    border-radius: 0.7rem;
     background: var(--sl-color-gray-6);
     text-decoration: none;
     color: var(--sl-color-white);
-    transition: border-color 0.15s ease, background 0.15s ease;
+    transition: border-color 0.15s ease, background 0.15s ease,
+      transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  /* An arrow that says "go here" — the affordance that marks the tile as a
+     jump, and slides on hover. */
+  .op-jump a::after {
+    content: "→";
+    position: absolute;
+    top: 50%;
+    right: 1rem;
+    transform: translateY(-50%);
+    color: var(--sl-color-accent);
+    font-weight: 700;
+    font-size: 1.1rem;
+    transition: transform 0.15s ease;
   }
   .op-jump a:hover,
   .op-jump a:focus-visible {
     border-color: var(--sl-color-accent);
     background: var(--sl-color-accent-low);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 159, 227, 0.18);
+  }
+  .op-jump a:hover::after,
+  .op-jump a:focus-visible::after {
+    transform: translateY(-50%) translateX(4px);
   }
   .op-jump-title {
     font-weight: 700;
+    /* Link-cyan, so the title itself signals the tile is clickable. */
+    color: var(--sl-color-accent-high);
   }
   .op-jump-sub {
     font-size: var(--sl-text-xs);
-    color: var(--sl-color-gray-3);
+    color: var(--sl-color-gray-2);
   }
 
   /* Anchor targets clear Starlight's sticky header when jumped to. */
