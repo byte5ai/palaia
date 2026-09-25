@@ -55,11 +55,11 @@ must still be able to see that their hub is alive.
 ``POST /telegram/webhook/<bot>`` is reachable from the internet with no
 prior credential — its credential *is* the secret-token header it checks —
 so a caller guessing that header is the same pattern as one guessing a
-session cookie, on a route this middleware did not look at. Its ``401``\ s
-now count per caller in one bucket for every bot (:data:`PREFIX_BUCKETS`),
-so walking bot keys buys no extra tries either. Telegram's own deliveries
-succeed and are never counted, so a real bot is never throttled by
-somebody else's guessing — the bucket key is the caller.
+session cookie, on a route this middleware did not look at. Its ``401``
+responses now count per caller in one bucket for every bot
+(:data:`PREFIX_BUCKETS`), so walking bot keys buys no extra tries either.
+Telegram's own deliveries succeed and are never counted, so a real bot is
+never throttled by somebody else's guessing — the bucket key is the caller.
 """
 
 from __future__ import annotations
