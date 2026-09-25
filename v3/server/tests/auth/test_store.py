@@ -236,3 +236,25 @@ def test_a_raising_on_verified_hook_does_not_break_verification(tmp_path: Path) 
 
     assert record is not None
     assert record.id == created.info.id
+
+
+def test_token_ids_never_start_with_a_dash(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``palaia-hub token revoke <id>`` reads a leading ``-`` as an option, so
+    an id drawn with one is redrawn rather than issued (the CI flake behind
+    ``test_revoke_marks_token_revoked``: one id in 64 used to start with it)."""
+    import secrets as secrets_module
+
+    draws = iter(["-dashfirst12", "okay_id_1234"])
+    real = secrets_module.token_urlsafe
+
+    def fake_token_urlsafe(nbytes: int | None = None) -> str:
+        return next(draws) if nbytes == 9 else real(nbytes)
+
+    monkeypatch.setattr("palaia_hub.auth.store.secrets.token_urlsafe", fake_token_urlsafe)
+
+    created = TokenStore(home=tmp_path).create("client-a", "default", [])
+
+    assert created.info.id == "okay_id_1234"
+    assert created.token.startswith("plt_okay_id_1234.")
