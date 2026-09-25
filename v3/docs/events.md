@@ -254,6 +254,7 @@ with, and a human's words are more sensitive there than an agent's, not less.
 | `telegram.routed` | `telegram` | the received shape, plus `label` **and `text`** | A route configured with `kind: event` delivered a message |
 | `telegram.message.handled` | `telegram` | the received shape, plus `routed`, `destination` and `delivered` — never the text, never an exception's words | A message's outcome was recorded for the dashboard's recent list (issue #439) — **after** delivery, however slow, so the Telegram panel refetching on it sees the new entry |
 | `telegram.bot.state` | `telegram` | `bot`, `state` (`ok` or `failing`), `detail` (the error line, token scrubbed; empty when `ok`) | A polling bot's state becomes known — its first answered poll, or its first failure — and each time it later starts failing or recovers: once per transition, never once per poll (issue #439). It is what lets the dashboard's Telegram panel show a bot as connected or failing without polling the hub |
+| `telegram.config.updated` | `telegram` | `subject` (`bot`, `route` or `grant`), `action` (`created`, `updated` or `deleted`), `key` (the bot key, the `bot/chat` pair, or the profile path) | The dashboard's Telegram editor saved a change and the running connector now follows it (issue #463). Never a token, never a secret's name |
 
 `telegram.routed` is the one event in this vocabulary that carries the
 message text, and it is not an oversight: it exists because an operator wrote

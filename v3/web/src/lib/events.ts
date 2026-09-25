@@ -75,7 +75,8 @@ const AGENT_ACTIVITY_EVENTS = [
  * as `AGENT_ACTIVITY_EVENTS` above. `telegram.message.handled` arrives
  * once a message's outcome is recorded — after a delivery however slow —
  * and `telegram.bot.state` turns a bot's row green on its first answer or
- * red the moment its poll starts failing. */
+ * red the moment its poll starts failing. `telegram.config.updated`
+ * (issue 463) follows every saved edit, so a second tab shows it too. */
 const TELEGRAM_EVENTS = [
   "telegram.message.received",
   "telegram.message.dropped",
@@ -83,6 +84,7 @@ const TELEGRAM_EVENTS = [
   "telegram.message.sent",
   "telegram.routed",
   "telegram.bot.state",
+  "telegram.config.updated",
 ] as const;
 
 export type ConnectionState = "connecting" | "open" | "reconnecting" | "closed";

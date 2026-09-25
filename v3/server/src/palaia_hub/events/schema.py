@@ -165,6 +165,12 @@ EventName = Literal[
     # by the same rule as `telegram.message.received`. It fires after the
     # delivery, so a panel refetching on it sees the new entry.
     "telegram.message.handled",
+    # Issue #463: the dashboard's editor saved a change to the `telegram:`
+    # section (a bot, a routing rule or a grant) and the running connector
+    # now follows it. `data` is `{subject, action, key}` — a bot key, a
+    # `bot/chat` pair or a profile path; never a token, never a secret's
+    # name.
+    "telegram.config.updated",
     "health",
 ]
 

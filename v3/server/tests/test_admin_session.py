@@ -196,6 +196,12 @@ def test_the_walk_actually_covers_the_surface(walk_hub: Hub) -> None:
         "/api/session",
         "/api/telegram/status",
         "/api/telegram/bots/placeholder/check",
+        # Issue #463: the editor's writes, gated like every other route.
+        "/api/telegram/bots",
+        "/api/telegram/bots/placeholder",
+        "/api/telegram/routes",
+        "/api/telegram/routes/placeholder/placeholder",
+        "/api/telegram/grants/placeholder",
     ):
         assert expected in paths
 

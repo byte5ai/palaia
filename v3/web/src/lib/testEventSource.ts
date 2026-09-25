@@ -54,6 +54,7 @@ export class FakeEventSource implements Pick<EventSource, "close" | "url"> {
       | "telegram.message.sent"
       | "telegram.routed"
       | "telegram.bot.state"
+      | "telegram.config.updated"
       | "open"
       | "error",
     data?: unknown,

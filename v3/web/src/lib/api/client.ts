@@ -241,6 +241,9 @@ export interface GatewayProfile {
   label: string | null;
   vaults: string[];
   stash: boolean;
+  /** Whether the profile carries the Telegram tools (issue 411). What it
+   * may send is the Telegram screen's grants, default-deny. */
+  telegram: boolean;
   hidden_tools: string[];
   semantic_routing: boolean;
   tool_count: number;
@@ -603,12 +606,13 @@ export interface EnvelopeDetailResult {
   item: InboxItem;
 }
 
-/** Issue 439's Telegram panel — opt-in on the hub (mounted only when
- * `config.yaml` has a `telegram:` section), so hand-written for the same
- * reason as the directory/messenger types above. Mirrors
- * `palaia_hub.telegram.dashboard_api` and the `BotCheck`/`RecentMessage`
- * models in `palaia_hub.telegram.models`. No field here can carry a token
- * or a message's text — the hub's models have none. */
+/** Issue 439's Telegram panel and issue 463's editor — hand-written for
+ * the same reason as the directory/messenger types above. Mirrors
+ * `palaia_hub.telegram.dashboard_api` and the `BotCheck`/`RecentMessage`/
+ * `TelegramDestination`/`TelegramGrant` models in
+ * `palaia_hub.telegram.models`. No field here can carry a token or a
+ * message's text — the hub's models have none. A bot names the secret its
+ * token is filed under; the token itself goes to `storeSecret`. */
 export type TelegramTransport = "polling" | "webhook";
 
 export interface TelegramPollingState {
@@ -628,9 +632,16 @@ export interface TelegramBotCheck {
 
 export interface TelegramBotStatus {
   key: string;
+  /** The configured label, or the key when there is none. */
   label: string;
+  /** The configured label itself; `null` when there is none. */
+  configured_label: string | null;
   transport: TelegramTransport;
   enabled: boolean;
+  /** The secret-store name the token is filed under — never the token. */
+  token_secret: string;
+  /** Webhook bots only: the name of the secret Telegram echoes. */
+  webhook_secret: string | null;
   token_stored: boolean;
   /** Webhook bots only; `null` for a polling bot. */
   webhook_secret_stored: boolean | null;
@@ -640,13 +651,70 @@ export interface TelegramBotStatus {
   last_check: TelegramBotCheck | null;
 }
 
+export type TelegramDestinationKind = "messenger" | "inbox" | "event";
+
+export type TelegramMessageType =
+  | "request"
+  | "inform"
+  | "question"
+  | "handoff"
+  | "broadcast";
+
+export type TelegramUrgency = "low" | "normal" | "high";
+
+/** Where a rule sends a message, as configured. */
+export interface TelegramDestination {
+  kind: TelegramDestinationKind;
+  /** `messenger`: the recipient handle or broadcast query. */
+  to?: string | null;
+  message_type?: TelegramMessageType;
+  urgency?: TelegramUrgency;
+  /** `inbox`: the vault whose inbox it lands in. */
+  vault?: string | null;
+  /** `event`: a label carried as `data.label`. */
+  label?: string | null;
+}
+
 export interface TelegramRoute {
   bot: string;
   /** A numeric chat id, a public `@name`, or `*` for every chat. */
   chat: string;
-  kind: "messenger" | "inbox" | "event";
+  kind: TelegramDestinationKind;
   /** `messenger:<to>`, `inbox:<vault>` or `event`. */
   destination: string;
+  /** The destination as configured, for the editor. */
+  target: TelegramDestination;
+}
+
+/** A rule as the editor sends it. */
+export interface TelegramRouteInput {
+  bot: string;
+  chat: string;
+  destination: TelegramDestination;
+}
+
+/** What one MCP profile may send to. `*` = every one; `[]` = none. */
+export interface TelegramGrant {
+  profile: string;
+  bots: string[];
+  chats: string[];
+}
+
+export interface TelegramBotInput {
+  key: string;
+  label?: string | null;
+  transport?: TelegramTransport;
+  enabled?: boolean;
+  token_secret?: string | null;
+  webhook_secret?: string | null;
+}
+
+export interface TelegramBotPatch {
+  label?: string | null;
+  transport?: TelegramTransport;
+  enabled?: boolean;
+  token_secret?: string | null;
+  webhook_secret?: string | null;
 }
 
 export interface TelegramRecentMessage {
@@ -668,8 +736,17 @@ export interface TelegramRecentMessage {
 export interface TelegramStatus {
   bots: TelegramBotStatus[];
   routes: TelegramRoute[];
+  grants: TelegramGrant[];
   /** Newest first. */
   recent: TelegramRecentMessage[];
+  /** Vaults an inbox rule can deliver into right now. */
+  vaults: string[];
+  /** Whether a messenger rule has a messenger to deliver to. */
+  messenger: boolean;
+  /** Rules and bots the config accepts but this hub cannot serve. */
+  warnings: string[];
+  /** Whether the editor can save (false only without a config.yaml). */
+  editable: boolean;
 }
 
 /** Base URL for API calls. Empty string = same-origin (the hub serves the
@@ -854,6 +931,10 @@ function deleteRequest(path: string): Promise<void> {
   return request<void>(path, { method: "DELETE", expectJson: false });
 }
 
+function deleteJson<T>(path: string): Promise<T> {
+  return request<T>(path, { method: "DELETE" });
+}
+
 /** One path segment (a vault key, a profile path, an id): percent-encoded
  * so a `#`, `?` or `/` in the value cannot rewrite the request (issue 399). */
 function seg(value: string | number): string {
@@ -1010,6 +1091,7 @@ export const api = {
     label?: string | null;
     vaults?: string[];
     stash?: boolean;
+    telegram?: boolean;
     hidden_tools?: string[];
     semantic_routing?: boolean;
     upstreams?: string[];
@@ -1020,6 +1102,7 @@ export const api = {
       label?: string | null;
       vaults?: string[];
       stash?: boolean;
+      telegram?: boolean;
       hidden_tools?: string[];
       semantic_routing?: boolean;
       upstreams?: string[];
@@ -1239,10 +1322,40 @@ export const api = {
 
   // ---- issue 439: the Telegram panel ----
   /** Answered from the hub's memory — never reaches Telegram, so the panel
-   * can refetch it on every `telegram.*` event. 404 = no bots set up. */
+   * can refetch it on every `telegram.*` event. 404 only from a hub older
+   * than issue 463, which mounted the panel only with a `telegram:`
+   * section. */
   telegramStatus: () => getJson<TelegramStatus>("/api/telegram/status"),
   /** The panel's one outbound call: ask Telegram whether this bot's token
    * works. A refused token is a 200 with `last_check.ok === false`. */
   checkTelegramBot: (key: string) =>
     postJson<TelegramBotStatus>(`/api/telegram/bots/${seg(key)}/check`, {}),
+  // ---- issue 463: the Telegram editor. Every write answers with the
+  // whole status, already applied to the running hub and saved. ----
+  createTelegramBot: (body: TelegramBotInput) =>
+    postJson<TelegramStatus>("/api/telegram/bots", body),
+  updateTelegramBot: (key: string, body: TelegramBotPatch) =>
+    patchJson<TelegramStatus>(`/api/telegram/bots/${seg(key)}`, body),
+  deleteTelegramBot: (key: string) =>
+    deleteJson<TelegramStatus>(`/api/telegram/bots/${seg(key)}`),
+  createTelegramRoute: (body: TelegramRouteInput) =>
+    postJson<TelegramStatus>("/api/telegram/routes", body),
+  replaceTelegramRoute: (bot: string, chat: string, body: TelegramRouteInput) =>
+    putJson<TelegramStatus>(
+      `/api/telegram/routes/${seg(bot)}/${seg(chat)}`,
+      body,
+    ),
+  deleteTelegramRoute: (bot: string, chat: string) =>
+    deleteJson<TelegramStatus>(`/api/telegram/routes/${seg(bot)}/${seg(chat)}`),
+  putTelegramGrant: (profile: string, body: { bots: string[]; chats: string[] }) =>
+    putJson<TelegramStatus>(`/api/telegram/grants/${seg(profile)}`, body),
+  deleteTelegramGrant: (profile: string) =>
+    deleteJson<TelegramStatus>(`/api/telegram/grants/${seg(profile)}`),
+  /** The write-only secret store (SPEC-302): the one place a credential
+   * travels inbound. The answer confirms *that* it was stored, never what. */
+  storeSecret: (name: string, value: string) =>
+    putJson<{ name: string; created_at: number; updated_at: number }>(
+      `/api/secrets/${seg(name)}`,
+      { value },
+    ),
 };

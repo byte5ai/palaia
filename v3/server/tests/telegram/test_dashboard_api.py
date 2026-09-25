@@ -163,11 +163,17 @@ async def test_the_status_lists_every_bot_and_never_calls_telegram(
 
 async def test_the_routes_are_the_routing_table_in_plain_form(app: FastAPI) -> None:
     status = await _status(app)
-    assert status["routes"] == [
+    assert [
+        {key: route[key] for key in ("bot", "chat", "kind", "destination")}
+        for route in status["routes"]
+    ] == [
         {"bot": "support", "chat": "-1001", "kind": "messenger", "destination": "messenger:ops"},
         {"bot": "support", "chat": "-1002", "kind": "inbox", "destination": "inbox:work"},
         {"bot": "hooked", "chat": "*", "kind": "event", "destination": "event"},
     ]
+    # And each as configured, for the editor to start from (issue #463).
+    assert status["routes"][0]["target"]["to"] == "ops"
+    assert status["routes"][1]["target"]["vault"] == "work"
 
 
 async def test_a_running_poll_task_and_its_state_are_reported(

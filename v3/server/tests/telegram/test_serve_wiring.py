@@ -18,8 +18,13 @@ real messenger and vault. What is asserted is the wiring, end to end:
 * shutdown leaves no poll task pending, and closes the Bot API client only
   when the hub created it.
 
-And the other half of the contract: a hub with no ``telegram:`` section is
-unchanged — no route, no task, no tool.
+And the other half of the contract: a hub with no ``telegram:`` section
+runs an *inert* connector (issue #463 builds one on every hub, so the
+dashboard can add the first bot live) — no task, every webhook key a 404,
+and tools that list no chat and can send nowhere. Then the editor itself,
+end to end: a bot, a rule and a grant added through ``/api/telegram`` on
+that hub reach ``config.yaml`` (and read back through ``load_config``),
+start a poll task and let the profile send — with no restart.
 """
 
 from __future__ import annotations
@@ -303,14 +308,13 @@ async def test_the_hub_closes_a_bot_api_client_it_created(
 # ------------------------------------------------------ no telegram section
 
 
-async def test_a_hub_without_a_telegram_section_is_unchanged(tmp_path: Path) -> None:
-    registry = VaultRegistry(tmp_path)
-    await registry.create("work", tmp_path / "vaults" / "work", purpose="work vault.")
-    # The profile flag without the section: the tools need a service to
-    # exist, and there is none — the "flag ahead of the service" contract.
-    (tmp_path / "config.yaml").write_text(
+def _write_sectionless_config(home: Path) -> None:
+    # The profile flag without the section: the tools mount over the empty
+    # connector, and default-deny means they can do nothing.
+    (home / "config.yaml").write_text(
         "mode: locked\n"
         "auth_enabled: false\n"
+        "# the operator's own comment, which an edit must not lose\n"
         "gateway:\n"
         "  profiles:\n"
         "    - path: default\n"
@@ -318,10 +322,20 @@ async def test_a_hub_without_a_telegram_section_is_unchanged(tmp_path: Path) -> 
         "      telegram: true\n",
         encoding="utf-8",
     )
+
+
+async def test_a_hub_without_a_telegram_section_runs_an_inert_connector(
+    tmp_path: Path,
+) -> None:
+    registry = VaultRegistry(tmp_path)
+    await registry.create("work", tmp_path / "vaults" / "work", purpose="work vault.")
+    _write_sectionless_config(tmp_path)
     config = load_config(home=tmp_path, create_if_missing=False)
     assert config.telegram is None
-    production = await build_production_app(config, home=tmp_path)
-    assert production.telegram is None
+    api = FakeBotApi(park_when_empty=True)
+    production = await build_production_app(config, home=tmp_path, telegram_api=api)
+    assert production.telegram is not None
+    assert production.telegram.service.settings.bots == []
     try:
         async with production.app.router.lifespan_context(production.app):
             poll_tasks = [
@@ -330,10 +344,120 @@ async def test_a_hub_without_a_telegram_section_is_unchanged(tmp_path: Path) -> 
             assert poll_tasks == []
             async with _http(production) as http:
                 response = await http.post("/telegram/webhook/x", json={"update_id": 1})
+                status = await http.get("/api/telegram/status")
             assert response.status_code == 404
-            assert not TELEGRAM_TOOLS & await _tool_names(production, "default")
+            assert status.status_code == 200, status.text
+            assert status.json()["bots"] == [] and status.json()["editable"] is True
+
+            url = f"{BASE_URL}/mcp/default/"
+            async with Client(mcp_client_transport(production.app, url)) as client:
+                listed = await client.call_tool("telegram_list_chats", {})
+                sent = await client.call_tool(
+                    "telegram_send",
+                    {"bot": "any", "chat": "-1001", "text": "hello"},
+                    raise_on_error=False,
+                )
+            assert listed.structured_content == {"chats": []}
+            assert sent.is_error
     finally:
         await _close(production)
+    # Nothing reached Telegram, and nothing was written.
+    assert api.get_updates_calls == [] and api.sent == []
+    assert "\ntelegram:" not in (tmp_path / "config.yaml").read_text(encoding="utf-8")
+
+
+async def test_the_first_bot_is_added_from_the_dashboard_without_a_restart(
+    tmp_path: Path,
+) -> None:
+    """Issue #463's whole point, through the production assembly: a hub
+    with no ``telegram:`` section gets a bot, its token, a rule and a grant
+    from ``/api/telegram`` — and polls, routes and sends right away."""
+    registry = VaultRegistry(tmp_path)
+    await registry.create("work", tmp_path / "vaults" / "work", purpose="work vault.")
+    _write_sectionless_config(tmp_path)
+    api = FakeBotApi(
+        [[message_update(10, chat_id=-1002, text="captured live", message_id=1)]],
+        park_when_empty=True,
+    )
+    config = load_config(home=tmp_path, create_if_missing=False)
+    production = await build_production_app(config, home=tmp_path, telegram_api=api)
+    runtime = production.telegram
+    assert runtime is not None
+    events: list[Envelope] = []
+    production.event_bus.on(events.append)
+    try:
+        async with production.app.router.lifespan_context(production.app):
+            assert runtime.tasks == {}
+            async with _http(production) as http:
+                created = await http.post(
+                    "/api/telegram/bots", json={"key": "support", "label": "Support"}
+                )
+                assert created.status_code == 200, created.text
+                bot = created.json()["bots"][0]
+                assert bot["token_secret"] == "telegram_support"
+                assert bot["token_stored"] is False
+                # The token goes into the secret store, by name — the
+                # write-only surface every credential already uses.
+                stored = await http.put(
+                    f"/api/secrets/{bot['token_secret']}", json={"value": BOT_A_TOKEN}
+                )
+                assert stored.status_code == 200, stored.text
+                routed = await http.post(
+                    "/api/telegram/routes",
+                    json={
+                        "bot": "support",
+                        "chat": "-1002",
+                        "destination": {"kind": "inbox", "vault": "work"},
+                    },
+                )
+                assert routed.status_code == 200, routed.text
+                granted = await http.put(
+                    "/api/telegram/grants/default", json={"bots": ["support"], "chats": ["*"]}
+                )
+                assert granted.status_code == 200, granted.text
+                status = (await http.get("/api/telegram/status")).json()
+            assert _only(status["bots"])["token_stored"] is True
+
+            # Polling started live, with the token stored from the screen,
+            # and the rule delivered the first message into the vault.
+            assert set(runtime.tasks) == {"support"}
+            await _until(lambda: bool(_inbox_files(tmp_path)))
+            assert "captured live" in _inbox_files(tmp_path)[0].read_text()
+            assert {call["token"] for call in api.get_updates_calls} == {BOT_A_TOKEN}
+
+            # The grant applies to the already-mounted profile's tools.
+            url = f"{BASE_URL}/mcp/default/"
+            async with Client(mcp_client_transport(production.app, url)) as client:
+                sent = await client.call_tool(
+                    "telegram_send", {"bot": "support", "chat": "-1002", "text": "on it"}
+                )
+            assert not sent.is_error
+            assert api.sent[-1]["token"] == BOT_A_TOKEN
+
+            updated = [e for e in events if e.event == "telegram.config.updated"]
+            assert [(e.data["subject"], e.data["action"]) for e in updated] == [
+                ("bot", "created"),
+                ("route", "created"),
+                ("grant", "created"),
+            ]
+            assert {e.origin for e in updated} == {"telegram"}
+    finally:
+        await _close(production)
+
+    # Written back to config.yaml — the operator's comment kept — and read
+    # back by the loader exactly as saved: the next start is this one.
+    text = (tmp_path / "config.yaml").read_text(encoding="utf-8")
+    assert "# the operator's own comment" in text
+    assert BOT_A_TOKEN not in text
+    reloaded = load_config(home=tmp_path, create_if_missing=False)
+    assert reloaded.telegram is not None
+    assert reloaded.telegram == runtime.service.settings
+    assert [p.path for p in (reloaded.gateway.profiles if reloaded.gateway else [])] == ["default"]
+
+
+def _only(items: list[dict[str, Any]]) -> dict[str, Any]:
+    assert len(items) == 1, items
+    return items[0]
 
 
 # ------------------------------------------------------ tokens and scopes

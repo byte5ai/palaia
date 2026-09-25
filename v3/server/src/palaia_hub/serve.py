@@ -66,6 +66,7 @@ from .registry import RegistryClient
 from .stash.service import StashService
 from .stash.store import StashStore
 from .telegram.api import BotApi, HttpBotApi
+from .telegram.models import TelegramSettings
 from .telegram.runtime import TelegramRuntime
 from .telegram.service import TelegramService
 from .upstream.monitor import UpstreamHealthMonitor
@@ -128,11 +129,12 @@ class ProductionApp:
     #: restart. Started and stopped by the app's own lifespan; a vault the
     #: wizard creates later gets its watcher from the dashboard router.
     watchers: dict[str, VaultWatcher] = field(default_factory=dict)
-    #: The Telegram connector (issue #411/#439), or ``None`` when
-    #: ``config.yaml`` has no ``telegram:`` section. Its poll tasks are
-    #: started and stopped by the app's own lifespan, and it closes the Bot
-    #: API client it created; the handle is here so a caller can read the
-    #: pollers' state.
+    #: The Telegram connector (issue #411/#439). Always built since issue
+    #: #463 — over an empty ``telegram:`` section when ``config.yaml`` has
+    #: none, so the dashboard can add the first bot without a restart. Its
+    #: poll tasks are started and stopped by the app's own lifespan, and it
+    #: closes the Bot API client it created; the handle is here so a caller
+    #: can read the pollers' state.
     telegram: TelegramRuntime | None = None
 
 
@@ -192,11 +194,12 @@ async def build_production_app(
             Built by the caller (``palaia_hub.cli``) because deciding whether
             one should exist — and failing loudly on a half-configured one —
             is CLI-surface behavior, not assembly.
-        telegram_api: the Telegram Bot API client, when ``config.telegram``
-            is set — the seam a test hands a fake through, since there is no
-            sandbox Telegram. Omitted, the connector builds (and at shutdown
-            closes) its own :class:`~palaia_hub.telegram.api.HttpBotApi`;
-            one passed in is the caller's to close.
+        telegram_api: the Telegram Bot API client — the seam a test hands a
+            fake through, since there is no sandbox Telegram. Omitted, the
+            connector builds (and at shutdown closes) its own
+            :class:`~palaia_hub.telegram.api.HttpBotApi`, which opens no
+            connection until a bot first needs one; one passed in is the
+            caller's to close.
     """
     # SPEC-201: the registry's own vault.events.EventBus is what create_app()
     # bridges onto the public event bus — every vault this registry opens
@@ -345,32 +348,32 @@ async def build_production_app(
         publish=_upstream_event_hook(event_bus),
     )
 
-    # Issue #439: the Telegram connector, built only for a hub whose
-    # config.yaml has a `telegram:` section — without one there is no
-    # service, no poll task, no webhook route and no tool, exactly as
-    # before the connector existed. Built here because it needs the secret
-    # store (every call reads its bot's token for that call only) and the
-    # messenger and vault services its routes deliver into, and before the
-    # gateway, whose `telegram: true` profiles mount tools over it. The
-    # vault map is the one opened above: a vault the wizard creates later
-    # is reachable by an `inbox` route after a restart (the runtime warns
-    # about such a route at startup). Its event hook is wired by
-    # `create_app`, like every other service's.
-    telegram_runtime: TelegramRuntime | None = None
-    if config.telegram is not None:
-        bot_api: BotApi = telegram_api if telegram_api is not None else HttpBotApi()
-        telegram_runtime = TelegramRuntime(
-            TelegramService(
-                config.telegram,
-                bot_api,
-                secret_store,
-                messenger=messenger_service,
-                vaults=vault_services,
-            ),
+    # Issue #439: the Telegram connector. Built here because it needs the
+    # secret store (every call reads its bot's token for that call only) and
+    # the messenger and vault services its routes deliver into, and before
+    # the gateway, whose `telegram: true` profiles mount tools over it.
+    # Issue #463: built on every hub — over an empty section when
+    # config.yaml has none — because the dashboard's editor adds the first
+    # bot to *this* running connector rather than asking for a restart. An
+    # empty connector is inert: no bot, so no poll task; every webhook key
+    # answers 404; and a `telegram: true` profile's tools list no chat and
+    # can send nowhere, since outbound is default-deny. The vault map is the
+    # one opened above: a vault the wizard creates later is reachable by an
+    # `inbox` route after a restart (the runtime says so for such a route).
+    # Its event hook is wired by `create_app`, like every other service's.
+    bot_api: BotApi = telegram_api if telegram_api is not None else HttpBotApi()
+    telegram_runtime = TelegramRuntime(
+        TelegramService(
+            config.telegram if config.telegram is not None else TelegramSettings.model_validate({}),
             bot_api,
-            owns_api=telegram_api is None,
-            mode=config.mode,
-        )
+            secret_store,
+            messenger=messenger_service,
+            vaults=vault_services,
+        ),
+        bot_api,
+        owns_api=telegram_api is None,
+        mode=config.mode,
+    )
 
     gateway_config = GatewayConfig(
         vaults=mounts, profiles=profiles, upstreams=resolve_upstreams(config.gateway)
@@ -439,7 +442,7 @@ async def build_production_app(
         upstream_service=upstream_service,
         directory_service=directory_service,
         messenger_service=messenger_service,
-        telegram_service=telegram_runtime.service if telegram_runtime is not None else None,
+        telegram_service=telegram_runtime.service,
     )
     upstream_monitor = UpstreamHealthMonitor(
         upstream_service, on_change=dynamic_gateway.refresh_upstreams

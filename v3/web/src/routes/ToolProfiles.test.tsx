@@ -27,6 +27,7 @@ const DEFAULT_PROFILE: GatewayProfile = {
   label: null,
   vaults: ["work"],
   stash: false,
+  telegram: false,
   hidden_tools: [],
   semantic_routing: false,
   tool_count: 15,
@@ -39,6 +40,7 @@ const CURATOR_PROFILE: GatewayProfile = {
   label: null,
   vaults: ["work"],
   stash: false,
+  telegram: false,
   hidden_tools: [],
   semantic_routing: false,
   tool_count: 15,
@@ -206,6 +208,73 @@ describe("ToolProfiles screen (SPEC-305)", () => {
         expect.objectContaining({ hidden_tools: ["work_memory_delete"] }),
       ),
     );
+  });
+
+  it("switches a profile's Telegram tools on, keeping the flag on save (issue 463)", async () => {
+    vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([DEFAULT_PROFILE]);
+    vi.spyOn(api, "listGatewayVaults").mockResolvedValue([WORK_VAULT_IDENTITY]);
+    vi.spyOn(api, "listVaults").mockResolvedValue([WORK_VAULT]);
+    vi.spyOn(api, "listGatewayUpstreams").mockResolvedValue([]);
+    vi.spyOn(api, "listGatewayProfileTools").mockResolvedValue(WORK_TOOLS);
+    const updateSpy = vi.spyOn(api, "updateGatewayProfile").mockResolvedValue({
+      ...DEFAULT_PROFILE,
+      telegram: true,
+    });
+
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: /^edit$/i }));
+    const row = (await screen.findByText("Also carry the Telegram tools")).closest("label")!;
+    const toggle = row.querySelector('[role="switch"]')!;
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(updateSpy).toHaveBeenCalledWith(
+        "default",
+        expect.objectContaining({ telegram: true }),
+      ),
+    );
+  });
+
+  it("creates a profile with the Telegram tools", async () => {
+    vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([]);
+    vi.spyOn(api, "listGatewayVaults").mockResolvedValue([WORK_VAULT_IDENTITY]);
+    vi.spyOn(api, "listVaults").mockResolvedValue([WORK_VAULT]);
+    vi.spyOn(api, "listGatewayUpstreams").mockResolvedValue([]);
+    const createSpy = vi.spyOn(api, "createGatewayProfile").mockResolvedValue({
+      ...DEFAULT_PROFILE,
+      path: "desk",
+      telegram: true,
+    });
+
+    mount();
+    await screen.findByText(/no tool profiles yet/i);
+    fireEvent.click(screen.getByRole("button", { name: /new tool profile/i }));
+    fireEvent.change(screen.getByLabelText(/address segment/i), {
+      target: { value: "desk" },
+    });
+    const row = screen.getByText("Also carry the Telegram tools").closest("label")!;
+    fireEvent.click(row.querySelector('[role="switch"]')!);
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+
+    await waitFor(() =>
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ path: "desk", telegram: true }),
+      ),
+    );
+  });
+
+  it("badges a profile that carries the Telegram tools", async () => {
+    vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([
+      { ...DEFAULT_PROFILE, telegram: true },
+    ]);
+    vi.spyOn(api, "listGatewayVaults").mockResolvedValue([WORK_VAULT_IDENTITY]);
+    vi.spyOn(api, "listVaults").mockResolvedValue([WORK_VAULT]);
+    vi.spyOn(api, "listGatewayUpstreams").mockResolvedValue([]);
+
+    mount();
+    expect(await screen.findByText("telegram", { selector: ".badge" })).toBeInTheDocument();
   });
 
   it("assigns an already-connected tool to an existing profile through its checkbox", async () => {
