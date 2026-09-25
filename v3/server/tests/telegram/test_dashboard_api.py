@@ -21,13 +21,15 @@ Three properties matter more than the shape:
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import httpx
 import pytest
 from fastapi import FastAPI
+from pydantic import BaseModel, ValidationError
 
-from palaia_hub.telegram.api import LINE_CHARS, TelegramApiError
+from palaia_hub.telegram.api import TelegramApiError
 from palaia_hub.telegram.dashboard_api import build_telegram_dashboard_router
 from palaia_hub.telegram.models import DEFAULT_RECENT_SIZE, TelegramSettings
 from palaia_hub.telegram.runtime import TelegramRuntime
@@ -229,19 +231,66 @@ async def test_the_recent_list_is_bounded(service: TelegramService) -> None:
     assert recent[-1].message_id == 6
 
 
-async def test_a_failed_delivery_is_recorded_as_one_short_scrubbed_line(
-    service: TelegramService, vault: FakeVault
+async def test_a_sink_error_quoting_the_message_never_reaches_the_panel(
+    app: FastAPI, service: TelegramService, vault: FakeVault, bus: RecordingBus
 ) -> None:
-    async def refuse(**kwargs: object) -> None:
-        raise RuntimeError(f"vault refused\n{'x' * 1000} {BOT_A_TOKEN}")
+    """A sink's exception can carry what it was handed — a pydantic
+    ``ValidationError`` quotes its ``input_value``. The outcome names the
+    destination and the exception's type; the words stay in the hub log."""
+
+    class Capture(BaseModel):
+        size: int
+
+    words = "the launch code is swordfish"
+    # Guard the guard: the leak this test is about is real.
+    with pytest.raises(ValidationError) as raised:
+        Capture.model_validate({"size": words})
+    assert "swordfish" in str(raised.value)
+
+    async def refuse(**kwargs: Any) -> None:
+        Capture.model_validate({"size": kwargs["content"]})
 
     vault.capture = refuse  # type: ignore[method-assign]
-    await service.handle_update("support", message_update(1, chat_id=-1002))
+    await service.handle_update("support", message_update(1, chat_id=-1002, text=words))
 
     entry = service.recent_messages()[0]
     assert entry.routed is True and entry.delivered is False
-    assert entry.detail.startswith("delivery to inbox:work failed: vault refused")
-    assert "\n" not in entry.detail and len(entry.detail) <= LINE_CHARS
+    assert entry.detail == (
+        "delivery to inbox:work failed (ValidationError); the hub log has the details"
+    )
+    assert "swordfish" not in repr(service.recent_messages())
+    assert "swordfish" not in repr(bus.events)
+    response = await _request(app, "GET", "/api/telegram/status")
+    assert "swordfish" not in response.text
+
+
+async def test_the_handled_event_follows_the_record_however_slow_the_delivery(
+    service: TelegramService, vault: FakeVault
+) -> None:
+    """``telegram.message.received`` fires before the delivery starts; a
+    panel that refetched on it alone would miss an entry whose delivery
+    outlasted its debounce. ``telegram.message.handled`` is the one that
+    comes after the record."""
+    seen: list[tuple[str, int, dict[str, Any]]] = []
+    service.publish = lambda name, data: seen.append((name, len(service.recent_messages()), data))
+
+    async def slow_capture(**kwargs: Any) -> None:
+        await asyncio.sleep(0.05)
+
+    vault.capture = slow_capture  # type: ignore[method-assign]
+    await service.handle_update("support", message_update(1, chat_id=-1002, text="slow words"))
+    # Not a message: nothing recorded, nothing handled.
+    await service.handle_update("support", {"update_id": 2, "callback_query": {"id": "x"}})
+
+    assert [(name, entries) for name, entries, _ in seen] == [
+        ("telegram.message.received", 0),
+        ("telegram.message.handled", 1),
+    ]
+    handled = seen[1][2]
+    assert handled["message_id"] == 1
+    assert handled["routed"] is True and handled["delivered"] is True
+    assert handled["destination"] == "inbox:work"
+    assert "text" not in handled and "slow words" not in repr(seen)
 
 
 async def test_recording_can_never_cost_a_delivery(

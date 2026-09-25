@@ -269,7 +269,8 @@ anything else, and a hub-side failure must not become a redelivery loop.
 | `telegram.message.dropped` | Message metadata + the chat keys that would have matched | No route claimed it |
 | `telegram.message.sent` | Bot, chat, message id, sending profile | **No text.** |
 | `telegram.routed` | Message metadata **+ the text** | Only from a `kind: event` route |
-| `telegram.bot.state` | Bot, `ok` or `failing`, the error line | A polling bot starts failing or recovers — once per change, not per poll. **No token.** |
+| `telegram.message.handled` | Message metadata + routed, destination, delivered | After delivery, once the outcome is recorded for the dashboard. **No text.** |
+| `telegram.bot.state` | Bot, `ok` or `failing`, the error line | A polling bot's first answer or first failure, then each time it starts failing or recovers — once per change, not per poll. **No token.** |
 
 The rule and its one exception: a human's words do not go on the event bus,
 because the bus feeds every SSE listener and every outbound webhook this hub
@@ -294,14 +295,16 @@ read (ADR-006):
 - **Where messages go** — the routing table (§4), in plain words.
 - **Recent messages** — the last 50 across every bot, newest first: which
   bot, which chat, how long, and whether it was delivered, failed (with the
-  reason), or matched no rule (with the `chat:` values a rule could use —
+  kind of error — the hub log has the rest, since an error can quote the
+  message), or matched no rule (with the `chat:` values a rule could use —
   see §2.3).
 
 It keeps **metadata only, in memory**: no message text is ever stored or
 shown, and everything on the screen starts over when the hub restarts. It
-updates live off the `telegram.*` events in §7 — including
-`telegram.bot.state`, which is how a bot that starts failing turns red
-without a reload. Behind it: `GET /api/telegram/status` and
+updates live off the `telegram.*` events in §7 — `telegram.message.handled`
+once each outcome is recorded, and `telegram.bot.state`, which is how a bot
+turns green on its first answer or red when it starts failing, without a
+reload. Behind it: `GET /api/telegram/status` and
 `POST /api/telegram/bots/<key>/check`, owner-only like the rest of `/api/`.
 
 ## 9. The token, and where it is not

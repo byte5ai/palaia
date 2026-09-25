@@ -121,7 +121,8 @@ const FULL_STATUS: TelegramStatus = {
       routed: true,
       destination: "inbox:work",
       delivered: false,
-      detail: "delivery to inbox:work failed: vault is read-only",
+      detail:
+        "delivery to inbox:work failed (RuntimeError); the hub log has the details",
       candidates: null,
     },
     {
@@ -356,6 +357,32 @@ describe("live updates", () => {
     await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
     await new Promise((resolve) => setTimeout(resolve, 600));
     expect(status).toHaveBeenCalledTimes(2);
+  });
+
+  it("refetches once a slow delivery's outcome is recorded", async () => {
+    // `received` fires before the delivery starts; `handled` after the hub
+    // recorded the outcome — the one a slow delivery depends on.
+    const status = vi
+      .spyOn(api, "telegramStatus")
+      .mockResolvedValueOnce(EMPTY_STATUS)
+      .mockResolvedValueOnce({
+        ...EMPTY_STATUS,
+        recent: [FULL_STATUS.recent[2]],
+      });
+
+    mountLive();
+    await screen.findByText("No messages yet.");
+
+    const source = FakeEventSource.instances.at(-1)!;
+    act(() => {
+      source.emit("telegram.message.handled", {
+        event: "telegram.message.handled",
+        data: { bot: "support", message_id: 1, delivered: true },
+      });
+    });
+
+    await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
+    await screen.findByText(/Delivered to/);
   });
 
   it("refetches when a bot starts failing", async () => {

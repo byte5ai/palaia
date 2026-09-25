@@ -72,11 +72,14 @@ const AGENT_ACTIVITY_EVENTS = [
 
 /** Issue 439's Telegram connector events — the Telegram screen's
  * live-update signal, the same "refetch on arrival, do not decode" shape
- * as `AGENT_ACTIVITY_EVENTS` above. `telegram.bot.state` is what turns a
- * bot's row red the moment its poll starts failing. */
+ * as `AGENT_ACTIVITY_EVENTS` above. `telegram.message.handled` arrives
+ * once a message's outcome is recorded — after a delivery however slow —
+ * and `telegram.bot.state` turns a bot's row green on its first answer or
+ * red the moment its poll starts failing. */
 const TELEGRAM_EVENTS = [
   "telegram.message.received",
   "telegram.message.dropped",
+  "telegram.message.handled",
   "telegram.message.sent",
   "telegram.routed",
   "telegram.bot.state",

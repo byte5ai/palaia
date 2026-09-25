@@ -50,6 +50,7 @@ export class FakeEventSource implements Pick<EventSource, "close" | "url"> {
       | "message.expired"
       | "telegram.message.received"
       | "telegram.message.dropped"
+      | "telegram.message.handled"
       | "telegram.message.sent"
       | "telegram.routed"
       | "telegram.bot.state"

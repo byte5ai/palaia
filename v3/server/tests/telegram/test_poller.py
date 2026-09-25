@@ -92,7 +92,8 @@ async def test_the_offset_moves_past_a_message_that_failed_to_deliver(
     outcomes = await poller.poll_once()
     assert poller.offset == 31
     assert outcomes[0].routed is True and outcomes[0].delivered is False
-    assert "vault is read-only" in outcomes[0].detail
+    # The kind of failure, not its words — those go to the hub log only.
+    assert "inbox:work" in outcomes[0].detail and "RuntimeError" in outcomes[0].detail
 
 
 @pytest.mark.anyio
@@ -210,8 +211,11 @@ async def test_the_bot_state_event_fires_on_a_transition_only(
     service: TelegramService, api: FakeBotApi, bus  # noqa: ANN001
 ) -> None:
     poller = LongPoller(service, "support", sleep=_no_sleep)
-    await _cycle(poller)  # the first answer is not news: no event
-    assert bus.named("telegram.bot.state") == []
+    # The first answer is news — an open panel stops saying "not checked
+    # yet" — and the second one is not.
+    for _ in range(2):
+        await _cycle(poller)
+    assert [e["state"] for e in bus.named("telegram.bot.state")] == ["ok"]
 
     api.fail_with = TelegramApiError("getUpdates", f"Unauthorized {BOT_A_TOKEN}", status=401)
     for _ in range(3):
@@ -221,7 +225,22 @@ async def test_the_bot_state_event_fires_on_a_transition_only(
         await _cycle(poller)
 
     states = bus.named("telegram.bot.state")
-    assert [(e["bot"], e["state"]) for e in states] == [("support", "failing"), ("support", "ok")]
-    assert "401" in states[0]["detail"]
-    assert states[1]["detail"] == ""
+    assert [(e["bot"], e["state"]) for e in states] == [
+        ("support", "ok"),
+        ("support", "failing"),
+        ("support", "ok"),
+    ]
+    assert "401" in states[1]["detail"]
+    assert states[0]["detail"] == states[2]["detail"] == ""
     assert BOT_A_TOKEN not in repr(states)
+
+
+@pytest.mark.anyio
+async def test_a_bot_that_fails_from_the_start_announces_only_the_failure(
+    service: TelegramService, api: FakeBotApi, bus  # noqa: ANN001
+) -> None:
+    poller = LongPoller(service, "support", sleep=_no_sleep)
+    api.fail_with = TelegramApiError("getUpdates", "Unauthorized", status=401)
+    for _ in range(2):
+        await _cycle(poller)
+    assert [e["state"] for e in bus.named("telegram.bot.state")] == ["failing"]

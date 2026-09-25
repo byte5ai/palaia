@@ -88,11 +88,19 @@ EVENT_SENT = "telegram.message.sent"
 #: :meth:`TelegramService._dispatch_event`.
 EVENT_ROUTED = "telegram.routed"
 
-#: Emitted when a polling bot moves between ``ok`` and ``failing`` (issue
-#: #439) — by :class:`~palaia_hub.telegram.poller.LongPoller`, through
+#: Emitted when a polling bot's state first becomes known and whenever it
+#: then moves between ``ok`` and ``failing`` (issue #439) — by
+#: :class:`~palaia_hub.telegram.poller.LongPoller`, through
 #: :meth:`TelegramService.publish_bot_state`. Once per transition, so the
-#: dashboard's panel can go red live without the dashboard polling for it.
+#: dashboard's panel turns green or red live without polling for it.
 EVENT_BOT_STATE = "telegram.bot.state"
+
+#: Emitted once a message's outcome is recorded for the dashboard (issue
+#: #439): the received metadata plus ``routed``/``destination``/
+#: ``delivered`` — never the text, never an exception's words. It is the
+#: panel's "the recent list changed" signal, and it comes *after* the
+#: delivery, however slow, which :data:`EVENT_RECEIVED` cannot promise.
+EVENT_HANDLED = "telegram.message.handled"
 
 #: How many characters of a message's first line become a messenger
 #: envelope's subject before it is elided.
@@ -394,7 +402,9 @@ class TelegramService:
         Every message's outcome is then recorded for the dashboard panel
         (:meth:`recent_messages`, issue #439) — after delivery, and in its
         own ``try``: bookkeeping that fails must cost neither the delivery
-        nor this guarantee.
+        nor this guarantee. :data:`EVENT_HANDLED` follows the record, so a
+        panel refetching on it finds the entry however long the delivery
+        took — :data:`EVENT_RECEIVED` fires before the delivery starts.
         """
         outcome = await self._route_update(bot_key, update)
         try:
@@ -403,6 +413,16 @@ class TelegramService:
             logger.warning(
                 "telegram: could not record a message outcome for the dashboard",
                 exc_info=True,
+            )
+        if outcome.message is not None:
+            self._emit(
+                EVENT_HANDLED,
+                {
+                    **outcome.message.metadata(),
+                    "routed": outcome.routed,
+                    "destination": outcome.destination,
+                    "delivered": outcome.delivered,
+                },
             )
         return outcome
 
@@ -444,13 +464,21 @@ class TelegramService:
                 route.destination.describe(),
                 exc,
             )
+            # The exception's *type* only, never its text: a sink's error
+            # can quote what it was handed (a pydantic ValidationError's
+            # `input_value=…`), and this detail travels on to the webhook
+            # reply and the dashboard's recent list. The log line above has
+            # the whole thing.
             return DispatchOutcome(
                 bot=bot_key,
                 message=message,
                 routed=True,
                 destination=route.destination.describe(),
                 delivered=False,
-                detail=f"delivery to {route.destination.describe()} failed: {exc}",
+                detail=(
+                    f"delivery to {route.destination.describe()} failed "
+                    f"({type(exc).__name__}); the hub log has the details"
+                ),
             )
         return DispatchOutcome(
             bot=bot_key,
@@ -854,6 +882,7 @@ def _sent_from(
 __all__ = [
     "EVENT_BOT_STATE",
     "EVENT_DROPPED",
+    "EVENT_HANDLED",
     "EVENT_RECEIVED",
     "EVENT_ROUTED",
     "EVENT_SENT",

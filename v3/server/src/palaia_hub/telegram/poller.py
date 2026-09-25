@@ -31,9 +31,10 @@ restarts the hub.
 
 **What the dashboard sees of it** (issue #439): when the last poll
 succeeded, the last failure's one scrubbed line and when it happened, and a
-``telegram.bot.state`` event each time the bot moves between ``ok`` and
-``failing`` — a transition, not a heartbeat, so a healthy bot adds nothing
-to the bus and a broken one adds one event, not one per retry.
+``telegram.bot.state`` event when the bot's state first becomes known and
+each time it moves between ``ok`` and ``failing`` — a transition, not a
+heartbeat, so a healthy bot adds one event per process and a broken one
+adds one event, not one per retry.
 """
 
 from __future__ import annotations
@@ -144,12 +145,15 @@ class LongPoller:
 
     def _record_ok(self) -> None:
         """Telegram answered: reset the failure count, and say so on the bus
-        if this bot had been failing."""
+        if this is news — the bot's first answer, or its recovery. A quiet,
+        healthy bot's first long poll can take the whole poll timeout, and
+        without this an open panel would show it unchecked until a message
+        arrived."""
         self.consecutive_failures = 0
         self.last_ok_at = float(self._now())
-        if self._state == "failing":
+        if self._state != "ok":
+            self._state = "ok"
             self._service.publish_bot_state(self.bot, "ok")
-        self._state = "ok"
 
     async def _backoff(self, reason: str) -> None:
         self.consecutive_failures += 1
