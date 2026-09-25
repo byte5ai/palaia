@@ -4,10 +4,11 @@ implementation, and the rule that keeps the token out of everything.
 **Why a protocol.** The Bot API is a network service with no sandbox and no
 test instance. Every test in ``tests/telegram/`` therefore runs against
 :class:`~palaia_hub.telegram.api.BotApi` implemented by a fake
-(``tests/telegram/fake_api.py``) — routing, authorisation, offset handling,
-webhook verification and the tool surface are all hub-side logic, and hub-side
-logic is exactly what a fake can exercise honestly. :class:`HttpBotApi` is the
-thin part that is left: build a URL, post JSON, unwrap ``{"ok": ...}``.
+(``FakeBotApi`` in ``tests/telegram/conftest.py``) — routing, authorisation,
+offset handling, webhook verification and the tool surface are all hub-side
+logic, and hub-side logic is exactly what a fake can exercise honestly.
+:class:`HttpBotApi` is the thin part that is left: build a URL, post JSON,
+unwrap ``{"ok": ...}``.
 
 **The token is an argument, never a field.** ``HttpBotApi`` holds no
 credential — every method takes the token from the caller, which reads it

@@ -95,7 +95,9 @@ EVERYONE_QUERY = "*"
 #: ``/api/messenger/send`` route is already behind the owner's signed-in
 #: session and CSRF token (:mod:`palaia_hub.admin_session`), which is what
 #: :meth:`~palaia_hub.messenger.service.MessengerService.send_as_owner`
-#: trusts instead of a session secret. A real directory handle can never
+#: trusts instead of a session secret. (Its one other caller, the Telegram
+#: connector's operator-written ``kind: messenger`` route, is argued for in
+#: that method's docstring.) A real directory handle can never
 #: collide with this value (handles are random
 #: :data:`~palaia_hub.directory.store.HANDLE_CHARS`-character tokens, never
 #: a plain word), so a recipient can tell "the owner" apart from any agent

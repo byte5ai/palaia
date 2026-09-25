@@ -295,8 +295,8 @@ class TelegramService:
                 f"Telegram bot {bot.key!r} names the secret "
                 f"{bot.token_secret!r}, and the secret store holds nothing under "
                 "that name. Fix: store the bot token with "
-                f"`PUT /api/secrets/{bot.token_secret}` (dashboard: Settings → "
-                "Secrets). The token never goes in config.yaml."
+                f"`PUT /api/secrets/{bot.token_secret}`. The token never goes in "
+                "config.yaml."
             )
         return value
 
