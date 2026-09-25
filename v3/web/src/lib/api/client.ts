@@ -603,6 +603,75 @@ export interface EnvelopeDetailResult {
   item: InboxItem;
 }
 
+/** Issue 439's Telegram panel — opt-in on the hub (mounted only when
+ * `config.yaml` has a `telegram:` section), so hand-written for the same
+ * reason as the directory/messenger types above. Mirrors
+ * `palaia_hub.telegram.dashboard_api` and the `BotCheck`/`RecentMessage`
+ * models in `palaia_hub.telegram.models`. No field here can carry a token
+ * or a message's text — the hub's models have none. */
+export type TelegramTransport = "polling" | "webhook";
+
+export interface TelegramPollingState {
+  running: boolean;
+  last_ok_at: number | null;
+  last_error: string | null;
+  last_error_at: number | null;
+  consecutive_failures: number;
+}
+
+export interface TelegramBotCheck {
+  ok: boolean;
+  username: string | null;
+  checked_at: number;
+  error: string | null;
+}
+
+export interface TelegramBotStatus {
+  key: string;
+  label: string;
+  transport: TelegramTransport;
+  enabled: boolean;
+  token_stored: boolean;
+  /** Webhook bots only; `null` for a polling bot. */
+  webhook_secret_stored: boolean | null;
+  /** `null` for a webhook bot or a switched-off one. */
+  polling: TelegramPollingState | null;
+  last_update_at: number | null;
+  last_check: TelegramBotCheck | null;
+}
+
+export interface TelegramRoute {
+  bot: string;
+  /** A numeric chat id, a public `@name`, or `*` for every chat. */
+  chat: string;
+  kind: "messenger" | "inbox" | "event";
+  /** `messenger:<to>`, `inbox:<vault>` or `event`. */
+  destination: string;
+}
+
+export interface TelegramRecentMessage {
+  at: number;
+  bot: string;
+  chat_id: number;
+  chat_type: string;
+  chat_username: string | null;
+  message_id: number;
+  text_chars: number;
+  routed: boolean;
+  destination: string | null;
+  delivered: boolean;
+  detail: string;
+  /** A dropped message only: the chat keys a rule could have used. */
+  candidates: string[] | null;
+}
+
+export interface TelegramStatus {
+  bots: TelegramBotStatus[];
+  routes: TelegramRoute[];
+  /** Newest first. */
+  recent: TelegramRecentMessage[];
+}
+
 /** Base URL for API calls. Empty string = same-origin (the hub serves the
  * dashboard build itself, per this SPEC's static-serving deliverable), so
  * this only needs a value in local dev against a hub on another port. */
@@ -1167,4 +1236,13 @@ export const api = {
       `/api/messenger/threads/${seg(envelopeId)}/end`,
       {},
     ),
+
+  // ---- issue 439: the Telegram panel ----
+  /** Answered from the hub's memory — never reaches Telegram, so the panel
+   * can refetch it on every `telegram.*` event. 404 = no bots set up. */
+  telegramStatus: () => getJson<TelegramStatus>("/api/telegram/status"),
+  /** The panel's one outbound call: ask Telegram whether this bot's token
+   * works. A refused token is a 200 with `last_check.ok === false`. */
+  checkTelegramBot: (key: string) =>
+    postJson<TelegramBotStatus>(`/api/telegram/bots/${seg(key)}/check`, {}),
 };

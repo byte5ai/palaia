@@ -15,6 +15,10 @@ same job for upstream credentials. The three halves here are:
    scrubs it before an error is ever raised.
 3. **Tool output** — the outbound result models have no field for it, and a
    Bot API failure surfaces as a tool error built from the *method name*.
+
+Plus the surface issue #439 added: the dashboard panel's status response,
+which shows error lines and check results that started life as Bot API
+failures.
 """
 
 from __future__ import annotations
@@ -23,13 +27,28 @@ import logging
 
 import httpx
 import pytest
+from fastapi import FastAPI
 
 from palaia_hub.logging import REDACTED, RedactionFilter, redact
 from palaia_hub.telegram.api import HttpBotApi, TelegramApiError, redact_token
-from palaia_hub.telegram.models import SentMessage, TelegramBotConfig, TelegramSettings
+from palaia_hub.telegram.dashboard_api import build_telegram_dashboard_router
+from palaia_hub.telegram.models import (
+    SentMessage,
+    TelegramBotConfig,
+    TelegramError,
+    TelegramSettings,
+)
+from palaia_hub.telegram.runtime import TelegramRuntime
 from palaia_hub.telegram.service import TelegramService
 
-from .conftest import BOT_A_TOKEN, TWO_BOT_SETTINGS, FakeBotApi, FakeSecrets
+from .conftest import (
+    BOT_A_TOKEN,
+    BOT_B_TOKEN,
+    TWO_BOT_SETTINGS,
+    FakeBotApi,
+    FakeSecrets,
+    message_update,
+)
 
 # -- 1. config ----------------------------------------------------------------
 
@@ -170,3 +189,48 @@ def test_the_service_holds_no_token_attribute() -> None:
 def test_the_http_client_holds_no_token_attribute() -> None:
     api = HttpBotApi()
     assert "token" not in vars(api)
+
+
+# -- 4. the dashboard panel (issue #439) -------------------------------------
+
+
+@pytest.mark.anyio
+async def test_the_dashboard_status_never_carries_a_token(anyio_backend: str) -> None:
+    """Every place the panel shows something that began as a failure — a
+    poll error, a failed check, a failed delivery — fed a raw token, and
+    the status response still has none."""
+    api = FakeBotApi()
+    secrets = FakeSecrets({"telegram_support": BOT_A_TOKEN, "telegram_personal": BOT_B_TOKEN})
+    service = TelegramService(TelegramSettings.model_validate(TWO_BOT_SETTINGS), api, secrets)
+    runtime = TelegramRuntime(service, api)
+
+    # A plain TelegramError is not scrubbed on construction the way
+    # TelegramApiError is — the panel's own scrubbing is what is under test.
+    api.fail_with = TelegramError(f"getMe failed for /bot{BOT_A_TOKEN}/getMe")
+    await runtime.check_bot("support")
+    poller = runtime.pollers["personal"]
+
+    async def no_sleep(seconds: float) -> None:
+        return None
+
+    poller._sleep = no_sleep  # noqa: SLF001 - skip the real backoff delay
+    await poller._backoff(f"unexpected ConnectError: /bot{BOT_B_TOKEN}/getUpdates")  # noqa: SLF001
+    # No messenger on this hub, so the routed message fails to deliver —
+    # with the token in its text, which must not survive into the list.
+    await service.handle_update(
+        "support", message_update(1, chat_id=-1001, text=f"my token is {BOT_A_TOKEN}")
+    )
+
+    app = FastAPI()
+    app.include_router(build_telegram_dashboard_router(runtime, secrets))
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://hub") as client:
+        response = await client.get("/api/telegram/status")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["bots"][0]["last_check"]["ok"] is False
+    assert body["bots"][1]["polling"]["last_error"]
+    assert body["recent"][0]["delivered"] is False
+    assert BOT_A_TOKEN not in response.text
+    assert BOT_B_TOKEN not in response.text

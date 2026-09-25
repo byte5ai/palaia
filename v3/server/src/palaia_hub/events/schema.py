@@ -153,6 +153,18 @@ EventName = Literal[
     "telegram.message.dropped",
     "telegram.message.sent",
     "telegram.routed",
+    # Issue #439 (the dashboard's Telegram panel): a polling bot's state
+    # becoming known (its first answered poll, `ok`, or its first failure)
+    # and every later move between `ok` and `failing` — once per
+    # transition, never once per poll. `data` is `{bot, state, detail}`:
+    # `detail` is the scrubbed error line (empty when `ok`), never a token.
+    "telegram.bot.state",
+    # Issue #439: a message's outcome was recorded for the panel's recent
+    # list. `data` is `InboundMessage.metadata()` plus `routed`,
+    # `destination` and `delivered` — no text and no exception's words,
+    # by the same rule as `telegram.message.received`. It fires after the
+    # delivery, so a panel refetching on it sees the new entry.
+    "telegram.message.handled",
     "health",
 ]
 

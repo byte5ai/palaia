@@ -579,6 +579,66 @@ class ChatInfo(BaseModel):
     can_send: bool = True
 
 
+# -- what the dashboard panel shows (issue #439) -----------------------------
+
+
+#: How many inbound messages the dashboard's "Recent messages" list keeps —
+#: one ring for the whole hub, not one per bot, newest pushing the oldest
+#: out. In memory only: a restart empties it, which is the point (ADR-006:
+#: no message store).
+DEFAULT_RECENT_SIZE = 50
+
+
+class RecentMessage(BaseModel):
+    """What the hub did with one inbound message, as the dashboard lists it.
+
+    Picked from :meth:`InboundMessage.metadata` — and deliberately narrower
+    than it: no sender, and **no field the text could go in**, so the list
+    stays metadata-only by construction rather than by remembering not to
+    fill one in (the same shape :class:`SentMessage` has for a token).
+    ``candidates`` is what replaces "read the log line" for an operator
+    writing their first route: the chat keys a rule could have used.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: When the hub handled it (hub clock, unix seconds) — not Telegram's
+    #: own ``date``, which a delayed redelivery would make look old.
+    at: float
+    bot: str
+    chat_id: int
+    chat_type: str
+    chat_username: str | None = None
+    message_id: int
+    text_chars: int = 0
+    routed: bool = False
+    #: :meth:`TelegramDestination.describe` of the route that claimed it.
+    destination: str | None = None
+    delivered: bool = False
+    #: The outcome's one line, token-scrubbed and cut short.
+    detail: str = ""
+    #: A dropped message only: the chat keys tried, most specific first.
+    candidates: list[str] | None = None
+
+
+class BotCheck(BaseModel):
+    """The last on-demand connection check of one bot (``getMe``).
+
+    Cached by :class:`palaia_hub.telegram.runtime.TelegramRuntime` until
+    the next check, so the dashboard can show it on every refetch without
+    ever calling Telegram from a read.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    ok: bool
+    #: The bot's Telegram ``@username`` (without the ``@``), when it answered.
+    username: str | None = None
+    checked_at: float
+    #: Why it failed, token-scrubbed and cut short. ``None`` when ``ok``.
+    error: str | None = None
+
+
 # -- errors -------------------------------------------------------------------
 
 
@@ -628,9 +688,11 @@ class NotOurMessageError(TelegramError):
 __all__ = [
     "ALLOWED_UPDATES",
     "CHAT_WILDCARD",
+    "DEFAULT_RECENT_SIZE",
     "DEFAULT_SENT_LEDGER_SIZE",
     "MAX_MESSAGE_CHARS",
     "Attachment",
+    "BotCheck",
     "ChatInfo",
     "DeletedMessage",
     "DestinationKind",
@@ -640,6 +702,7 @@ __all__ = [
     "MissingSecretError",
     "NotOurMessageError",
     "NotPermittedError",
+    "RecentMessage",
     "SentMessage",
     "TelegramBotConfig",
     "TelegramConfigError",

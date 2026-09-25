@@ -10,6 +10,7 @@ import {
   MarketplaceIcon,
   ReviewIcon,
   SettingsIcon,
+  TelegramIcon,
   ToolsIcon,
 } from "./icons";
 
@@ -52,6 +53,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { path: "/tools", label: "Tools & skills", icon: ToolsIcon },
       { path: "/marketplace", label: "Marketplace", icon: MarketplaceIcon },
       { path: "/agents", label: "Agents", icon: AgentsIcon },
+      { path: "/telegram", label: "Telegram", icon: TelegramIcon },
     ],
   },
   {

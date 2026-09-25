@@ -87,6 +87,7 @@ from .security import SecurityHeadersMiddleware
 from .stash.service import StashService
 from .stash_api import build_stash_router
 from .static import mount_dashboard
+from .telegram.dashboard_api import build_telegram_dashboard_router
 from .telegram.runtime import TelegramRuntime
 from .telegram.webhook import build_telegram_webhook_router
 from .update import UpdateCheckResult, check_for_update
@@ -328,7 +329,11 @@ def create_app(
             stopped *before* ``secret_store`` closes, so no poll reads a
             closed store. The ``telegram_*`` tools are not mounted here:
             they belong to profiles with ``telegram: true``, through
-            ``dynamic_gateway``'s own ``telegram_service``. Omitted (the
+            ``dynamic_gateway``'s own ``telegram_service``. Given together
+            with ``secret_store`` (as production always does), the
+            dashboard's panel is mounted too: ``/api/telegram``, behind the
+            admin session like the rest of ``/api/`` (see
+            :mod:`palaia_hub.telegram.dashboard_api`). Omitted (the
             default), the hub has no Telegram surface at all.
         hook_outbox: the durable delivery queue backing ``hook_store``.
             Defaults to :class:`~palaia_hub.hooks.HookOutbox` at its
@@ -1004,6 +1009,10 @@ def create_app(
     # never answers for (`palaia_hub.static`).
     if telegram_runtime is not None:
         app.include_router(build_telegram_webhook_router(telegram_runtime.service))
+        # The panel's `/api/telegram` (issue #439). It needs the store only
+        # to say whether a token is there; without one it could only guess.
+        if secret_store is not None:
+            app.include_router(build_telegram_dashboard_router(telegram_runtime, secret_store))
 
     _maybe_add_test_slow_route(app)
 

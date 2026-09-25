@@ -94,6 +94,7 @@ describe("feature screens accessibility (issue 383)", () => {
     "/automations",
     "/marketplace",
     "/agents",
+    "/telegram",
     "/tools",
     "/exposure",
     "/settings",

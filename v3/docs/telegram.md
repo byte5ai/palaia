@@ -10,8 +10,9 @@
 > Status: first cut (issue #411), running in the hub since issue #439: a hub
 > whose `config.yaml` has a `telegram:` section starts one long-poll task per
 > polling bot, mounts the webhook route and gives `telegram: true` profiles
-> the tools. Text messages only — media is recorded as a *reference* and not
-> downloaded. The per-bot dashboard panel is still to come; see §9.
+> the tools, and the dashboard's **Telegram** screen shows every bot's state,
+> the routing table and what happened to recent messages (§8). Text messages
+> only — media is recorded as a *reference* and not downloaded.
 
 ## 1. What it does, in one picture
 
@@ -61,9 +62,10 @@ as an administrator.
 
 ### 2.3 Find the chat id
 
-Send one message to the chat, then look at the hub's
-`telegram.message.dropped` event (or the log line next to it): it prints the
-numeric chat id and the exact `chat:` values a route could use. Group and
+Send one message to the chat, then open the dashboard's **Telegram** screen:
+under *Recent messages* the message shows as "No rule matched", followed by
+the exact `chat:` values a route could use — the numeric chat id first (the
+same keys are in the hub's `telegram.message.dropped` event). Group and
 channel ids are negative — `-1001234567890` — which is normal.
 
 ## 3. Configuration
@@ -267,6 +269,8 @@ anything else, and a hub-side failure must not become a redelivery loop.
 | `telegram.message.dropped` | Message metadata + the chat keys that would have matched | No route claimed it |
 | `telegram.message.sent` | Bot, chat, message id, sending profile | **No text.** |
 | `telegram.routed` | Message metadata **+ the text** | Only from a `kind: event` route |
+| `telegram.message.handled` | Message metadata + routed, destination, delivered | After delivery, once the outcome is recorded for the dashboard. **No text.** |
+| `telegram.bot.state` | Bot, `ok` or `failing`, the error line | A polling bot's first answer or first failure, then each time it starts failing or recovers — once per change, not per poll. **No token.** |
 
 The rule and its one exception: a human's words do not go on the event bus,
 because the bus feeds every SSE listener and every outbound webhook this hub
@@ -277,7 +281,33 @@ automation without putting its text on the bus, route it to `inbox` or
 `messenger` and have the automation trigger on
 `telegram.message.received` instead.
 
-## 8. The token, and where it is not
+## 8. The dashboard
+
+The dashboard's **Telegram** screen (under *Connections*) is where the owner
+sees the connector at work — a dashboard screen, not something an agent can
+read (ADR-006):
+
+- **Bots** — per bot: *Connected*, *Failing* (with the last error),
+  *Not checked yet*, *Disabled* or *Token missing*; when it last received a
+  message; and a **Check connection** button, which asks Telegram whether
+  the token works (`getMe`) and is the only thing on the screen that calls
+  Telegram at all.
+- **Where messages go** — the routing table (§4), in plain words.
+- **Recent messages** — the last 50 across every bot, newest first: which
+  bot, which chat, how long, and whether it was delivered, failed (with the
+  kind of error — the hub log has the rest, since an error can quote the
+  message), or matched no rule (with the `chat:` values a rule could use —
+  see §2.3).
+
+It keeps **metadata only, in memory**: no message text is ever stored or
+shown, and everything on the screen starts over when the hub restarts. It
+updates live off the `telegram.*` events in §7 — `telegram.message.handled`
+once each outcome is recorded, and `telegram.bot.state`, which is how a bot
+turns green on its first answer or red when it starts failing, without a
+reload. Behind it: `GET /api/telegram/status` and
+`POST /api/telegram/bots/<key>/check`, owner-only like the rest of `/api/`.
+
+## 9. The token, and where it is not
 
 - Not in `config.yaml`: a bot names a *secret*, and the model has no field a
   token could be written into (an extra key is refused).
@@ -288,13 +318,10 @@ automation without putting its text on the bus, route it to `inbox` or
   URL.
 - Not in tool output: no result model has a field for it.
 
-## 9. Not in this first cut
+## 10. Not in this first cut
 
 - **Media**: attachments are recorded as references (`file_id`, name, size)
   and passed into the destination as text. Nothing is downloaded or uploaded.
-- **The dashboard panel**: per-bot connection state, last update received,
-  routing table and recent deliveries — still to come. Until then the hub's
-  log and the `telegram.*` events on its event stream (§7) are where to look.
 - **Telegram login** for hub access: out of scope — the hub's own sign-in is
   unchanged.
 - **Group administration**: out of scope, and actively fenced off (§5).

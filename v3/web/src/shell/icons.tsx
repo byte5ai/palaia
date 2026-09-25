@@ -215,3 +215,15 @@ export function AgentsIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+/** Issue 439: the Telegram nav item — a paper plane, the one glyph people
+ * already read as "Telegram" without a logo. */
+export function TelegramIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M20.5 4 3.5 10.8l6.2 2.3L20.5 4z" />
+      <path d="M20.5 4 17.3 19.5l-7.6-6.4" />
+      <path d="M9.7 13.1V19l3-3.3" />
+    </Icon>
+  );
+}

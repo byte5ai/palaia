@@ -92,7 +92,8 @@ async def test_the_offset_moves_past_a_message_that_failed_to_deliver(
     outcomes = await poller.poll_once()
     assert poller.offset == 31
     assert outcomes[0].routed is True and outcomes[0].delivered is False
-    assert "vault is read-only" in outcomes[0].detail
+    # The kind of failure, not its words — those go to the hub log only.
+    assert "inbox:work" in outcomes[0].detail and "RuntimeError" in outcomes[0].detail
 
 
 @pytest.mark.anyio
@@ -157,3 +158,89 @@ async def test_run_forever_stops_when_asked(service: TelegramService, api: FakeB
     stop.set()
     await asyncio.wait_for(task, timeout=1)
     assert poller.offset == 61
+
+
+# -- what the dashboard panel reads (issue #439) ------------------------------
+
+
+async def _no_sleep(seconds: float) -> None:
+    return None
+
+
+async def _cycle(poller: LongPoller) -> None:
+    """One turn of :meth:`LongPoller.run_forever`, without the loop."""
+    try:
+        await poller.poll_once()
+    except TelegramApiError as exc:
+        await poller._backoff(str(exc))  # noqa: SLF001 - the unit under test
+
+
+@pytest.mark.anyio
+async def test_a_poll_telegram_answered_is_stamped_with_the_hub_clock(
+    service: TelegramService,
+) -> None:
+    poller = LongPoller(service, "support", now=lambda: 1234.5)
+    await poller.poll_once()
+    assert poller.last_ok_at == 1234.5
+    assert poller.last_error is None and poller.last_error_at is None
+
+
+@pytest.mark.anyio
+async def test_a_failure_is_kept_as_one_scrubbed_line_through_a_recovery(
+    service: TelegramService, api: FakeBotApi
+) -> None:
+    clock = iter([10.0, 20.0])
+    poller = LongPoller(service, "support", sleep=_no_sleep, now=lambda: next(clock))
+    await poller._backoff(  # noqa: SLF001 - the unit under test
+        f"unexpected ConnectError: /bot{BOT_A_TOKEN}/getUpdates\n" + "x" * 500
+    )
+    assert poller.last_error is not None
+    assert BOT_A_TOKEN not in poller.last_error
+    assert "\n" not in poller.last_error and len(poller.last_error) <= 200
+    assert poller.last_error_at == 10.0
+
+    await poller.poll_once()
+    assert poller.consecutive_failures == 0
+    assert poller.last_ok_at == 20.0
+    # Kept on purpose: "failed at 10, fine since 20" is worth reading.
+    assert poller.last_error is not None
+
+
+@pytest.mark.anyio
+async def test_the_bot_state_event_fires_on_a_transition_only(
+    service: TelegramService, api: FakeBotApi, bus  # noqa: ANN001
+) -> None:
+    poller = LongPoller(service, "support", sleep=_no_sleep)
+    # The first answer is news — an open panel stops saying "not checked
+    # yet" — and the second one is not.
+    for _ in range(2):
+        await _cycle(poller)
+    assert [e["state"] for e in bus.named("telegram.bot.state")] == ["ok"]
+
+    api.fail_with = TelegramApiError("getUpdates", f"Unauthorized {BOT_A_TOKEN}", status=401)
+    for _ in range(3):
+        await _cycle(poller)
+    api.fail_with = None
+    for _ in range(2):
+        await _cycle(poller)
+
+    states = bus.named("telegram.bot.state")
+    assert [(e["bot"], e["state"]) for e in states] == [
+        ("support", "ok"),
+        ("support", "failing"),
+        ("support", "ok"),
+    ]
+    assert "401" in states[1]["detail"]
+    assert states[0]["detail"] == states[2]["detail"] == ""
+    assert BOT_A_TOKEN not in repr(states)
+
+
+@pytest.mark.anyio
+async def test_a_bot_that_fails_from_the_start_announces_only_the_failure(
+    service: TelegramService, api: FakeBotApi, bus  # noqa: ANN001
+) -> None:
+    poller = LongPoller(service, "support", sleep=_no_sleep)
+    api.fail_with = TelegramApiError("getUpdates", "Unauthorized", status=401)
+    for _ in range(2):
+        await _cycle(poller)
+    assert [e["state"] for e in bus.named("telegram.bot.state")] == ["failing"]

@@ -154,6 +154,7 @@ See [§8](#8-accepted-risks-and-open-gaps).
 | `/api/stash` | the stash mirror | |
 | `/api/directory` | the session directory mirror | |
 | `/api/messenger` | the messenger mirror, read-only | |
+| `/api/telegram` | the Telegram panel: per bot, set up / connected / failing, the routing table, what happened to the last messages (issue #439) | metadata only, in memory, **never message text**; its one outbound call is the on-demand connection check (§7.3a) |
 | `/api/hooks` | outbound webhooks and their secrets | |
 | `/api/automations` | event-triggered actions | |
 | `/api/notifications` | the dashboard notification centre | |
@@ -317,6 +318,16 @@ they apply:
    and `server/src/palaia_hub/messenger/service.py` (the two-caller
    invariant in `send_as_owner`'s docstring); *proven by*
    `server/tests/telegram/test_serve_wiring.py`.
+
+The owner's view of all this is the dashboard panel, `/api/telegram`
+(issue #439): owner-only behind the admin session like every `/api/` route;
+metadata only — which bot, which chat, where it went — in a bounded list with
+no field for the message text, held in memory and gone on restart; and its
+status read never calls Telegram. Its **only outbound call** is
+`POST /api/telegram/bots/{key}/check`, one `getMe` on the owner's click.
+*Enforced by* `server/src/palaia_hub/telegram/dashboard_api.py`; *proven by*
+`server/tests/telegram/test_dashboard_api.py` and
+`server/tests/telegram/test_token_never_leaks.py`.
 
 The residual risk is stated rather than solved: **a routed Telegram message
 is untrusted text that a model will read.** The controls above decide *where*

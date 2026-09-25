@@ -32,6 +32,9 @@ export const ReviewQueue = lazy(() =>
 export const Settings = lazy(() =>
   import("./Settings").then((m) => ({ default: m.Settings })),
 );
+export const Telegram = lazy(() =>
+  import("./Telegram").then((m) => ({ default: m.Telegram })),
+);
 export const ToolProfiles = lazy(() =>
   import("./ToolProfiles").then((m) => ({ default: m.ToolProfiles })),
 );
