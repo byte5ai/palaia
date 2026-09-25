@@ -7,9 +7,11 @@
 > "there is no tool that reads Telegram" is
 > [ADR-006](../decisions/006-telegram-reading-surface.md).
 >
-> Status: first cut (issue #411). Text messages only — media is recorded as
-> a *reference* and not downloaded. The per-bot dashboard panel and the
-> runtime wiring that starts the poller are named follow-ups; see §9.
+> Status: first cut (issue #411), running in the hub since issue #439: a hub
+> whose `config.yaml` has a `telegram:` section starts one long-poll task per
+> polling bot, mounts the webhook route and gives `telegram: true` profiles
+> the tools. Text messages only — media is recorded as a *reference* and not
+> downloaded. The per-bot dashboard panel is still to come; see §9.
 
 ## 1. What it does, in one picture
 
@@ -47,8 +49,8 @@ the token it gives you. Then store it in the hub's encrypted secret store —
 PUT /api/secrets/telegram_support      {"value": "123456789:AA…"}
 ```
 
-(Dashboard: Settings → Secrets.) The token lives encrypted under
-`<home>/secrets.sqlite3`; the config below names the *secret*, not the value.
+The token lives encrypted under `<home>/secrets.sqlite3`; the config below
+names the *secret*, not the value.
 
 ### 2.2 Let the bot see messages
 
@@ -121,6 +123,15 @@ A cross-reference that does not resolve — a route naming a bot that is not
 configured — is refused when the hub loads the file, not silently ignored.
 A rule that can never match is the worst thing a routing table can contain.
 
+**Configuration changes apply on restart.** Bots, routes and grants are read
+once, when the hub starts; editing the `telegram:` section of a running hub
+changes nothing until the next restart. The same goes for the vaults an
+`inbox` route can deliver into: a vault created later, through the wizard,
+is reachable by such a route after a restart. At startup the hub logs a
+warning for every part of the section it can already tell will not work —
+an `inbox` route to a vault it does not have, a `messenger` route on a hub
+with no messenger, a webhook bot on a `locked` hub — and starts the rest.
+
 ## 4. The routing table
 
 The key is `(bot, chat)`. For each inbound message three chat keys are tried,
@@ -156,7 +167,9 @@ There is no `kind: automation`. Automations fire off hub events, so
 Why "as the owner" for a messenger route: the person who typed the message
 is the hub's owner or someone talking to them, and neither has a session
 handle to speak from. The envelope's `from` is `owner`, which no agent
-handle can collide with.
+handle can collide with. Read it as "relayed by the owner's routing rule",
+not "written by the owner": in a group the words may be anyone's, which is
+why the body opens with who wrote them.
 
 ## 5. Sending: the tools, and what they may do
 
@@ -174,7 +187,9 @@ There is deliberately **no tool that reads inbound messages** — see
 **Two independent fences, and both must pass.**
 
 1. The **scope** on the client's token (`telegram:read` / `telegram:send`)
-   says whether this client may use the connector at all.
+   says whether this client may use the connector at all. A token the
+   dashboard issues for a `telegram: true` profile carries both, the same
+   way it carries a vault's read/write pair.
 2. The **grant** (`telegram.grants`) says which bots and chats this *profile*
    may address. It is **default-deny**: a profile with the tools mounted, a
    valid token and no grant entry sends nothing, and is refused by name.
@@ -208,7 +223,9 @@ and no certificate. A failed poll backs off (1s, doubling, capped at 60s)
 and retries — the loop does not end.
 
 **Webhook (opt-in, `cloud`/`open` hubs).** Telegram pushes to
-`POST /telegram/webhook/<bot key>`. Set up:
+`POST /telegram/webhook/<bot key>`. A webhook bot on a `locked` hub can never
+receive anything — Telegram has no public URL to push to — so the hub logs a
+warning for it at startup; use polling there. Set up:
 
 1. Store a random value as a secret, e.g. `telegram_support_hook`.
 2. Name it in the bot's `webhook_secret`, and set `transport: webhook`.
@@ -222,6 +239,21 @@ logs and the dashboard — so that header is the endpoint's only credential.
 A webhook bot with no `webhook_secret` is refused by the config schema, and
 one whose secret store entry is empty answers `503` rather than accepting an
 unverified update.
+
+Reaching the route from the internet:
+
+- **The packaged image** proxies `/telegram/` to the hub, next to `/api`,
+  `/mcp` and `/oauth` — the dashboard's static files never answer it.
+- **`cloud` mode** keeps everything but the MCP endpoint and its sign-in
+  pages off the tunnel. Once `config.yaml` has an enabled webhook bot, the
+  exposure wizard's tunnel guidance (Tailscale and cloudflared) forwards
+  `/telegram/webhook` as well; without one it does not. In `open` mode the
+  whole hub is public already.
+- **Guessing the secret is throttled** in `cloud`/`open`: every `401` from
+  this route counts against the caller in one bucket shared by all bot
+  keys, like a guessed sign-in, and after 10 in a minute that caller gets
+  `429`. Telegram's own deliveries succeed, never count, and are never
+  slowed by somebody else's guessing.
 
 Both transports run the same code after the update arrives. An update that
 was received but could not be delivered still answers `200`: Telegram retries
@@ -261,11 +293,8 @@ automation without putting its text on the bus, route it to `inbox` or
 - **Media**: attachments are recorded as references (`file_id`, name, size)
   and passed into the destination as text. Nothing is downloaded or uploaded.
 - **The dashboard panel**: per-bot connection state, last update received,
-  routing table and recent deliveries. The data is all there
-  (`check_bot`, the routing table, the events above); the panel is not.
-- **Runtime wiring**: the poller and the webhook router are built and
-  tested, but `palaia_hub.serve` does not yet start the poll tasks or mount
-  the webhook route.
+  routing table and recent deliveries — still to come. Until then the hub's
+  log and the `telegram.*` events on its event stream (§7) are where to look.
 - **Telegram login** for hub access: out of scope — the hub's own sign-in is
   unchanged.
 - **Group administration**: out of scope, and actively fenced off (§5).

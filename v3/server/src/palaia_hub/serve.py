@@ -65,6 +65,9 @@ from .oauth.verifier import build_hub_auth, build_profile_auth, oauth_client_con
 from .registry import RegistryClient
 from .stash.service import StashService
 from .stash.store import StashStore
+from .telegram.api import BotApi, HttpBotApi
+from .telegram.runtime import TelegramRuntime
+from .telegram.service import TelegramService
 from .upstream.monitor import UpstreamHealthMonitor
 from .upstream.secrets import SecretStore
 from .upstream.service import UpstreamService
@@ -125,6 +128,12 @@ class ProductionApp:
     #: restart. Started and stopped by the app's own lifespan; a vault the
     #: wizard creates later gets its watcher from the dashboard router.
     watchers: dict[str, VaultWatcher] = field(default_factory=dict)
+    #: The Telegram connector (issue #411/#439), or ``None`` when
+    #: ``config.yaml`` has no ``telegram:`` section. Its poll tasks are
+    #: started and stopped by the app's own lifespan, and it closes the Bot
+    #: API client it created; the handle is here so a caller can read the
+    #: pollers' state.
+    telegram: TelegramRuntime | None = None
 
 
 def _index_event_hook(event_bus: EventBus, vault_key: str) -> HubEventHook:
@@ -170,6 +179,7 @@ async def build_production_app(
     *,
     home: Path | None = None,
     oauth_server: AuthorizationServer | None = None,
+    telegram_api: BotApi | None = None,
 ) -> ProductionApp:
     """Assemble the hub's real ``FastAPI`` app: registry, indexes, gateway.
 
@@ -182,6 +192,11 @@ async def build_production_app(
             Built by the caller (``palaia_hub.cli``) because deciding whether
             one should exist — and failing loudly on a half-configured one —
             is CLI-surface behavior, not assembly.
+        telegram_api: the Telegram Bot API client, when ``config.telegram``
+            is set — the seam a test hands a fake through, since there is no
+            sandbox Telegram. Omitted, the connector builds (and at shutdown
+            closes) its own :class:`~palaia_hub.telegram.api.HttpBotApi`;
+            one passed in is the caller's to close.
     """
     # SPEC-201: the registry's own vault.events.EventBus is what create_app()
     # bridges onto the public event bus — every vault this registry opens
@@ -330,6 +345,33 @@ async def build_production_app(
         publish=_upstream_event_hook(event_bus),
     )
 
+    # Issue #439: the Telegram connector, built only for a hub whose
+    # config.yaml has a `telegram:` section — without one there is no
+    # service, no poll task, no webhook route and no tool, exactly as
+    # before the connector existed. Built here because it needs the secret
+    # store (every call reads its bot's token for that call only) and the
+    # messenger and vault services its routes deliver into, and before the
+    # gateway, whose `telegram: true` profiles mount tools over it. The
+    # vault map is the one opened above: a vault the wizard creates later
+    # is reachable by an `inbox` route after a restart (the runtime warns
+    # about such a route at startup). Its event hook is wired by
+    # `create_app`, like every other service's.
+    telegram_runtime: TelegramRuntime | None = None
+    if config.telegram is not None:
+        bot_api: BotApi = telegram_api if telegram_api is not None else HttpBotApi()
+        telegram_runtime = TelegramRuntime(
+            TelegramService(
+                config.telegram,
+                bot_api,
+                secret_store,
+                messenger=messenger_service,
+                vaults=vault_services,
+            ),
+            bot_api,
+            owns_api=telegram_api is None,
+            mode=config.mode,
+        )
+
     gateway_config = GatewayConfig(
         vaults=mounts, profiles=profiles, upstreams=resolve_upstreams(config.gateway)
     )
@@ -397,6 +439,7 @@ async def build_production_app(
         upstream_service=upstream_service,
         directory_service=directory_service,
         messenger_service=messenger_service,
+        telegram_service=telegram_runtime.service if telegram_runtime is not None else None,
     )
     upstream_monitor = UpstreamHealthMonitor(
         upstream_service, on_change=dynamic_gateway.refresh_upstreams
@@ -444,6 +487,7 @@ async def build_production_app(
         upstream_service=upstream_service,
         upstream_monitor=upstream_monitor,
         secret_store=secret_store,
+        telegram_runtime=telegram_runtime,
         home=home,
     )
     return ProductionApp(
@@ -461,6 +505,7 @@ async def build_production_app(
         secret_store=secret_store,
         install_service=install_service,
         watchers=watchers,
+        telegram=telegram_runtime,
     )
 
 

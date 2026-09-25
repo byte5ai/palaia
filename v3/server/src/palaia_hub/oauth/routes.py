@@ -572,6 +572,7 @@ def _describe_scope(scope: str) -> str:
             "stash": "the shared scratch space",
             "directory": "the session directory",
             "messenger": "the messenger",
+            "telegram": "your Telegram bots",
         }.get(family, family)
         verb = {"read": "Read", "write": "Change", "send": "Send through"}.get(
             permission, permission.capitalize()

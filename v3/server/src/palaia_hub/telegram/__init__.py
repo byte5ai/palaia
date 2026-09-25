@@ -7,8 +7,9 @@ Deliberately empty of imports, for the same reason
 (the ``telegram:`` section of ``config.yaml`` *is* those models), and that
 module must stay importable without dragging httpx, fastapi or fastmcp in
 behind it. Import the submodule you need — ``palaia_hub.telegram.models``,
-``.api``, ``.routing``, ``.service``, ``.poller``, ``.webhook`` — never this
-package for its side effects.
+``.api``, ``.routing``, ``.service``, ``.poller``, ``.webhook``, ``.runtime``
+(the process lifecycle, issue #439) — never this package for its side
+effects.
 """
 
 from __future__ import annotations

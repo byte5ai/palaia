@@ -260,17 +260,33 @@ class MessengerService:
         MASTERPLAN §5.4 trust rule #7 — "the human can ... join in").
 
         No SPEC-402 session secret is checked here — there is no session to
-        prove one for. This is safe only because it has exactly one caller,
-        :mod:`palaia_hub.messenger_api`'s ``POST /api/messenger/send``,
-        which sits behind the owner's signed-in session and CSRF token
-        (:mod:`palaia_hub.admin_session`): a *stronger* proof of "this really
-        is the owner" than a session secret is of "this really is session
-        X", not a weaker substitute for it. The sender is always
-        :data:`~palaia_hub.messenger.models.OWNER_HANDLE`, and a reply is not
-        fenced to a thread the owner already took part in — reading along
-        and then answering is exactly trust rule #7's "join in", so the
-        fence :meth:`send` applies to an ordinary session does not apply
-        here.
+        prove one for. This is safe only because of who calls it, and there
+        are exactly two callers, neither of which lets an MCP client choose
+        what gets sent as the owner:
+
+        1. :mod:`palaia_hub.messenger_api`'s ``POST /api/messenger/send``,
+           which sits behind the owner's signed-in session and CSRF token
+           (:mod:`palaia_hub.admin_session`): a *stronger* proof of "this
+           really is the owner" than a session secret is of "this really is
+           session X", not a weaker substitute for it.
+        2. The Telegram connector's ``kind: messenger`` route
+           (:meth:`palaia_hub.telegram.service.TelegramService.handle_update`,
+           running since issue #439). There is no request to authenticate
+           there: the recipient, envelope type and urgency all come from a
+           route the *operator* wrote into ``config.yaml``, and the
+           Telegram message supplies only the subject line and the body —
+           which names the Telegram sender — never the address, ``refs`` or
+           ``reply_to``. It is the owner's standing instruction to relay one
+           chat to one recipient, and the relayed words are a human's, not
+           the owner's own; the threat model's Telegram section (B7) is
+           where that residual risk is stated.
+
+        The sender is always :data:`~palaia_hub.messenger.models.OWNER_HANDLE`,
+        and a reply is not fenced to a thread the owner already took part in
+        — reading along and then answering is exactly trust rule #7's "join
+        in", so the fence :meth:`send` applies to an ordinary session does
+        not apply here. A third caller needs the same kind of argument
+        written down here before it is added.
         """
         return await self._send(
             sender=OWNER_HANDLE,
@@ -305,9 +321,10 @@ class MessengerService:
     ) -> SendResult:
         """The validate-address-store pipeline shared by :meth:`send` (an
         authenticated session, fenced to threads it took part in) and
-        :meth:`send_as_owner` (already-authenticated by the dashboard's own
-        gate, never fenced) — one implementation of "what a send actually
-        does", not two copies that could drift.
+        :meth:`send_as_owner` (the owner — through the dashboard's own gate,
+        or an operator-written Telegram route — never fenced) — one
+        implementation of "what a send actually does", not two copies that
+        could drift.
         """
         clean_refs = check_refs(refs)
         self._check_refs_resolve(clean_refs, readable_vaults)

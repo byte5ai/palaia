@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
@@ -98,3 +99,73 @@ def test_the_window_expires_and_the_bucket_recovers() -> None:
     assert first.status_code == 401
     assert second.status_code == 429
     assert third.status_code == 401
+
+
+# ------------------------------------ the Telegram webhook bucket (issue #439)
+
+
+def _webhook_app(status: int) -> FastAPI:
+    app = FastAPI()
+
+    @app.post("/telegram/webhook/{bot}")
+    async def webhook(bot: str) -> JSONResponse:
+        return JSONResponse({"bot": bot}, status_code=status)
+
+    return app
+
+
+def test_the_webhook_literal_matches_the_route() -> None:
+    from palaia_hub.modes.rate_limit import TELEGRAM_WEBHOOK_PREFIX
+    from palaia_hub.telegram.webhook import WEBHOOK_PREFIX
+
+    assert TELEGRAM_WEBHOOK_PREFIX == WEBHOOK_PREFIX + "/"
+
+
+def test_bad_webhook_secrets_trip_the_limit() -> None:
+    app = _webhook_app(401)
+    app.add_middleware(AuthRateLimitMiddleware, limit=3, window_seconds=60)
+    client = TestClient(app)
+
+    statuses = [client.post("/telegram/webhook/support").status_code for _ in range(5)]
+
+    assert statuses == [401, 401, 401, 429, 429]
+
+
+def test_every_bot_key_shares_one_webhook_bucket() -> None:
+    """Walking bot keys must not buy a fresh allowance per bot."""
+    app = _webhook_app(401)
+    app.add_middleware(AuthRateLimitMiddleware, limit=3, window_seconds=60)
+    client = TestClient(app)
+
+    statuses = [
+        client.post(f"/telegram/webhook/{bot}").status_code
+        for bot in ("support", "personal", "ops", "support")
+    ]
+
+    assert statuses == [401, 401, 401, 429]
+
+
+@pytest.mark.parametrize("status", [200, 404, 503])
+def test_only_a_bad_secret_fills_the_webhook_bucket(status: int) -> None:
+    """Telegram's own deliveries (200) are never counted, an unknown bot key
+    (404) is not a guessed credential, and a hub that cannot verify (503)
+    is the hub's fault, not the caller's."""
+    app = _webhook_app(status)
+    app.add_middleware(AuthRateLimitMiddleware, limit=2, window_seconds=60)
+    client = TestClient(app)
+
+    statuses = [client.post("/telegram/webhook/support").status_code for _ in range(6)]
+
+    assert statuses == [status] * 6
+
+
+def test_the_webhook_bucket_is_independent_of_the_admin_gate() -> None:
+    """The admin half switched off (no session gate mounted) must not switch
+    the webhook half off with it: that route checks its own credential."""
+    app = _webhook_app(401)
+    app.add_middleware(AuthRateLimitMiddleware, limit=2, window_seconds=60, admin_prefix=None)
+    client = TestClient(app)
+
+    statuses = [client.post("/telegram/webhook/support").status_code for _ in range(3)]
+
+    assert statuses == [401, 401, 429]

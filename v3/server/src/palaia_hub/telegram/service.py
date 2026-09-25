@@ -242,6 +242,23 @@ class TelegramService:
     def ledger(self) -> SentLedger:
         return self._ledger
 
+    @property
+    def has_messenger(self) -> bool:
+        """Whether a ``kind: messenger`` route has anything to deliver to.
+
+        Read by :class:`palaia_hub.telegram.runtime.TelegramRuntime`'s
+        startup check, which warns about a route that would be refused at
+        delivery rather than waiting for the first message to find out.
+        """
+        return self._messenger is not None
+
+    @property
+    def vault_keys(self) -> frozenset[str]:
+        """The vault keys a ``kind: inbox`` route can land in — the map this
+        service was built with, which is fixed for the life of the process
+        (a vault created later is reachable after a restart)."""
+        return frozenset(self._vaults)
+
     def enabled_bots(self) -> list[TelegramBotConfig]:
         """Every configured bot that is switched on."""
         return [bot for bot in self.settings.bots if bot.enabled]
@@ -278,8 +295,8 @@ class TelegramService:
                 f"Telegram bot {bot.key!r} names the secret "
                 f"{bot.token_secret!r}, and the secret store holds nothing under "
                 "that name. Fix: store the bot token with "
-                f"`PUT /api/secrets/{bot.token_secret}` (dashboard: Settings → "
-                "Secrets). The token never goes in config.yaml."
+                f"`PUT /api/secrets/{bot.token_secret}`. The token never goes in "
+                "config.yaml."
             )
         return value
 

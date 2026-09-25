@@ -56,7 +56,7 @@ write.
 | `ts` | number | Unix timestamp (seconds, float) when the envelope was built. |
 | `vault` | string \| null | The vault this event concerns, when there is one. |
 | `permalink` | string \| null | The entry this event concerns, when there is one. |
-| `origin` | string | Which subsystem published it: `vault`, `hub`, `auth`, `inbox`, `index`, `doctor`, `gateway`, `curator`, `stash`, `market`, `directory`, `messenger`. New subsystems add new values here — a consumer must not treat this as a closed set. |
+| `origin` | string | Which subsystem published it: `vault`, `hub`, `auth`, `inbox`, `index`, `doctor`, `gateway`, `curator`, `stash`, `market`, `directory`, `messenger`, `telegram`. New subsystems add new values here — a consumer must not treat this as a closed set. |
 | `data` | object | Event-specific payload (§3). May also repeat `vault`/`permalink` for a consumer reading only `data`. |
 | `id` | string | Stable idempotency key for this occurrence — unchanged across webhook retries of the same delivery. |
 | `schema_version` | integer | Currently `1`. See §5. |

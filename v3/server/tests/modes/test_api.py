@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 from fastapi.testclient import TestClient
 
@@ -220,6 +221,62 @@ def test_tunnel_guidance_scopes_to_mcp_and_oauth_paths_in_cloud_mode(tmp_path: P
     assert "/mcp" in body["config"]
     assert "/oauth" in body["config"]
     assert "only the MCP endpoint" in body["note"]
+
+
+_WEBHOOK_BOT_YAML = (
+    "telegram:\n"
+    "  bots:\n"
+    "    - key: support\n"
+    "      token_secret: telegram_support\n"
+    "      transport: webhook\n"
+    "      webhook_secret: telegram_support_hook\n"
+)
+
+
+def _cloud_client_with(home: Path, telegram_yaml: str) -> TestClient:
+    path = config_file_path(home)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "mode: cloud\nhost: 127.0.0.1\nauth_enabled: true\n" + telegram_yaml, encoding="utf-8"
+    )
+    return TestClient(create_app(load_config(home=home, create_if_missing=False), home=home))
+
+
+@pytest.mark.parametrize("kind", ["tailscale", "cloudflared"])
+def test_cloud_tunnel_guidance_forwards_the_telegram_webhook_once_a_webhook_bot_exists(
+    tmp_path: Path, kind: str
+) -> None:
+    """Issue #439: a webhook bot needs Telegram's servers to reach
+    ``/telegram/webhook``; the guidance says so — for both providers — only
+    when such a bot is configured."""
+    client = _cloud_client_with(tmp_path, _WEBHOOK_BOT_YAML)
+
+    body = client.post("/api/exposure/tunnel", json={"kind": kind}).json()
+
+    assert "/telegram/webhook" in body["config"]
+    assert "Telegram webhook" in body["note"]
+
+
+@pytest.mark.parametrize(
+    "telegram_yaml",
+    [
+        "",  # no telegram: section at all
+        _WEBHOOK_BOT_YAML.replace(
+            "      transport: webhook\n      webhook_secret: telegram_support_hook\n", ""
+        ),  # a polling bot
+        _WEBHOOK_BOT_YAML + "      enabled: false\n",  # a webhook bot, switched off
+    ],
+    ids=["no-telegram-section", "polling-bot", "webhook-bot-switched-off"],
+)
+def test_cloud_tunnel_guidance_leaves_telegram_off_without_a_live_webhook_bot(
+    tmp_path: Path, telegram_yaml: str
+) -> None:
+    client = _cloud_client_with(tmp_path, telegram_yaml)
+
+    body = client.post("/api/exposure/tunnel", json={"kind": "cloudflared"}).json()
+
+    assert "/telegram" not in body["config"]
+    assert "Telegram" not in body["note"]
 
 
 def test_tunnel_guidance_forwards_everything_in_open_mode() -> None:

@@ -59,9 +59,13 @@ TOKEN_PREFIX = "plt"
 # (see the module docstring of palaia_hub.gateway.vault_protocol for the
 # mirror-image rule), and this file only needs the scope *shape*, not the
 # per-action mapping that lives there.
+# Issue #439, the same miss once more: `telegram:read|send` (issue #411) was
+# in `_profile_scopes` and `palaia_hub.auth.scopes` but not here, so no
+# plt_ token could carry it and the dashboard's default token for a
+# `telegram: true` profile was refused outright.
 _SCOPE_RE = re.compile(
     r"^(?:vault:[a-z0-9_-]+:(?:read|write)|stash:(?:read|write)"
-    r"|directory:(?:read|write)|messenger:(?:read|send))$"
+    r"|directory:(?:read|write)|messenger:(?:read|send)|telegram:(?:read|send))$"
 )
 
 _TOKEN_RE = re.compile(rf"^{TOKEN_PREFIX}_([A-Za-z0-9_-]{{8,}})\.([A-Za-z0-9_-]{{16,}})$")
@@ -101,8 +105,9 @@ def _validate_scopes(scopes: Sequence[str]) -> list[str]:
         raise TokenError(
             f"invalid scope(s) {bad!r}. Fix: use 'vault:<key>:read'/'vault:<key>:write' "
             "for a vault, 'stash:read'/'stash:write' for the stash, "
-            "'directory:read'/'directory:write' for the session directory, or "
-            "'messenger:read'/'messenger:send' for the messenger — see "
+            "'directory:read'/'directory:write' for the session directory, "
+            "'messenger:read'/'messenger:send' for the messenger, or "
+            "'telegram:read'/'telegram:send' for the Telegram connector — see "
             "palaia_hub.auth.scopes."
         )
     return list(scopes)

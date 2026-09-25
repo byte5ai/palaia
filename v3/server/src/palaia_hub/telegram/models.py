@@ -71,8 +71,10 @@ ALLOWED_UPDATES: tuple[str, ...] = (
 #: agent gets an error naming the limit instead of a remote failure.
 MAX_MESSAGE_CHARS = 4096
 
-#: How many outbound message ids the service remembers per bot, so an agent
-#: can edit or delete what it sent. See
+#: How many outbound messages the service remembers, so an agent can edit or
+#: delete what it sent. One ledger for the whole connector, not one per bot:
+#: entries are keyed by ``(bot, chat, message)`` and the oldest is evicted
+#: first whichever bot sent it. See
 #: :class:`palaia_hub.telegram.service.SentLedger`.
 DEFAULT_SENT_LEDGER_SIZE = 500
 

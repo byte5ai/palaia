@@ -50,6 +50,16 @@ defense.
 The sign-in-free paths (``/api/health``, ``/api/info``) are never
 throttled: the sign-in page itself reads them, and a locked-out operator
 must still be able to see that their hub is alive.
+
+**Issue #439 adds one more shared bucket: the Telegram webhook.**
+``POST /telegram/webhook/<bot>`` is reachable from the internet with no
+prior credential — its credential *is* the secret-token header it checks —
+so a caller guessing that header is the same pattern as one guessing a
+session cookie, on a route this middleware did not look at. Its ``401``
+responses now count per caller in one bucket for every bot
+(:data:`PREFIX_BUCKETS`), so walking bot keys buys no extra tries either.
+Telegram's own deliveries succeed and are never counted, so a real bot is
+never throttled by somebody else's guessing — the bucket key is the caller.
 """
 
 from __future__ import annotations
@@ -57,6 +67,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Awaitable, Callable, Iterable
+from dataclasses import dataclass
 from typing import Any
 
 from ..security.client_ip import client_ip_for_scope
@@ -101,6 +112,47 @@ ADMIN_FAILURE_STATUSES: frozenset[int] = frozenset({401, 403})
 #: sets agree.
 ADMIN_FREE_PATHS: frozenset[str] = frozenset({"/api/health", "/api/info"})
 
+
+@dataclass(frozen=True, slots=True)
+class PrefixBucket:
+    """A path prefix whose refusals share one bucket per caller.
+
+    The admin surface's shape (one bucket for a whole subtree, only some
+    statuses count), for a subtree that is not under :data:`ADMIN_PREFIX`.
+    """
+
+    prefix: str
+    bucket: str
+    statuses: frozenset[int]
+
+
+#: The Telegram webhook route's prefix (issue #439). A literal for the same
+#: reason :data:`ADMIN_FREE_PATHS` is one — importing
+#: :mod:`palaia_hub.telegram.webhook` here would pull FastAPI routing into a
+#: plain ASGI middleware — and ``tests/modes/test_rate_limit.py`` asserts it
+#: matches that module's ``WEBHOOK_PREFIX``. The trailing slash is deliberate:
+#: only paths *under* the prefix, one per bot, are the route.
+TELEGRAM_WEBHOOK_PREFIX = "/telegram/webhook/"
+
+#: Its bucket. Not a path, like :data:`ADMIN_BUCKET`: every bot key shares it.
+TELEGRAM_WEBHOOK_BUCKET = "telegram-webhook"
+
+#: Only a bad or missing secret header counts (the route's ``401``). An
+#: unknown bot key's ``404`` does not: a bot key is not a secret (it is in
+#: ``config.yaml``, the logs and the webhook URL itself), so there is nothing
+#: to guess — and a ``503`` is the hub's own misconfiguration, not the
+#: caller's.
+TELEGRAM_WEBHOOK_FAILURE_STATUSES: frozenset[int] = frozenset({401})
+
+#: Every prefix bucket the middleware applies by default.
+PREFIX_BUCKETS: tuple[PrefixBucket, ...] = (
+    PrefixBucket(
+        prefix=TELEGRAM_WEBHOOK_PREFIX,
+        bucket=TELEGRAM_WEBHOOK_BUCKET,
+        statuses=TELEGRAM_WEBHOOK_FAILURE_STATUSES,
+    ),
+)
+
 #: Failed attempts allowed per ``(client IP, bucket)`` per window before a
 #: 429 is returned *without* even reaching the real endpoint.
 DEFAULT_LIMIT = 10
@@ -119,6 +171,7 @@ class AuthRateLimitMiddleware:
         window_seconds: float = DEFAULT_WINDOW_SECONDS,
         clock: Callable[[], float] = time.monotonic,
         admin_prefix: str | None = ADMIN_PREFIX,
+        prefix_buckets: Iterable[PrefixBucket] = PREFIX_BUCKETS,
     ) -> None:
         """Args:
         app: the wrapped ASGI application.
@@ -130,6 +183,10 @@ class AuthRateLimitMiddleware:
         admin_prefix: the prefix whose ``401``/``403`` responses share one
             bucket per caller. ``None`` disables that half entirely (what
             a hub with no admin gate wants).
+        prefix_buckets: further subtrees counted the same way, each in its
+            own shared bucket with its own counted statuses (issue #439:
+            the Telegram webhook). Unlike the admin half, not tied to the
+            admin gate being mounted — the route checks its own credential.
         """
         self._app = app
         self._paths = frozenset(paths)
@@ -137,6 +194,8 @@ class AuthRateLimitMiddleware:
         self._window = window_seconds
         self._clock = clock
         self._admin_prefix = admin_prefix
+        self._prefix_buckets = tuple(prefix_buckets)
+        self._statuses_by_bucket = {pb.bucket: pb.statuses for pb in self._prefix_buckets}
         self._failures: dict[tuple[str, str], list[float]] = {}
 
     def _bucket_for(self, path: str) -> str | None:
@@ -154,6 +213,9 @@ class AuthRateLimitMiddleware:
             and path not in ADMIN_FREE_PATHS
         ):
             return ADMIN_BUCKET
+        for prefix_bucket in self._prefix_buckets:
+            if path.startswith(prefix_bucket.prefix):
+                return prefix_bucket.bucket
         if path in self._paths:
             return path
         return None
@@ -162,6 +224,8 @@ class AuthRateLimitMiddleware:
         """Does a response with ``status`` count against ``bucket``?"""
         if bucket == ADMIN_BUCKET:
             return status in ADMIN_FAILURE_STATUSES
+        if bucket in self._statuses_by_bucket:
+            return status in self._statuses_by_bucket[bucket]
         return status >= 400
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -226,5 +290,10 @@ __all__ = [
     "DEFAULT_LIMIT",
     "DEFAULT_RATE_LIMITED_PATHS",
     "DEFAULT_WINDOW_SECONDS",
+    "PREFIX_BUCKETS",
+    "TELEGRAM_WEBHOOK_BUCKET",
+    "TELEGRAM_WEBHOOK_FAILURE_STATUSES",
+    "TELEGRAM_WEBHOOK_PREFIX",
     "AuthRateLimitMiddleware",
+    "PrefixBucket",
 ]

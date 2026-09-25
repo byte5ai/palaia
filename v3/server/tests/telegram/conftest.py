@@ -48,16 +48,34 @@ class FakeBotApi:
     ``queue`` is a list of ``getUpdates`` results, consumed one call at a
     time; an exhausted queue answers with an empty batch, which is what the
     real API does when nothing has happened.
+
+    ``park_when_empty`` makes an exhausted queue behave like the real long
+    poll instead: the call waits (until cancelled) rather than returning at
+    once. That is what a test running the poller as a background task wants
+    — otherwise the loop spins through empty batches for as long as the test
+    runs — and it is exactly the state the hub's shutdown has to cancel.
     """
 
-    def __init__(self, queue: list[list[dict[str, Any]]] | None = None) -> None:
+    def __init__(
+        self,
+        queue: list[list[dict[str, Any]]] | None = None,
+        *,
+        park_when_empty: bool = False,
+    ) -> None:
         self.queue = list(queue or [])
+        self.park_when_empty = park_when_empty
         self.sent: list[dict[str, Any]] = []
         self.edited: list[dict[str, Any]] = []
         self.deleted: list[dict[str, Any]] = []
         self.get_updates_calls: list[dict[str, Any]] = []
         self.next_message_id = 1000
         self.fail_with: Exception | None = None
+        #: How many ``getUpdates`` calls are (or were) parked in the long
+        #: poll, and how many of those were cancelled there.
+        self.parked_polls = 0
+        self.cancelled_polls = 0
+        #: Set by :meth:`aclose` — the one thing an owning runtime calls.
+        self.closed = False
 
     async def get_updates(
         self, token: str, *, offset: int | None, timeout: float, allowed_updates: tuple[str, ...]
@@ -77,7 +95,19 @@ class FakeBotApi:
         await asyncio.sleep(0)
         if self.fail_with is not None:
             raise self.fail_with
-        return self.queue.pop(0) if self.queue else []
+        if self.queue:
+            return self.queue.pop(0)
+        if self.park_when_empty:
+            self.parked_polls += 1
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                self.cancelled_polls += 1
+                raise
+        return []
+
+    async def aclose(self) -> None:
+        self.closed = True
 
     async def send_message(
         self,

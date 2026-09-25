@@ -43,7 +43,13 @@ http {
         # MCP client could complete an OAuth flow against the image, and in
         # `open` mode (where signing in is mandatory) the operator could
         # not reach the one door into their own hub.
-        location ~ ^/(api|mcp|oauth|\.well-known)(/|$) {
+        #
+        # Issue #439: `/telegram` too — Telegram's webhook deliveries
+        # (`POST /telegram/webhook/<bot>`). Without it a webhook bot on the
+        # packaged image would reach the static location below instead of
+        # the hub, and never be delivered. The route is authenticated by
+        # Telegram's secret-token header, checked by the hub itself.
+        location ~ ^/(api|mcp|oauth|telegram|\.well-known)(/|$) {
             proxy_pass http://${PALAIA_HOST}:${PALAIA_PORT};
             proxy_http_version 1.1;
             proxy_set_header Host $host;

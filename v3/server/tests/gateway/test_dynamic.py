@@ -448,7 +448,8 @@ async def test_update_vault_identity_unknown_key_raises() -> None:
 
 async def test_set_profile_upstreams_keeps_every_other_profile_field() -> None:
     """Issue #324: connecting an external server to a profile must not reset
-    its hidden tools, team flags or routing mode."""
+    its hidden tools, team flags or routing mode. Issue #439: nor its
+    Telegram flag, which the first version of the fix missed."""
     config = GatewayConfig(
         vaults=[VaultMountConfig(key="work", name="work")],
         profiles=[
@@ -459,6 +460,7 @@ async def test_set_profile_upstreams_keeps_every_other_profile_field() -> None:
                 stash=True,
                 directory=True,
                 messenger=True,
+                telegram=True,
                 hidden_tools=["work_memory_delete"],
             )
         ],
@@ -475,6 +477,7 @@ async def test_set_profile_upstreams_keeps_every_other_profile_field() -> None:
     assert profile.upstreams == ["fx"]
     assert profile.label == "Desk"
     assert profile.stash and profile.directory and profile.messenger
+    assert profile.telegram
     assert profile.hidden_tools == ["work_memory_delete"]
     async with Client(gateway.profile_servers["default"]) as client:
         names = {t.name for t in await client.list_tools()}
@@ -483,6 +486,7 @@ async def test_set_profile_upstreams_keeps_every_other_profile_field() -> None:
     await gateway.set_profile_upstreams("default", [])
     profile = next(p for p in gateway.config.profiles if p.path == "default")
     assert profile.upstreams == []
+    assert profile.telegram
     assert profile.hidden_tools == ["work_memory_delete"]
 
     with pytest.raises(GatewayConfigError):

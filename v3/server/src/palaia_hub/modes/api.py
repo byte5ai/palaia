@@ -48,6 +48,16 @@ def _field(config: HubConfig, dotted: str) -> Any:
     return getattr(getattr(config, section), key)
 
 
+def _has_telegram_webhook(config: HubConfig) -> bool:
+    """Whether ``config`` has an enabled Telegram bot on ``transport:
+    webhook`` — the one case in which 'cloud'-mode tunnel guidance must
+    forward the webhook route too (issue #439)."""
+    telegram = config.telegram
+    return telegram is not None and any(
+        bot.enabled and bot.transport == "webhook" for bot in telegram.bots
+    )
+
+
 def _restart_required(active: HubConfig, configured: HubConfig) -> bool:
     return any(_field(active, f) != _field(configured, f) for f in _RESTART_SENSITIVE_FIELDS)
 
@@ -373,13 +383,23 @@ def build_modes_router(
         configured = _configured()
         tunnel_mode: Literal["cloud", "open"] = "open" if configured.mode == "open" else "cloud"
         port = body.local_port or configured.port
+        # Read from the configured file, like the mode above: the guidance
+        # is for the hub this config.yaml describes, which is the one that
+        # runs after the restart a Telegram change needs anyway.
+        telegram_webhook = _has_telegram_webhook(configured)
         if body.kind == "tailscale":
             guidance = tailscale_guidance(
-                mode=tunnel_mode, local_port=port, hostname=body.hostname or "<your-tailnet-name>"
+                mode=tunnel_mode,
+                local_port=port,
+                hostname=body.hostname or "<your-tailnet-name>",
+                telegram_webhook=telegram_webhook,
             )
         else:
             guidance = cloudflared_guidance(
-                mode=tunnel_mode, local_port=port, hostname=body.hostname or "hub.example.com"
+                mode=tunnel_mode,
+                local_port=port,
+                hostname=body.hostname or "hub.example.com",
+                telegram_webhook=telegram_webhook,
             )
         return TunnelGuidanceOut(
             label=guidance.label,

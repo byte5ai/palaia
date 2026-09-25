@@ -69,12 +69,14 @@ from .vault import EventBus, VaultConfigError, VaultNotFoundError, VaultRegistry
 from .vault.engine import VaultEngine
 
 #: Issue #396: the help used to list only the vault family, although the
-#: token store accepts (and the team features need) the other three.
+#: token store accepts (and the team features need) the others. Telegram
+#: joined with issue #439.
 _SCOPE_HELP = (
     "Repeatable. 'vault:<key>:read' / 'vault:<key>:write' for a vault, "
     "'stash:read' / 'stash:write' for the stash, 'directory:read' / "
     "'directory:write' for the session directory, 'messenger:read' / "
-    "'messenger:send' for the messenger. Omit for everything the profile mounts."
+    "'messenger:send' for the messenger, 'telegram:read' / 'telegram:send' "
+    "for the Telegram connector. Omit for everything the profile mounts."
 )
 
 

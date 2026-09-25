@@ -73,7 +73,11 @@ class SPAStaticFiles(StaticFiles):
     #: absent — without this prefix here, an unregistered `/oauth/login`
     #: would instead fall through to this mount and get the dashboard shell
     #: back with a 200, silently hiding that the route does not exist.
-    _BACKEND_PREFIXES = ("api", "mcp", "oauth")
+    #: "telegram" is the connector's webhook surface (issue #439,
+    #: ``/telegram/webhook/<bot>``), mounted only on a hub with a
+    #: ``telegram:`` section — on any other hub, or at any other path under
+    #: it, the answer is a plain 404, never the dashboard shell.
+    _BACKEND_PREFIXES = ("api", "mcp", "oauth", "telegram")
 
     #: Exact paths of backend ASGI mounts registered on the app this
     #: instance serves under (e.g. "/mcp", "/mcp/hub", "/mcp/stash") —
