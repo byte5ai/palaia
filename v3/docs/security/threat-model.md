@@ -77,7 +77,7 @@ from where. It is the single most load-bearing control in this document:
 | Mode | Bind | MCP surface | Dashboard / `/api/*` | Sign-in required |
 |---|---|---|---|---|
 | `locked` | private address, enforced at config load | LAN only | LAN only | Off by default, opt-in |
-| `cloud` | private address, enforced at config load; a tunnel forwards `/mcp`, `/oauth`, `/.well-known` only | public via the tunnel | private network only | On by default |
+| `cloud` | private address, enforced at config load; a tunnel forwards `/mcp`, `/oauth`, `/.well-known` only — plus `/telegram/webhook` once a Telegram webhook bot is configured (§7.3a) | public via the tunnel | private network only | On by default |
 | `open` | any | public | public | **Mandatory, and the config is refused without a way to sign in** |
 
 *Enforced by* `server/src/palaia_hub/config.py` (private-bind rule, and the
@@ -246,10 +246,14 @@ was not given. *Enforced by* `server/src/palaia_hub/curator/profile.py` and
 
 ### 7.3a The Telegram connector (B7)
 
-New in issue #411, and the first boundary where **the far side is the general
-public**: anyone who can write into a group a configured bot sits in can put
-text in front of an agent, and in webhook mode Telegram's servers reach an
-HTTP endpoint on the hub directly. Four controls, in the order they apply:
+New in issue #411, running in the hub since issue #439, and the first
+boundary where **the far side is the general public**: anyone who can write
+into a group a configured bot sits in can put text in front of an agent, and
+in webhook mode Telegram's servers reach an HTTP endpoint on the hub
+directly. None of it exists on a hub whose `config.yaml` has no `telegram:`
+section — no route, no poll task, no tool (*proven by*
+`server/tests/telegram/test_serve_wiring.py`). Five controls, in the order
+they apply:
 
 1. **Inbound text never becomes an agent's own initiative.** There is no tool
    that reads Telegram. A message reaches an agent only through a destination
@@ -267,6 +271,23 @@ HTTP endpoint on the hub directly. Four controls, in the order they apply:
    anything. *Enforced by* `server/src/palaia_hub/telegram/webhook.py`;
    *proven by* `server/tests/telegram/test_webhook.py` (absent, empty, wrong,
    prefix and extended headers all refused with nothing delivered).
+
+   Where that route sits: `POST /telegram/webhook/<bot>`, outside `/api/`
+   and therefore **deliberately outside the admin session gate** (Telegram
+   carries no browser session) — the header check is its gate, and a signed-in
+   session does not stand in for it (*proven by*
+   `server/tests/telegram/test_webhook_exposure.py`). The packaged nginx
+   proxies `/telegram/` to the hub (`deploy/nginx.conf.template`,
+   `server/tests/deploy/test_nginx_template.py`). In `cloud` mode the tunnel
+   guidance forwards `/telegram/webhook` **only** when an enabled webhook bot
+   is configured, so a polling-only hub puts nothing new on the internet
+   (`server/src/palaia_hub/modes/tunnel.py`, `server/tests/modes/test_tunnel.py`);
+   in `open` mode everything is public already. And because in `cloud`/`open`
+   the route is reachable by anyone, guessing the secret is throttled like
+   guessing a session cookie: its `401`s feed the failed-attempt limiter, in
+   one bucket per caller shared by every bot key, while Telegram's own
+   successful deliveries never count (`server/src/palaia_hub/modes/rate_limit.py`,
+   `server/tests/modes/test_rate_limit.py`).
 3. **Outbound is default-deny, per MCP profile.** A `telegram.grants` entry
    names the bots and chats one profile may address; a profile with no entry
    sends nothing, whatever scopes its token carries, and the profile identity
@@ -281,6 +302,21 @@ HTTP endpoint on the hub directly. Four controls, in the order they apply:
    looked. *Proven by* `server/tests/telegram/test_token_never_leaks.py`,
    which asserts all three halves the issue names (config, logs, tool
    output).
+5. **A `kind: messenger` route relays as the owner — the operator's
+   standing instruction, not a caller's choice.** Such a route is the second
+   caller of `MessengerService.send_as_owner` (the first is the dashboard's
+   signed-in `POST /api/messenger/send`), so the envelope's `from` is
+   `owner`. What the route fixes is everything that matters for
+   authorisation: the recipient, the envelope type and the urgency all come
+   from `config.yaml`; the Telegram message supplies only the subject line
+   and the body — never an address, `refs` or `reply_to` — and the body
+   names the Telegram sender. The consequence is stated plainly: an agent
+   receiving such an envelope must read `from: owner` as "relayed by the
+   owner's rule", not "written by the owner", because in a group it may be
+   anyone's words. *Enforced by* `server/src/palaia_hub/telegram/service.py`
+   and `server/src/palaia_hub/messenger/service.py` (the two-caller
+   invariant in `send_as_owner`'s docstring); *proven by*
+   `server/tests/telegram/test_serve_wiring.py`.
 
 The residual risk is stated rather than solved: **a routed Telegram message
 is untrusted text that a model will read.** The controls above decide *where*
@@ -381,7 +417,8 @@ argue with them; that is what the list is for.
     per-profile default-deny, so an injected agent cannot answer through a
     bot or into a chat the operator did not grant it. An operator putting a
     bot in a *public* group should assume every message in it reaches the
-    destination they configured.
+    destination they configured — and, through a `kind: messenger` route,
+    reaches it under the `owner` sender (§7.3a, control 5).
 
 ---
 
