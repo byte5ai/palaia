@@ -24,11 +24,16 @@ lifespan cancels these tasks *before* it closes the store — the other order
 would turn an ordinary shutdown into a burst of "cannot read secret" errors
 from polls that were never going to be answered anyway.
 
-**Configuration is read once.** Bots, routes and grants come from
-``config.yaml`` at startup; a vault created later through the wizard is not
-in the map an ``inbox`` route delivers into until the hub restarts. The
-startup check below says so for every route it can already tell will fail,
-instead of letting the first message find out.
+**Configuration applies live** (issue #463). Bots, routes and grants come
+from ``config.yaml`` at startup, and the dashboard's editor hands every
+saved change to :meth:`TelegramRuntime.apply_settings`, which swaps the
+service's settings and starts or stops poll tasks to match — no restart.
+A bot that keeps polling keeps its poller, and with it the offset that is
+Telegram's only acknowledgement. What is still fixed at startup is the
+vault map an ``inbox`` route delivers into: a vault created later through
+the wizard is reachable after a restart. The configuration check below says
+so for every route it can already tell will fail — at startup in the log,
+and after every edit in the editor's answer.
 
 **The dashboard's one outbound call lives here too** (issue #439):
 :meth:`TelegramRuntime.check_bot` runs ``getMe`` when the operator asks and
@@ -46,7 +51,7 @@ from types import MappingProxyType
 from typing import Any
 
 from .api import BotApi, summary_line
-from .models import BotCheck, TelegramError
+from .models import BotCheck, TelegramError, TelegramSettings
 from .poller import LongPoller
 from .service import TelegramService
 
@@ -101,6 +106,14 @@ class TelegramRuntime:
         self._last_checks: dict[str, BotCheck] = {}
         self._warned = False
         self._api_closed = False
+        #: Set by :meth:`start`, cleared by :meth:`aclose` — whether a bot
+        #: added by :meth:`apply_settings` should get its poll task now. Not
+        #: derivable from :attr:`tasks`: a hub with no polling bot yet has
+        #: none, and is started all the same.
+        self._started = False
+        #: Serialises :meth:`apply_settings` against itself, so two saves
+        #: in quick succession cannot interleave their poller changes.
+        self._apply_lock = asyncio.Lock()
 
     @property
     def pollers(self) -> Mapping[str, LongPoller]:
@@ -214,14 +227,126 @@ class TelegramRuntime:
                 "telegram runtime was already shut down; not restarting its poll tasks"
             )
             return
-        if self._tasks:
+        if self._started:
             return
-        for key, poller in self._pollers.items():
-            self._tasks[key] = asyncio.create_task(
-                poller.run_forever(), name=f"{POLL_TASK_PREFIX}{key}"
-            )
+        self._started = True
+        for key in self._pollers:
+            self._start_task(key)
         if self._tasks:
             logger.info("telegram: long polling started for bot(s) %s", sorted(self._tasks))
+
+    def _start_task(self, key: str) -> None:
+        self._tasks[key] = asyncio.create_task(
+            self._pollers[key].run_forever(), name=f"{POLL_TASK_PREFIX}{key}"
+        )
+
+    async def _stop_tasks(self, keys: list[str]) -> None:
+        """Cancel these bots' poll tasks and wait for them — never raising
+        on one that had already died (see :meth:`aclose`)."""
+        tasks = {key: self._tasks.pop(key) for key in keys if key in self._tasks}
+        for task in tasks.values():
+            task.cancel()
+        if not tasks:
+            return
+        results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+        for key, result in zip(tasks, results, strict=True):
+            if isinstance(result, BaseException) and not isinstance(
+                result, asyncio.CancelledError
+            ):
+                logger.warning(
+                    "telegram poll task for bot %r had already stopped: %s: %s",
+                    key,
+                    type(result).__name__,
+                    result,
+                )
+
+    async def apply_settings(self, settings: TelegramSettings) -> list[str]:
+        """Run the connector on an edited ``telegram:`` section, live.
+
+        ``settings`` is already validated — cross-references included
+        (:meth:`~palaia_hub.telegram.models.TelegramSettings.
+        check_consistency`); this method only makes the running connector
+        match it:
+
+        * the service swaps its settings and routing table
+          (:meth:`~palaia_hub.telegram.service.TelegramService.
+          apply_settings`), so the next message, send or tool call follows
+          the new rules;
+        * a bot that stops polling — removed, switched off, moved to a
+          webhook — has its task cancelled and its poller dropped;
+        * a bot that starts polling gets a poller, and a task if the
+          runtime is running;
+        * a bot that keeps polling **under the same token secret** keeps its
+          poller and its task untouched. The offset is the only thing that
+          acknowledges an update to Telegram: dropping it would re-deliver
+          the last batch, and carrying it over to a *different* bot's token
+          would skip that bot's updates — so a changed ``token_secret``
+          gets a fresh poller.
+
+        A removed bot's cached connection check is forgotten, and so is one
+        whose token secret changed: it described another token.
+
+        Returns:
+            The configuration check (:meth:`startup_warnings`) against the
+            new settings — what the editor shows the operator, and what is
+            logged.
+        """
+        async with self._apply_lock:
+            previous = {bot.key: bot for bot in self.service.settings.bots}
+            self.service.apply_settings(settings)
+            wanted = {bot.key: bot for bot in self.service.polling_bots()}
+            stale = [
+                key
+                for key in self._pollers
+                if key not in wanted or wanted[key].token_secret != previous[key].token_secret
+            ]
+            await self._stop_tasks(stale)
+            for key in stale:
+                del self._pollers[key]
+            for key in wanted:
+                if key in self._pollers:
+                    continue
+                self._pollers[key] = LongPoller(self.service, key, now=self._now)
+                if self._started and not self._api_closed:
+                    self._start_task(key)
+            current = {bot.key: bot for bot in settings.bots}
+            for key in list(self._last_checks):
+                bot = current.get(key)
+                old = previous.get(key)
+                if bot is None or old is None or bot.token_secret != old.token_secret:
+                    del self._last_checks[key]
+            warnings = self.startup_warnings()
+        for warning in warnings:
+            logger.warning("%s", warning)
+        return warnings
+
+    async def secret_changed(self, name: str) -> None:
+        """React to a stored secret being replaced or removed.
+
+        Wired as a ``/api/secrets`` change hook: when the dashboard stores a
+        bot's token, a poller of that bot sitting in its backoff (it failed
+        because there was no token) is restarted at once instead of after
+        up to :data:`~palaia_hub.telegram.poller.MAX_BACKOFF_SECONDS`, and
+        its cached connection check — which described the old token, or
+        none — is forgotten. The poller object, and its offset, are kept.
+        """
+        async with self._apply_lock:
+            affected = [
+                bot.key
+                for bot in self.service.settings.bots
+                if name in (bot.token_secret, bot.webhook_secret)
+            ]
+            for key in affected:
+                self._last_checks.pop(key, None)
+            restart = [
+                key
+                for key in affected
+                if key in self._tasks and self._pollers[key].consecutive_failures > 0
+            ]
+            await self._stop_tasks(restart)
+            if self._started and not self._api_closed:
+                for key in restart:
+                    self._start_task(key)
 
     async def aclose(self) -> None:
         """Cancel every poll task, wait for it, then release the client.
@@ -233,22 +358,8 @@ class TelegramRuntime:
         crashing. Cancelling a task parked in a long poll is immediate: the
         ``getUpdates`` it is waiting on is simply abandoned.
         """
-        tasks = dict(self._tasks)
-        self._tasks.clear()
-        for task in tasks.values():
-            task.cancel()
-        if tasks:
-            results = await asyncio.gather(*tasks.values(), return_exceptions=True)
-            for key, result in zip(tasks, results, strict=True):
-                if isinstance(result, BaseException) and not isinstance(
-                    result, asyncio.CancelledError
-                ):
-                    logger.warning(
-                        "telegram poll task for bot %r had already stopped: %s: %s",
-                        key,
-                        type(result).__name__,
-                        result,
-                    )
+        self._started = False
+        await self._stop_tasks(list(self._tasks))
         if self._owns_api and not self._api_closed:
             self._api_closed = True
             closer = getattr(self._api, "aclose", None)

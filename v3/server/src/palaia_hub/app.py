@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from collections.abc import AsyncIterator, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -40,7 +40,7 @@ from .automations.outbox import OUTBOX_RELATIVE_PATH as AUTOMATIONS_OUTBOX_RELAT
 from .backup_api import build_backup_router
 from .backup_targets import EVENT_ORIGIN as BACKUP_EVENT_ORIGIN
 from .backup_targets import build_targets as build_backup_targets
-from .config import HubConfig, load_config, palaia_home
+from .config import HubConfig, config_file_path, load_config, palaia_home
 from .curator import CuratorScheduler
 from .curator.wiring import CuratorWiring
 from .dashboard_api import build_dashboard_router
@@ -333,8 +333,11 @@ def create_app(
             with ``secret_store`` (as production always does), the
             dashboard's panel is mounted too: ``/api/telegram``, behind the
             admin session like the rest of ``/api/`` (see
-            :mod:`palaia_hub.telegram.dashboard_api`). Omitted (the
-            default), the hub has no Telegram surface at all.
+            :mod:`palaia_hub.telegram.dashboard_api`), with its editor
+            (issue #463) writing to ``config.yaml`` under ``home`` and a
+            stored token waking the bot's poller through the
+            ``/api/secrets`` change hook. Omitted (the default), the hub has
+            no Telegram surface at all.
         hook_outbox: the durable delivery queue backing ``hook_store``.
             Defaults to :class:`~palaia_hub.hooks.HookOutbox` at its
             standard path under the hub's data directory when ``hook_store``
@@ -937,10 +940,11 @@ def create_app(
         app.include_router(
             build_secrets_router(
                 secret_store,
-                on_secret_changed=(
+                on_secret_changed=_secret_change_hook(
                     build_secret_change_hook(upstream_service, dynamic_gateway)
                     if upstream_service is not None and dynamic_gateway is not None
-                    else None
+                    else None,
+                    telegram_runtime,
                 ),
             )
         )
@@ -1011,8 +1015,21 @@ def create_app(
         app.include_router(build_telegram_webhook_router(telegram_runtime.service))
         # The panel's `/api/telegram` (issue #439). It needs the store only
         # to say whether a token is there; without one it could only guess.
+        # Its editor (issue #463) writes to this hub's config.yaml and
+        # applies each change to the running connector.
         if secret_store is not None:
-            app.include_router(build_telegram_dashboard_router(telegram_runtime, secret_store))
+
+            def _publish_telegram_config(action: str, data: dict[str, Any]) -> None:
+                publish_event(event_bus, action, origin="telegram", data=data)
+
+            app.include_router(
+                build_telegram_dashboard_router(
+                    telegram_runtime,
+                    secret_store,
+                    config_path=config_file_path(hub_home),
+                    publish=_publish_telegram_config,
+                )
+            )
 
     _maybe_add_test_slow_route(app)
 
@@ -1029,6 +1046,31 @@ def _default_outbox_path() -> Path:
 def _default_automations_outbox_path() -> Path:
     """Where the automations outbox lives when ``create_app`` is not given one explicitly."""
     return palaia_home() / AUTOMATIONS_OUTBOX_RELATIVE_PATH
+
+
+def _secret_change_hook(
+    upstreams: Callable[[str], Awaitable[None]] | None,
+    telegram_runtime: TelegramRuntime | None,
+) -> Callable[[str], Awaitable[None]] | None:
+    """Everything that reacts to a stored secret changing, as one hook.
+
+    The external servers' reconnect (SPEC-302) and, since issue #463, the
+    Telegram connector: a bot token stored from the dashboard wakes that
+    bot's poller out of its backoff instead of leaving it to find the token
+    up to a minute later, and forgets a connection check that described the
+    old token. ``None`` when nothing listens.
+    """
+    hooks = [hook for hook in (upstreams,) if hook is not None]
+    if telegram_runtime is not None:
+        hooks.append(telegram_runtime.secret_changed)
+    if not hooks:
+        return None
+
+    async def _on_change(name: str) -> None:
+        for hook in hooks:
+            await hook(name)
+
+    return _on_change
 
 
 def _maybe_add_test_slow_route(app: FastAPI) -> None:

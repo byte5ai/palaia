@@ -269,6 +269,27 @@ class TelegramService:
 
     # ---------------------------------------------------------------- config
 
+    def apply_settings(self, settings: TelegramSettings) -> None:
+        """Swap in an edited ``telegram:`` section, live (issue #463).
+
+        Bots, routes and grants are read from :attr:`settings` and
+        :attr:`routes` on every call, so replacing both here is all it takes
+        for the next message, send or tool call to follow the new
+        configuration — the tool servers built over this service need no
+        rebuild. What the connector has *learned* is kept: the sent ledger
+        (an agent can still edit what it sent), the recent list and the
+        last-received times, except for a bot that is no longer configured.
+
+        The poll loops are not this method's business:
+        :meth:`palaia_hub.telegram.runtime.TelegramRuntime.apply_settings`
+        calls this first and then starts and stops pollers to match.
+        """
+        self.settings = settings
+        self._routes = RoutingTable(settings.routes)
+        keys = {bot.key for bot in settings.bots}
+        for gone in [key for key in self._last_update_at if key not in keys]:
+            del self._last_update_at[gone]
+
     @property
     def routes(self) -> RoutingTable:
         return self._routes

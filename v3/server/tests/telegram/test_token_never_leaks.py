@@ -18,12 +18,14 @@ same job for upstream credentials. The three halves here are:
 
 Plus the surface issue #439 added: the dashboard panel's status response,
 which shows error lines and check results that started life as Bot API
-failures.
+failures — and the editor issue #463 added on top of it, which writes
+``config.yaml`` and publishes an event per saved change.
 """
 
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import httpx
 import pytest
@@ -234,3 +236,57 @@ async def test_the_dashboard_status_never_carries_a_token(anyio_backend: str) ->
     assert body["recent"][0]["delivered"] is False
     assert BOT_A_TOKEN not in response.text
     assert BOT_B_TOKEN not in response.text
+
+
+# -- 5. the editor (issue #463) ------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_the_editor_never_writes_or_answers_a_token(
+    anyio_backend: str, tmp_path: Path
+) -> None:
+    """A full editing session with the tokens stored: every answer, the
+    written ``config.yaml`` and every event carry neither a token nor —
+    for the events — even a secret's name."""
+    api = FakeBotApi()
+    secrets = FakeSecrets({"telegram_support": BOT_A_TOKEN, "telegram_personal": BOT_B_TOKEN})
+    service = TelegramService(TelegramSettings.model_validate(TWO_BOT_SETTINGS), api, secrets)
+    runtime = TelegramRuntime(service, api)
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("mode: locked\n", encoding="utf-8")
+    published: list[tuple[str, dict[str, object]]] = []
+    app = FastAPI()
+    app.include_router(
+        build_telegram_dashboard_router(
+            runtime,
+            secrets,
+            config_path=config_path,
+            publish=lambda event, data: published.append((event, data)),
+        )
+    )
+    transport = httpx.ASGITransport(app=app)
+    answers: list[str] = []
+    async with httpx.AsyncClient(transport=transport, base_url="http://hub") as client:
+        for method, path, body in (
+            ("POST", "/api/telegram/bots", {"key": "alerts", "token_secret": "alerts_token"}),
+            ("PATCH", "/api/telegram/bots/support", {"label": "Support"}),
+            (
+                "POST",
+                "/api/telegram/routes",
+                {"bot": "alerts", "chat": "*", "destination": {"kind": "event"}},
+            ),
+            ("PUT", "/api/telegram/grants/desk", {"bots": ["alerts"], "chats": ["*"]}),
+            ("GET", "/api/telegram/status", None),
+        ):
+            response = await client.request(method, path, json=body)
+            assert response.status_code == 200, response.text
+            answers.append(response.text)
+
+    written = config_path.read_text(encoding="utf-8")
+    for text in (*answers, written, repr(published)):
+        assert BOT_A_TOKEN not in text
+        assert BOT_B_TOKEN not in text
+    assert len(published) == 4
+    for _event, data in published:
+        for name in ("alerts_token", "telegram_support", "telegram_personal"):
+            assert name not in repr(data)

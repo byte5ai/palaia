@@ -7,12 +7,14 @@
 > "there is no tool that reads Telegram" is
 > [ADR-006](../decisions/006-telegram-reading-surface.md).
 >
-> Status: first cut (issue #411), running in the hub since issue #439: a hub
-> whose `config.yaml` has a `telegram:` section starts one long-poll task per
+> Status: first cut (issue #411), running in the hub since issue #439, and
+> set up from the dashboard since issue #463: the **Telegram** screen adds,
+> changes and removes bots, routing rules and send permissions, stores a
+> bot's token, and applies every change to the running hub — no restart,
+> no hand-editing `config.yaml` (§8). The hub starts one long-poll task per
 > polling bot, mounts the webhook route and gives `telegram: true` profiles
-> the tools, and the dashboard's **Telegram** screen shows every bot's state,
-> the routing table and what happened to recent messages (§8). Text messages
-> only — media is recorded as a *reference* and not downloaded.
+> the tools. Text messages only — media is recorded as a *reference* and
+> not downloaded.
 
 ## 1. What it does, in one picture
 
@@ -40,18 +42,29 @@ and back the other way:
 
 ## 2. Setup
 
+Everything in this section is done on the dashboard's **Telegram** screen
+(§8). The configuration it writes is shown in §3, for reference and for
+anyone who prefers the file.
+
 ### 2.1 Create the bot and store its token
 
 Talk to [@BotFather](https://t.me/botfather) in Telegram, create a bot, copy
-the token it gives you. Then store it in the hub's encrypted secret store —
-**never in `config.yaml`**:
+the token it gives you. On the **Telegram** screen, **Add a bot**: give it a
+short name on the hub (`support` — what rules and agents call it), and paste
+the token into **Bot token**. The token goes into the hub's encrypted secret
+store — **never into `config.yaml`**, which only names the secret it is
+filed under (`telegram_<name>` unless you choose another). Then **Check
+connection**: Telegram answers with the bot's `@username`, or with why it
+refused the token.
+
+Without the dashboard, the same two steps are the secret store's write-only
+route and the `telegram:` section of §3:
 
 ```
 PUT /api/secrets/telegram_support      {"value": "123456789:AA…"}
 ```
 
-The token lives encrypted under `<home>/secrets.sqlite3`; the config below
-names the *secret*, not the value.
+The token lives encrypted under `<home>/secrets.sqlite3`.
 
 ### 2.2 Let the bot see messages
 
@@ -65,10 +78,15 @@ as an administrator.
 Send one message to the chat, then open the dashboard's **Telegram** screen:
 under *Recent messages* the message shows as "No rule matched", followed by
 the exact `chat:` values a route could use — the numeric chat id first (the
-same keys are in the hub's `telegram.message.dropped` event). Group and
+same keys are in the hub's `telegram.message.dropped` event). Click one and
+the rule editor opens with the bot and that chat filled in: pick where its
+messages go and save, and the next message follows the rule. Group and
 channel ids are negative — `-1001234567890` — which is normal.
 
 ## 3. Configuration
+
+This is the `telegram:` section the dashboard writes (§8) — or that you can
+write by hand:
 
 ```yaml
 telegram:
@@ -125,14 +143,24 @@ A cross-reference that does not resolve — a route naming a bot that is not
 configured — is refused when the hub loads the file, not silently ignored.
 A rule that can never match is the worst thing a routing table can contain.
 
-**Configuration changes apply on restart.** Bots, routes and grants are read
-once, when the hub starts; editing the `telegram:` section of a running hub
-changes nothing until the next restart. The same goes for the vaults an
-`inbox` route can deliver into: a vault created later, through the wizard,
-is reachable by such a route after a restart. At startup the hub logs a
-warning for every part of the section it can already tell will not work —
+**Changes made on the dashboard apply at once; hand edits on restart.** The
+Telegram screen writes each change to this section and hands it to the
+running connector in the same step (§8): a new polling bot starts polling, a
+removed or switched-off one stops, and the next message meets the new rules.
+Editing `config.yaml` by hand is still possible, but the hub reads the file
+once, when it starts — a hand edit applies after a restart. What is fixed at
+startup either way is the set of vaults an `inbox` route can deliver into: a
+vault created later, through the wizard, is reachable by such a route after
+a restart. For every part of the section it can already tell will not work —
 an `inbox` route to a vault it does not have, a `messenger` route on a hub
-with no messenger, a webhook bot on a `locked` hub — and starts the rest.
+with no messenger, a webhook bot on a `locked` hub — the hub logs a warning
+at startup, and the dashboard shows the same list after every save; the
+rest runs.
+
+A hub with no `telegram:` section at all runs an empty connector: no bot, so
+nothing polls, every webhook address answers `404`, and a `telegram: true`
+profile's tools list no chat and can send nowhere. The section appears the
+first time a bot is added on the dashboard.
 
 ## 4. The routing table
 
@@ -271,6 +299,7 @@ anything else, and a hub-side failure must not become a redelivery loop.
 | `telegram.routed` | Message metadata **+ the text** | Only from a `kind: event` route |
 | `telegram.message.handled` | Message metadata + routed, destination, delivered | After delivery, once the outcome is recorded for the dashboard. **No text.** |
 | `telegram.bot.state` | Bot, `ok` or `failing`, the error line | A polling bot's first answer or first failure, then each time it starts failing or recovers — once per change, not per poll. **No token.** |
+| `telegram.config.updated` | What changed (`bot`, `route` or `grant`), how, and its key | After every change saved on the dashboard (§8). **No token, no secret name.** |
 
 The rule and its one exception: a human's words do not go on the event bus,
 because the bus feeds every SSE listener and every outbound webhook this hub
@@ -284,28 +313,53 @@ automation without putting its text on the bus, route it to `inbox` or
 ## 8. The dashboard
 
 The dashboard's **Telegram** screen (under *Connections*) is where the owner
-sees the connector at work — a dashboard screen, not something an agent can
-read (ADR-006):
+sets the connector up and sees it at work — a dashboard screen, not
+something an agent can read or change (ADR-006, and MASTERPLAN §4 rule 8:
+this is administration):
 
 - **Bots** — per bot: *Connected*, *Failing* (with the last error),
   *Not checked yet*, *Disabled* or *Token missing*; when it last received a
   message; and a **Check connection** button, which asks Telegram whether
   the token works (`getMe`) and is the only thing on the screen that calls
-  Telegram at all.
-- **Where messages go** — the routing table (§4), in plain words.
+  Telegram at all. **Add a bot**, **Edit** (display name, how messages
+  reach the hub, switched on or off, a new token or delivery secret) and
+  **Remove**. A bot's name on the hub cannot change — rules, grants and
+  agents address it by that name. A bot still named by a rule or a grant
+  cannot be removed until those are; switching it off keeps them. Its
+  stored token stays in the secret store.
+- **Where messages go** — the routing table (§4), in plain words, with
+  **Add a rule**, **Edit** and **Remove**.
+- **Who may send** — the grants of §5: which tool profiles may send,
+  through which bots, to which chats. A profile with no entry sends
+  nothing. The curator cannot be given one. The **Tool profiles** screen
+  has the matching switch that gives a profile the tools in the first
+  place.
 - **Recent messages** — the last 50 across every bot, newest first: which
   bot, which chat, how long, and whether it was delivered, failed (with the
   kind of error — the hub log has the rest, since an error can quote the
   message), or matched no rule (with the `chat:` values a rule could use —
-  see §2.3).
+  click one to write that rule, see §2.3).
+
+Every save is checked the way the hub checks `config.yaml` when it loads —
+a rule naming a bot that does not exist is refused, and so is a webhook bot
+without its delivery secret — then written to `config.yaml` (only the
+`telegram:` section is rewritten; the rest of the file, comments included,
+is left as it was), then applied to the running hub. The token never passes
+through any of it: the screen stores it with the secret store's write-only
+`PUT /api/secrets/<name>`, and storing one wakes a bot that was waiting for
+it instead of leaving it to retry up to a minute later.
 
 It keeps **metadata only, in memory**: no message text is ever stored or
 shown, and everything on the screen starts over when the hub restarts. It
 updates live off the `telegram.*` events in §7 — `telegram.message.handled`
 once each outcome is recorded, and `telegram.bot.state`, which is how a bot
 turns green on its first answer or red when it starts failing, without a
-reload. Behind it: `GET /api/telegram/status` and
-`POST /api/telegram/bots/<key>/check`, owner-only like the rest of `/api/`.
+reload. Behind it: `GET /api/telegram/status`,
+`POST /api/telegram/bots/<key>/check`, and the editor's
+`POST /api/telegram/bots`, `PATCH`/`DELETE /api/telegram/bots/<key>`,
+`POST /api/telegram/routes`, `PUT`/`DELETE /api/telegram/routes/<bot>/<chat>`
+and `PUT`/`DELETE /api/telegram/grants/<profile>` — each answering with the
+new status — owner-only like the rest of `/api/`.
 
 ## 9. The token, and where it is not
 
@@ -317,6 +371,9 @@ reload. Behind it: `GET /api/telegram/status` and
   scrubs it again before raising — an API error names the *method*, never the
   URL.
 - Not in tool output: no result model has a field for it.
+- Not in the dashboard's editor: no request to `/api/telegram` has a field
+  for it — one that tries is refused, not silently dropped — and no answer
+  or `telegram.config.updated` event carries it.
 
 ## 10. Not in this first cut
 

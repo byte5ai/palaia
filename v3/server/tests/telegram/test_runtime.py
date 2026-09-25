@@ -333,3 +333,185 @@ async def test_a_second_bot_without_a_token_does_not_stop_the_first(
     finally:
         await runtime.aclose()
     assert {call["token"] for call in api.get_updates_calls} == {BOT_A_TOKEN}
+
+
+# ------------------------------------------------- live edits (issue #463)
+
+
+def _settings(*bots: dict[str, Any]) -> TelegramSettings:
+    return TelegramSettings.model_validate({"bots": list(bots)})
+
+
+SUPPORT = {"key": "support", "token_secret": "telegram_support"}
+PERSONAL = {"key": "personal", "token_secret": "telegram_personal"}
+
+
+async def test_an_added_polling_bot_starts_polling_on_a_running_runtime(
+    secrets: FakeSecrets,
+) -> None:
+    api = FakeBotApi(park_when_empty=True)
+    runtime = TelegramRuntime(TelegramService(_settings(SUPPORT), api, secrets), api)
+    await runtime.start()
+    try:
+        kept = runtime.pollers["support"]
+        kept_task = runtime.tasks["support"]
+        warnings = await runtime.apply_settings(_settings(SUPPORT, PERSONAL))
+        assert warnings == []
+        assert set(runtime.tasks) == {"support", "personal"}
+        # The bot that stayed kept its poller — and with it the offset that
+        # acknowledges updates to Telegram — and its running task.
+        assert runtime.pollers["support"] is kept
+        assert runtime.tasks["support"] is kept_task
+        await _until(lambda: {c["token"] for c in api.get_updates_calls} >= {BOT_B_TOKEN})
+    finally:
+        await runtime.aclose()
+
+
+async def test_a_removed_or_switched_off_bot_stops_polling(secrets: FakeSecrets) -> None:
+    api = FakeBotApi(park_when_empty=True)
+    runtime = TelegramRuntime(
+        TelegramService(_settings(SUPPORT, PERSONAL), api, secrets), api
+    )
+    await runtime.start()
+    try:
+        await _until(lambda: api.parked_polls >= 2)
+        task = runtime.tasks["personal"]
+        await runtime.apply_settings(_settings(SUPPORT, {**PERSONAL, "enabled": False}))
+        assert task.done() and api.cancelled_polls == 1
+        assert set(runtime.tasks) == set(runtime.pollers) == {"support"}
+
+        support_task = runtime.tasks["support"]
+        await runtime.apply_settings(_settings())
+        assert support_task.done() and api.cancelled_polls == 2
+        assert runtime.tasks == {} and runtime.pollers == {}
+    finally:
+        await runtime.aclose()
+
+
+async def test_a_bot_moved_to_a_webhook_stops_polling(secrets: FakeSecrets) -> None:
+    api = FakeBotApi(park_when_empty=True)
+    runtime = TelegramRuntime(TelegramService(_settings(SUPPORT), api, secrets), api)
+    await runtime.start()
+    try:
+        await runtime.apply_settings(
+            _settings({**SUPPORT, "transport": "webhook", "webhook_secret": "hook"})
+        )
+        assert runtime.tasks == {} and runtime.pollers == {}
+    finally:
+        await runtime.aclose()
+
+
+async def test_a_changed_token_secret_gets_a_fresh_poller(secrets: FakeSecrets) -> None:
+    """An offset belongs to one bot's update stream: carried over to another
+    token it would acknowledge — skip — that bot's updates."""
+    api = FakeBotApi(park_when_empty=True)
+    runtime = TelegramRuntime(TelegramService(_settings(SUPPORT), api, secrets), api)
+    await runtime.start()
+    try:
+        old = runtime.pollers["support"]
+        old.offset = 42
+        await runtime.apply_settings(_settings({**SUPPORT, "token_secret": "telegram_personal"}))
+        assert runtime.pollers["support"] is not old
+        assert runtime.pollers["support"].offset is None
+        await _until(lambda: {c["token"] for c in api.get_updates_calls} >= {BOT_B_TOKEN})
+    finally:
+        await runtime.aclose()
+
+
+async def test_an_edit_before_start_only_prepares_pollers(secrets: FakeSecrets) -> None:
+    api = FakeBotApi(park_when_empty=True)
+    runtime = TelegramRuntime(TelegramService(_settings(), api, secrets), api)
+    await runtime.apply_settings(_settings(SUPPORT))
+    assert set(runtime.pollers) == {"support"} and runtime.tasks == {}
+    # A runtime with no polling bot at start is still started: a bot added
+    # afterwards gets its task at once.
+    empty = TelegramRuntime(TelegramService(_settings(), api, secrets), api)
+    await empty.start()
+    try:
+        await empty.apply_settings(_settings(SUPPORT))
+        assert set(empty.tasks) == {"support"}
+    finally:
+        await empty.aclose()
+    # And a closed one starts nothing.
+    await empty.apply_settings(_settings(SUPPORT, PERSONAL))
+    assert empty.tasks == {}
+
+
+async def test_an_edit_keeps_what_the_connector_learned(
+    service: TelegramService, api: FakeBotApi
+) -> None:
+    runtime = TelegramRuntime(service, api)
+    await service.handle_update("support", message_update(1, chat_id=-1001, message_id=5))
+    await service.handle_update("personal", message_update(2, chat_id=42, message_id=6))
+    await runtime.check_bot("support")
+    await runtime.check_bot("personal")
+
+    kept = service.settings.model_dump()
+    kept["bots"] = [b for b in kept["bots"] if b["key"] == "support"]
+    kept["routes"] = [r for r in kept["routes"] if r["bot"] == "support"]
+    kept["grants"] = []
+    await runtime.apply_settings(TelegramSettings.model_validate(kept))
+
+    assert [m.message_id for m in service.recent_messages()] == [6, 5]
+    assert service.last_update_at("support") is not None
+    assert service.last_update_at("personal") is None
+    assert set(runtime.last_checks) == {"support"}
+    # And the new rules are the ones the next message meets.
+    assert {(r.bot, r.chat) for r in service.routes.routes} == {
+        (r["bot"], r["chat"]) for r in kept["routes"]
+    }
+
+
+async def test_the_edit_answers_with_the_configuration_check(secrets: FakeSecrets) -> None:
+    api = FakeBotApi()
+    runtime = TelegramRuntime(
+        TelegramService(_settings(), api, secrets, vaults={"work": FakeVault()}), api
+    )
+    warnings = await runtime.apply_settings(
+        TelegramSettings.model_validate(
+            {
+                "bots": [SUPPORT],
+                "routes": [
+                    {
+                        "bot": "support",
+                        "destination": {"kind": "inbox", "vault": "elsewhere"},
+                    }
+                ],
+            }
+        )
+    )
+    assert len(warnings) == 1 and "'elsewhere'" in warnings[0]
+
+
+async def test_a_stored_token_wakes_a_backed_off_poller(secrets: FakeSecrets) -> None:
+    """The day-one path from the dashboard: the bot is added, its poller
+    fails for want of a token and backs off; storing the token restarts the
+    poll at once — keeping the poller — instead of up to a minute later."""
+    api = FakeBotApi(park_when_empty=True)
+    empty = FakeSecrets()
+    runtime = TelegramRuntime(TelegramService(_settings(SUPPORT), api, empty), api)
+    await runtime.start()
+    try:
+        poller = runtime.pollers["support"]
+        await _until(lambda: poller.consecutive_failures >= 1)
+        first = runtime.tasks["support"]
+        empty.values["telegram_support"] = BOT_A_TOKEN
+        await runtime.secret_changed("an_unrelated_secret")
+        assert runtime.tasks["support"] is first
+        await runtime.secret_changed("telegram_support")
+        assert first.done()
+        assert runtime.pollers["support"] is poller
+        await _until(lambda: api.parked_polls >= 1)
+        assert {c["token"] for c in api.get_updates_calls} == {BOT_A_TOKEN}
+    finally:
+        await runtime.aclose()
+
+
+async def test_a_changed_token_forgets_the_last_check(
+    service: TelegramService, api: FakeBotApi
+) -> None:
+    runtime = TelegramRuntime(service, api)
+    await runtime.check_bot("support")
+    await runtime.check_bot("personal")
+    await runtime.secret_changed("telegram_support")
+    assert set(runtime.last_checks) == {"personal"}

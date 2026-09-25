@@ -49,6 +49,11 @@ const RENAMEABLE_ACTIONS = [
  * preview only — the server's own sanitization (returned in
  * `GatewayVaultIdentity.sanitized` after a save) is always the source of
  * truth; this just avoids a round-trip for the common case of typing. */
+/** Issue 463: the profile flag, with what it does and does not grant —
+ * the tools alone send nowhere until the Telegram screen grants it. */
+const TELEGRAM_CONSEQUENCE =
+  "Lets this client send, reply to, edit and delete Telegram messages. It can only reach the bots and chats the Telegram screen grants this profile — none until you add a grant.";
+
 function previewSanitize(raw: string): string {
   let value = raw.replace(/[^a-zA-Z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
   if (/^[0-9]/.test(value)) value = `t_${value}`;
@@ -157,6 +162,7 @@ function ProfileEditForm({
     new Set(profile.upstreams),
   );
   const [stash, setStash] = useState(profile.stash);
+  const [telegram, setTelegram] = useState(profile.telegram);
   const [semanticRouting, setSemanticRouting] = useState(profile.semantic_routing);
   const [tools, setTools] = useState<GatewayTool[] | null>(null);
   const [hidden, setHidden] = useState<Set<string>>(new Set(profile.hidden_tools));
@@ -213,6 +219,7 @@ function ProfileEditForm({
         label: label.trim() || null,
         vaults: [...selectedVaults],
         stash,
+        telegram,
         hidden_tools: [...hidden],
         semantic_routing: semanticRouting,
         upstreams: [...selectedUpstreams],
@@ -270,6 +277,13 @@ function ProfileEditForm({
         consequence="Five extra tools: a small shared key/value scratchpad, not tied to any vault."
         checked={stash}
         onChange={setStash}
+      />
+
+      <SwitchRow
+        label="Also carry the Telegram tools"
+        consequence={TELEGRAM_CONSEQUENCE}
+        checked={telegram}
+        onChange={setTelegram}
       />
 
       <SwitchRow
@@ -390,6 +404,7 @@ function ProfileCard({
           {profile.managed ? <Badge variant="info">curator — managed elsewhere</Badge> : null}
           {profile.semantic_routing ? <Badge variant="warn">semantic routing</Badge> : null}
           {profile.stash ? <Badge variant="neutral">stash</Badge> : null}
+          {profile.telegram ? <Badge variant="neutral">telegram</Badge> : null}
           {profile.vaults.length === 0 ? (
             <span className="t-xs t-muted">No vaults mounted.</span>
           ) : (
@@ -467,6 +482,7 @@ function CreateProfileCard({
   const [selectedVaults, setSelectedVaults] = useState<Set<string>>(new Set());
   const [selectedUpstreams, setSelectedUpstreams] = useState<Set<string>>(new Set());
   const [stash, setStash] = useState(false);
+  const [telegram, setTelegram] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -509,6 +525,7 @@ function CreateProfileCard({
         label: label.trim() || null,
         vaults: [...selectedVaults],
         stash,
+        telegram,
         upstreams: [...selectedUpstreams],
       });
       toast.show(`${cleanPath} created.`);
@@ -518,6 +535,7 @@ function CreateProfileCard({
       setSelectedVaults(new Set());
       setSelectedUpstreams(new Set());
       setStash(false);
+      setTelegram(false);
       onCreated();
     } catch (err) {
       setError(describeError(err));
@@ -569,6 +587,12 @@ function CreateProfileCard({
           label="Also carry the built-in stash tools"
           checked={stash}
           onChange={setStash}
+        />
+        <SwitchRow
+          label="Also carry the Telegram tools"
+          consequence={TELEGRAM_CONSEQUENCE}
+          checked={telegram}
+          onChange={setTelegram}
         />
         {error ? <p className="field__error">{error}</p> : null}
         <div className="row row--wrap">

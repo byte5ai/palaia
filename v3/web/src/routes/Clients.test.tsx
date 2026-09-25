@@ -16,6 +16,7 @@ const DEFAULT_PROFILE: GatewayProfile = {
   label: null,
   vaults: ["work"],
   stash: false,
+  telegram: false,
   hidden_tools: [],
   semantic_routing: false,
   tool_count: 15,

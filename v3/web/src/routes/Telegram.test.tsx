@@ -24,8 +24,11 @@ const NOW = Date.now() / 1000;
 const POLLING_OK: TelegramBotStatus = {
   key: "support",
   label: "Support bot",
+  configured_label: "Support bot",
   transport: "polling",
   enabled: true,
+  token_secret: "telegram_support",
+  webhook_secret: null,
   token_stored: true,
   webhook_secret_stored: null,
   polling: {
@@ -43,6 +46,8 @@ const POLLING_FAILING: TelegramBotStatus = {
   ...POLLING_OK,
   key: "broken",
   label: "broken",
+  configured_label: null,
+  token_secret: "telegram_broken",
   polling: {
     running: true,
     last_ok_at: NOW - 600,
@@ -56,8 +61,11 @@ const POLLING_FAILING: TelegramBotStatus = {
 const WEBHOOK_UNCHECKED: TelegramBotStatus = {
   key: "hooked",
   label: "hooked",
+  configured_label: null,
   transport: "webhook",
   enabled: true,
+  token_secret: "telegram_hooked",
+  webhook_secret: "telegram_hooked_webhook",
   token_stored: true,
   webhook_secret_stored: true,
   polling: null,
@@ -71,6 +79,8 @@ const DISABLED: TelegramBotStatus = {
   label: "asleep",
   transport: "polling",
   enabled: false,
+  token_secret: "telegram_asleep",
+  webhook_secret: null,
   webhook_secret_stored: null,
 };
 
@@ -79,6 +89,8 @@ const NO_TOKEN: TelegramBotStatus = {
   key: "fresh",
   label: "fresh",
   transport: "polling",
+  token_secret: "telegram_fresh",
+  webhook_secret: null,
   token_stored: false,
   webhook_secret_stored: null,
 };
@@ -91,10 +103,33 @@ const FULL_STATUS: TelegramStatus = {
       chat: "-1001",
       kind: "messenger",
       destination: "messenger:ops-agent",
+      target: {
+        kind: "messenger",
+        to: "ops-agent",
+        message_type: "inform",
+        urgency: "normal",
+      },
     },
-    { bot: "support", chat: "*", kind: "inbox", destination: "inbox:work" },
-    { bot: "hooked", chat: "@opsroom", kind: "event", destination: "event" },
+    {
+      bot: "support",
+      chat: "*",
+      kind: "inbox",
+      destination: "inbox:work",
+      target: { kind: "inbox", vault: "work" },
+    },
+    {
+      bot: "hooked",
+      chat: "@opsroom",
+      kind: "event",
+      destination: "event",
+      target: { kind: "event" },
+    },
   ],
+  grants: [{ profile: "desk", bots: ["support"], chats: ["*"] }],
+  vaults: ["work"],
+  messenger: true,
+  warnings: [],
+  editable: true,
   recent: [
     {
       at: NOW - 10,
@@ -142,7 +177,16 @@ const FULL_STATUS: TelegramStatus = {
   ],
 };
 
-const EMPTY_STATUS: TelegramStatus = { bots: [], routes: [], recent: [] };
+const EMPTY_STATUS: TelegramStatus = {
+  bots: [],
+  routes: [],
+  grants: [],
+  recent: [],
+  vaults: ["work"],
+  messenger: true,
+  warnings: [],
+  editable: true,
+};
 
 /** A stream literal written before `telegramActivityCount` existed — the
  * field is optional precisely so this still type-checks. */
@@ -257,20 +301,31 @@ describe("Telegram screen", () => {
     expect(order).toEqual([...order].sort((a, b) => a - b));
   });
 
-  it("teaches the next step when the hub has no Telegram section", async () => {
-    vi.spyOn(api, "telegramStatus").mockRejectedValue(
-      new ApiError("/api/telegram/status", 404, { detail: "Not Found" }),
-    );
+  it("offers to add the first bot on a hub with none", async () => {
+    vi.spyOn(api, "telegramStatus").mockResolvedValue(EMPTY_STATUS);
 
     mount();
 
-    await screen.findByText(/no Telegram bots set up yet/i);
+    await screen.findByText("No bots yet.");
+    expect(screen.getByText(/@BotFather/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add a bot" })).toBeInTheDocument();
     const guide = screen.getByRole("link", { name: "setup guide" });
     expect(guide).toHaveAttribute(
       "href",
       expect.stringContaining("v3/docs/telegram.md"),
     );
-    expect(screen.queryByText("Bots")).not.toBeInTheDocument();
+  });
+
+  it("shows what the running hub cannot serve", async () => {
+    vi.spyOn(api, "telegramStatus").mockResolvedValue({
+      ...EMPTY_STATUS,
+      warnings: ["telegram route support/* delivers into the inbox of vault 'later'"],
+    });
+
+    mount();
+
+    await screen.findByText(/inbox of vault 'later'/);
+    expect(document.querySelector(".banner--warn")).not.toBeNull();
   });
 
   it("shows a hub error in a banner, not a crash", async () => {
@@ -331,6 +386,249 @@ describe("Telegram screen", () => {
 
     await screen.findByText("telegram getMe failed (HTTP 401): Unauthorized");
     expect(screen.getByText("Failing")).toBeInTheDocument();
+  });
+});
+
+describe("editing (issue 463)", () => {
+  it("adds a bot and stores its token in the secret store, by name", async () => {
+    vi.spyOn(api, "telegramStatus")
+      .mockResolvedValueOnce(EMPTY_STATUS)
+      .mockResolvedValue({ ...EMPTY_STATUS, bots: [POLLING_OK] });
+    const create = vi.spyOn(api, "createTelegramBot").mockResolvedValue({
+      ...EMPTY_STATUS,
+      bots: [{ ...POLLING_OK, token_stored: false }],
+    });
+    const store = vi
+      .spyOn(api, "storeSecret")
+      .mockResolvedValue({ name: "telegram_support", created_at: 1, updated_at: 1 });
+
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Add a bot" }));
+    fireEvent.change(screen.getByLabelText("Name on the hub"), {
+      target: { value: "support" },
+    });
+    fireEvent.change(screen.getByLabelText("Display name"), {
+      target: { value: "Support bot" },
+    });
+    fireEvent.change(screen.getByLabelText("Bot token"), {
+      target: { value: "123:secret-token" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add bot" }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith({
+        key: "support",
+        label: "Support bot",
+        transport: "polling",
+        enabled: true,
+      }),
+    );
+    // The token went to the secret store under the bot's secret name —
+    // and never in the bot's own request.
+    await waitFor(() =>
+      expect(store).toHaveBeenCalledWith("telegram_support", "123:secret-token"),
+    );
+    expect(JSON.stringify(create.mock.calls)).not.toContain("secret-token");
+    await screen.findByText("Connected");
+  });
+
+  it("refuses a bot name that is already taken, before asking the hub", async () => {
+    vi.spyOn(api, "telegramStatus").mockResolvedValue({
+      ...EMPTY_STATUS,
+      bots: [POLLING_OK],
+    });
+    const create = vi.spyOn(api, "createTelegramBot");
+
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Add a bot" }));
+    fireEvent.change(screen.getByLabelText("Name on the hub"), {
+      target: { value: "support" },
+    });
+
+    expect(screen.getByText(/already exists/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add bot" })).toBeDisabled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("switches a bot off from its editor", async () => {
+    vi.spyOn(api, "telegramStatus").mockResolvedValue({
+      ...EMPTY_STATUS,
+      bots: [POLLING_OK],
+    });
+    const update = vi.spyOn(api, "updateTelegramBot").mockResolvedValue({
+      ...EMPTY_STATUS,
+      bots: [{ ...POLLING_OK, enabled: false, polling: null }],
+    });
+
+    mount();
+    await screen.findByText("Connected");
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const row = screen.getByText("Switched on").closest("label")!;
+    fireEvent.click(row.querySelector('[role="switch"]')!);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith(
+        "support",
+        expect.objectContaining({ enabled: false, label: "Support bot" }),
+      ),
+    );
+    await screen.findByText("Disabled");
+  });
+
+  it("says why a bot in use cannot be removed", async () => {
+    vi.spyOn(api, "telegramStatus").mockResolvedValue({
+      ...EMPTY_STATUS,
+      bots: [POLLING_OK],
+    });
+    vi.spyOn(api, "deleteTelegramBot").mockRejectedValue(
+      new ApiError("/api/telegram/bots/support", 409, {
+        detail: "Telegram bot 'support' is still used by rule(s) support/-1001.",
+      }),
+    );
+
+    mount();
+    await screen.findByText("Connected");
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    fireEvent.click(screen.getByRole("button", { name: "Yes, remove the bot" }));
+
+    await screen.findByText(/still used by rule\(s\) support\/-1001/);
+  });
+
+  it("writes a rule straight from a message no rule matched", async () => {
+    vi.spyOn(api, "telegramStatus").mockResolvedValue({
+      ...FULL_STATUS,
+      routes: [],
+    });
+    const create = vi.spyOn(api, "createTelegramRoute").mockResolvedValue({
+      ...FULL_STATUS,
+    });
+
+    mount();
+    await screen.findByText(/No rule matched/);
+    fireEvent.click(screen.getByRole("button", { name: "@opsroom" }));
+
+    // Prefilled with the bot and the chat key picked.
+    expect(screen.getByLabelText("Chat")).toHaveValue("@opsroom");
+    expect(screen.getByLabelText("Bot")).toHaveValue("support");
+    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith({
+        bot: "support",
+        chat: "@opsroom",
+        destination: { kind: "inbox", vault: "work" },
+      }),
+    );
+  });
+
+  it("edits a rule in place, addressed by its old bot and chat", async () => {
+    vi.spyOn(api, "telegramStatus").mockResolvedValue(FULL_STATUS);
+    const replace = vi
+      .spyOn(api, "replaceTelegramRoute")
+      .mockResolvedValue(FULL_STATUS);
+
+    mount();
+    await screen.findByText("Hub event");
+    const row = screen.getByText("Hub event").closest("tr")!;
+    fireEvent.click(row.querySelector("button")!);
+    fireEvent.click(screen.getByRole("radio", { name: "An agent's inbox" }));
+    fireEvent.change(screen.getByLabelText("To"), {
+      target: { value: "ops-agent" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
+
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith("hooked", "@opsroom", {
+        bot: "hooked",
+        chat: "@opsroom",
+        destination: {
+          kind: "messenger",
+          to: "ops-agent",
+          message_type: "inform",
+          urgency: "normal",
+        },
+      }),
+    );
+  });
+
+  it("shows a refused rule's reason from the hub", async () => {
+    vi.spyOn(api, "telegramStatus").mockResolvedValue(FULL_STATUS);
+    vi.spyOn(api, "createTelegramRoute").mockRejectedValue(
+      new ApiError("/api/telegram/routes", 422, {
+        detail: [{ msg: "Value error, 'x' is not a usable chat reference." }],
+      }),
+    );
+
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Add a rule" }));
+    fireEvent.change(screen.getByLabelText("Chat"), { target: { value: "x" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
+
+    await screen.findByText("'x' is not a usable chat reference.");
+  });
+
+  it("lets a tool profile send, offering only profiles without an entry", async () => {
+    vi.spyOn(api, "telegramStatus").mockResolvedValue(FULL_STATUS);
+    const profile = {
+      label: null,
+      vaults: ["work"],
+      stash: false,
+      hidden_tools: [],
+      semantic_routing: false,
+      tool_count: 5,
+      upstreams: [],
+    };
+    vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([
+      { ...profile, path: "desk", telegram: true, managed: false },
+      { ...profile, path: "phone", telegram: false, managed: false },
+      { ...profile, path: "curator", telegram: false, managed: true },
+    ]);
+    const put = vi.spyOn(api, "putTelegramGrant").mockResolvedValue(FULL_STATUS);
+
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Let a profile send" }));
+    const select = await screen.findByLabelText("Tool profile");
+    const options = Array.from(select.querySelectorAll("option")).map((o) => o.value);
+    expect(options).toEqual(["phone"]);
+    // The profile has no Telegram tools yet — the form says so.
+    expect(screen.getByText(/does not carry the Telegram tools yet/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("To these chats"), {
+      target: { value: "-1001, @opsroom" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(put).toHaveBeenCalledWith("phone", {
+        bots: ["*"],
+        chats: ["-1001", "@opsroom"],
+      }),
+    );
+  });
+
+  it("lists who may send, in plain words", async () => {
+    vi.spyOn(api, "telegramStatus").mockResolvedValue(FULL_STATUS);
+
+    mount();
+    await screen.findByText("desk");
+    expect(
+      screen.getByText("Through Support bot, to every chat"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows no editing controls when the hub cannot save", async () => {
+    vi.spyOn(api, "telegramStatus").mockResolvedValue({
+      ...FULL_STATUS,
+      editable: false,
+    });
+
+    mount();
+    await screen.findByText("Connected");
+    for (const name of ["Add a bot", "Add a rule", "Let a profile send", "Edit", "Remove"]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    }
+    // Candidates stay plain chips.
+    expect(screen.getByText("-1003", { selector: ".chip" })).toBeInTheDocument();
   });
 });
 
@@ -436,14 +734,22 @@ describe("Telegram screen copy — no jargon in the surface (system.md §3 rule 
   it("no heading, button, badge, or field label uses a protocol name or acronym", async () => {
     vi.spyOn(api, "telegramStatus").mockResolvedValue(FULL_STATUS);
 
+    vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([]);
     mount();
     await screen.findByText("Connected");
+    // Open every editor, so their labels and buttons are checked too.
+    fireEvent.click(screen.getByRole("button", { name: "Add a bot" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add a rule" }));
+    fireEvent.click(screen.getByRole("button", { name: "Let a profile send" }));
+    await screen.findByText(/Every tool profile already has an entry/);
 
     const controls = [
       ...screen.queryAllByRole("heading"),
       ...screen.queryAllByRole("button"),
       ...Array.from(
-        document.querySelectorAll(".badge, .card__title, .field__label"),
+        document.querySelectorAll(
+          ".badge, .card__title, .field__label, .segmented__item, .switchrow",
+        ),
       ),
     ];
 

@@ -154,7 +154,7 @@ See [§8](#8-accepted-risks-and-open-gaps).
 | `/api/stash` | the stash mirror | |
 | `/api/directory` | the session directory mirror | |
 | `/api/messenger` | the messenger mirror, read-only | |
-| `/api/telegram` | the Telegram panel: per bot, set up / connected / failing, the routing table, what happened to the last messages (issue #439) | metadata only, in memory, **never message text**; its one outbound call is the on-demand connection check (§7.3a) |
+| `/api/telegram` | the Telegram panel: per bot, set up / connected / failing, the routing table, what happened to the last messages (issue #439); and its editor — bots, routing rules and send grants, written to `config.yaml` and applied live (issue #463) | metadata only, in memory, **never message text**; no route takes or returns a token; its one outbound call is the on-demand connection check (§7.3a) |
 | `/api/hooks` | outbound webhooks and their secrets | |
 | `/api/automations` | event-triggered actions | |
 | `/api/notifications` | the dashboard notification centre | |
@@ -251,8 +251,13 @@ New in issue #411, running in the hub since issue #439, and the first
 boundary where **the far side is the general public**: anyone who can write
 into a group a configured bot sits in can put text in front of an agent, and
 in webhook mode Telegram's servers reach an HTTP endpoint on the hub
-directly. None of it exists on a hub whose `config.yaml` has no `telegram:`
-section — no route, no poll task, no tool (*proven by*
+directly. A hub whose `config.yaml` has no `telegram:` section runs an
+**empty** connector (issue #463 builds one on every hub, so the owner can add
+the first bot from the dashboard without a restart), and an empty connector
+reaches nobody: no bot, so no poll task and no call to Telegram; every
+`POST /telegram/webhook/<key>` answers `404` before any secret is looked at;
+and a `telegram: true` profile's tools list no chat and are refused on every
+send, because outbound is default-deny and there is no grant (*proven by*
 `server/tests/telegram/test_serve_wiring.py`). Five controls, in the order
 they apply:
 
@@ -328,6 +333,52 @@ status read never calls Telegram. Its **only outbound call** is
 *Enforced by* `server/src/palaia_hub/telegram/dashboard_api.py`; *proven by*
 `server/tests/telegram/test_dashboard_api.py` and
 `server/tests/telegram/test_token_never_leaks.py`.
+
+**The editor** (issue #463) makes the same panel the place the connector is
+configured — bots, routing rules and grants — which moves three decisions
+that used to need shell access to `config.yaml` behind the owner's session:
+where inbound words go (controls 1 and 5), which webhook bots exist (control
+2), and which profiles may send (control 3). What keeps that from widening
+anything:
+
+- **Owner-only, CSRF-checked.** Every editing route sits under
+  `/api/telegram`, so the admin session gate and its CSRF check cover it
+  with no code of its own, and the route walk enumerates each one (*proven
+  by* `server/tests/test_admin_session.py`). A7 (a page the owner visits)
+  meets the same double-submit check as every other write.
+- **Validated exactly as `config.yaml` is.** Each save is built into a
+  `telegram:` section and checked by the schema and by
+  `TelegramSettings.check_consistency` — the validator `HubConfig` runs at
+  load — so a webhook bot without its secret, a rule or grant naming an
+  unknown bot, or a malformed chat is refused, and neither the file nor the
+  running hub changes. The curator cannot be granted sending, in the editor
+  as on its profile. A bot a rule or grant still names cannot be removed:
+  no edit silently re-routes or drops traffic.
+- **No token on this path.** No request model has a field a token could
+  travel in, and every one forbids unknown fields, so a client that sends
+  one is refused rather than having it dropped — or written to the file.
+  Answers and the `telegram.config.updated` event name bots, chats and
+  profiles only; the event carries not even a secret's *name*. The token
+  itself goes through the pre-existing write-only `PUT /api/secrets/<name>`
+  (§5), whose change hook now also wakes that bot's poller. *Proven by*
+  `server/tests/telegram/test_editor_api.py` and
+  `server/tests/telegram/test_token_never_leaks.py`.
+- **Written before applied.** The section is written to `config.yaml` first
+  (only that section; every other line is kept) and handed to the running
+  connector second, so a disk that refuses the write leaves the running hub
+  as it was, and what runs is always what the next start will load. Applying
+  never re-reads an update Telegram was already told about: a bot that keeps
+  polling keeps its offset, and one whose token changed starts afresh rather
+  than acknowledging another bot's updates. *Enforced by*
+  `server/src/palaia_hub/telegram/runtime.py`; *proven by*
+  `server/tests/telegram/test_runtime.py`.
+
+One consequence to state plainly: in `cloud` mode, switching a bot to
+webhook delivery on the dashboard does not change the tunnel's forwarded
+paths by itself — the tunnel guidance (§2) is read from `config.yaml`, which
+now includes the edit, but a tunnel already configured keeps forwarding what
+it forwarded, and `/telegram/webhook` stays unreachable from the internet
+until the operator updates it.
 
 The residual risk is stated rather than solved: **a routed Telegram message
 is untrusted text that a model will read.** The controls above decide *where*
