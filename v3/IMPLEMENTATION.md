@@ -15,7 +15,7 @@
    The stack ADR (SPEC-006) formalizes this; an owner veto changes SPEC-001/006,
    not the plan's structure.
 2. **License:** MIT (decided, ADR-002).
-3. All v3 code lives under `v3/`; the two-track rules in `AGENTS.md` bind every
+3. All v3 code lives under `v3/`; the two-track rules in `CONTRIBUTING.md` bind every
    executing agent.
 4. Phases gate on their masterplan §12 exit criteria. **Phase 3–5 SPECs are
    written at the end of Phase 1/2** (per masterplan doctrine: specs per phase,

@@ -2,7 +2,7 @@
 
 **Clean-room, format-only.** This module never imports ``palaia`` (the v2
 package at the repository root) — the hard track-separation rule
-(``AGENTS.md``) forbids it regardless of license. It re-implements just
+(``CONTRIBUTING.md``) forbids it regardless of license. It re-implements just
 enough of the v2 on-disk entry format (``palaia/entry.py``,
 ``palaia/frontmatter.py``, ``palaia/store.py`` in the v2 tree, read only as
 a format reference) to read entries back: a ``---``-fenced frontmatter block

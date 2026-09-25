@@ -16,7 +16,7 @@ advisory lands.
 | Container base | `v3/deploy/Dockerfile` | `python:3.12-slim`, `node:22-slim` | Rebuilt on every release, so a base-image fix arrives with the next image |
 
 **One lockfile per track.** `v3/uv.lock` covers the whole v3 Python workspace
-and nothing outside it; v2's dependencies are separate, per `AGENTS.md`.
+and nothing outside it; v2's dependencies are separate, per `CONTRIBUTING.md`.
 `uv lock --check` runs in CI, so a `pyproject.toml` edit that was never
 locked fails the build rather than resolving differently on someone else's
 machine.
