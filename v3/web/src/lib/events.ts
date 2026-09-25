@@ -70,6 +70,18 @@ const AGENT_ACTIVITY_EVENTS = [
   "message.expired",
 ] as const;
 
+/** Issue 439's Telegram connector events — the Telegram screen's
+ * live-update signal, the same "refetch on arrival, do not decode" shape
+ * as `AGENT_ACTIVITY_EVENTS` above. `telegram.bot.state` is what turns a
+ * bot's row red the moment its poll starts failing. */
+const TELEGRAM_EVENTS = [
+  "telegram.message.received",
+  "telegram.message.dropped",
+  "telegram.message.sent",
+  "telegram.routed",
+  "telegram.bot.state",
+] as const;
+
 export type ConnectionState = "connecting" | "open" | "reconnecting" | "closed";
 
 export interface EventStreamState {
@@ -92,6 +104,10 @@ export interface EventStreamState {
    * whenever it changes, the same "count as a change signal" shape
    * `vaultChangeCount` already established for the explorer badge. */
   agentActivityCount: number;
+  /** Running count of `TELEGRAM_EVENTS` seen this session (issue 439) —
+   * the Telegram screen's refetch signal. Optional so a stream literal
+   * written before it existed still type-checks; absent reads as 0. */
+  telegramActivityCount?: number;
 }
 
 const INITIAL_STATE: EventStreamState = {
@@ -102,6 +118,7 @@ const INITIAL_STATE: EventStreamState = {
   lastVaultChange: null,
   recentChanges: [],
   agentActivityCount: 0,
+  telegramActivityCount: 0,
 };
 
 /** Build an `EventSource` unless a test/story has already provided one via
@@ -183,6 +200,17 @@ export function useEventStream(
     };
     for (const eventName of AGENT_ACTIVITY_EVENTS) {
       source.addEventListener(eventName, onAgentActivityEvent);
+    }
+
+    const onTelegramEvent = () => {
+      setState((prev) => ({
+        ...prev,
+        connection: "open",
+        telegramActivityCount: (prev.telegramActivityCount ?? 0) + 1,
+      }));
+    };
+    for (const eventName of TELEGRAM_EVENTS) {
+      source.addEventListener(eventName, onTelegramEvent);
     }
 
     return () => {

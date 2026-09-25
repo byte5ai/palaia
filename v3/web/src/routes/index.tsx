@@ -15,6 +15,7 @@ import {
   Onboarding,
   ReviewQueue,
   Settings,
+  Telegram,
   ToolProfiles,
 } from "./lazyScreens";
 import { NotFound, RouteError } from "./RouteError";
@@ -34,6 +35,7 @@ const BUILT_PATHS = new Set([
   "/tools",
   "/marketplace",
   "/agents",
+  "/telegram",
   "/review-queue",
 ]);
 
@@ -80,6 +82,7 @@ export const routes: RouteObject[] = [
           { path: "tools", element: <ToolProfiles /> },
           { path: "marketplace", element: <Marketplace /> },
           { path: "agents", element: <Agents /> },
+          { path: "telegram", element: <Telegram /> },
           { path: "review-queue", element: <ReviewQueue /> },
           ...placeholderRoutes,
           { path: "*", element: <NotFound /> },
