@@ -43,6 +43,8 @@ def test_list_profiles_reports_the_live_shape(tmp_path: Path) -> None:
             "directory": False,
             # SPEC-403: the messenger opt-in, off until a profile asks for it.
             "messenger": False,
+            # Issue #411/#439: the Telegram opt-in, same shape again.
+            "telegram": False,
             "hidden_tools": [],
             "semantic_routing": False,
             "tool_count": 15,
@@ -148,6 +150,84 @@ def test_create_profile_with_messenger_true_is_persisted(tmp_path: Path) -> None
     on_disk = yaml.safe_load((config_file_path(tmp_path)).read_text(encoding="utf-8"))
     profiles = on_disk["gateway"]["profiles"]
     assert next(p for p in profiles if p["path"] == "peers")["messenger"] is True
+
+
+def _telegram_gateway() -> DynamicGateway:
+    config = GatewayConfig(
+        vaults=[VaultMountConfig(key="work", name="work", purpose="Work vault.")],
+        profiles=[ProfileConfig(path="default", vaults=["work"], telegram=True)],
+    )
+    return DynamicGateway(config, {"work": FakeVaultService()})
+
+
+def test_update_profile_without_telegram_keeps_it_on(tmp_path: Path) -> None:
+    """Issue #439: an edit that does not mention ``telegram`` used to write
+    ``telegram: false`` — live and into config.yaml — because this surface
+    did not know the flag existed. An omitted field keeps its value, this
+    one included."""
+    with _client(tmp_path, gateway=_telegram_gateway()) as client:
+        response = client.patch("/api/gateway/profiles/default", json={"label": "Desk"})
+        assert response.status_code == 200
+        assert response.json()["telegram"] is True
+
+        listed = client.get("/api/gateway/profiles").json()
+        assert next(p for p in listed if p["path"] == "default")["telegram"] is True
+
+    on_disk = yaml.safe_load((config_file_path(tmp_path)).read_text(encoding="utf-8"))
+    profiles = on_disk["gateway"]["profiles"]
+    assert next(p for p in profiles if p["path"] == "default")["telegram"] is True
+
+
+def test_update_profile_changes_telegram_flag_live(tmp_path: Path) -> None:
+    gateway = _gateway()
+    with _client(tmp_path, gateway=gateway) as client:
+        response = client.patch("/api/gateway/profiles/default", json={"telegram": True})
+        assert response.status_code == 200
+        body = response.json()
+        assert body["telegram"] is True
+        assert body["messenger"] is False  # omitted field keeps its value
+
+        off = client.patch("/api/gateway/profiles/default", json={"telegram": False})
+        assert off.status_code == 200
+        assert off.json()["telegram"] is False
+
+    on_disk = yaml.safe_load((config_file_path(tmp_path)).read_text(encoding="utf-8"))
+    profiles = on_disk["gateway"]["profiles"]
+    assert next(p for p in profiles if p["path"] == "default")["telegram"] is False
+
+
+def test_create_profile_with_telegram_true_is_persisted(tmp_path: Path) -> None:
+    with _client(tmp_path, gateway=_gateway()) as client:
+        response = client.post(
+            "/api/gateway/profiles",
+            json={"path": "phone", "vaults": ["work"], "telegram": True},
+        )
+        assert response.status_code == 200
+        assert response.json()["telegram"] is True
+
+    on_disk = yaml.safe_load((config_file_path(tmp_path)).read_text(encoding="utf-8"))
+    profiles = on_disk["gateway"]["profiles"]
+    assert next(p for p in profiles if p["path"] == "phone")["telegram"] is True
+
+
+def test_the_curator_profile_cannot_be_given_telegram(tmp_path: Path) -> None:
+    """The curator fence holds on this surface too: neither a PATCH of the
+    live curator profile nor a create at its path can turn the flag on."""
+    config = GatewayConfig(
+        vaults=[VaultMountConfig(key="work", name="work")],
+        profiles=[ProfileConfig(path="curator", vaults=["work"])],
+    )
+    gateway = DynamicGateway(config, {"work": FakeVaultService()})
+    with _client(tmp_path, gateway=gateway) as client:
+        patched = client.patch("/api/gateway/profiles/curator", json={"telegram": True})
+        created = client.post(
+            "/api/gateway/profiles",
+            json={"path": "curator", "vaults": ["work"], "telegram": True},
+        )
+        listed = client.get("/api/gateway/profiles").json()
+    assert patched.status_code == 400
+    assert created.status_code == 400
+    assert next(p for p in listed if p["path"] == "curator")["telegram"] is False
 
 
 def test_update_profile_cannot_touch_the_curator_profile(tmp_path: Path) -> None:

@@ -92,6 +92,7 @@ from ..auth.policy import AuthPolicyError, check_gateway_auth_policy
 from ..directory.service import DirectoryService
 from ..messenger.service import MessengerService
 from ..stash.service import StashService
+from ..telegram.service import TelegramService
 from ..upstream.models import UpstreamConfig
 from ..upstream.service import UpstreamCredentialError, UpstreamService
 from .build import (
@@ -229,6 +230,13 @@ class DynamicGateway:
             any profile whose ``messenger`` flag is set — same contract
             again, and never onto the curator profile (refused by
             ``ProfileConfig`` and again at mount time).
+        telegram_service: the hub-wide Telegram connector (issue #411),
+            mounted into any profile whose ``telegram`` flag is set — same
+            contract as :func:`~.build.build_gateway`, and never onto the
+            curator. Kept here rather than passed per rebuild, which is what
+            makes a profile rebuilt at runtime (a vault added, an upstream
+            connected, a profile edited) come back with its Telegram tools
+            instead of silently without them (issue #439).
         upstream_service: the external-server registry (SPEC-302). Given,
             a profile's ``upstreams`` entries are mounted **only while the
             upstream's last probe said it was reachable** — a down or
@@ -256,6 +264,7 @@ class DynamicGateway:
         upstream_service: UpstreamService | None = None,
         directory_service: DirectoryService | None = None,
         messenger_service: MessengerService | None = None,
+        telegram_service: TelegramService | None = None,
     ) -> None:
         self._config = config
         self._upstream_service = upstream_service
@@ -268,6 +277,7 @@ class DynamicGateway:
         self._stash_service = stash_service
         self._directory_service = directory_service
         self._messenger_service = messenger_service
+        self._telegram_service = telegram_service
         self.router = Router(routes=[])
         self._profile_servers: dict[str, FastMCP] = {}
         self._lock = asyncio.Lock()
@@ -415,6 +425,7 @@ class DynamicGateway:
         stash: bool = False,
         directory: bool = False,
         messenger: bool = False,
+        telegram: bool = False,
         hidden_tools: Sequence[str] = (),
         semantic_routing: bool = False,
         upstreams: Sequence[str] | None = None,
@@ -441,6 +452,12 @@ class DynamicGateway:
                 directory tool family (SPEC-402).
             messenger: whether this profile also carries the messenger tool
                 family (SPEC-403). Never valid on the curator profile.
+            telegram: whether this profile also carries the Telegram tool
+                family (issue #411). Never valid on the curator profile.
+                Same "whole shape" contract as every flag here: a caller
+                that means "keep it" passes the current value — see
+                :meth:`set_profile_upstreams` and the profile editor's
+                ``PATCH`` for the two that do (issue #439).
             hidden_tools: final (post-namespace) tool names this profile
                 should hide (SPEC-305 deliverable #3) — replaces whatever
                 it hid before, same "whole list, not a delta" contract as
@@ -504,6 +521,7 @@ class DynamicGateway:
                 stash=stash,
                 directory=directory,
                 messenger=messenger,
+                telegram=telegram,
                 hidden_tools=list(hidden_tools),
                 semantic_routing=semantic_routing,
                 upstreams=resolved_upstreams,
@@ -524,7 +542,9 @@ class DynamicGateway:
         ``hidden_tools``, ``messenger``, ``directory`` and
         ``semantic_routing`` to their defaults — live and, via the
         settings snapshot, in ``config.yaml`` (issue #324). This carries
-        every other field of the current profile through unchanged.
+        every other field of the current profile through unchanged —
+        ``telegram`` included, which the first version of this method missed
+        the same way (issue #439).
 
         Raises:
             GatewayConfigError: no profile is mounted at ``path``.
@@ -542,6 +562,7 @@ class DynamicGateway:
             stash=current.stash,
             directory=current.directory,
             messenger=current.messenger,
+            telegram=current.telegram,
             hidden_tools=list(current.hidden_tools),
             semantic_routing=current.semantic_routing,
             upstreams=list(upstreams),
@@ -698,16 +719,21 @@ class DynamicGateway:
         auth = self._token_verifiers.get(profile.path)
         middleware = self._profile_middleware.get(profile.path, ())
         upstream_mounts = await self._upstream_mounts_for(profile)
+        # The optional services by keyword: this call once passed them
+        # positionally, and a service appended to the builder's signature
+        # without being appended here too was simply never mounted on a
+        # rebuilt profile — no error, just missing tools (issue #439).
         server = _build_profile_server(
             profile,
             self._config,
             self._vault_servers,
             auth,
             middleware,
-            self._stash_service,
-            upstream_mounts,
-            self._directory_service,
-            self._messenger_service,
+            stash_service=self._stash_service,
+            upstream_mounts=upstream_mounts,
+            directory_service=self._directory_service,
+            messenger_service=self._messenger_service,
+            telegram_service=self._telegram_service,
         )
         # Belt and braces for issue #315: whatever `_build_profile_server`
         # returned (a semantic-routing router included) is what gets served,
