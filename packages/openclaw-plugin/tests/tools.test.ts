@@ -133,6 +133,25 @@ describe("tools", () => {
       );
     });
 
+    it("falls back to the configured maxResults when the param is omitted (#465)", async () => {
+      mockQuery.mockResolvedValueOnce({ result: { results: [] } });
+
+      await api.tools["memory_search"].def.execute("call-2b", {
+        query: "test",
+      });
+
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ top_k: DEFAULT_CONFIG.maxResults }),
+        expect.any(Number)
+      );
+    });
+
+    it("declares no schema default for maxResults, so hosts cannot override the config (#465)", () => {
+      const maxResults = api.tools["memory_search"].def.parameters.properties.maxResults;
+      expect(maxResults.default).toBeUndefined();
+      expect(maxResults.description).not.toContain("default: 5");
+    });
+
     it("passes include_cold for tier=all", async () => {
       mockQuery.mockResolvedValueOnce({ result: { results: [] } });
 

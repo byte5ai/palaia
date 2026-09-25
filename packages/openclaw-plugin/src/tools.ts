@@ -71,15 +71,19 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
   api.registerTool({
     name: "memory_search",
     description:
-      "Semantically search palaia memory for relevant notes and context.",
+      "Search palaia memory for entries relevant to a query (semantic + keyword ranking; keyword-only when no embedding provider is available). Returns matching entries as text, each with its source path, score and tier, filtered to the scopes this agent may see. Use memory_get with a returned path to read one entry.",
     parameters: Type.Object({
       query: Type.String({ description: "Search query" }),
       maxResults: Type.Optional(
-        Type.Number({ description: "Max results (default: 5)", default: 5 })
+        Type.Number({
+          description:
+            "Maximum results. Defaults to the plugin's maxResults setting (10 unless configured).",
+        })
       ),
       tier: Type.Optional(
         Type.String({
-          description: "hot|warm|all (default: hot+warm)",
+          description:
+            "Pass \"all\" to include cold (archived) entries; any other value searches hot and warm (unless the plugin's tier setting is \"all\").",
         })
       ),
       type: Type.Optional(
