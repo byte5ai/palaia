@@ -21,7 +21,6 @@ These rules apply to all AI agents working on this repository (Codex, Claude, Co
 
 - **Python + TypeScript** monorepo: `palaia/` (Python CLI/core) + `packages/openclaw-plugin/` (TS plugin).
 - Tests: `python3 -m pytest tests/ -q` and `cd packages/openclaw-plugin && npx vitest run`.
-- Dev server runs on **devhost** (Tailscale) — never use `localhost`.
 
 ## Pre-push Hook
 
