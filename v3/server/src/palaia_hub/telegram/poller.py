@@ -28,14 +28,22 @@ Telegram, a token that was just rotated — each is logged and retried after a
 backoff that grows to :data:`MAX_BACKOFF_SECONDS`, because the alternative
 (a task that exits) is a connector that is silently off until someone
 restarts the hub.
+
+**What the dashboard sees of it** (issue #439): when the last poll
+succeeded, the last failure's one scrubbed line and when it happened, and a
+``telegram.bot.state`` event each time the bot moves between ``ok`` and
+``failing`` — a transition, not a heartbeat, so a healthy bot adds nothing
+to the bus and a broken one adds one event, not one per retry.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any
 
+from .api import summary_line
 from .models import DispatchOutcome, TelegramError
 from .service import TelegramService
 
@@ -65,6 +73,7 @@ class LongPoller:
         *,
         timeout: float | None = None,
         sleep: Any = asyncio.sleep,
+        now: Any = time.time,
     ) -> None:
         self._service = service
         self.bot = bot
@@ -72,17 +81,29 @@ class LongPoller:
             timeout if timeout is not None else service.settings.poll_timeout_seconds
         )
         self._sleep = sleep
+        self._now = now
         #: ``None`` until the first batch: the first ``getUpdates`` of a
         #: process deliberately sends no offset, so Telegram replies with
         #: whatever it is still holding rather than with nothing.
         self.offset: int | None = None
         self.consecutive_failures = 0
+        #: Hub-clock time of the last poll Telegram answered, ``None`` until
+        #: one has.
+        self.last_ok_at: float | None = None
+        #: The last failure, as one token-free line, and when it happened.
+        #: Kept after a recovery, so "failed at 03:12, fine since" can be read.
+        self.last_error: str | None = None
+        self.last_error_at: float | None = None
+        #: ``ok``/``failing`` once known — what a transition is measured from.
+        self._state: str | None = None
 
     async def poll_once(self) -> list[DispatchOutcome]:
         """Fetch one batch, advance the offset, dispatch every update.
 
         Returns one outcome per update — including the ones that normalised
-        to nothing, so a caller counting outcomes is counting updates.
+        to nothing, so a caller counting outcomes is counting updates. A
+        fetch that returns at all is "Telegram answered", and is recorded
+        as such before anything is dispatched.
 
         Raises:
             TelegramError: only from the *fetch*. A dispatch never raises
@@ -94,6 +115,7 @@ class LongPoller:
         updates = await self._service.fetch_updates(
             self.bot, offset=self.offset, timeout=self._timeout
         )
+        self._record_ok()
         # Advance first, dispatch second — see the module docstring.
         highest = max(
             (u["update_id"] for u in updates if isinstance(u.get("update_id"), int)),
@@ -119,11 +141,23 @@ class LongPoller:
                 await self._backoff(str(exc))
             except Exception as exc:  # pragma: no cover - defensive
                 await self._backoff(f"unexpected {type(exc).__name__}: {exc}")
-            else:
-                self.consecutive_failures = 0
+
+    def _record_ok(self) -> None:
+        """Telegram answered: reset the failure count, and say so on the bus
+        if this bot had been failing."""
+        self.consecutive_failures = 0
+        self.last_ok_at = float(self._now())
+        if self._state == "failing":
+            self._service.publish_bot_state(self.bot, "ok")
+        self._state = "ok"
 
     async def _backoff(self, reason: str) -> None:
         self.consecutive_failures += 1
+        self.last_error = summary_line(reason)
+        self.last_error_at = float(self._now())
+        if self._state != "failing":
+            self._state = "failing"
+            self._service.publish_bot_state(self.bot, "failing", self.last_error)
         delay = min(
             BASE_BACKOFF_SECONDS * (2 ** (self.consecutive_failures - 1)), MAX_BACKOFF_SECONDS
         )

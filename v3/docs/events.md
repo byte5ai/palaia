@@ -237,8 +237,9 @@ or a `systemd` timer around it reads.
 
 ### 3.10 Telegram connector events (issue #411, additive)
 
-Emitted by `palaia_hub.telegram.TelegramService`. Three of the four carry
-**metadata only, never the message text** — a dump of
+Emitted by `palaia_hub.telegram.TelegramService` (and, for
+`telegram.bot.state`, by each bot's long poller through it). Three of the
+four message events carry **metadata only, never the message text** — a dump of
 `palaia_hub.telegram.models.InboundMessage.metadata()`, a method that has no
 `text` key at all, for the same reason §3.7's envelopes have no `body`: this
 bus feeds every SSE listener and every outbound webhook the hub is configured
@@ -251,6 +252,7 @@ with, and a human's words are more sensitive there than an agent's, not less.
 | `telegram.message.dropped` | `telegram` | the same, plus `candidates`: the three chat keys a rule could have used | No route claimed the message. A normal outcome; the `candidates` list is what an operator copies into `config.yaml` to fix it |
 | `telegram.message.sent` | `telegram` | `bot`, `chat_id`, `message_id`, `reply_to_message_id`, `text_chars`, `profile` | An agent sends through `telegram_send`/`telegram_reply`. `profile` is the MCP profile that sent it |
 | `telegram.routed` | `telegram` | the received shape, plus `label` **and `text`** | A route configured with `kind: event` delivered a message |
+| `telegram.bot.state` | `telegram` | `bot`, `state` (`ok` or `failing`), `detail` (the error line, token scrubbed; empty on recovery) | A polling bot's poll starts failing, or recovers — once per transition, never once per poll (issue #439). It is what lets the dashboard's Telegram panel show a failing bot without polling the hub |
 
 `telegram.routed` is the one event in this vocabulary that carries the
 message text, and it is not an oversight: it exists because an operator wrote

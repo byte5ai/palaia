@@ -153,6 +153,11 @@ EventName = Literal[
     "telegram.message.dropped",
     "telegram.message.sent",
     "telegram.routed",
+    # Issue #439 (the dashboard's Telegram panel): a polling bot moving
+    # between `ok` and `failing` — once per transition, never once per
+    # poll. `data` is `{bot, state, detail}`: `detail` is the scrubbed error
+    # line (empty on recovery), never a token.
+    "telegram.bot.state",
     "health",
 ]
 

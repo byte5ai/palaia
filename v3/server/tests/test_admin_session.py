@@ -31,6 +31,11 @@ from palaia_hub.hooks import HookOutbox, HookStore
 from palaia_hub.notifications import NotificationStore
 from palaia_hub.oauth import AuthorizationServer, set_owner_password
 from palaia_hub.oauth.login import CSRF_COOKIE, SESSION_COOKIE
+from palaia_hub.telegram.api import HttpBotApi
+from palaia_hub.telegram.models import TelegramSettings
+from palaia_hub.telegram.runtime import TelegramRuntime
+from palaia_hub.telegram.service import TelegramService
+from palaia_hub.upstream.secrets import SecretStore
 from palaia_hub.vault import VaultRegistry
 
 ISSUER = "https://hub.example.test"
@@ -50,6 +55,7 @@ class Hub:
     app: FastAPI
     server: AuthorizationServer
     home: Path
+    secret_store: SecretStore
 
     def session_cookie(self) -> str:
         session, _expires = self.server.store.create_login_session(
@@ -77,6 +83,14 @@ def _build_hub(
     if with_owner:
         set_owner_password(server.store, OWNER, PASSWORD, now=NOW)
     hook_store = HookStore(home)
+    # Issue #439: the Telegram panel's `/api/telegram` mounts only with a
+    # connector and a secret store, so the walk carries both. No bots: the
+    # routes are what is walked, and no poll task should run under it.
+    secret_store = SecretStore(home)
+    bot_api = HttpBotApi()
+    telegram = TelegramRuntime(
+        TelegramService(TelegramSettings(), bot_api, secret_store), bot_api, owns_api=True
+    )
     app = create_app(
         config,
         home=home,
@@ -86,8 +100,10 @@ def _build_hub(
         hook_store=hook_store,
         hook_outbox=HookOutbox(home / "hook-outbox.sqlite3"),
         notification_store=NotificationStore(home / "notifications.sqlite3"),
+        secret_store=secret_store,
+        telegram_runtime=telegram,
     )
-    return Hub(app=app, server=server, home=home)
+    return Hub(app=app, server=server, home=home, secret_store=secret_store)
 
 
 @pytest.fixture
@@ -97,6 +113,7 @@ def hub(tmp_path: Path) -> Iterator[Hub]:
         yield built
     finally:
         built.server.store.close()
+        built.secret_store.close()
 
 
 @pytest.fixture
@@ -118,6 +135,7 @@ def walk_hub(tmp_path: Path) -> Iterator[Hub]:
         yield built
     finally:
         built.server.store.close()
+        built.secret_store.close()
 
 
 def _api_routes(app: FastAPI) -> list[tuple[str, str]]:
@@ -171,7 +189,14 @@ def test_the_walk_actually_covers_the_surface(walk_hub: Hub) -> None:
     routes = _api_routes(walk_hub.app)
     assert len(routes) > 20, routes
     paths = {path for _method, path in routes}
-    for expected in ("/api/vaults", "/api/auth/tokens", "/api/mode", "/api/session"):
+    for expected in (
+        "/api/vaults",
+        "/api/auth/tokens",
+        "/api/mode",
+        "/api/session",
+        "/api/telegram/status",
+        "/api/telegram/bots/placeholder/check",
+    ):
         assert expected in paths
 
 

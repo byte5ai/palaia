@@ -38,14 +38,15 @@ from __future__ import annotations
 
 import logging
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from collections.abc import Mapping
 from typing import Any, Protocol
 
 from ..messenger.models import MAX_BODY_BYTES
-from .api import BotApi
+from .api import BotApi, summary_line
 from .models import (
     ALLOWED_UPDATES,
+    DEFAULT_RECENT_SIZE,
     DEFAULT_SENT_LEDGER_SIZE,
     MAX_MESSAGE_CHARS,
     ChatInfo,
@@ -56,6 +57,7 @@ from .models import (
     MissingSecretError,
     NotOurMessageError,
     NotPermittedError,
+    RecentMessage,
     SentMessage,
     TelegramBotConfig,
     TelegramDestination,
@@ -86,9 +88,28 @@ EVENT_SENT = "telegram.message.sent"
 #: :meth:`TelegramService._dispatch_event`.
 EVENT_ROUTED = "telegram.routed"
 
+#: Emitted when a polling bot moves between ``ok`` and ``failing`` (issue
+#: #439) — by :class:`~palaia_hub.telegram.poller.LongPoller`, through
+#: :meth:`TelegramService.publish_bot_state`. Once per transition, so the
+#: dashboard's panel can go red live without the dashboard polling for it.
+EVENT_BOT_STATE = "telegram.bot.state"
+
 #: How many characters of a message's first line become a messenger
 #: envelope's subject before it is elided.
 SUBJECT_PREVIEW_CHARS = 80
+
+#: The :meth:`~palaia_hub.telegram.models.InboundMessage.metadata` keys a
+#: :class:`~palaia_hub.telegram.models.RecentMessage` keeps — which chat,
+#: which message, how long. Not the sender: the panel answers "where did it
+#: go", not "who said what".
+_RECENT_METADATA_KEYS = (
+    "bot",
+    "chat_id",
+    "chat_type",
+    "chat_username",
+    "message_id",
+    "text_chars",
+)
 
 
 class SecretReader(Protocol):
@@ -208,6 +229,8 @@ class TelegramService:
             (:data:`palaia_hub.events.schema.HubEventHook`). ``None`` in
             tests and in a hub with no bus; the connector works either way.
         ledger_capacity: see :class:`SentLedger`.
+        now: the hub clock, unix seconds — stamps what the dashboard panel
+            reads (:meth:`last_update_at`, :meth:`recent_messages`).
     """
 
     def __init__(
@@ -231,6 +254,10 @@ class TelegramService:
         self._routes = RoutingTable(settings.routes)
         self._ledger = SentLedger(ledger_capacity)
         self._now = now
+        # What the dashboard panel shows (issue #439): in memory, metadata
+        # only, gone on restart — ADR-006's "no message store" holds.
+        self._last_update_at: dict[str, float] = {}
+        self._recent: deque[RecentMessage] = deque(maxlen=DEFAULT_RECENT_SIZE)
 
     # ---------------------------------------------------------------- config
 
@@ -363,7 +390,23 @@ class TelegramService:
         the capture — this returns an outcome and the caller advances past
         the update. A connector that could be wedged by one bad message is a
         connector that stops delivering the next thousand good ones.
+
+        Every message's outcome is then recorded for the dashboard panel
+        (:meth:`recent_messages`, issue #439) — after delivery, and in its
+        own ``try``: bookkeeping that fails must cost neither the delivery
+        nor this guarantee.
         """
+        outcome = await self._route_update(bot_key, update)
+        try:
+            self._record(outcome)
+        except Exception:
+            logger.warning(
+                "telegram: could not record a message outcome for the dashboard",
+                exc_info=True,
+            )
+        return outcome
+
+    async def _route_update(self, bot_key: str, update: dict[str, Any]) -> DispatchOutcome:
         message = normalise_update(bot_key, update)
         if message is None:
             return DispatchOutcome(
@@ -709,6 +752,55 @@ class TelegramService:
                 rows.append(ChatInfo(bot=bot.key, chat=chat, destination=None, can_send=True))
         return rows
 
+    # ------------------------------------------------------------- dashboard
+
+    def _record(self, outcome: DispatchOutcome) -> None:
+        """Remember one message's outcome for the panel — never its text."""
+        message = outcome.message
+        if message is None:
+            return
+        now = float(self._now())
+        self._last_update_at[message.bot] = now
+        metadata = message.metadata()
+        self._recent.append(
+            RecentMessage.model_validate(
+                {
+                    **{key: metadata[key] for key in _RECENT_METADATA_KEYS},
+                    "at": now,
+                    "routed": outcome.routed,
+                    "destination": outcome.destination,
+                    "delivered": outcome.delivered,
+                    "detail": summary_line(outcome.detail),
+                    "candidates": None
+                    if outcome.routed
+                    else self._routes.candidates(
+                        chat_id=message.chat_ref, chat_username=message.chat_username
+                    ),
+                }
+            )
+        )
+
+    def last_update_at(self, bot: str) -> float | None:
+        """When ``bot`` last received a message (hub clock), or ``None`` if
+        it has received none since the hub started."""
+        return self._last_update_at.get(bot)
+
+    def recent_messages(self) -> list[RecentMessage]:
+        """The last :data:`~palaia_hub.telegram.models.DEFAULT_RECENT_SIZE`
+        inbound messages across every bot, newest first."""
+        return list(reversed(self._recent))
+
+    def publish_bot_state(self, bot: str, state: str, detail: str = "") -> None:
+        """Put a polling bot's ``ok``/``failing`` transition on the bus.
+
+        Public because its caller is
+        :class:`~palaia_hub.telegram.poller.LongPoller`, which has no bus of
+        its own: the poller decides *when* (on a transition only), this only
+        publishes. ``detail`` is scrubbed here once more — this bus feeds
+        every outbound webhook, and a second pass costs nothing.
+        """
+        self._emit(EVENT_BOT_STATE, {"bot": bot, "state": state, "detail": summary_line(detail)})
+
     async def check_bot(self, key: str) -> dict[str, Any]:
         """Probe one bot's connection: ``getMe``, reported without its token.
 
@@ -760,6 +852,7 @@ def _sent_from(
 
 
 __all__ = [
+    "EVENT_BOT_STATE",
     "EVENT_DROPPED",
     "EVENT_RECEIVED",
     "EVENT_ROUTED",

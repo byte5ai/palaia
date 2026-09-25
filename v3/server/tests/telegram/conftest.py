@@ -41,6 +41,11 @@ class FakeSecrets:
         self.reads.append(name)
         return self.values.get(name)
 
+    def has(self, name: str) -> bool:
+        """The dashboard panel's presence check (issue #439) — deliberately
+        not recorded in :attr:`reads`, which counts *value* reads."""
+        return name in self.values
+
 
 class FakeBotApi:
     """A :class:`palaia_hub.telegram.api.BotApi` backed by scripted batches.
@@ -76,6 +81,8 @@ class FakeBotApi:
         self.cancelled_polls = 0
         #: Set by :meth:`aclose` — the one thing an owning runtime calls.
         self.closed = False
+        #: How many connection checks reached "Telegram" (issue #439).
+        self.get_me_calls = 0
 
     async def get_updates(
         self, token: str, *, offset: int | None, timeout: float, allowed_updates: tuple[str, ...]
@@ -150,6 +157,9 @@ class FakeBotApi:
         return True
 
     async def get_me(self, token: str) -> dict[str, Any]:
+        self.get_me_calls += 1
+        if self.fail_with is not None:
+            raise self.fail_with
         return {"id": 42, "username": "fake_bot", "is_bot": True}
 
 

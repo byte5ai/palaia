@@ -70,6 +70,26 @@ def redact_token(text: str) -> str:
     return TOKEN_RE.sub(REDACTED, text)
 
 
+#: How long one error or outcome line the dashboard shows may get
+#: (issue #439). Enough for "telegram getUpdates failed (HTTP 401):
+#: Unauthorized" plus a fix; short enough that a sink's exception quoting
+#: something long cannot turn a status row into a paragraph.
+LINE_CHARS = 200
+
+
+def summary_line(text: str, *, limit: int = LINE_CHARS) -> str:
+    """``text`` as one short, token-free line for a status surface.
+
+    Scrubbed with :func:`redact_token` *before* it is cut, so a truncation
+    can never leave half a token behind for the pattern to miss; collapsed
+    to one line because a status row has room for one.
+    """
+    line = " ".join(redact_token(text).split())
+    if len(line) > limit:
+        line = line[: limit - 1].rstrip() + "…"
+    return line
+
+
 class TelegramApiError(TelegramError):
     """The Bot API refused a call, or could not be reached.
 
@@ -260,10 +280,12 @@ class HttpBotApi:
 __all__ = [
     "DEFAULT_API_BASE",
     "DEFAULT_TIMEOUT_SECONDS",
+    "LINE_CHARS",
     "REDACTED",
     "TOKEN_RE",
     "BotApi",
     "HttpBotApi",
     "TelegramApiError",
     "redact_token",
+    "summary_line",
 ]
