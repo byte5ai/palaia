@@ -80,6 +80,21 @@ class TokenError(RuntimeError):
     """Raised for a caller-facing token-store failure (bad scope, no such id)."""
 
 
+def _new_token_id() -> str:
+    """A fresh public token id that never starts with ``-``.
+
+    ``secrets.token_urlsafe`` draws from ``[A-Za-z0-9_-]``, so one id in 64
+    used to begin with a dash — and ``palaia-hub token revoke <id>`` then
+    read the id as an unknown option and refused to run. Redrawing keeps the
+    id's length and alphabet unchanged; only its first character loses one
+    of its 64 values.
+    """
+    while True:
+        token_id = secrets.token_urlsafe(9)
+        if not token_id.startswith("-"):
+            return token_id
+
+
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
@@ -213,7 +228,7 @@ class TokenStore:
             raise TokenError("token profile must not be empty. Fix: pass --profile <path>.")
         validated_scopes = _validate_scopes(scopes)
 
-        token_id = secrets.token_urlsafe(9)
+        token_id = _new_token_id()
         secret = secrets.token_urlsafe(32)
         record = TokenRecord(
             id=token_id,
