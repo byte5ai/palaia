@@ -39,7 +39,13 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from .models import CreatedToken, TokenInfo
-from .scopes import directory_scope, messenger_scope, stash_scope, vault_scope
+from .scopes import (
+    directory_scope,
+    messenger_scope,
+    stash_scope,
+    telegram_scope,
+    vault_scope,
+)
 from .store import TokenError, TokenStore
 
 if TYPE_CHECKING:
@@ -75,15 +81,22 @@ def _default_scopes_for_profile(dynamic_gateway: DynamicGateway, profile: str) -
             ]
             # Issue #313: the hub-wide mounts now require a token, so a
             # default token for a profile that carries a built-in family
-            # (`stash`/`directory`/`messenger: true`) also gets that family's
-            # scope pair — the same rule the OAuth server's grantable
-            # ceiling already applies (`palaia_hub.cli._profile_scopes`).
+            # (`stash`/`directory`/`messenger`/`telegram: true`) also gets
+            # that family's scope pair — the same rule the OAuth server's
+            # grantable ceiling already applies (`palaia_hub.cli.
+            # _profile_scopes`). Telegram joined with issue #439, the change
+            # that first mounts its tools on a live profile — without it, a
+            # dashboard-issued token could call none of them. The scope is
+            # only the first fence: what the profile may actually address is
+            # its `telegram.grants` entry, default-deny.
             if candidate.stash:
                 scopes += [stash_scope("read"), stash_scope("write")]
             if candidate.directory:
                 scopes += [directory_scope("read"), directory_scope("write")]
             if candidate.messenger:
                 scopes += [messenger_scope("read"), messenger_scope("send")]
+            if candidate.telegram:
+                scopes += [telegram_scope("read"), telegram_scope("send")]
             return scopes
     return []
 

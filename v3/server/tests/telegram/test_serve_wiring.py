@@ -334,3 +334,54 @@ async def test_a_hub_without_a_telegram_section_is_unchanged(tmp_path: Path) -> 
             assert not TELEGRAM_TOOLS & await _tool_names(production, "default")
     finally:
         await _close(production)
+
+
+# ------------------------------------------------------ tokens and scopes
+
+
+async def test_a_dashboard_token_for_a_telegram_profile_can_use_the_tools(
+    tmp_path: Path,
+) -> None:
+    """With auth on (the shipped default), the token the dashboard mints for
+    a ``telegram: true`` profile — empty ``scopes``, so the profile's
+    default — carries ``telegram:read``/``telegram:send`` and reaches the
+    tools; a vault-only token for the same profile is refused by scope."""
+    await _prepare_home(tmp_path)
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8").replace(
+            "auth_enabled: false\n", "auth_enabled: true\n"
+        ),
+        encoding="utf-8",
+    )
+    api = FakeBotApi(park_when_empty=True)
+    config = load_config(home=tmp_path, create_if_missing=False)
+    production = await build_production_app(config, home=tmp_path, telegram_api=api)
+    _store_secrets(production)
+    try:
+        async with production.app.router.lifespan_context(production.app):
+            async with _http(production) as http:
+                minted = await http.post(
+                    "/api/auth/tokens", json={"name": "phone", "profile": "default"}
+                )
+            assert minted.status_code == 200, minted.text
+            assert {"telegram:read", "telegram:send"} <= set(minted.json()["info"]["scopes"])
+            vault_only = production.token_store.create("ro", "default", ["vault:work:read"])
+
+            url = f"{BASE_URL}/mcp/default/"
+            async with Client(
+                mcp_client_transport(production.app, url, token=minted.json()["token"])
+            ) as client:
+                listed = await client.call_tool("telegram_list_chats", {})
+            async with Client(
+                mcp_client_transport(production.app, url, token=vault_only.token)
+            ) as client:
+                refused = await client.call_tool(
+                    "telegram_list_chats", {}, raise_on_error=False
+                )
+    finally:
+        await _close(production)
+    assert not listed.is_error
+    assert refused.is_error
+    text = refused.content[0].text if refused.content else ""  # type: ignore[union-attr]
+    assert "telegram:read" in text

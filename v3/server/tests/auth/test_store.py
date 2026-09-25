@@ -136,6 +136,19 @@ def test_hub_level_family_scopes_are_accepted(tmp_path: Path) -> None:
     assert created.info.scopes == scopes
 
 
+def test_telegram_scopes_are_accepted(tmp_path: Path) -> None:
+    """Issue #439: the Telegram family (issue #411) was granted by the OAuth
+    ceiling and checked by its tools, but this store refused to mint it —
+    so no ``plt_`` token could ever call a Telegram tool."""
+    store = TokenStore(home=tmp_path)
+
+    created = store.create("phone", "default", ["telegram:read", "telegram:send"])
+
+    assert created.info.scopes == ["telegram:read", "telegram:send"]
+    with pytest.raises(TokenError, match="invalid scope"):
+        store.create("phone", "default", ["telegram:write"])
+
+
 def test_empty_name_or_profile_is_rejected(tmp_path: Path) -> None:
     store = TokenStore(home=tmp_path)
     with pytest.raises(TokenError):
