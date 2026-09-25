@@ -109,9 +109,23 @@ def render_telegram_section(settings: TelegramSettings) -> str:
     :func:`palaia_hub.gateway.settings_bridge.render_gateway_section`
     renders for ``gateway:``. Defaults are left out, so a saved section
     reads like one an operator would write by hand: no ``enabled: true``,
-    no ``urgency: normal`` on every rule."""
+    no ``urgency: normal`` on every rule — except the ones that say *who*:
+    a rule always names its ``chat`` and a grant its ``bots`` and
+    ``chats``, even when that is ``*``, because "every chat" is the most
+    important thing to see about a rule, not a detail to infer from an
+    absent line."""
     payload = settings.model_dump(mode="json", exclude_none=True, exclude_defaults=True)
     payload.setdefault("bots", [])
+    if "routes" in payload:
+        payload["routes"] = [
+            {"bot": route.bot, "chat": route.chat, **dumped}
+            for route, dumped in zip(settings.routes, payload["routes"], strict=True)
+        ]
+    if "grants" in payload:
+        payload["grants"] = [
+            {**dumped, "bots": list(grant.bots), "chats": list(grant.chats)}
+            for grant, dumped in zip(settings.grants, payload["grants"], strict=True)
+        ]
     dumped = yaml.safe_dump({"telegram": payload}, default_flow_style=False, sort_keys=False)
     _, _, body = dumped.partition("\n")
     if body and not body.endswith("\n"):

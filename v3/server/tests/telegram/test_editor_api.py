@@ -28,6 +28,7 @@ from typing import Any
 
 import httpx
 import pytest
+import yaml
 from fastapi import FastAPI
 
 from palaia_hub.config import load_config
@@ -445,8 +446,24 @@ async def test_without_a_config_path_the_panel_is_read_only(
     assert response.status_code in (404, 405)
 
 
-async def test_render_leaves_the_defaults_out() -> None:
-    body = render_telegram_section(TelegramSettings.model_validate(TWO_BOT_SETTINGS))
+async def test_render_leaves_the_defaults_out_but_always_says_who() -> None:
+    settings = TelegramSettings.model_validate(
+        {
+            **TWO_BOT_SETTINGS,
+            "routes": [
+                *TWO_BOT_SETTINGS["routes"],
+                {"bot": "support", "destination": {"kind": "event"}},
+            ],
+            "grants": [{"profile": "default"}],
+        }
+    )
+    body = render_telegram_section(settings)
     assert "enabled:" not in body and "urgency:" not in body and "transport:" not in body
     assert body.startswith("  bots:\n")
+    # A catch-all rule and an open grant say so, rather than by omission.
+    assert "  - bot: support\n    chat: '*'\n" in body
+    assert "bots:\n    - '*'\n    chats:\n    - '*'\n" in body
+    assert TelegramSettings.model_validate(yaml.safe_load("telegram:\n" + body)["telegram"]) == (
+        settings
+    )
     assert render_telegram_section(TelegramSettings()) == "  bots: []\n"
