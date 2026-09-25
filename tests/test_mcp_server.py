@@ -86,6 +86,16 @@ class TestToolRegistration:
         assert "palaia_edit" not in tools
         assert "palaia_gc" not in tools
 
+    def test_all_parameters_have_descriptions(self, server):
+        """Parameter descriptions must reach the JSON schema the client sees (#464)."""
+        undescribed = [
+            f"{name}.{param}"
+            for name, tool in server._tool_manager._tools.items()
+            for param, schema in tool.parameters.get("properties", {}).items()
+            if not schema.get("description")
+        ]
+        assert undescribed == []
+
 
 # ── palaia_search ────────────────────────────────────────────────
 

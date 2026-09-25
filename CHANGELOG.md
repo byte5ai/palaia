@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Fixed
+- **MCP server: tool parameters now carry their descriptions** (#464) — the parameter descriptions were written as bare strings inside `Annotated[...]`, which pydantic ignores, so all 32 parameters of the 7 MCP tools reached clients undescribed. They are now wrapped in `Field(description=...)`. The `palaia_list`, `palaia_edit` and `palaia_gc` docstrings also state more precisely what each call returns and changes.
 - **ContextEngine `compact()` no longer claims a compaction it did not do** (#418) — `compact()` runs `palaia gc`, which garbage-collects the memory store without touching the conversation transcript, yet it returned `compacted: true`. Since palaia declares `ownsCompaction: true`, the host trusted that signal and skipped its own compaction while the context window kept filling. `compact()` now returns `compacted: false` with a `reason`, and reports `tokensBefore`/`tokensAfter` unchanged when the host supplies a current token count.
 
 ---

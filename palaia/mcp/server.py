@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
+from pydantic import Field
 
 logger = logging.getLogger(__name__)
 
@@ -49,15 +50,15 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
 
     @mcp.tool()
     def palaia_search(
-        query: Annotated[str, "Search query text"],
-        limit: Annotated[int, "Max results to return"] = 10,
-        project: Annotated[str | None, "Filter by project name"] = None,
-        entry_type: Annotated[str | None, "Filter by type: memory, process, task"] = None,
-        status: Annotated[str | None, "Filter by status: open, in-progress, done, wontfix"] = None,
-        priority: Annotated[str | None, "Filter by priority: critical, high, medium, low"] = None,
-        assignee: Annotated[str | None, "Filter by assignee"] = None,
-        include_cold: Annotated[bool, "Include archived entries"] = False,
-        cross_project: Annotated[bool, "Search across all projects"] = False,
+        query: Annotated[str, Field(description="Search query text")],
+        limit: Annotated[int, Field(description="Max results to return")] = 10,
+        project: Annotated[str | None, Field(description="Filter by project name")] = None,
+        entry_type: Annotated[str | None, Field(description="Filter by type: memory, process, task")] = None,
+        status: Annotated[str | None, Field(description="Filter by status: open, in-progress, done, wontfix")] = None,
+        priority: Annotated[str | None, Field(description="Filter by priority: critical, high, medium, low")] = None,
+        assignee: Annotated[str | None, Field(description="Filter by assignee")] = None,
+        include_cold: Annotated[bool, Field(description="Include archived entries")] = False,
+        cross_project: Annotated[bool, Field(description="Search across all projects")] = False,
     ) -> str:
         """Search palaia memory using semantic and keyword search.
 
@@ -105,7 +106,7 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
 
     @mcp.tool()
     def palaia_read(
-        entry_id: Annotated[str, "Entry ID (full UUID or short prefix)"],
+        entry_id: Annotated[str, Field(description="Entry ID (full UUID or short prefix)")],
     ) -> str:
         """Read a specific memory entry by ID. Returns the full content and metadata."""
         from palaia.services.query import get_entry
@@ -135,13 +136,15 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
 
     @mcp.tool()
     def palaia_list(
-        tier: Annotated[str | None, "Tier to list: hot, warm, cold, or all"] = None,
-        entry_type: Annotated[str | None, "Filter by type: memory, process, task"] = None,
-        project: Annotated[str | None, "Filter by project name"] = None,
-        status: Annotated[str | None, "Filter by status"] = None,
-        limit: Annotated[int, "Max entries to return"] = 50,
+        tier: Annotated[str | None, Field(description="Tier to list: hot, warm, cold, or all")] = None,
+        entry_type: Annotated[str | None, Field(description="Filter by type: memory, process, task")] = None,
+        project: Annotated[str | None, Field(description="Filter by project name")] = None,
+        status: Annotated[str | None, Field(description="Filter by status")] = None,
+        limit: Annotated[int, Field(description="Max entries to return")] = 50,
     ) -> str:
-        """List memory entries. Shows a summary of entries in the specified tier."""
+        """List entry summaries (id, type, tier, title, created, tags) for one tier
+        (hot by default) or for all tiers with tier='all'. Bodies are not included;
+        use palaia_read."""
         from palaia.services.query import list_entries
 
         list_all = tier == "all"
@@ -205,15 +208,15 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
 
         @mcp.tool()
         def palaia_store(
-            content: Annotated[str, "Memory content to store"],
-            title: Annotated[str | None, "Short title for the entry"] = None,
-            tags: Annotated[list[str] | None, "Tags for categorization"] = None,
-            entry_type: Annotated[str | None, "Type: memory (default), process, task"] = None,
-            scope: Annotated[str | None, "Scope: team (default), private, public"] = None,
-            project: Annotated[str | None, "Project name"] = None,
-            agent: Annotated[str | None, "Agent name (auto-detected if not set)"] = None,
-            status: Annotated[str | None, "Task status: open, in-progress, done"] = None,
-            priority: Annotated[str | None, "Task priority: critical, high, medium, low"] = None,
+            content: Annotated[str, Field(description="Memory content to store")],
+            title: Annotated[str | None, Field(description="Short title for the entry")] = None,
+            tags: Annotated[list[str] | None, Field(description="Tags for categorization")] = None,
+            entry_type: Annotated[str | None, Field(description="Type: memory (default), process, task")] = None,
+            scope: Annotated[str | None, Field(description="Scope: team (default), private, public")] = None,
+            project: Annotated[str | None, Field(description="Project name")] = None,
+            agent: Annotated[str | None, Field(description="Agent name (auto-detected if not set)")] = None,
+            status: Annotated[str | None, Field(description="Task status: open, in-progress, done")] = None,
+            priority: Annotated[str | None, Field(description="Task priority: critical, high, medium, low")] = None,
         ) -> str:
             """Store a new memory entry. Use this to save context, decisions, patterns,
             or any knowledge that should persist across sessions."""
@@ -233,15 +236,17 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
 
         @mcp.tool()
         def palaia_edit(
-            entry_id: Annotated[str, "Entry ID to edit (full UUID or short prefix)"],
-            content: Annotated[str | None, "New content (replaces existing)"] = None,
-            title: Annotated[str | None, "New title"] = None,
-            tags: Annotated[list[str] | None, "New tags (replaces existing)"] = None,
-            status: Annotated[str | None, "New status"] = None,
-            priority: Annotated[str | None, "New priority"] = None,
-            assignee: Annotated[str | None, "New assignee"] = None,
+            entry_id: Annotated[str, Field(description="Entry ID to edit (full UUID or short prefix)")],
+            content: Annotated[str | None, Field(description="New content (replaces existing)")] = None,
+            title: Annotated[str | None, Field(description="New title")] = None,
+            tags: Annotated[list[str] | None, Field(description="New tags (replaces existing)")] = None,
+            status: Annotated[str | None, Field(description="New status")] = None,
+            priority: Annotated[str | None, Field(description="New priority")] = None,
+            assignee: Annotated[str | None, Field(description="New assignee")] = None,
         ) -> str:
-            """Edit an existing memory entry. Only provided fields are updated."""
+            """Edit an existing memory entry. Only provided fields change; content and
+            tags replace the old values. An unknown id returns 'Entry not found' (as
+            text, not an error)."""
             store = _get_store()
             try:
                 store.edit(
@@ -261,9 +266,11 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
 
         @mcp.tool()
         def palaia_gc(
-            dry_run: Annotated[bool, "Preview without making changes"] = True,
+            dry_run: Annotated[bool, Field(description="Preview without making changes")] = True,
         ) -> str:
-            """Run garbage collection — rotate entries between tiers based on decay scores."""
+            """Run garbage collection: move entries between hot/warm/cold tiers by decay
+            score and prune entries over the storage budget. dry_run defaults to True
+            (report only); pass dry_run=False to apply."""
             store = _get_store()
             result = store.gc(dry_run=dry_run, budget=True)
 
