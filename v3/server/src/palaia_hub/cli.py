@@ -103,7 +103,13 @@ def _build_parser() -> argparse.ArgumentParser:
     token_subparsers.add_parser("list", help="List known tokens (no secrets shown)")
 
     revoke_parser = token_subparsers.add_parser("revoke", help="Revoke a token by id")
-    revoke_parser.add_argument("token_id", help="Token id, from 'token list'")
+    revoke_parser.add_argument(
+        "token_id",
+        help=(
+            "Token id, from 'token list'. An id that starts with '-' (older "
+            "tokens can) needs '--' before it: 'token revoke -- -AbC...'."
+        ),
+    )
 
     _add_oauth_parser(subparsers)
     _add_curator_parser(subparsers)
