@@ -23,7 +23,10 @@ finding: they were not, and they carry the same pages).
 
 **The never-return-values rule.** :meth:`SecretStore.get` exists because the
 hub itself must decrypt a value to build an upstream's ``Authorization``
-header or a child process's environment. That is the *only* consumer. No
+header or a child process's environment, and — since the Telegram connector
+runs (issue #439) — to put a bot token into one Bot API call or compare a
+webhook's secret header. Those two in-process readers are the *only*
+consumers. No
 REST response model in this repository has a field a secret value could be
 placed in (see :mod:`palaia_hub.upstream.api` — the listing model carries
 ``name``/``created_at``/``updated_at`` and nothing else), and nothing in this
@@ -211,7 +214,9 @@ class SecretStore:
         **In-process callers only** — see this module's docstring. The only
         consumers in this repository are
         :mod:`palaia_hub.upstream.service` (building an upstream's auth
-        header or a child process's environment).
+        header or a child process's environment) and
+        :mod:`palaia_hub.telegram.service` (a bot token for the duration of
+        one Bot API call, a webhook secret for one comparison).
         """
         row = self._conn.execute(
             "SELECT ciphertext FROM secrets WHERE name = ?", (name,)

@@ -87,6 +87,8 @@ from .security import SecurityHeadersMiddleware
 from .stash.service import StashService
 from .stash_api import build_stash_router
 from .static import mount_dashboard
+from .telegram.runtime import TelegramRuntime
+from .telegram.webhook import build_telegram_webhook_router
 from .update import UpdateCheckResult, check_for_update
 from .upstream.api import (
     build_secret_change_hook,
@@ -134,6 +136,7 @@ def create_app(
     upstream_service: UpstreamService | None = None,
     upstream_monitor: UpstreamHealthMonitor | None = None,
     secret_store: SecretStore | None = None,
+    telegram_runtime: TelegramRuntime | None = None,
     home: Path | None = None,
 ) -> FastAPI:
     """Build the hub's ASGI app.
@@ -315,6 +318,18 @@ def create_app(
             mounts the write-only ``/api/secrets`` surface — independent of
             ``dynamic_gateway`` on purpose, so a credential can be entered
             before anything is connected — and is closed at shutdown.
+        telegram_runtime: the Telegram connector (issue #411, wired by
+            #439 — :class:`~palaia_hub.telegram.runtime.TelegramRuntime`).
+            Given, its events go onto this app's bus (origin ``telegram``),
+            ``POST /telegram/webhook/{bot}`` is mounted — outside ``/api/``,
+            so not behind the admin session: Telegram's secret-token header
+            is that route's credential — and its long-poll tasks run for
+            this app's lifespan, started next to ``upstream_monitor`` and
+            stopped *before* ``secret_store`` closes, so no poll reads a
+            closed store. The ``telegram_*`` tools are not mounted here:
+            they belong to profiles with ``telegram: true``, through
+            ``dynamic_gateway``'s own ``telegram_service``. Omitted (the
+            default), the hub has no Telegram surface at all.
         hook_outbox: the durable delivery queue backing ``hook_store``.
             Defaults to :class:`~palaia_hub.hooks.HookOutbox` at its
             standard path under the hub's data directory when ``hook_store``
@@ -380,6 +395,13 @@ def create_app(
 
         messenger_service.publish = _publish_messenger
         messenger_gateway = build_messenger_gateway(messenger_service, auth=hub_auth)
+
+    if telegram_runtime is not None:
+
+        def _publish_telegram(action: str, data: dict[str, Any]) -> None:
+            publish_event(event_bus, action, origin="telegram", data=data)
+
+        telegram_runtime.service.publish = _publish_telegram
 
     if market_service is not None:
 
@@ -562,6 +584,11 @@ def create_app(
         # the profile picks the server up on the pass that finds it.
         if upstream_monitor is not None:
             await upstream_monitor.start()
+        # Issue #439: the Telegram long-poll tasks, same "in the background,
+        # after the gateway has mounted" posture as the probe above — a hub
+        # whose Telegram is unreachable still starts instantly.
+        if telegram_runtime is not None:
+            await telegram_runtime.start()
         publish_event(
             event_bus,
             "hub.started",
@@ -595,6 +622,11 @@ def create_app(
             # on hub shutdown").
             if upstream_monitor is not None:
                 await upstream_monitor.aclose()
+            # Before the secret store closes: every poll reads its bot's
+            # token from it, and a poll still running past that point would
+            # only turn shutdown into a burst of errors.
+            if telegram_runtime is not None:
+                await telegram_runtime.aclose()
             if upstream_service is not None:
                 await upstream_service.aclose()
             if secret_store is not None:
@@ -963,6 +995,15 @@ def create_app(
         app.include_router(
             build_automations_router(automation_store, automation_outbox_, automation_dispatcher)
         )
+
+    # Issue #439: Telegram's webhook deliveries. Outside `/api/` on purpose —
+    # Telegram carries no browser session; the secret-token header checked
+    # inside the route is this surface's credential (see
+    # `palaia_hub.telegram.webhook`). Before the dashboard mount, like every
+    # backend route, and `telegram` is one of the prefixes the SPA fallback
+    # never answers for (`palaia_hub.static`).
+    if telegram_runtime is not None:
+        app.include_router(build_telegram_webhook_router(telegram_runtime.service))
 
     _maybe_add_test_slow_route(app)
 

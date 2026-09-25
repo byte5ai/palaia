@@ -140,6 +140,27 @@ def test_unregistered_oauth_path_404s_even_with_a_build_mounted(
     assert "palaia" not in response.text
 
 
+def test_unregistered_telegram_path_404s_even_with_a_build_mounted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Same regression, for the Telegram connector's webhook surface (issue
+    #439): a hub with no ``telegram:`` section has no ``/telegram/*`` route
+    at all, and an unmatched path there must 404 — never come back as the
+    dashboard shell, which would read as "delivered" to anything that only
+    checks the status code."""
+    dist = _make_fake_build(tmp_path)
+    monkeypatch.setenv(WEB_DIST_ENV, str(dist))
+    app = create_app(HubConfig())
+    client = TestClient(app)
+
+    for response in (
+        client.get("/telegram/webhook/support"),
+        client.post("/telegram/webhook/support", json={"update_id": 1}),
+    ):
+        assert response.status_code == 404
+        assert "palaia" not in response.text
+
+
 def test_api_routes_are_never_shadowed_by_the_spa_fallback(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
