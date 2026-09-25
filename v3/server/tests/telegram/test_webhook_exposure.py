@@ -8,6 +8,10 @@ secret-token header checked inside the route is its credential instead
 (:mod:`palaia_hub.telegram.webhook`). These tests pin both halves on an app
 where the gate is really active: the route is reachable without a session,
 and it is not reachable without the secret.
+
+And because in ``cloud``/``open`` that route is on the internet, guessing
+its secret is throttled per caller the way guessing a session cookie is
+(:mod:`palaia_hub.modes.rate_limit`), without ever slowing the real sender.
 """
 
 from __future__ import annotations
@@ -146,3 +150,56 @@ def test_an_unknown_telegram_path_is_a_plain_404(tmp_path: Path, path: str) -> N
     finally:
         server.store.close()
     assert response.status_code == 404
+
+
+# ------------------------------------------ bad secrets are throttled (cloud)
+
+
+def test_guessing_the_webhook_secret_is_throttled_in_cloud_mode(tmp_path: Path) -> None:
+    """In ``cloud``/``open`` the route is on the internet. Bad-secret ``401``s
+    fill a per-caller bucket like a guessed session cookie does; the real
+    sender — another caller — is unaffected, and so is the delivery."""
+    vault = FakeVault()
+    app = create_app(
+        HubConfig(mode="cloud", host="127.0.0.1"), home=tmp_path, telegram_runtime=_runtime(vault)
+    )
+    guesser = TestClient(app, client=("203.0.113.9", 40000))
+    telegram = TestClient(app, client=("198.51.100.7", 443))
+    update = message_update(1, chat_id=-1005, text="the real one")
+    url = f"{WEBHOOK_PREFIX}/hooked"
+
+    guesses = [
+        guesser.post(url, json=update, headers={SECRET_HEADER: f"guess-{n}"}).status_code
+        for n in range(12)
+    ]
+    real = telegram.post(url, json=update, headers={SECRET_HEADER: HOOK_SECRET})
+    # The guesser's window is spent, right secret or not: the limiter
+    # answers before the route is reached — that is the point of it.
+    late = guesser.post(url, json=update, headers={SECRET_HEADER: HOOK_SECRET})
+
+    assert guesses[:10] == [401] * 10, guesses
+    assert set(guesses[10:]) == {429}, guesses
+    assert real.status_code == 200, real.text
+    assert real.json()["delivered"] is True
+    assert late.status_code == 429
+    assert len(vault.captures) == 1
+
+
+def test_real_deliveries_are_never_throttled(tmp_path: Path) -> None:
+    vault = FakeVault()
+    app = create_app(
+        HubConfig(mode="cloud", host="127.0.0.1"), home=tmp_path, telegram_runtime=_runtime(vault)
+    )
+    telegram = TestClient(app, client=("198.51.100.7", 443))
+
+    statuses = [
+        telegram.post(
+            f"{WEBHOOK_PREFIX}/hooked",
+            json=message_update(n, chat_id=-1005, text=f"message {n}", message_id=n),
+            headers={SECRET_HEADER: HOOK_SECRET},
+        ).status_code
+        for n in range(1, 16)
+    ]
+
+    assert statuses == [200] * 15
+    assert len(vault.captures) == 15

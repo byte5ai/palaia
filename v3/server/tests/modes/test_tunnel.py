@@ -16,7 +16,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-from palaia_hub.modes.tunnel import cloudflared_guidance, tailscale_guidance
+from palaia_hub.modes.tunnel import (
+    TELEGRAM_WEBHOOK_PATH_PREFIX,
+    cloudflared_guidance,
+    tailscale_guidance,
+)
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "exposure"
 
@@ -80,3 +84,55 @@ def test_both_providers_note_what_they_expose_and_what_they_do_not() -> None:
 
     assert "only the MCP endpoint" in cloud_tailscale.note
     assert "including the dashboard" in open_tailscale.note
+
+
+# ---------------------------------------- a Telegram webhook bot (issue #439)
+
+
+def test_the_telegram_literal_matches_the_route_it_forwards() -> None:
+    from palaia_hub.telegram.webhook import WEBHOOK_PREFIX
+
+    assert TELEGRAM_WEBHOOK_PATH_PREFIX == WEBHOOK_PREFIX
+
+
+def test_without_a_webhook_bot_the_output_is_exactly_the_golden_one() -> None:
+    """The flag defaults off, and off is byte-for-byte what every hub got
+    before a webhook bot existed."""
+    for mode in ("cloud", "open"):
+        assert tailscale_guidance(
+            mode=mode, local_port=8420, hostname="myhub.tailnet.ts.net", telegram_webhook=False
+        ).config == (FIXTURES / f"tailscale-{mode}.json").read_text(encoding="utf-8")
+        assert cloudflared_guidance(
+            mode=mode, local_port=8420, hostname="hub.example.com", telegram_webhook=False
+        ).config == (FIXTURES / f"cloudflared-{mode}.yml").read_text(encoding="utf-8")
+
+
+def test_cloud_mode_tailscale_forwards_the_telegram_webhook_when_asked() -> None:
+    guidance = tailscale_guidance(mode="cloud", local_port=8420, telegram_webhook=True)
+
+    handlers = json.loads(guidance.config)["Web"]["<your-tailnet-name>:443"]["Handlers"]
+    assert set(handlers) == {"/mcp", "/oauth", "/.well-known", "/telegram/webhook"}
+    assert "/" not in handlers  # the dashboard still stays off the internet
+    assert handlers["/telegram/webhook"] == {"Proxy": "http://127.0.0.1:8420"}
+    assert "Telegram webhook" in guidance.note
+    assert "only the MCP endpoint" in guidance.note
+
+
+def test_cloud_mode_cloudflared_forwards_the_telegram_webhook_when_asked() -> None:
+    guidance = cloudflared_guidance(mode="cloud", local_port=8420, telegram_webhook=True)
+
+    rules = yaml.safe_load(guidance.config)["ingress"]
+    paths = {rule["path"] for rule in rules if "path" in rule}
+    assert paths == {"^/mcp", "^/oauth", "^/.well-known", "^/telegram/webhook"}
+    assert rules[-1] == {"service": "http_status:404"}
+    assert "Telegram webhook" in guidance.note
+
+
+def test_open_mode_ignores_the_flag_because_everything_is_forwarded_already() -> None:
+    for flag in (False, True):
+        tailscale = tailscale_guidance(mode="open", local_port=8420, telegram_webhook=flag)
+        cloudflared = cloudflared_guidance(mode="open", local_port=8420, telegram_webhook=flag)
+        handlers = json.loads(tailscale.config)["Web"]["<your-tailnet-name>:443"]["Handlers"]
+        assert set(handlers) == {"/"}
+        assert all("path" not in rule for rule in yaml.safe_load(cloudflared.config)["ingress"])
+        assert "Telegram" not in tailscale.note

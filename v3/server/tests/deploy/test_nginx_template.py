@@ -8,6 +8,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 TEMPLATE = Path(__file__).resolve().parents[3] / "deploy" / "nginx.conf.template"
 
 
@@ -59,3 +61,37 @@ def test_both_static_locations_carry_the_dashboard_policy() -> None:
         body = locations[header]
         assert re.search(r'add_header Content-Security-Policy ".*frame-ancestors \'none\'', body)
         assert 'add_header X-Frame-Options "DENY" always;' in body
+
+
+def _proxied_prefix_pattern() -> re.Pattern[str]:
+    """The proxy location's own regex, compiled as written in the template.
+
+    nginx matches ``location ~`` with PCRE; this regex uses nothing PCRE and
+    Python disagree on, so the template's literal is the thing under test —
+    not a second copy of it kept in this file."""
+    _, locations = _blocks()
+    header = next(header for header in locations if "api|mcp" in header)
+    return re.compile(header.split("~", 1)[1].strip())
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/health",
+        "/mcp/default/",
+        "/oauth/token",
+        "/.well-known/oauth-authorization-server",
+        # Issue #439: Telegram's webhook deliveries reach the hub, not the SPA.
+        "/telegram/webhook/support",
+        "/telegram",
+    ],
+)
+def test_every_backend_prefix_is_proxied_to_the_hub(path: str) -> None:
+    assert _proxied_prefix_pattern().search(path), path
+
+
+@pytest.mark.parametrize(
+    "path", ["/", "/index.html", "/assets/app.js", "/telegramx", "/explorer/telegram"]
+)
+def test_the_dashboard_stays_with_the_static_locations(path: str) -> None:
+    assert not _proxied_prefix_pattern().search(path), path

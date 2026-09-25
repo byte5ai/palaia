@@ -12,6 +12,13 @@ mode (MASTERPLAN §5.5's mode table):
 - **open**: the dashboard is deliberately public too, so the tunnel
   forwards everything.
 
+One conditional addition to the 'cloud' list (issue #439): a hub with a
+Telegram bot on ``transport: webhook`` also needs Telegram's servers to reach
+:data:`TELEGRAM_WEBHOOK_PATH_PREFIX`, so the caller passes
+``telegram_webhook=True`` and the route joins the forwarded prefixes. Only
+then — a hub with no webhook bot gets byte-for-byte the config it always
+did, and does not put a route on the internet that nothing uses.
+
 Every function here is pure (a port/hostname in, a config out) so the
 golden-file test (this SPEC's acceptance criterion #3) can assert byte-for-
 byte output, and so generating a config never touches the filesystem or a
@@ -36,9 +43,30 @@ TunnelMode = Literal["cloud", "open"]
 #: dashboard VPN/tailnet-only in 'cloud' mode even once MCP is public.
 CLOUD_PUBLIC_PATH_PREFIXES: tuple[str, ...] = ("/mcp", "/oauth", "/.well-known")
 
+#: The Telegram connector's webhook route (issue #439), forwarded in 'cloud'
+#: mode only when a webhook bot is configured. Its own credential is
+#: Telegram's secret-token header, checked by the hub. Kept as a literal so
+#: this module stays a pure generator with nothing heavier than ``json``
+#: behind it (importing :mod:`palaia_hub.telegram.webhook` drags FastAPI
+#: in); ``tests/modes/test_tunnel.py`` asserts the two agree.
+TELEGRAM_WEBHOOK_PATH_PREFIX = "/telegram/webhook"
 
-def _public_prefixes(mode: TunnelMode) -> tuple[str, ...]:
-    return CLOUD_PUBLIC_PATH_PREFIXES if mode == "cloud" else ("/",)
+
+def _public_prefixes(mode: TunnelMode, *, telegram_webhook: bool = False) -> tuple[str, ...]:
+    if mode != "cloud":
+        return ("/",)
+    if telegram_webhook:
+        return (*CLOUD_PUBLIC_PATH_PREFIXES, TELEGRAM_WEBHOOK_PATH_PREFIX)
+    return CLOUD_PUBLIC_PATH_PREFIXES
+
+
+def _scope(mode: TunnelMode, *, telegram_webhook: bool = False) -> str:
+    """What the generated config exposes, for the guidance note."""
+    if mode != "cloud":
+        return "the whole hub, including the dashboard"
+    if telegram_webhook:
+        return "only the MCP endpoint, its sign-in pages and the Telegram webhook"
+    return "only the MCP endpoint and its sign-in pages"
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,7 +85,11 @@ class TunnelGuidance:
 
 
 def tailscale_guidance(
-    *, mode: TunnelMode, local_port: int, hostname: str = "<your-tailnet-name>"
+    *,
+    mode: TunnelMode,
+    local_port: int,
+    hostname: str = "<your-tailnet-name>",
+    telegram_webhook: bool = False,
 ) -> TunnelGuidance:
     """Tailscale Serve/Funnel guidance: a ``tailscale serve --set-raw`` JSON config.
 
@@ -65,20 +97,23 @@ def tailscale_guidance(
     explicit command — Tailscale never exposes a serve config to the
     public internet without it) additionally opens it to the public
     internet, which is what 'cloud'/'open' mode actually needs.
+
+    ``telegram_webhook``: forward the Telegram webhook route too, in 'cloud'
+    mode (see the module docstring). No effect in 'open' mode, which already
+    forwards everything.
     """
     origin = f"http://127.0.0.1:{local_port}"
-    handlers = {prefix: {"Proxy": origin} for prefix in _public_prefixes(mode)}
+    handlers = {
+        prefix: {"Proxy": origin}
+        for prefix in _public_prefixes(mode, telegram_webhook=telegram_webhook)
+    }
     raw_config = {
         "TCP": {"443": {"HTTPS": True}},
         "Web": {f"{hostname}:443": {"Handlers": handlers}},
         "AllowFunnel": {f"{hostname}:443": True},
     }
     config_text = json.dumps(raw_config, indent=2) + "\n"
-    scope = (
-        "only the MCP endpoint and its sign-in pages"
-        if mode == "cloud"
-        else "the whole hub, including the dashboard"
-    )
+    scope = _scope(mode, telegram_webhook=telegram_webhook)
     return TunnelGuidance(
         label="Tailscale Serve + Funnel",
         config=config_text,
@@ -96,11 +131,18 @@ def tailscale_guidance(
 
 
 def cloudflared_guidance(
-    *, mode: TunnelMode, local_port: int, hostname: str = "hub.example.com"
+    *,
+    mode: TunnelMode,
+    local_port: int,
+    hostname: str = "hub.example.com",
+    telegram_webhook: bool = False,
 ) -> TunnelGuidance:
-    """cloudflared guidance: an ``ingress`` config for ``cloudflared tunnel run``."""
+    """cloudflared guidance: an ``ingress`` config for ``cloudflared tunnel run``.
+
+    ``telegram_webhook``: as for :func:`tailscale_guidance`.
+    """
     origin = f"http://127.0.0.1:{local_port}"
-    prefixes = _public_prefixes(mode)
+    prefixes = _public_prefixes(mode, telegram_webhook=telegram_webhook)
     lines = [
         "tunnel: <your-tunnel-id>",
         "credentials-file: /etc/cloudflared/<your-tunnel-id>.json",
@@ -116,11 +158,7 @@ def cloudflared_guidance(
             lines.append(f"    service: {origin}")
     lines.append("  - service: http_status:404")
     config_text = "\n".join(lines) + "\n"
-    scope = (
-        "only the MCP endpoint and its sign-in pages"
-        if mode == "cloud"
-        else "the whole hub, including the dashboard"
-    )
+    scope = _scope(mode, telegram_webhook=telegram_webhook)
     return TunnelGuidance(
         label="cloudflared (ingress rules)",
         config=config_text,
@@ -136,6 +174,7 @@ def cloudflared_guidance(
 
 __all__ = [
     "CLOUD_PUBLIC_PATH_PREFIXES",
+    "TELEGRAM_WEBHOOK_PATH_PREFIX",
     "TunnelGuidance",
     "TunnelMode",
     "cloudflared_guidance",
