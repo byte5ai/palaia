@@ -25,11 +25,12 @@ function for something smarter without touching the two tools' contract.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 from fastmcp import FastMCP
-from fastmcp.exceptions import NotFoundError, ToolError
+from fastmcp.exceptions import NotFoundError, ToolError, ValidationError
 from fastmcp.tools.base import Tool, ToolResult
+from pydantic import Field
 
 from .config import ProfileConfig
 
@@ -93,7 +94,10 @@ def build_semantic_routing_server(profile: ProfileConfig, full_server: FastMCP) 
             "and input schema, ready to pass to invoke_tool."
         ),
     )
-    async def find_tool(query: str, limit: int = DEFAULT_FIND_LIMIT) -> ToolResult:
+    async def find_tool(
+        query: Annotated[str, Field(description="What you want to do, in plain language.")],
+        limit: Annotated[int, Field(description="Maximum matches to return.")] = DEFAULT_FIND_LIMIT,
+    ) -> ToolResult:
         tools = await full_server.list_tools()
         ranked = sorted(tools, key=lambda t: _score(query, t), reverse=True)
         matches = [t for t in ranked if _score(query, t) > 0][: max(1, limit)]
@@ -115,13 +119,30 @@ def build_semantic_routing_server(profile: ProfileConfig, full_server: FastMCP) 
         name="invoke_tool",
         description=(
             "Call one of this profile's real tools, by the exact name find_tool "
-            "returned, with that tool's arguments."
+            "returned, with that tool's arguments. An unknown name or invalid "
+            "arguments come back as an error result."
         ),
     )
-    async def invoke_tool(name: str, arguments: dict[str, Any] | None = None) -> ToolResult:
+    async def invoke_tool(
+        name: Annotated[str, Field(description="Exact tool name as returned by find_tool.")],
+        arguments: Annotated[
+            dict[str, Any] | None,
+            Field(
+                description=(
+                    "Arguments matching the input_schema find_tool returned; omit for none."
+                )
+            ),
+        ] = None,
+    ) -> ToolResult:
+        # Every way the wrapped call can be refused comes back as an error
+        # result from this tool itself: an unknown or hidden name
+        # (NotFoundError), arguments that do not match the real tool's schema
+        # (ValidationError — re-raised by `call_tool`, and otherwise logged
+        # by the router as an invalid call to `invoke_tool`), or the real
+        # tool's own ToolError.
         try:
             return await full_server.call_tool(name, arguments or {})
-        except (ToolError, NotFoundError) as exc:
+        except (ToolError, NotFoundError, ValidationError) as exc:
             return ToolResult(content=str(exc), is_error=True)
 
     return router

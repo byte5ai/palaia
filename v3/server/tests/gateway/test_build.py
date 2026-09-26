@@ -12,6 +12,7 @@ import logging
 
 import pytest
 from fastmcp import Client
+from mcp.types import TextContent
 
 from palaia_hub.gateway.build import GatewayConfigError, build_gateway
 from palaia_hub.gateway.config import GatewayConfig, ProfileConfig, VaultMountConfig
@@ -225,6 +226,56 @@ async def test_semantic_routing_find_tool_finds_and_invoke_tool_invokes() -> Non
             {"name": "work_memory_write", "arguments": {"title": "Note", "body": "hello"}},
         )
         assert result.is_error is not True
+
+
+@pytest.mark.anyio
+async def test_semantic_routing_documents_every_parameter() -> None:
+    config = GatewayConfig(
+        vaults=[VaultMountConfig(key="work", name="work")],
+        profiles=[ProfileConfig(path="default", vaults=["work"], semantic_routing=True)],
+    )
+    gateway = build_gateway(config, {"work": FakeVaultService()})
+
+    async with Client(gateway.profile_servers["default"]) as client:
+        tools = await client.list_tools()
+
+    for tool in tools:
+        for parameter, schema in tool.inputSchema["properties"].items():
+            assert schema.get("description"), f"{tool.name}.{parameter} has no description"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"body": "hello"},  # a required argument is missing
+        {"title": "Note", "body": "hello", "no_such_field": 1},  # an unknown one is passed
+        {"title": ["not", "a", "string"], "body": "hello"},  # the wrong type
+    ],
+)
+async def test_semantic_routing_invalid_arguments_come_back_as_an_error_result(
+    arguments: dict[str, object],
+) -> None:
+    # invoke_tool's description promises an error result, so the router
+    # itself has to turn the real tool's argument validation into one —
+    # called on the server directly, not through a client whose protocol
+    # layer would paper over an escaping exception.
+    config = GatewayConfig(
+        vaults=[VaultMountConfig(key="work", name="work")],
+        profiles=[ProfileConfig(path="default", vaults=["work"], semantic_routing=True)],
+    )
+    services = {"work": FakeVaultService()}
+    gateway = build_gateway(config, services)
+
+    result = await gateway.profile_servers["default"].call_tool(
+        "invoke_tool", {"name": "work_memory_write", "arguments": arguments}
+    )
+
+    assert result.is_error is True
+    [message] = result.content
+    assert isinstance(message, TextContent)
+    assert "validation error" in message.text
+    assert await services["work"].list_notes() == []
 
 
 @pytest.mark.anyio

@@ -110,8 +110,20 @@ FolderParam = Annotated[
     Field(
         default="",
         validation_alias=AliasChoices("folder", "dir", "path"),
-        description="Folder to scope to. Empty means the whole vault.",
+        description=(
+            "Vault folder, e.g. 'projects/api'. Empty means the vault root "
+            "(write/move) or the whole vault (list); for list the match is "
+            "exact, subfolders excluded."
+        ),
     ),
+]
+PermalinkParam = Annotated[
+    str,
+    Field(description="The note's permalink (alias, exact title or path also work)."),
+]
+LimitParam = Annotated[
+    int,
+    Field(description="Maximum results to return, best or most recent first."),
 ]
 # SPEC-106's own alias groups, same principle as the two above. A
 # `memory://` reference is the parameter models most often misname (they
@@ -260,9 +272,7 @@ def build_vault_server(
 
     def _ok(action: str, text: str, payload: BaseModel) -> ToolResult:
         """A successful result for ``action``, plus any guidance it earned."""
-        return nudged_result(
-            engine, action=action, text=text, payload=payload, vault_key=vault.key
-        )
+        return nudged_result(engine, action=action, text=text, payload=payload, vault_key=vault.key)
 
     def _note_ok(action: str, verb: str, note: NoteRecord) -> ToolResult:
         return _ok(action, _note_text(verb, note), note)
@@ -301,7 +311,7 @@ def build_vault_server(
         ),
         app=AppConfig(resource_uri=RECALL_EXPLORER_URI),
     )
-    async def search(query: QueryParam, limit: int = 10) -> ToolResult:
+    async def search(query: QueryParam, limit: LimitParam = 10) -> ToolResult:
         if (err := scope_error("search")) is not None:
             return err
         response = await service.search(query, limit=limit)
@@ -309,8 +319,7 @@ def build_vault_server(
         text = (
             f"{len(hits)} match(es) for {query!r}: "
             + ", ".join(
-                f"{h.title!r} ({h.permalink}, via {'+'.join(h.matched) or 'unknown'})"
-                for h in hits
+                f"{h.title!r} ({h.permalink}, via {'+'.join(h.matched) or 'unknown'})" for h in hits
             )
             if hits
             else f"no matches for {query!r}"
@@ -336,10 +345,16 @@ def build_vault_server(
 
     @server.tool(
         name="read",
-        description=desc("Read one note in full by its permalink."),
+        description=desc(
+            "Read one note in full. `permalink` also accepts the note's alias, "
+            "exact title or vault path; an unknown or ambiguous reference is an "
+            "error. The text result shows value references resolved to their "
+            "current values; structured_content.body is the note as written — "
+            "use that as the base for edit."
+        ),
         annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True),
     )
-    async def read(permalink: str) -> ToolResult:
+    async def read(permalink: PermalinkParam) -> ToolResult:
         if (err := scope_error("read")) is not None:
             return err
         try:
@@ -355,17 +370,32 @@ def build_vault_server(
 
     @server.tool(
         name="write",
-        description=desc("Create a new note in this vault."),
+        description=desc(
+            "Create a new note the user asked for, at `<folder>/<slugified "
+            "title>.md`. If a note already exists at that path the call fails "
+            "rather than overwriting — search first and edit the existing note "
+            "instead. Knowledge you picked up yourself goes through capture."
+        ),
         annotations=ToolAnnotations(
             readOnlyHint=False, destructiveHint=False, idempotentHint=False
         ),
     )
     async def write(
-        title: str,
-        body: str,
+        title: Annotated[
+            str, Field(description="Note title; also sets the file name (slugified).")
+        ],
+        body: Annotated[str, Field(description="Markdown body.")],
         folder: FolderParam = "",
-        type: str = "note",  # noqa: A002 - matches the vault-format field name
-        tags: list[str] | None = None,
+        type: Annotated[  # noqa: A002 - matches the vault-format field name
+            str,
+            Field(
+                description=(
+                    "Frontmatter type. Default 'note'; 'meta' notes are hidden "
+                    "from search, list and recent_activity."
+                )
+            ),
+        ] = "note",
+        tags: Annotated[list[str] | None, Field(description="Tags to set. Omit for none.")] = None,
     ) -> ToolResult:
         if (err := scope_error("write")) is not None:
             return err
@@ -377,14 +407,24 @@ def build_vault_server(
 
     @server.tool(
         name="edit",
-        description=desc("Update an existing note's body and/or tags."),
+        description=desc(
+            "Update an existing note. `body` replaces the whole body; `append` "
+            "adds text on a new line after the (possibly replaced) body; `tags` "
+            "replaces the full tag list. Omitted fields keep their current value."
+        ),
         annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False),
     )
     async def edit(
-        permalink: str,
-        body: str | None = None,
-        append: str | None = None,
-        tags: list[str] | None = None,
+        permalink: PermalinkParam,
+        body: Annotated[
+            str | None, Field(description="New body, replacing the current one.")
+        ] = None,
+        append: Annotated[
+            str | None, Field(description="Text appended on a new line after the body.")
+        ] = None,
+        tags: Annotated[
+            list[str] | None, Field(description="New tags, replacing the whole list.")
+        ] = None,
     ) -> ToolResult:
         if (err := scope_error("edit")) is not None:
             return err
@@ -399,7 +439,7 @@ def build_vault_server(
         description=desc("Move a note to a different folder. Its permalink never changes."),
         annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=True),
     )
-    async def move(permalink: str, folder: FolderParam = "") -> ToolResult:
+    async def move(permalink: PermalinkParam, folder: FolderParam = "") -> ToolResult:
         if (err := scope_error("move")) is not None:
             return err
         try:
@@ -410,10 +450,13 @@ def build_vault_server(
 
     @server.tool(
         name="delete",
-        description=desc("Delete a note by permalink. Irreversible outside git history."),
+        description=desc(
+            "Delete a note by permalink. Irreversible outside git history. A "
+            "reference that matches no note returns deleted=false, not an error."
+        ),
         annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=True),
     )
-    async def delete(permalink: str) -> ToolResult:
+    async def delete(permalink: PermalinkParam) -> ToolResult:
         if (err := scope_error("delete")) is not None:
             return err
         deleted = await service.delete(permalink)
@@ -422,7 +465,12 @@ def build_vault_server(
 
     @server.tool(
         name="list",
-        description=desc("List notes in this vault, optionally scoped to a folder."),
+        description=desc(
+            "List note summaries (permalink, title, type, tags, folder, modified "
+            "— no bodies), sorted by permalink. With `folder`, only notes "
+            "directly in that folder are listed (subfolders are not included). "
+            "`meta` notes are excluded."
+        ),
         annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True),
     )
     async def list_notes(folder: FolderParam = "") -> ToolResult:
@@ -434,10 +482,13 @@ def build_vault_server(
 
     @server.tool(
         name="recent_activity",
-        description=desc("The most recently modified notes, most recent first."),
+        description=desc(
+            "The most recently modified notes, most recent first, up to "
+            "`limit`. Summaries only (no bodies); `meta` notes are excluded."
+        ),
         annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True),
     )
-    async def recent_activity(limit: int = 10) -> ToolResult:
+    async def recent_activity(limit: LimitParam = 10) -> ToolResult:
         if (err := scope_error("recent_activity")) is not None:
             return err
         notes = await service.recent_activity(limit=limit)
@@ -543,23 +594,48 @@ def build_vault_server(
     @server.tool(
         name="capture",
         description=desc(
-            "THE way to save something you (the assistant) learned this "
-            "session: a decision, a preference, a correction, a fact worth "
-            "keeping. Call it the moment the knowledge appears — before "
-            "answering, without searching first, without deciding placement, "
-            "dedup or structure; the curator files it into the vault. Writes "
-            "an inbox/ note (format spec §7). Reserve write/edit for notes "
-            "the user explicitly asked for."
+            "Save something you (the assistant) learned this session — a "
+            "decision, a preference, a correction, a fact worth keeping — as an "
+            "uncurated inbox/ note (format spec §7). No placement decision is "
+            "needed; the curator later files, deduplicates and structures it. "
+            "An identical capture still waiting in the inbox is acknowledged "
+            "with duplicate=true and not written again. For notes the user "
+            "explicitly asked for, use write/edit instead."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=False, destructiveHint=False, idempotentHint=False
         ),
     )
     async def capture(
-        what_it_concerns: str | None = None,
-        why_keep: str | None = None,
-        content: str | None = None,
-        source: str | None = None,
+        what_it_concerns: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "Required. The topic or entity this is about; becomes the "
+                    "note title, e.g. 'API Gateway'."
+                )
+            ),
+        ] = None,
+        why_keep: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "Required. Why it is worth keeping — what goes wrong if it is forgotten."
+                )
+            ),
+        ] = None,
+        content: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "Required. The knowledge itself, understandable without this conversation."
+                )
+            ),
+        ] = None,
+        source: Annotated[
+            str | None,
+            Field(description="Where this came from. Defaults to 'agent capture, <date>'."),
+        ] = None,
     ) -> ToolResult:
         if (err := scope_error("capture")) is not None:
             return err
@@ -640,8 +716,12 @@ def build_vault_server(
         annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False),
     )
     async def review_decide(
-        permalink: str,
-        decision: Literal["approved", "rejected"],
+        permalink: Annotated[
+            str, Field(description="Permalink of a proposal whose status is 'proposed'.")
+        ],
+        decision: Annotated[
+            Literal["approved", "rejected"], Field(description="'approved' or 'rejected'.")
+        ],
     ) -> ToolResult:
         if (err := scope_error("review_decide")) is not None:
             return err
@@ -664,7 +744,17 @@ def build_vault_server(
             readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False
         ),
     )
-    async def recall_pick(refs: list[str]) -> ToolResult:
+    async def recall_pick(
+        refs: Annotated[
+            list[str],
+            Field(
+                description=(
+                    "References of the notes to load; the call fails on the "
+                    "first one that does not resolve."
+                )
+            ),
+        ],
+    ) -> ToolResult:
         if (err := scope_error("recall_pick")) is not None:
             return err
         notes: list[NoteRecord] = []

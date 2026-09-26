@@ -96,6 +96,7 @@ async def real_client(tmp_path: Path) -> AsyncIterator[Client[Any]]:
 # Tool surface
 # --------------------------------------------------------------------------
 
+
 async def test_both_recall_tools_are_exposed(fake_client: Client[Any]) -> None:
     names = {tool.name for tool in await fake_client.list_tools()}
     assert set(RECALL_TOOL_ACTIONS) <= names
@@ -131,10 +132,11 @@ async def test_the_published_schema_shows_only_canonical_parameter_names(
 
 
 async def test_every_parameter_is_documented(fake_client: Client[Any]) -> None:
-    tools = {tool.name: tool for tool in await fake_client.list_tools()}
-    for name in RECALL_TOOL_ACTIONS:
-        for parameter, schema in tools[name].inputSchema["properties"].items():
-            assert schema.get("description"), f"{name}.{parameter} has no description"
+    # Every tool in the vault family, not just the recall pair: an
+    # undocumented parameter is a guess the model has to make.
+    for tool in await fake_client.list_tools():
+        for parameter, schema in tool.inputSchema["properties"].items():
+            assert schema.get("description"), f"{tool.name}.{parameter} has no description"
 
 
 async def test_the_assistant_guide_mentions_both_tools(fake_client: Client[Any]) -> None:
@@ -148,6 +150,7 @@ async def test_the_assistant_guide_mentions_both_tools(fake_client: Client[Any])
 # --------------------------------------------------------------------------
 # Alias absorption
 # --------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize("alias", ["ref", "permalink", "memory", "uri", "url"])
 async def test_recall_absorbs_every_ref_alias(fake_client: Client[Any], alias: str) -> None:
@@ -184,6 +187,7 @@ async def test_build_context_absorbs_the_ref_alias(fake_client: Client[Any]) -> 
 # Dual output
 # --------------------------------------------------------------------------
 
+
 async def test_recall_returns_text_and_structured_content_together(
     fake_client: Client[Any],
 ) -> None:
@@ -213,6 +217,7 @@ async def test_build_context_returns_text_and_structured_content_together(
 # Error shape
 # --------------------------------------------------------------------------
 
+
 async def test_recall_with_no_starting_point_is_a_tool_error(
     fake_client: Client[Any],
 ) -> None:
@@ -225,9 +230,7 @@ async def test_recall_with_no_starting_point_is_a_tool_error(
 async def test_recall_of_an_unknown_ref_is_a_tool_error_not_an_exception(
     real_client: Client[Any],
 ) -> None:
-    result = await real_client.call_tool(
-        "recall", {"ref": "no/such/note"}, raise_on_error=False
-    )
+    result = await real_client.call_tool("recall", {"ref": "no/such/note"}, raise_on_error=False)
     assert result.is_error
     text = "".join(getattr(block, "text", "") for block in result.content)
     assert "no/such/note" in text
@@ -275,6 +278,7 @@ async def test_recall_without_an_index_says_what_is_missing(tmp_path: Path) -> N
 # --------------------------------------------------------------------------
 # Against the real wiring
 # --------------------------------------------------------------------------
+
 
 async def test_recall_over_the_real_wiring_resolves_values_and_variants(
     real_client: Client[Any],
@@ -356,9 +360,7 @@ async def test_configured_weights_reach_the_tool_and_change_the_ranking(
 
     engine, index = await open_golden(tmp_path, "work")
     try:
-        service = EngineVaultService(
-            engine, index, ranking=weights_from_settings(config.recall)
-        )
+        service = EngineVaultService(engine, index, ranking=weights_from_settings(config.recall))
         server = build_vault_server(VAULT, service)
         async with Client(server) as client:
             result = await client.call_tool("recall", {"query": "files are truth", "limit": 2})
