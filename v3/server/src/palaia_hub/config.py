@@ -156,6 +156,9 @@ recall:
   half_life_days: 30
   # Access count at which the access boost is maxed out.
   access_saturation: 20
+  # Days without being recalled after which a note's access boost has
+  # halved, so what nobody asks for anymore gives way. 0 = never fade.
+  access_half_life_days: 90
   # Inbound-link count at which the centrality half of significance is maxed.
   centrality_saturation: 12
   # Share of significance that comes from inbound links rather than the
@@ -448,6 +451,7 @@ class RecallSettings(BaseModel):
     significance_weight: float = Field(default=0.25, ge=0.0, le=10.0)
     half_life_days: float = Field(default=30.0, gt=0.0)
     access_saturation: float = Field(default=20.0, gt=0.0)
+    access_half_life_days: float = Field(default=90.0, ge=0.0)
     centrality_saturation: float = Field(default=12.0, gt=0.0)
     centrality_weight: float = Field(default=0.35, ge=0.0, le=1.0)
     unknown_recency: float = Field(default=0.5, ge=0.0, le=1.0)

@@ -178,7 +178,14 @@ await recall.build_context(ref="projects/recall-engine", depth=2, max_tokens=400
   `1 + w_r·recency + w_a·access + w_s·significance`. Logical only: nothing on
   disk moves. Weights live in `config.yaml`'s `recall:` section; the bound is
   deliberate — decay reshuffles the top of the page and cannot overturn a
-  large relevance gap.
+  large relevance gap. **Retrieval feeds back into ranking** (issue #196):
+  every recall bumps the served notes' `note_access` row (count + last-recall
+  stamp, after ranking, never before), and the access term is the
+  log-saturated count *faded* by the time since that stamp
+  (`access_half_life_days`, default 90; `0` = lifetime counter, no fade). A
+  note the agents keep using stays up; one nobody has recalled in a year
+  drifts back to the no-boost baseline. No extra query and no write on the
+  ranking path; the vault write path is untouched.
 - **Per-model variants** (§5.1) — `[how-to-apply | anthropic/opus-5]` resolves
   to the most specific applicable line: exact model > provider family >
   scopeless base; unknown model → base; a scoped-only group serves a

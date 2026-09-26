@@ -88,6 +88,12 @@ when it checks your memory before answering something on your behalf; see
 [Your first shared memory](/first-shared-memory/) for what that looks
 like from the AI's side.
 
+When an AI tool looks something up and several notes answer about equally
+well, the ones your tools keep pulling up come first — and a note nobody has
+asked for in months slowly gives that place back. Nothing is deleted or
+moved for this: it only nudges the order of close matches, never whether a
+note can be found at all.
+
 ## More than one memory
 
 You can keep separate memories — work and personal is the common split —
