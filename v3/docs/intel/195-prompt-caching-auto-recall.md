@@ -56,8 +56,9 @@ issue's gating question has a surprising answer.**
    declared floor (`>=2026.5.7`) does. When it does, palaia skips its legacy hooks. But
    OpenClaw only runs a plugin engine that is selected via `plugins.slots.contextEngine`,
    and palaia's docs only set `plugins.slots.memory`. If that reading holds, the
-   documented setup gets **neither Auto-Recall nor Auto-Capture**, and the cache problem
-   only affects users who selected the engine by hand. This is read from source, not
+   documented setup gets **no Auto-Recall and no per-turn Auto-Capture**. Session
+   summaries and sub-agent results still get captured, through the always-on session
+   hooks. The cache problem then only affects users who selected the engine by hand. This is read from source, not
    observed at runtime (**UNVERIFIED**, §5). It needs its own issue.
 
 **Recommendation:** the fix belongs in the v2 plugin, so this PR uses `Refs #195`, not
@@ -258,9 +259,11 @@ step in.
 
 If this holds at runtime, a user who followed the docs has palaia's tools and session
 hooks, but `assemble()` and `afterTurn()` never run. That means no `## Active Memory
-(palaia)` block and no auto-capture — the capturing `agent_end` handler lives in
-`registerHooks()`, which is skipped. Such a user sees no cache problem, because there is
-nothing to cache-miss on.
+(palaia)` block and no per-turn auto-capture — the capturing `agent_end` handler lives
+in `registerHooks()`, which is skipped. What remains is `registerSessionHooks()`
+(`index.ts:83`), which always runs: session summaries on `session_end` /
+`before_reset`, and sub-agent result capture. Such a user sees no cache problem, because
+there is nothing to cache-miss on.
 
 **Status: UNVERIFIED at runtime.** Quick check on a live gateway:
 `jq '.plugins.slots.contextEngine' ~/.openclaw/openclaw.json` (null or `"legacy"` means
