@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Fixed
+- **MCP server: `palaia_gc` reports what GC found and did** — the tool read a `moves` list and a `pruned` count that `Store.gc()` never returns, so every call answered "nothing to do", even when entries moved tiers or were pruned. A dry run now lists the scored entries, lowest GC score first (new `limit` parameter, default 20), and says it predicts neither moves nor pruning. A real run reports the tier moves per direction, each entry pruned over the storage budget, and the cleanup counts.
 - **MCP server: tool parameters now carry their descriptions** (#464) — the parameter descriptions were written as bare strings inside `Annotated[...]`, which pydantic ignores, so all 32 parameters of the 7 MCP tools reached clients undescribed. They are now wrapped in `Field(description=...)`. The `palaia_list`, `palaia_edit` and `palaia_gc` docstrings also state more precisely what each call returns and changes.
 - **ContextEngine `compact()` no longer claims a compaction it did not do** (#418) — `compact()` runs `palaia gc`, which garbage-collects the memory store without touching the conversation transcript, yet it returned `compacted: true`. Since palaia declares `ownsCompaction: true`, the host trusted that signal and skipped its own compaction while the context window kept filling. `compact()` now returns `compacted: false` with a `reason`, and reports `tokensBefore`/`tokensAfter` unchanged when the host supplies a current token count.
 
