@@ -603,9 +603,9 @@ def build_vault_server(
             "decision, a preference, a correction, a fact worth keeping — as an "
             "uncurated inbox/ note (format spec §7). No placement decision is "
             "needed; the curator later files, deduplicates and structures it. "
-            "An identical capture is acknowledged with duplicate=true and not "
-            "written again. For notes the user explicitly asked for, use "
-            "write/edit instead."
+            "An identical capture still waiting in the inbox is acknowledged "
+            "with duplicate=true and not written again. For notes the user "
+            "explicitly asked for, use write/edit instead."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=False, destructiveHint=False, idempotentHint=False

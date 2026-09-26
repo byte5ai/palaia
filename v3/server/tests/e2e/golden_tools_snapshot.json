@@ -53,7 +53,7 @@
       "readOnlyHint": false,
       "title": null
     },
-    "description": "A palaia memory vault.\n\nSave something you (the assistant) learned this session \u2014 a decision, a preference, a correction, a fact worth keeping \u2014 as an uncurated inbox/ note (format spec \u00a77). No placement decision is needed; the curator later files, deduplicates and structures it. An identical capture is acknowledged with duplicate=true and not written again. For notes the user explicitly asked for, use write/edit instead.",
+    "description": "A palaia memory vault.\n\nSave something you (the assistant) learned this session \u2014 a decision, a preference, a correction, a fact worth keeping \u2014 as an uncurated inbox/ note (format spec \u00a77). No placement decision is needed; the curator later files, deduplicates and structures it. An identical capture still waiting in the inbox is acknowledged with duplicate=true and not written again. For notes the user explicitly asked for, use write/edit instead.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {

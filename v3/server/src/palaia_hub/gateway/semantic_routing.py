@@ -28,7 +28,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from fastmcp import FastMCP
-from fastmcp.exceptions import NotFoundError, ToolError
+from fastmcp.exceptions import NotFoundError, ToolError, ValidationError
 from fastmcp.tools.base import Tool, ToolResult
 from pydantic import Field
 
@@ -136,9 +136,15 @@ def build_semantic_routing_server(profile: ProfileConfig, full_server: FastMCP) 
             ),
         ] = None,
     ) -> ToolResult:
+        # Every way the wrapped call can be refused comes back as an error
+        # result from this tool itself: an unknown or hidden name
+        # (NotFoundError), arguments that do not match the real tool's schema
+        # (ValidationError — re-raised by `call_tool`, and otherwise logged
+        # by the router as an invalid call to `invoke_tool`), or the real
+        # tool's own ToolError.
         try:
             return await full_server.call_tool(name, arguments or {})
-        except (ToolError, NotFoundError) as exc:
+        except (ToolError, NotFoundError, ValidationError) as exc:
             return ToolResult(content=str(exc), is_error=True)
 
     return router
