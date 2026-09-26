@@ -126,6 +126,7 @@ Save knowledge that should persist:
 | `entry_type` | No | memory (default), process, task |
 | `scope` | No | team (default), private, public |
 | `project` | No | Project name |
+| `agent` | No | Owning agent (default: the server's agent identity, see below) |
 | `status` | No | Task status |
 | `priority` | No | Task priority |
 
@@ -178,6 +179,32 @@ The MCP server finds the `.palaia` store using the same logic as the CLI:
 5. `~/.openclaw/workspace/.palaia` (OpenClaw default)
 
 If no store is found, the server exits with an error message suggesting `palaia init`.
+
+## Agent Identity
+
+The server acts as one agent, resolved once at startup:
+
+1. `PALAIA_AGENT` environment variable
+2. `agent` in the store's `config.json` (set by `palaia init --agent NAME`)
+
+All tools use this identity for scope checks. The agent can read, search, list and edit its own
+`private` entries, while other agents' private entries stay hidden. `palaia_store` records it as the
+entry's owner unless the `agent` parameter names a different one.
+
+To run one server per agent against a shared store, set the identity in the host config:
+```json
+{
+  "mcpServers": {
+    "palaia": {
+      "command": "palaia-mcp",
+      "env": { "PALAIA_AGENT": "my-agent" }
+    }
+  }
+}
+```
+
+Without any identity, `palaia_store` refuses to create a `private` entry (explicitly, or through a
+project's default scope), because no agent could ever read or edit it.
 
 ## Troubleshooting
 

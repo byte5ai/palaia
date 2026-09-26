@@ -131,6 +131,23 @@ class Store:
         """Run WAL recovery on startup."""
         return self.wal.recover(self)
 
+    def resolve_write_scope(self, scope: str | None = None, project: str | None = None) -> str:
+        """Return the scope write() would give a new entry, without side effects.
+
+        Follows the write() cascade: explicit scope, then the project's default
+        scope, then the global default_scope. A project that does not exist yet
+        would be created with the global default, so that default applies.
+        """
+        if scope is not None:
+            return normalize_scope(scope)
+        if project:
+            from palaia.project import ProjectManager
+
+            proj = ProjectManager(self.root).get(project)
+            if proj is not None:
+                return normalize_scope(proj.default_scope)
+        return normalize_scope(None, self.config["default_scope"])
+
     def write(
         self,
         body: str,
@@ -158,18 +175,12 @@ class Store:
             raise ValueError("Cannot write empty content. Provide a non-empty text body.")
 
         # Scope cascade
-        if scope is not None:
-            # Explicit scope always wins
-            scope = normalize_scope(scope)
-        elif project:
-            # Auto-create project if it doesn't exist, then use its default scope
+        if scope is None and project:
+            # Auto-create the project if it doesn't exist; it inherits the global default scope
             from palaia.project import ProjectManager
 
-            pm = ProjectManager(self.root)
-            proj = pm.ensure(project, default_scope=self.config["default_scope"])
-            scope = normalize_scope(proj.default_scope)
-        else:
-            scope = normalize_scope(None, self.config["default_scope"])
+            ProjectManager(self.root).ensure(project, default_scope=self.config["default_scope"])
+        scope = self.resolve_write_scope(scope, project)
 
         # Dedup check
         h = content_hash(body)

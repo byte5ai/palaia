@@ -25,6 +25,12 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
         ),
     )
 
+    # Agent identity this server acts as: PALAIA_AGENT, else the config's agent.
+    # Scope checks need it — without it, private entries can't be read or edited.
+    from palaia.config import resolve_agent
+
+    server_agent = resolve_agent(root)
+
     # Lazy-init store and search engine (avoid import cost at module level)
     _store = None
     _engine = None
@@ -72,6 +78,7 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
             query,
             limit=limit,
             project=project,
+            agent=server_agent,
             entry_type=entry_type,
             status=status,
             priority=priority,
@@ -111,7 +118,7 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
         """Read a specific memory entry by ID. Returns the full content and metadata."""
         from palaia.services.query import get_entry
 
-        result = get_entry(root, entry_id)
+        result = get_entry(root, entry_id, agent=server_agent)
 
         if "error" in result:
             if result["error"] == "not_found":
@@ -152,6 +159,7 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
             root,
             tier=tier if not list_all else None,
             list_all=list_all,
+            agent=server_agent,
             entry_type=entry_type,
             project=project if project else None,
             status=status,
@@ -214,13 +222,23 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
             entry_type: Annotated[str | None, Field(description="Type: memory (default), process, task")] = None,
             scope: Annotated[str | None, Field(description="Scope: team (default), private, public")] = None,
             project: Annotated[str | None, Field(description="Project name")] = None,
-            agent: Annotated[str | None, Field(description="Agent name (auto-detected if not set)")] = None,
+            agent: Annotated[
+                str | None,
+                Field(description="Owning agent (default: this server's identity from PALAIA_AGENT or the config)"),
+            ] = None,
             status: Annotated[str | None, Field(description="Task status: open, in-progress, done, wontfix")] = None,
             priority: Annotated[str | None, Field(description="Task priority: critical, high, medium, low")] = None,
         ) -> str:
             """Store a new memory entry. Use this to save context, decisions, patterns,
             or any knowledge that should persist across sessions."""
             store = _get_store()
+            owner = agent or server_agent
+            if owner is None and store.resolve_write_scope(scope, project) == "private":
+                return (
+                    "Cannot store a private entry without an agent identity: no agent could read "
+                    "or edit it. Set PALAIA_AGENT for the MCP server, set 'agent' in the palaia "
+                    "config, or pass the agent parameter."
+                )
             entry_id = store.write(
                 body=content,
                 title=title,
@@ -228,7 +246,7 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
                 entry_type=entry_type,
                 scope=scope,
                 project=project,
-                agent=agent,
+                agent=owner,
                 status=status,
                 priority=priority,
             )
@@ -256,6 +274,7 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
                 store.edit(
                     entry_id=entry_id,
                     body=content,
+                    agent=server_agent,
                     title=title,
                     tags=tags,
                     status=status,
