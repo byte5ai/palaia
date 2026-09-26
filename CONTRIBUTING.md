@@ -20,7 +20,7 @@ just test    # pytest + vitest
 just lint    # ruff check, mypy, eslint, tsc
 ```
 
-Prerequisites ([`uv`](https://docs.astral.sh/uv/), Node 22+,
+Prerequisites ([`uv`](https://docs.astral.sh/uv/), Node 26+,
 [`just`](https://github.com/casey/just)) and the equivalent raw commands are in
 [`v3/README.md`](v3/README.md#dev-setup).
 

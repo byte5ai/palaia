@@ -13,7 +13,7 @@ advisory lands.
 | Python, dev | `[project.optional-dependencies] dev` | Floors, resolved by the same lockfile | |
 | Node, dashboard | `v3/web/package.json` + `package-lock.json` | The lockfile is the pin; CI installs with `npm ci` | |
 | Node, build tooling | `v3/tools/build-mcpb/package-lock.json` | Same | Build-time only; nothing here reaches a user's machine |
-| Container base | `v3/deploy/Dockerfile` | `python:3.12-slim`, `node:22-slim` | Rebuilt on every release, so a base-image fix arrives with the next image |
+| Container base | `v3/deploy/Dockerfile` | `python:3.12-slim`, `node:26-slim` | Rebuilt on every release, so a base-image fix arrives with the next image |
 
 **One lockfile per track.** `v3/uv.lock` covers the whole v3 Python workspace
 and nothing outside it; v2's dependencies are separate, per `CONTRIBUTING.md`.

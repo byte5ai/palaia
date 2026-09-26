@@ -16,7 +16,7 @@
 # Runs as a non-root user. No embedding models are baked in: they download
 # on first use into the PALAIA_HOME volume (see v3/deploy/README.md).
 #
-# Base images (`node:22-slim`, `python:3.12-slim`, `uv:0.8`) are pinned by
+# Base images (`node:26-slim`, `python:3.12-slim`, `uv:0.8`) are pinned by
 # tag AND digest (issue #400): the tag stays for readability, the `@sha256:`
 # freezes the exact image so a rebuild is reproducible and cannot silently
 # pull a re-tagged layer. .github/dependabot.yml watches this directory, so
@@ -25,7 +25,7 @@
 #
 # The digests were resolved against the registry (Docker Hub / ghcr.io),
 # never hand-written. To refresh one by hand, resolve it again — e.g.
-# `docker buildx imagetools inspect node:22-slim --format '{{.Manifest.Digest}}'`
+# `docker buildx imagetools inspect node:26-slim --format '{{.Manifest.Digest}}'`
 # — and update tag and digest together; never edit a digest to a value you
 # have not resolved. The GitHub Actions in .github/workflows/v3-*.yml are
 # likewise SHA-pinned (see the note at the top of v3-release.yml).
@@ -33,7 +33,7 @@
 # ---------------------------------------------------------------------------
 # Stage 1: web build
 # ---------------------------------------------------------------------------
-FROM node:22-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9 AS web-build
+FROM node:26-slim@sha256:ec7758ee051e457b468b32bde57b0879010b325bb9862718e9615225ce4aaae1 AS web-build
 WORKDIR /web
 # .npmrc must ride along: it carries legacy-peer-deps=true (see its own
 # comment), without which `npm ci` fails peer resolution inside this image
