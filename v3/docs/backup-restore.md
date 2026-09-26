@@ -217,14 +217,18 @@ losing that directory.
 
 | Surface | |
 |---|---|
-| `GET /api/backup/targets` | the configured destinations (`backup_api.py`) |
-| `POST /api/backup/targets/{name}/run` | writes one now, on a worker thread; 404 unknown, 500 with the reason when the destination failed |
+| `GET /api/backup/targets` | the configured destinations (`backup_api.py`), each with `running` and its `last_run` (outcome, trigger, artifact, size, reason), plus `schedule` — `null` when none is configured (issue #438) |
+| `POST /api/backup/targets/{name}/run` | writes one now, on a worker thread; 404 unknown, 409 while that target is already being written (by the schedule or an earlier click), 500 with the reason when the destination failed |
+| dashboard **Backups** screen (`web/src/routes/Backups.tsx`) | the list above, "Back up now" per folder, and the schedule (issue #438); Home's backup card links to it |
 | `palaia-hub backup --target NAME` | the same run on the host (repeatable) |
 | `palaia-hub backup --all-targets` | every one, continuing past a failure, exit 1 if any failed |
-| `palaia-hub backup --list-targets` | what is configured; writes nothing |
+| `palaia-hub backup --list-targets` | what is configured, the schedule, and each target's last run by the hub (read from the status file, §5.5); writes nothing |
 
 Both REST routes carry the same admin gate as the download itself (issue
-#317) and refuse with a 403 naming the CLI on a hub with no sign-in.
+#317) and refuse with a 403 naming the CLI on a hub with no sign-in. The
+screen is dashboard-only on purpose — no MCP App (MASTERPLAN §4 rule 8,
+§5.7): deciding where the full archive goes is security-sensitive
+administration.
 
 ### 5.4 Events
 
@@ -234,17 +238,64 @@ routable by SPEC-307 automations like any other event. See
 [`events.md` §3.9](events.md). A publish that itself raises is logged and
 never turns a completed backup into a reported failure. The CLI path has no
 bus attached (one-shot process): it reports on stdout/stderr and exits
-non-zero instead, which is what a `cron`/`systemd` wrapper reads.
+non-zero instead. Runs by the running hub carry a `trigger` —
+`manual` (the dashboard) or `schedule` (§5.5).
 
-### 5.5 Not built in this pass
+### 5.5 Scheduling (issue #438)
 
-The user-defined external target and the per-vault git remote push, and a
-**scheduler** (retention shipped; the interval did not — `cron`/`systemd`
-around `--all-targets` is the honest interim, and the docs site says so).
-A `config.yaml` naming an unimplemented `type` is refused at load with a
-message saying it does not exist yet, rather than validating into a hub
-that would never produce that backup. The dashboard shows no target UI yet
-either; the REST surface it will use is the one above.
+The interval half of #297's "a simple interval/retention setting" —
+retention is each target's `keep_last` above.
+
+```yaml
+backup:
+  interval_hours: 24
+  targets:
+    - type: local_directory
+      name: nas
+      path: /mnt/nas/palaia-backups
+      keep_last: 7
+```
+
+- **Off by default.** Without `interval_hours` a hub writes nothing by
+  itself. At least `1` — every run is the full archive. An interval with no
+  `targets` is refused at load: it would look scheduled and never write.
+- **Inside the hub**, not a second daemon: `palaia_hub.backup_schedule.
+  BackupScheduler` is started and stopped with `create_app`'s lifespan,
+  like the curator's timer. Each pass runs every target in config order,
+  one after another, on a worker thread; a failing target publishes
+  `backup.target.failed` and the pass moves on, and anything unexpected is
+  logged and the timer waits for the next interval. It never stops the
+  timer.
+- **Never two writers of one target.** Archive names are stamped to the
+  second, so every run by the running hub — scheduled or the dashboard's —
+  goes through one `BackupLedger` holding a lock per target. A click on a
+  target being written answers 409; a scheduled pass skips a target a click
+  is writing. Passes never overlap: the next is scheduled only once the
+  current one has finished.
+- **The clock survives a restart.** The start of every pass (written
+  *before* it runs) and each target's last outcome are kept in
+  `backup-status.json` in the hub home — names, times, file names and
+  failure reasons, nothing from inside an archive. A starting hub schedules
+  its first pass for `last pass + interval`, or, when that has already
+  passed or no pass ever ran, 60 s after start so it is not building an
+  archive while it reopens its vaults. A damaged status file is treated as
+  "never ran", with a warning in the log.
+- **Shutdown** cancels the timer first. A run already in its worker thread
+  finishes or is cut short by the exit — safe either way, the `.part`
+  rename (§5.2) means a killed run never leaves a finished-looking file.
+
+**The CLI is not coordinated with this.** `palaia-hub backup --target`
+runs in its own process and takes none of the hub's locks, so a
+`cron`/`systemd` wrapper around `--all-targets` (the interim before this
+existed) should be removed once `interval_hours` is set — two schedulers
+writing into one directory in the same second would share a file name.
+
+### 5.6 Not built in this pass
+
+The user-defined external target and the per-vault git remote push (issue
+#438). A `config.yaml` naming an unimplemented `type` is refused at load
+with a message saying it does not exist yet, rather than validating into a
+hub that would never produce that backup.
 
 ## 6. Verifying this yourself
 
