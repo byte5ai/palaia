@@ -184,6 +184,7 @@ If no store is found, the server exits with an error message suggesting `palaia 
 | Problem | Solution |
 |---------|----------|
 | "MCP SDK not installed" | `pip install 'palaia[mcp]'` |
+| "mcp 2.x is not supported" | palaia v2 needs the 1.x SDK: `pip install 'mcp>=1.2.0,<2'` |
 | "No .palaia store found" | Run `palaia init` first, or use `--root` |
 | Tool calls are slow | Install sqlite-vec: `pip install 'palaia[sqlite-vec]'` |
 | No semantic results | Check `palaia detect` for embedding provider |

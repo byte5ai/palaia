@@ -1804,15 +1804,10 @@ def _check_native_vector_search(palaia_root: Path | None) -> dict[str, Any]:
 
 def _check_mcp_server(palaia_root: Path | None) -> dict[str, Any]:
     """Check if MCP server is available for Claude Code / Claude Desktop / Cursor."""
+    from palaia.mcp import check_mcp_sdk
+
     try:
         import mcp  # noqa: F401
-
-        return {
-            "name": "mcp_server",
-            "label": "MCP server",
-            "status": "ok",
-            "message": "MCP SDK installed — palaia-mcp available for Claude Code, Claude Desktop, Cursor",
-        }
     except ImportError:
         return {
             "name": "mcp_server",
@@ -1820,6 +1815,24 @@ def _check_mcp_server(palaia_root: Path | None) -> dict[str, Any]:
             "status": "info",
             "message": "MCP SDK not installed. For Claude Code / Claude Desktop / Cursor: pip install 'palaia[mcp]'",
         }
+
+    sdk_problem = check_mcp_sdk()
+    if sdk_problem:
+        problem, fix = sdk_problem
+        return {
+            "name": "mcp_server",
+            "label": "MCP server",
+            "status": "warn",
+            "message": f"{problem} — palaia-mcp will not start.",
+            "fix": fix,
+        }
+
+    return {
+        "name": "mcp_server",
+        "label": "MCP server",
+        "status": "ok",
+        "message": "MCP SDK installed — palaia-mcp available for Claude Code, Claude Desktop, Cursor",
+    }
 
 
 def _check_claude_code_config(palaia_root: Path | None) -> dict[str, Any]:

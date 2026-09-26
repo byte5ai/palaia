@@ -15,6 +15,37 @@ from __future__ import annotations
 import argparse
 import sys
 
+# Supported MCP SDK range. Keep in sync with the `mcp` extra in pyproject.toml.
+# 1.2.0 introduced `mcp.server.fastmcp`; 2.x renamed FastMCP and dropped that module.
+MCP_SDK_REQUIREMENT = "mcp>=1.2.0,<2"
+
+
+def check_mcp_sdk() -> tuple[str, str] | None:
+    """Check that a supported MCP SDK is installed.
+
+    Returns None if palaia-mcp can run, otherwise a ``(problem, fix)`` pair of
+    user-facing strings.
+    """
+    try:
+        import mcp  # noqa: F401
+    except ImportError:
+        return "MCP SDK not installed", "pip install 'palaia[mcp]'"
+
+    try:
+        from mcp.server.fastmcp import FastMCP  # noqa: F401
+    except ImportError:
+        from importlib.metadata import PackageNotFoundError, version
+
+        try:
+            installed = f"mcp {version('mcp')}"
+        except PackageNotFoundError:
+            installed = "The installed MCP SDK"
+        return (
+            f"{installed} is not supported (palaia needs {MCP_SDK_REQUIREMENT})",
+            f"pip install '{MCP_SDK_REQUIREMENT}'",
+        )
+    return None
+
 
 def main(argv: list[str] | None = None) -> None:
     """Entry point for `palaia-mcp` and `palaia mcp-server`."""
@@ -40,13 +71,10 @@ def main(argv: list[str] | None = None) -> None:
 
     args = parser.parse_args(argv)
 
-    try:
-        from mcp.server.fastmcp import FastMCP  # noqa: F401
-    except ImportError:
-        print(
-            "Error: MCP SDK not installed. Install with: pip install 'palaia[mcp]'",
-            file=sys.stderr,
-        )
+    sdk_problem = check_mcp_sdk()
+    if sdk_problem:
+        problem, fix = sdk_problem
+        print(f"Error: {problem}. Install with: {fix}", file=sys.stderr)
         sys.exit(1)
 
     from pathlib import Path
