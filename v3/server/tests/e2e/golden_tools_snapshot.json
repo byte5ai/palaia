@@ -53,7 +53,7 @@
       "readOnlyHint": false,
       "title": null
     },
-    "description": "A palaia memory vault.\n\nTHE way to save something you (the assistant) learned this session: a decision, a preference, a correction, a fact worth keeping. Call it the moment the knowledge appears \u2014 before answering, without searching first, without deciding placement, dedup or structure; the curator files it into the vault. Writes an inbox/ note (format spec \u00a77). Reserve write/edit for notes the user explicitly asked for.",
+    "description": "A palaia memory vault.\n\nSave something you (the assistant) learned this session \u2014 a decision, a preference, a correction, a fact worth keeping \u2014 as an uncurated inbox/ note (format spec \u00a77). No placement decision is needed; the curator later files, deduplicates and structures it. An identical capture is acknowledged with duplicate=true and not written again. For notes the user explicitly asked for, use write/edit instead.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -66,7 +66,8 @@
               "type": "null"
             }
           ],
-          "default": null
+          "default": null,
+          "description": "Required. The knowledge itself, understandable without this conversation."
         },
         "source": {
           "anyOf": [
@@ -77,7 +78,8 @@
               "type": "null"
             }
           ],
-          "default": null
+          "default": null,
+          "description": "Where this came from. Defaults to 'agent capture, <date>'."
         },
         "what_it_concerns": {
           "anyOf": [
@@ -88,7 +90,8 @@
               "type": "null"
             }
           ],
-          "default": null
+          "default": null,
+          "description": "Required. The topic or entity this is about; becomes the note title, e.g. 'API Gateway'."
         },
         "why_keep": {
           "anyOf": [
@@ -99,7 +102,8 @@
               "type": "null"
             }
           ],
-          "default": null
+          "default": null,
+          "description": "Required. Why it is worth keeping \u2014 what goes wrong if it is forgotten."
         }
       },
       "type": "object"
@@ -113,11 +117,12 @@
       "readOnlyHint": false,
       "title": null
     },
-    "description": "A palaia memory vault.\n\nDelete a note by permalink. Irreversible outside git history.",
+    "description": "A palaia memory vault.\n\nDelete a note by permalink. Irreversible outside git history. A reference that matches no note returns deleted=false, not an error.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
         "permalink": {
+          "description": "The note's permalink (alias, exact title or path also work).",
           "type": "string"
         }
       },
@@ -135,7 +140,7 @@
       "readOnlyHint": false,
       "title": null
     },
-    "description": "A palaia memory vault.\n\nUpdate an existing note's body and/or tags.",
+    "description": "A palaia memory vault.\n\nUpdate an existing note. `body` replaces the whole body; `append` adds text on a new line after the (possibly replaced) body; `tags` replaces the full tag list. Omitted fields keep their current value.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -148,7 +153,8 @@
               "type": "null"
             }
           ],
-          "default": null
+          "default": null,
+          "description": "Text appended on a new line after the body."
         },
         "body": {
           "anyOf": [
@@ -159,9 +165,11 @@
               "type": "null"
             }
           ],
-          "default": null
+          "default": null,
+          "description": "New body, replacing the current one."
         },
         "permalink": {
+          "description": "The note's permalink (alias, exact title or path also work).",
           "type": "string"
         },
         "tags": {
@@ -176,7 +184,8 @@
               "type": "null"
             }
           ],
-          "default": null
+          "default": null,
+          "description": "New tags, replacing the whole list."
         }
       },
       "required": [
@@ -208,13 +217,13 @@
       "readOnlyHint": true,
       "title": null
     },
-    "description": "A palaia memory vault.\n\nList notes in this vault, optionally scoped to a folder.",
+    "description": "A palaia memory vault.\n\nList note summaries (permalink, title, type, tags, folder, modified \u2014 no bodies), sorted by permalink. With `folder`, only notes directly in that folder are listed (subfolders are not included). `meta` notes are excluded.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
         "folder": {
           "default": "",
-          "description": "Folder to scope to. Empty means the whole vault.",
+          "description": "Vault folder, e.g. 'projects/api'. Empty means the vault root (write/move) or the whole vault (list); for list the match is exact, subfolders excluded.",
           "type": "string"
         }
       },
@@ -235,10 +244,11 @@
       "properties": {
         "folder": {
           "default": "",
-          "description": "Folder to scope to. Empty means the whole vault.",
+          "description": "Vault folder, e.g. 'projects/api'. Empty means the vault root (write/move) or the whole vault (list); for list the match is exact, subfolders excluded.",
           "type": "string"
         },
         "permalink": {
+          "description": "The note's permalink (alias, exact title or path also work).",
           "type": "string"
         }
       },
@@ -256,11 +266,12 @@
       "readOnlyHint": true,
       "title": null
     },
-    "description": "A palaia memory vault.\n\nRead one note in full by its permalink.",
+    "description": "A palaia memory vault.\n\nRead one note in full. `permalink` also accepts the note's alias, exact title or vault path; an unknown or ambiguous reference is an error. The text result shows value references resolved to their current values; structured_content.body is the note as written \u2014 use that as the base for edit.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
         "permalink": {
+          "description": "The note's permalink (alias, exact title or path also work).",
           "type": "string"
         }
       },
@@ -319,6 +330,7 @@
       "additionalProperties": false,
       "properties": {
         "refs": {
+          "description": "References of the notes to load; the call fails on the first one that does not resolve.",
           "items": {
             "type": "string"
           },
@@ -339,12 +351,13 @@
       "readOnlyHint": true,
       "title": null
     },
-    "description": "A palaia memory vault.\n\nThe most recently modified notes, most recent first.",
+    "description": "A palaia memory vault.\n\nThe most recently modified notes, most recent first, up to `limit`. Summaries only (no bodies); `meta` notes are excluded.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
         "limit": {
           "default": 10,
+          "description": "Maximum results to return, best or most recent first.",
           "type": "integer"
         }
       },
@@ -364,6 +377,7 @@
       "additionalProperties": false,
       "properties": {
         "decision": {
+          "description": "'approved' or 'rejected'.",
           "enum": [
             "approved",
             "rejected"
@@ -371,6 +385,7 @@
           "type": "string"
         },
         "permalink": {
+          "description": "Permalink of a proposal whose status is 'proposed'.",
           "type": "string"
         }
       },
@@ -410,6 +425,7 @@
       "properties": {
         "limit": {
           "default": 10,
+          "description": "Maximum results to return, best or most recent first.",
           "type": "integer"
         },
         "query": {
@@ -431,16 +447,17 @@
       "readOnlyHint": false,
       "title": null
     },
-    "description": "A palaia memory vault.\n\nCreate a new note in this vault.",
+    "description": "A palaia memory vault.\n\nCreate a new note the user asked for, at `<folder>/<slugified title>.md`. If a note already exists at that path the call fails rather than overwriting \u2014 search first and edit the existing note instead. Knowledge you picked up yourself goes through capture.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
         "body": {
+          "description": "Markdown body.",
           "type": "string"
         },
         "folder": {
           "default": "",
-          "description": "Folder to scope to. Empty means the whole vault.",
+          "description": "Vault folder, e.g. 'projects/api'. Empty means the vault root (write/move) or the whole vault (list); for list the match is exact, subfolders excluded.",
           "type": "string"
         },
         "tags": {
@@ -455,13 +472,16 @@
               "type": "null"
             }
           ],
-          "default": null
+          "default": null,
+          "description": "Tags to set. Omit for none."
         },
         "title": {
+          "description": "Note title; also sets the file name (slugified).",
           "type": "string"
         },
         "type": {
           "default": "note",
+          "description": "Frontmatter type. Default 'note'; 'meta' notes are hidden from search, list and recent_activity.",
           "type": "string"
         }
       },

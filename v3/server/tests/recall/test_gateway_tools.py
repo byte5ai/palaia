@@ -131,10 +131,11 @@ async def test_the_published_schema_shows_only_canonical_parameter_names(
 
 
 async def test_every_parameter_is_documented(fake_client: Client[Any]) -> None:
-    tools = {tool.name: tool for tool in await fake_client.list_tools()}
-    for name in RECALL_TOOL_ACTIONS:
-        for parameter, schema in tools[name].inputSchema["properties"].items():
-            assert schema.get("description"), f"{name}.{parameter} has no description"
+    # Every tool in the vault family, not just the recall pair: an
+    # undocumented parameter is a guess the model has to make.
+    for tool in await fake_client.list_tools():
+        for parameter, schema in tool.inputSchema["properties"].items():
+            assert schema.get("description"), f"{tool.name}.{parameter} has no description"
 
 
 async def test_the_assistant_guide_mentions_both_tools(fake_client: Client[Any]) -> None:
