@@ -196,8 +196,10 @@ not your job.
 - Do not batch captures to the end of the task — you will forget the detail
   that made it worth keeping. Capture it in the turn it comes up.
 - One capture per idea. Two decisions are two captures.
-- An exact duplicate is harmless — it is recognised and dropped. Never suppress
-  a capture out of fear of repeating yourself.
+- Repeating yourself is harmless. An exact copy of a capture that has not been
+  filed yet is recognised and dropped, and whatever files it later checks what
+  is already stored first. Never suppress a capture out of fear of repeating
+  yourself.
 - Say in one short line what you captured, then continue the actual work. Never
   turn a capture into its own agenda item.
 - Never ask permission first. "Want me to save that?" is the wrong move: it

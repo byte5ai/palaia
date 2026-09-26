@@ -15,10 +15,11 @@ Two things get checked, and they are different in kind:
 - **Jargon** — SPEC-207's acceptance criterion "no jargon in user-facing
   text". Every word of a skill is read by a model that has never seen this
   repository: "the curator files it later" means nothing to it, while "an
-  exact duplicate is recognised and dropped" does. Enforced as a word
-  blocklist over the prose only — fenced blocks, inline code and table rows
-  naming tools are stripped first, because ``work_memory_capture`` is a real
-  identifier the skill has to be able to print. The blocklist itself lives
+  exact copy that has not been filed yet is recognised and dropped" does.
+  Enforced as a word blocklist over the prose only — fenced blocks, inline
+  code and table rows naming tools are stripped first, because
+  ``work_memory_capture`` is a real identifier the skill has to be able to
+  print. The blocklist itself lives
   in :mod:`palaia_addon_sdk.jargon` (SPEC-406: "one blocklist, one place" —
   the add-on SDK's ``validate`` command holds the canonical copy so a
   third-party author has no dependency on this repository's server package,
