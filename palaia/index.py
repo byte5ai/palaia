@@ -114,8 +114,8 @@ class EmbeddingCache:
     def reload(self) -> None:
         """Force reload of cache from disk on next access.
 
-        Used by embed_server stale detection to pick up changes
-        made by other processes.
+        Used by the embed server, when the store changed, to pick up
+        vectors cached by other processes.
         """
         with self._lock:
             self._cache = None

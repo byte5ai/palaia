@@ -1376,11 +1376,8 @@ def cmd_embed_server(args):
 
 def cmd_mcp_server(args):
     """Start MCP server for Claude Desktop, Cursor, etc."""
-    try:
-        from palaia.mcp import main as mcp_main
-    except ImportError:
-        print("Error: MCP SDK not installed. Install with: pip install 'palaia[mcp]'", file=sys.stderr)
-        return 1
+    # palaia.mcp does not import the SDK itself; main() checks it and reports problems.
+    from palaia.mcp import main as mcp_main
 
     argv = []
     if getattr(args, "root", None):

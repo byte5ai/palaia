@@ -296,3 +296,85 @@ def test_write_entry_refuses_private_project_default_without_identity(palaia_roo
     result = write_entry(palaia_root, body="Orphan via project default", project="secret", agent="default")
     assert "without an agent identity" in result["error"]
     assert write_entry(palaia_root, body="Owned", project="secret", agent="agent1").get("id")
+
+
+class _FakeProvider:
+    model_name = "fake"
+
+    def embed_query(self, text):
+        return [1.0, 0.0]
+
+    def embed(self, texts):
+        return [[1.0, 0.0] for _ in texts]
+
+
+class _FakeVecBackend:
+    """Unfiltered KNN over the whole table, like sqlite-vec / pgvector."""
+
+    _has_vec = True
+
+    def __init__(self, similarities):
+        self.similarities = similarities  # {entry_id: similarity}; absent = no embedding
+
+    def vector_search(self, vec, top_k=10, *, tier=None, entry_type=None):
+        ranked = sorted(self.similarities.items(), key=lambda x: x[1], reverse=True)
+        return ranked[:top_k]
+
+
+def _native_vector_engine(store, monkeypatch, similarities):
+    from palaia.search import SearchEngine
+
+    monkeypatch.setattr(store, "_backend", _FakeVecBackend(similarities), raising=False)
+    engine = SearchEngine(store)
+    engine._provider = _FakeProvider()
+    assert engine.has_embeddings
+    return engine
+
+
+@pytest.fixture
+def bm25_store(palaia_root):
+    save_config(palaia_root, dict(DEFAULT_CONFIG, agent="agent1", embedding_chain=["bm25"]))
+    return Store(palaia_root)
+
+
+def test_search_native_vector_hits_respect_filters(bm25_store, monkeypatch):
+    """Vector hits outside the scope or the structured filters must not reach the results."""
+    store = bm25_store
+    ids = [
+        store.write("Deploy notes alpha", scope="team", agent="agent1", project="x", title="X team"),
+        store.write("Deploy notes beta", scope="private", agent="agent1", project="y", title="Y own private"),
+        store.write("Deploy notes gamma", scope="team", agent="agent1", project="y", title="Y team"),
+        store.write("Deploy notes delta", scope="private", agent="agent2", project="x", title="X foreign private"),
+    ]
+    engine = _native_vector_engine(store, monkeypatch, {i: 0.99 for i in ids})
+
+    titles = {r["title"] for r in engine.search("deploy notes", agent="agent1", project="x")}
+    assert titles == {"X team"}
+
+
+def test_search_native_vector_recall_survives_filtered_out_neighbours(bm25_store, monkeypatch):
+    """An eligible semantic-only match is found even when many filtered-out entries
+    are nearer to the query than it is."""
+    store = bm25_store
+    target = store.write("Quarterly revenue forecast", project="x", title="Forecast")
+    noise = [store.write(f"Unrelated entry {i}", project="y", title=f"Noise {i}") for i in range(30)]
+    sims = {i: 0.95 for i in noise}
+    sims[target] = 0.6
+    engine = _native_vector_engine(store, monkeypatch, sims)
+
+    results = engine.search("money outlook", top_k=2, agent="agent1", project="x")
+    assert [r["title"] for r in results] == ["Forecast"]
+    assert results[0]["embed_score"] == 0.6
+
+
+def test_search_hybrid_weighting_ignores_filtered_out_vector_hits(bm25_store, monkeypatch):
+    """When every vector hit is filtered out, eligible keyword matches keep their full
+    BM25 score instead of being down-weighted as if a semantic score existed."""
+    store = bm25_store
+    store.write("Deploy checklist for release", project="x", title="Checklist")  # no embedding
+    other = store.write("Something else entirely", project="y", title="Other")
+    engine = _native_vector_engine(store, monkeypatch, {other: 0.99})
+
+    results = engine.search("deploy checklist", agent="agent1", project="x")
+    assert [r["title"] for r in results] == ["Checklist"]
+    assert results[0]["score"] == 1.0

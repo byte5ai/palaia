@@ -218,6 +218,8 @@ config:
 | Problem | Solution |
 |---------|----------|
 | "MCP SDK not installed" | `pip install 'palaia[mcp]'` |
+| "mcp X.Y.Z is not supported" | palaia v2 needs `mcp>=1.2.0,<2`: `pip install 'mcp>=1.2.0,<2'`. If another tool in the same environment needs mcp 2.x, install `palaia[mcp]` in its own environment |
+| "mcp X.Y.Z failed to import: …" | The SDK version is supported but its install is broken (e.g. a missing dependency): `pip install --force-reinstall 'mcp>=1.2.0,<2'` |
 | "No .palaia store found" | Run `palaia init` first, or use `--root` |
 | Tool calls are slow | Install sqlite-vec: `pip install 'palaia[sqlite-vec]'` |
 | No semantic results | Check `palaia detect` for embedding provider |

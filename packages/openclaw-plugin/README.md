@@ -48,7 +48,7 @@ All options are optional — sensible defaults are used:
       palaia: {
         binaryPath: "/path/to/palaia",  // default: auto-detect
         workspace: "/path/to/workspace", // default: agent workspace
-        tier: "hot",                      // default: "hot" (hot|warm|all)
+        tier: "hot",                      // default: "hot" (hot|warm|all — see note below)
         maxResults: 10,                   // default: 10
         timeoutMs: 3000,                  // default: 3000
         memoryInject: true,               // default: true (inject HOT into context)
@@ -59,11 +59,18 @@ All options are optional — sensible defaults are used:
 }
 ```
 
+**`tier`:** searches (`memory_search` and `recallMode: "query"`) only distinguish
+`"all"` from everything else — `"all"` adds COLD entries, while `"hot"` and `"warm"`
+both search HOT + WARM. List-based recall (`recallMode: "list"`, or the fallback whenever
+query-based recall yields no entries — no match, a too-short message, or a query error)
+uses the value as an exact tier filter.
+
 ## Agent Tools
 
 ### `memory_search` (always available)
 
-Semantically search palaia memory:
+Search palaia memory (semantic + keyword ranking). `maxResults` defaults to the
+plugin's `maxResults` setting; pass `tier: "all"` to include COLD entries:
 
 ```
 memory_search({ query: "deployment process", maxResults: 5, tier: "all" })
