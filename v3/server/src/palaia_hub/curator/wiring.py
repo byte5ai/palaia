@@ -121,6 +121,20 @@ class CuratorWiring:
             if isinstance(item, CuratorScopeMiddleware):
                 item.add_tool_actions(curator_tool_actions([mount]))
 
+    def remove_vault(self, key: str) -> None:
+        """Stop curating ``key``, live — the inverse of :meth:`add_vault`.
+
+        Called when an ephemeral vault is closed (issue #168), after the
+        gateway already dropped its tools. The curator profile guard keeps
+        the vault's tool names in its map: with the tools gone they match
+        nothing, and a stale allow-entry for a tool that no longer exists
+        grants nothing. A no-op for an unknown key.
+        """
+        self.scheduler.remove_vault(key)
+        self.runners.pop(key, None)
+        self.appliers.pop(key, None)
+        self._mounts = [m for m in self._mounts if m.key != key]
+
 
 def curator_token(config: HubConfig) -> str | None:
     """The curator token: environment first, then ``config.yaml``."""

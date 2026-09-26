@@ -230,6 +230,27 @@ class VaultsCheck:
         for key, engine in sorted(context.vaults.items()):
             index = context.indexes.get(key)
             findings.extend(self._translate(key, await VaultDoctor(engine).verify(index)))
+            info = engine.info()
+            if info.expired():
+                findings.append(
+                    Finding(
+                        code="ephemeral-expired",
+                        severity="warning",
+                        detail=(
+                            f"{key} is a temporary vault that was due to be closed on "
+                            f"{info.expires}. It still answers searches and still takes "
+                            f"writes — nothing is closed or deleted on its own."
+                        ),
+                        fix=(
+                            "Copy what is worth keeping into a long-lived vault "
+                            f"(`POST /api/vaults/{key}/promote`), then close it "
+                            f"(`POST /api/vaults/{key}/close` with "
+                            f'`{{"confirm": "{key}"}}`) — closing archives its files, '
+                            "it never deletes them."
+                        ),
+                        subject=key,
+                    )
+                )
         return findings
 
     def _translate(self, key: str, vault_findings: Iterable[VaultFinding]) -> list[Finding]:

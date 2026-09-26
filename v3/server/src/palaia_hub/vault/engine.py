@@ -28,6 +28,7 @@ import logging
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
+from datetime import UTC, date, datetime
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, TypeVar, cast
@@ -54,6 +55,7 @@ from .errors import (
     NoteNotFoundError,
     PermalinkConflictError,
     UncommittedWriteError,
+    VaultConfigError,
     VaultError,
     VaultFormatVersionError,
     VaultNotFoundError,
@@ -74,6 +76,7 @@ from .models import (
     ENGINE,
     HUMAN,
     IGNORED_DIRS,
+    LIFECYCLE_EPHEMERAL,
     MANIFEST_PATH,
     NOTE_SUFFIX,
     RESERVED_DIRS,
@@ -232,6 +235,44 @@ class _CatalogSnapshot:
 _EMPTY_SNAPSHOT = _CatalogSnapshot(MappingProxyType({}), _Lookups())
 
 
+@dataclass(frozen=True, slots=True)
+class _Lifecycle:
+    """What a new manifest says about the vault's lifetime (§1.2, issue #168)."""
+
+    ephemeral: bool = False
+    expires: datetime | None = None
+
+
+def _iso_utc(moment: datetime) -> str:
+    """``moment`` as an ISO 8601 UTC timestamp, seconds precision, ``Z`` suffix."""
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    text = moment.astimezone(UTC).replace(microsecond=0).isoformat()
+    return text.replace("+00:00", "Z")
+
+
+def _parse_expires(raw: Any, root: Path) -> str | None:
+    """Normalize a manifest's ``expires`` to ISO 8601 UTC, or ``None``.
+
+    A hand-edited manifest may carry an unquoted timestamp (YAML hands it
+    back as a ``datetime``) or a bare date (a ``date``: read as midnight
+    UTC). Anything unparseable is ignored with a warning — warn-first, a
+    user file is never rejected — and the vault simply has no expiry.
+    """
+    if raw is None or raw == "":
+        return None
+    if isinstance(raw, datetime):
+        return _iso_utc(raw)
+    if isinstance(raw, date):
+        return _iso_utc(datetime(raw.year, raw.month, raw.day, tzinfo=UTC))
+    try:
+        parsed = datetime.fromisoformat(fm.coerce_str(raw).strip())
+    except ValueError:
+        logger.warning("vault %s: manifest `expires: %r` is not a timestamp — ignored", root, raw)
+        return None
+    return _iso_utc(parsed)
+
+
 class VaultEngine:
     """One vault: files, atomic writes, git history, identity.
 
@@ -272,6 +313,8 @@ class VaultEngine:
         self._uncommitted: dict[str, tuple[str, Attribution]] = {}
         self._opened = False
         self._purpose: str | None = None
+        self._ephemeral = False
+        self._expires: str | None = None
         self._format_version = VAULT_FORMAT_VERSION
         self._writable = True
 
@@ -301,6 +344,8 @@ class VaultEngine:
             format_version=self._format_version,
             writable=self._writable,
             note_count=len(self._snapshot.entries),
+            ephemeral=self._ephemeral,
+            expires=self._expires,
         )
 
     # ---------------------------------------------------------------- lifecycle
@@ -311,18 +356,36 @@ class VaultEngine:
         purpose: str | None = None,
         create: bool = True,
         attribution: Attribution = ENGINE,
+        ephemeral: bool = False,
+        expires: datetime | None = None,
     ) -> VaultInfo:
         """Open (and, with ``create``, initialize) the vault.
 
         Startup does the crash recovery the SPEC-003 kill test proved
         necessary: sweep orphaned temp files and clear stale git locks before
         anything else touches the repository.
+
+        ``ephemeral``/``expires`` only matter when ``create`` writes a new
+        manifest: they become its ``lifecycle: ephemeral`` and ``expires``
+        keys (format spec §1.2, issue #168). An existing manifest is never
+        rewritten — it stays the truth.
         """
+        if expires is not None and not ephemeral:
+            raise VaultConfigError(
+                "only an ephemeral vault can expire. Fix: pass ephemeral=True, or drop expires."
+            )
+        lifecycle = _Lifecycle(ephemeral=ephemeral, expires=expires)
         async with self._lock:
-            info = await asyncio.to_thread(self._open_sync, purpose, create, attribution)
+            info = await asyncio.to_thread(self._open_sync, purpose, create, attribution, lifecycle)
         return info
 
-    def _open_sync(self, purpose: str | None, create: bool, attribution: Attribution) -> VaultInfo:
+    def _open_sync(
+        self,
+        purpose: str | None,
+        create: bool,
+        attribution: Attribution,
+        lifecycle: _Lifecycle | None = None,
+    ) -> VaultInfo:
         if not self.root.exists():
             if not create:
                 raise VaultNotFoundError(
@@ -364,7 +427,7 @@ class VaultEngine:
 
         if create:
             self._ensure_gitignore()
-            self._ensure_manifest(purpose)
+            self._ensure_manifest(purpose, lifecycle or _Lifecycle())
 
         self._refresh_sync()
         self._load_manifest()
@@ -396,11 +459,11 @@ class VaultEngine:
             # A vault from before issue #359: add the editor-state rules once.
             atomic_write_text(path, current.rstrip("\n") + "\n\n" + GITIGNORE_EDITOR_STATE)
 
-    def _ensure_manifest(self, purpose: str | None) -> None:
+    def _ensure_manifest(self, purpose: str | None, lifecycle: _Lifecycle) -> None:
         path = self.root / MANIFEST_PATH
         if path.exists():
             return
-        manifest = {
+        manifest: dict[str, Any] = {
             "title": "Vault",
             "permalink": "meta/vault",
             "type": "meta",
@@ -408,6 +471,10 @@ class VaultEngine:
             "name": self.name,
             "purpose": purpose or f"palaia vault '{self.name}'.",
         }
+        if lifecycle.ephemeral:
+            manifest["lifecycle"] = LIFECYCLE_EPHEMERAL
+            if lifecycle.expires is not None:
+                manifest["expires"] = _iso_utc(lifecycle.expires)
         body = (
             f"{purpose or f'palaia vault {self.name}.'}\n\n"
             "This file is the vault manifest (format spec §1.2). `name` and "
@@ -430,6 +497,9 @@ class VaultEngine:
         self._writable = version <= VAULT_FORMAT_VERSION
         purpose, _ = fm.string_value(parsed.frontmatter, "purpose")
         self._purpose = purpose
+        lifecycle, _ = fm.string_value(parsed.frontmatter, "lifecycle")
+        self._ephemeral = (lifecycle or "").strip().lower() == LIFECYCLE_EPHEMERAL
+        self._expires = _parse_expires(parsed.frontmatter.get("expires"), self.root)
         name, _ = fm.string_value(parsed.frontmatter, "name")
         if name and self.name == "default":
             self.name = name

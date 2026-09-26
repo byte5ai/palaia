@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 #: The vault format version this engine writes (docs/vault-format.md v1.0).
@@ -19,6 +19,9 @@ MANIFEST_PATH = "meta/vault.md"
 
 #: Reserved top-level directories with defined semantics (§1).
 RESERVED_DIRS: tuple[str, ...] = ("meta", "inbox", "review")
+
+#: The manifest ``lifecycle`` value of a task-bound vault (§1.2, issue #168).
+LIFECYCLE_EPHEMERAL = "ephemeral"
 
 #: Directories the engine never treats as vault content.
 IGNORED_DIRS: frozenset[str] = frozenset({".git", ENGINE_DIR, ".obsidian", ".trash"})
@@ -214,3 +217,17 @@ class VaultInfo:
     format_version: int = VAULT_FORMAT_VERSION
     writable: bool = True
     note_count: int = 0
+    #: ``True`` when the manifest declares ``lifecycle: ephemeral`` — a
+    #: task-bound vault that is meant to be promoted from and then closed
+    #: (§1.2, issue #168). Every other vault is long-lived.
+    ephemeral: bool = False
+    #: When an ephemeral vault is due to be closed, as an ISO 8601 UTC
+    #: timestamp; ``None`` when the manifest names no ``expires``.
+    expires: str | None = None
+
+    def expired(self, now: datetime | None = None) -> bool:
+        """True for an ephemeral vault whose ``expires`` lies in the past."""
+        if not self.ephemeral or self.expires is None:
+            return False
+        moment = now or datetime.now(tz=UTC)
+        return datetime.fromisoformat(self.expires) <= moment

@@ -82,6 +82,27 @@ One paragraph a human (and the connect-a-client page) can read.
 (MASTERPLAN §5.2). The engine creates this file at vault init; a vault without
 it is importable but not servable.
 
+Two optional manifest keys mark a **task-bound (ephemeral) vault** — one that
+collects the sources for a single task, has what is worth keeping promoted into
+a long-lived vault, and is then closed (issue #168):
+
+| Key | Type | Semantics |
+|---|---|---|
+| `lifecycle` | `ephemeral` | Absent (or any other value) = a long-lived vault. Only an ephemeral vault can be closed at runtime |
+| `expires` | ISO 8601 | When the vault is due to be closed. Engine writes UTC with `Z`; a hand-written timestamp or bare date (midnight UTC) is accepted; anything unparseable is ignored with a log warning, never rejected. Meaningful only with `lifecycle: ephemeral` |
+
+```yaml
+lifecycle: ephemeral
+expires: 2026-10-04T12:00:00Z
+```
+
+Expiry is advisory: an overdue vault stays readable and writable, and the hub
+doctor reports it (`ephemeral-expired`). Closing is always an explicit owner
+action and moves the whole vault directory (notes, git history, `.palaia/`)
+to `<hub home>/archive/vaults/<name>-<UTC timestamp>/` — nothing is deleted.
+Both keys are written only when the manifest is created; the engine never
+rewrites an existing manifest.
+
 ## 2. Frontmatter
 
 YAML between `---` fences at file start. Parsers MUST apply these
@@ -516,3 +537,7 @@ derived, never stored in files.
   `permalink-noncanonical` warning; E4 covers purely numeric categories;
   top-level `anchors` array; wikilink extraction on excluded lines (except
   code).
+- **1.0 additive (2026-09-27)** — optional manifest keys `lifecycle:
+  ephemeral` and `expires` (§1.2) for task-bound vaults (issue #168). No
+  version bump: an engine that does not know them preserves them as unknown
+  keys and serves the vault as a long-lived one.

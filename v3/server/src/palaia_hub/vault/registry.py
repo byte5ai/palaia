@@ -17,8 +17,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import shutil
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +37,9 @@ from .models import Attribution, VaultInfo
 logger = logging.getLogger("palaia_hub.vault.registry")
 
 REGISTRY_FILE = "vaults.yaml"
+
+#: Where closed vaults are kept, relative to the hub home (issue #168).
+ARCHIVE_DIR = Path("archive") / "vaults"
 
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 
@@ -182,9 +187,22 @@ class VaultRegistry:
         *,
         purpose: str | None = None,
         attribution: Attribution | None = None,
+        ephemeral: bool = False,
+        expires: datetime | None = None,
     ) -> VaultEngine:
-        """Register a new vault and initialize it on disk."""
-        return await self._add(name, path, purpose=purpose, create=True, attribution=attribution)
+        """Register a new vault and initialize it on disk.
+
+        ``ephemeral``/``expires`` mark a task-bound vault in its new manifest
+        (format spec §1.2, issue #168); see :meth:`archive` for its end.
+        """
+        return await self._add(
+            name,
+            path,
+            purpose=purpose,
+            create=True,
+            attribution=attribution,
+            lifecycle=(ephemeral, expires),
+        )
 
     async def register(self, name: str, path: Path) -> VaultEngine:
         """Register an existing vault directory without initializing it."""
@@ -198,6 +216,7 @@ class VaultRegistry:
         purpose: str | None,
         create: bool,
         attribution: Attribution | None,
+        lifecycle: tuple[bool, datetime | None] = (False, None),
     ) -> VaultEngine:
         self._validate_name(name)
         if name in self._records:
@@ -208,10 +227,17 @@ class VaultRegistry:
         resolved = path.expanduser()
         self._validate_isolation(name, resolved)
         engine = VaultEngine(resolved, name, bus=self.bus, policy=self.policy)
+        ephemeral, expires = lifecycle
         if attribution is None:
-            await engine.open(purpose=purpose, create=create)
+            await engine.open(purpose=purpose, create=create, ephemeral=ephemeral, expires=expires)
         else:
-            await engine.open(purpose=purpose, create=create, attribution=attribution)
+            await engine.open(
+                purpose=purpose,
+                create=create,
+                attribution=attribution,
+                ephemeral=ephemeral,
+                expires=expires,
+            )
         self._records[name] = VaultRecord(name=name, path=resolved)
         self._engines[name] = engine
         self._save()
@@ -255,6 +281,51 @@ class VaultRegistry:
         self._save()
         logger.info("unregistered vault %s (files at %s were kept)", name, record.path)
         return record
+
+    @property
+    def archive_dir(self) -> Path:
+        """Where :meth:`archive` moves a closed vault's directory."""
+        return self.home / ARCHIVE_DIR
+
+    async def archive(self, name: str, *, now: datetime | None = None) -> Path:
+        """Close a vault for good: unregister it and move its files aside.
+
+        The end of an ephemeral vault's life (issue #168). Nothing is
+        deleted: the whole directory — notes, git history, engine storage —
+        moves to ``<home>/archive/vaults/<name>-<UTC timestamp>/``, where the
+        owner can look back at it, re-register it, or delete it by hand.
+        Moving it out of the way (rather than only unregistering) frees the
+        name: a later :meth:`create` under the same name starts empty
+        instead of re-serving the old notes.
+
+        The caller must have released everything else holding the vault's
+        files first — its index, its watcher, any gateway mount — because a
+        move across filesystems is a copy plus delete.
+
+        Returns:
+            the archived directory.
+        """
+        record = self._records.get(name)
+        if record is None:
+            raise VaultNotFoundError(
+                f"no vault named {name!r} is registered. Fix: check the name with names()."
+            )
+        engine = self._engines.get(name)
+        if engine is not None:
+            await engine.close()
+        moment = (now or datetime.now(tz=UTC)).astimezone(UTC)
+        target = self.archive_dir / f"{name}-{moment.strftime('%Y%m%dT%H%M%SZ')}"
+        suffix = 1
+        while target.exists():
+            suffix += 1
+            target = target.with_name(f"{name}-{moment.strftime('%Y%m%dT%H%M%SZ')}-{suffix}")
+        source = record.path.expanduser()
+        self.unregister(name)
+        if source.exists():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            await asyncio.to_thread(shutil.move, str(source), str(target))
+        logger.info("archived vault %s: %s -> %s", name, source, target)
+        return target
 
     async def info(self) -> list[VaultInfo]:
         """Return the manifest-backed info of every registered vault."""
