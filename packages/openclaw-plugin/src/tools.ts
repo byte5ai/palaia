@@ -231,7 +231,7 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
     {
       name: "memory_write",
       description:
-        "Write a new memory entry to palaia. WAL-backed, crash-safe.",
+        "Write a new entry to palaia (WAL-backed, crash-safe). Intended for processes/SOPs and tasks; conversation knowledge is captured automatically. Unless force is true, a similar entry (score > 0.8) created in the last 24 hours blocks the write and is reported instead; update that entry, or retry with force: true.",
       parameters: Type.Object({
         content: Type.String({ description: "Memory content to write" }),
         scope: Type.Optional(
@@ -303,7 +303,7 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
                         content: [
                           {
                             type: "text" as const,
-                            text: `Similar entry already exists (score: ${r.score.toFixed(2)}, created: ${dateStr}): '${title}'. Use palaia edit ${r.id} to update, or confirm with --force to write anyway.`,
+                            text: `Similar entry already exists (score: ${r.score.toFixed(2)}, created: ${dateStr}): '${title}'. Use palaia edit ${r.id} to update, or call again with force: true to write anyway.`,
                           },
                         ],
                       };

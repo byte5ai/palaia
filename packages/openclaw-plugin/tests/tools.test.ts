@@ -275,6 +275,54 @@ describe("tools", () => {
         expect.any(Object)
       );
     });
+
+    it("duplicate guard points the retry at the force parameter (Issue #466)", async () => {
+      mockRunJson.mockResolvedValueOnce({
+        results: [
+          {
+            id: "dup-1",
+            body: "Deploy checklist",
+            score: 0.93,
+            tier: "hot",
+            scope: "team",
+            title: "Deploy Steps",
+            path: "hot/dup-1.md",
+            created_at: new Date().toISOString(),
+          },
+        ],
+      });
+
+      const result = await api.tools["memory_write"].def.execute("call-466", {
+        content: "Deploy checklist",
+      });
+
+      const text = result.content[0].text;
+      expect(text).toContain("Similar entry already exists");
+      expect(text).toContain("force: true");
+      expect(text).not.toContain("--force");
+      // Only the guard query ran; nothing was written
+      expect(mockRunJson).toHaveBeenCalledTimes(1);
+    });
+
+    it("force: true skips the duplicate guard", async () => {
+      mockRunJson.mockResolvedValueOnce({
+        id: "forced-1",
+        tier: "hot",
+        scope: "team",
+        deduplicated: false,
+      });
+
+      await api.tools["memory_write"].def.execute("call-466b", {
+        content: "Deploy checklist",
+        force: true,
+      });
+
+      expect(mockRunJson).toHaveBeenCalledTimes(1);
+      expect(mockRunJson).toHaveBeenCalledWith(
+        ["write", "Deploy checklist"],
+        expect.any(Object)
+      );
+    });
   });
 
   describe("memory_search type filter (Issue #82)", () => {
