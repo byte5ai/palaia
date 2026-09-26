@@ -61,8 +61,9 @@ All options are optional — sensible defaults are used:
 
 **`tier`:** searches (`memory_search` and `recallMode: "query"`) only distinguish
 `"all"` from everything else — `"all"` adds COLD entries, while `"hot"` and `"warm"`
-both search HOT + WARM. List-based recall (`recallMode: "list"`, or the fallback when a
-query finds nothing) uses the value as an exact tier filter.
+both search HOT + WARM. List-based recall (`recallMode: "list"`, or the fallback whenever
+query-based recall yields no entries — no match, a too-short message, or a query error)
+uses the value as an exact tier filter.
 
 ## Agent Tools
 
