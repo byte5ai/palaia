@@ -299,35 +299,80 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
 
         @mcp.tool()
         def palaia_gc(
-            dry_run: Annotated[bool, Field(description="Preview without making changes")] = True,
+            dry_run: Annotated[
+                bool,
+                Field(description="True (default): score entries without changing anything. False: apply GC."),
+            ] = True,
+            limit: Annotated[
+                int, Field(description="Dry run only: max entries to list, lowest GC score first", ge=1)
+            ] = 20,
         ) -> str:
-            """Run garbage collection: move entries between hot/warm/cold tiers by decay
-            score and prune entries over the storage budget. dry_run defaults to True
-            (report only); pass dry_run=False to apply."""
+            """Run garbage collection over the memory store.
+
+            dry_run=True (default) changes nothing: it scores every entry and lists the
+            lowest-scored ones first, which are the first prune candidates. It does not
+            predict tier moves or budget pruning. dry_run=False moves entries between
+            hot/warm/cold tiers by decay score, prunes entries over the configured
+            storage budget, and reports the moves per direction and each pruned entry."""
             store = _get_store()
             result = store.gc(dry_run=dry_run, budget=True)
 
-            moves = result.get("moves", [])
-            pruned = result.get("pruned", 0)
-
-            if not moves and not pruned:
-                return "GC: nothing to do — all entries are in their correct tier."
-
-            lines = []
             if dry_run:
-                lines.append("GC dry run (no changes made):")
-            else:
-                lines.append("GC completed:")
-
-            for move in moves:
-                lines.append(
-                    f"  {move.get('id', '?')[:8]}: {move.get('from', '?')} -> {move.get('to', '?')} "
-                    f"(score={move.get('score', 0):.2f})"
-                )
-
-            if pruned:
-                lines.append(f"  Pruned: {pruned} entries")
-
-            return "\n".join(lines)
+                return _format_gc_dry_run(result.get("candidates", []), limit)
+            return _format_gc_result(result)
 
     return mcp
+
+
+def _format_gc_dry_run(candidates: list[dict], limit: int) -> str:
+    """Format the scored-entry ranking that Store.gc(dry_run=True) returns."""
+    if not candidates:
+        return "GC dry run (no changes made): the store has no entries."
+
+    lines = [
+        f"GC dry run (no changes made): scored {len(candidates)} entries. "
+        "Lowest GC score = first prune candidate.",
+        "",
+    ]
+    for c in candidates[:limit]:
+        lines.append(f"[{c['id']}] ({c['tier']}, score={c['score']:.4f}) {c['title']} — {c['reason']}")
+    if len(candidates) > limit:
+        lines.append(f"... and {len(candidates) - limit} more")
+    return "\n".join(lines)
+
+
+def _format_gc_result(result: dict) -> str:
+    """Format the counters and pruned entries that Store.gc(dry_run=False) returns."""
+    from palaia.store import TIERS
+
+    moves = [
+        (key, result[key])
+        for key in (f"{src}_to_{dst}" for src in TIERS for dst in TIERS if src != dst)
+        if result.get(key)
+    ]
+    pruned_entries = result.get("pruned_entries", [])
+
+    lines = ["GC completed:"]
+    if moves:
+        lines.append("  Tier moves: " + ", ".join(f"{key.replace('_to_', ' -> ')}: {n}" for key, n in moves))
+    else:
+        lines.append("  Tier moves: none — all entries are in their correct tier.")
+
+    if pruned_entries:
+        lines.append(f"  Pruned (over storage budget): {len(pruned_entries)} entries")
+        for e in pruned_entries:
+            lines.append(f"    [{e['id']}] {e['title']} ({e['reason']})")
+
+    housekeeping = [
+        (label, result.get(key))
+        for key, label in (
+            ("wal_cleaned", "old WAL entries"),
+            ("embeddings_cleaned", "stale embeddings"),
+            ("metadata_cleaned", "stale index entries"),
+        )
+        if result.get(key)
+    ]
+    if housekeeping:
+        lines.append("  Cleaned up: " + ", ".join(f"{n} {label}" for label, n in housekeeping))
+
+    return "\n".join(lines)

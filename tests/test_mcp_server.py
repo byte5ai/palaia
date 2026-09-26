@@ -105,7 +105,7 @@ class TestToolRegistration:
         assert undescribed == []
         # Guard against a vacuous pass if the schema layout changes.
         total = sum(len(tool.parameters.get("properties", {})) for tool in server._tool_manager._tools.values())
-        assert total == 32
+        assert total == 33
 
 
 # ── palaia_search ────────────────────────────────────────────────
@@ -235,12 +235,65 @@ class TestEdit:
 # ── palaia_gc ────────────────────────────────────────────────────
 
 class TestGC:
-    def test_gc_dry_run(self, server):
+    def test_gc_dry_run_lists_scored_entries(self, server):
         fn = _get_tool_fn(server, "palaia_gc")
         result = fn(dry_run=True)
-        assert isinstance(result, str)
-        # With only 3 entries, nothing should move
-        assert "nothing to do" in result.lower() or "dry run" in result.lower()
+        assert "no changes made" in result.lower()
+        assert "scored 3 entries" in result
+        for title in ("API Design", "JS Async", "Auth Bug"):
+            assert title in result
+
+    def test_gc_dry_run_respects_limit(self, server):
+        fn = _get_tool_fn(server, "palaia_gc")
+        result = fn(dry_run=True, limit=1)
+        assert "scored 3 entries" in result
+        assert "... and 2 more" in result
+
+    def test_gc_dry_run_changes_nothing(self, server, palaia_root_with_entries):
+        stale_id = _backdate(palaia_root_with_entries, "Stale note", days=60)
+        _get_tool_fn(server, "palaia_gc")(dry_run=True)
+        assert (palaia_root_with_entries / "hot" / f"{stale_id}.md").exists()
+
+    def test_gc_reports_tier_moves(self, server, palaia_root_with_entries):
+        stale_id = _backdate(palaia_root_with_entries, "Stale note", days=60)
+        result = _get_tool_fn(server, "palaia_gc")(dry_run=False)
+        assert "hot -> cold: 1" in result
+        assert (palaia_root_with_entries / "cold" / f"{stale_id}.md").exists()
+
+    def test_gc_reports_no_moves(self, server):
+        result = _get_tool_fn(server, "palaia_gc")(dry_run=False)
+        assert "Tier moves: none" in result
+        assert "Pruned" not in result
+
+    def test_gc_reports_pruned_entries(self, palaia_root_with_entries):
+        from palaia.mcp.server import create_server
+
+        config = load_config(palaia_root_with_entries)
+        config["max_entries_per_tier"] = 1
+        save_config(palaia_root_with_entries, config)
+
+        server = create_server(palaia_root_with_entries)
+        result = _get_tool_fn(server, "palaia_gc")(dry_run=False)
+        assert "Pruned (over storage budget): 2 entries" in result
+        assert result.count("budget:max_entries_per_tier") == 2
+
+
+def _backdate(root, title, days):
+    """Write an entry whose last access lies `days` in the past; return its id."""
+    from datetime import datetime, timedelta, timezone
+
+    from palaia.entry import parse_entry, serialize_entry
+
+    store = Store(root)
+    entry_id = store.write(body=f"{title} body", title=title)
+    path = root / "hot" / f"{entry_id}.md"
+    meta, body = parse_entry(path.read_text(encoding="utf-8"))
+    past = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    meta["created"] = past
+    meta["accessed"] = past
+    meta["access_count"] = 1
+    path.write_text(serialize_entry(meta, body), encoding="utf-8")
+    return entry_id
 
 
 # ── Agent identity ───────────────────────────────────────────────
