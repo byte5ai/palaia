@@ -228,8 +228,10 @@ class SearchEngine:
                             self.store.embedding_cache.set_cached(doc_id, vec, model=model_name)
 
                     # Native KNN search (SIMD-accelerated)
-                    vec_results = backend.vector_search(query_vec, top_k=top_k * 2)
-                    embed_norm = {doc_id: sim for doc_id, sim in vec_results}
+                    eligible = {doc_id for doc_id, _text, _meta in docs_with_meta}
+                    embed_norm = self._native_vector_scores(
+                        backend, query_vec, eligible, want=top_k * 2, entry_type=entry_type
+                    )
                 else:
                     # Fallback: Python cosine similarity (no native vector search)
                     candidate_ids = set(bm25_scores.keys())
@@ -258,11 +260,9 @@ class SearchEngine:
                 logger.warning("Embedding search failed, using BM25 only: %s", e)
                 embed_norm = {}
 
-        # Combine scores: hybrid ranking. Only entries that passed the scope and
-        # structured filters above may be ranked — native vector search (sqlite-vec /
-        # pgvector) scores the whole embedding table, unfiltered.
-        eligible = {doc_id for doc_id, _text, _meta in docs_with_meta}
-        all_ids = (set(bm25_norm) | set(embed_norm)) & eligible
+        # Combine scores: hybrid ranking. Both score sources only contain entries
+        # that passed the scope and structured filters above.
+        all_ids = set(bm25_norm) | set(embed_norm)
         combined = {}
         for doc_id in all_ids:
             bm25_s = bm25_norm.get(doc_id, 0.0)
@@ -313,6 +313,26 @@ class SearchEngine:
                     result_entry["project"] = meta["project"]
                 output.append(result_entry)
         return output
+
+    @staticmethod
+    def _native_vector_scores(
+        backend, query_vec: list[float], eligible: set[str], want: int, entry_type: str | None = None
+    ) -> dict[str, float]:
+        """Top ``want`` vector similarities among ``eligible`` entry ids.
+
+        Native vector search (sqlite-vec / pgvector) ranks the whole embedding table
+        and can only pre-filter by entry type, not by scope, project, status or the
+        hot+warm tier set. Over-fetch until enough eligible hits are found or the
+        table is exhausted, so filtered-out entries neither leak into the results
+        nor crowd eligible ones out of the candidate list.
+        """
+        k = want
+        while True:
+            hits = backend.vector_search(query_vec, top_k=k, entry_type=entry_type)
+            scores = {doc_id: sim for doc_id, sim in hits if doc_id in eligible}
+            if len(scores) >= want or len(hits) < k:
+                return dict(sorted(scores.items(), key=lambda x: x[1], reverse=True)[:want])
+            k *= 4
 
     def _get_tier(self, entry_id: str) -> str:
         """Determine which tier an entry is in."""
