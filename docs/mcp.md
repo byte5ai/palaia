@@ -155,14 +155,16 @@ Update an existing entry (only provided fields change):
 ### palaia_gc
 
 Run garbage collection. A dry run (the default) changes nothing: it scores every entry and lists
-the lowest-scored ones first, which are the first prune candidates. It does not predict tier moves
-or budget pruning. With `dry_run: false`, entries move between hot/warm/cold tiers, entries over the
-storage budget are pruned, and the tool reports the moves per direction and each pruned entry.
+the lowest-scored ones first, and it says whether a storage budget is configured (without one, a
+real run prunes nothing). It does not predict tier moves or budget pruning. With `dry_run: false`,
+entries move between hot/warm/cold tiers, entries over the storage budget are pruned, and the tool
+reports the moves per direction and the pruned entries. Titles are listed only for entries the
+server's agent may see; other agents' private entries are only counted.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `dry_run` | No | Score entries without changing anything (default: true) |
-| `limit` | No | Dry run only: max entries to list, lowest score first (default: 20) |
+| `limit` | No | Max entries to list (scored or pruned), lowest score first (default: 20) |
 
 ## Read-Only Mode
 
