@@ -564,6 +564,10 @@ export function Home() {
             </span>
           )}
           <span className="t-meta">
+            {/* Issue 438: the folders the hub backs up into by itself. */}
+            <Link to="/backups">Backup folders &amp; schedule</Link>
+          </span>
+          <span className="t-meta">
             <a
               href={docsUrl("/backup-restore/")}
               target="_blank"
