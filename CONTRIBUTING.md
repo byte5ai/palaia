@@ -151,10 +151,16 @@ ClawHub, npm) live in `CONTRIBUTING.md` on `v2-maintenance`.
 | `v3-pi-image.yml` | `v3.*` tags, manual dispatch | Raspberry Pi appliance image |
 | `ci.yml` | Push/PRs to `main` or `v2-maintenance`, ignoring `v3/**` | v2: ruff + pytest (3.9-3.12) + plugin vitest |
 | `publish.yml` | `v2.*` tags | v2 PyPI publish (all v2 tags) + npm publish (stable only) |
+| `track-label.yml` | New issues/PRs, daily sweep, manual dispatch | Adds the `v2` or `v3` label to every issue and PR that has neither |
 
 `publish.yml` is v2-only: the tag filter is `v2.*` (and every job re-checks the
 `refs/tags/v2.` prefix), so a v3 release tag — `v3.*`, e.g. `v3.3.0.0` — never
 triggers a v2 PyPI/npm publish.
+
+Every issue and PR carries exactly one track label, `v2` or `v3`; `v2` marks work
+on the retired v2 code. `track-label.yml` guesses it (PRs by base branch and
+changed files, issues by title — start a v2 issue's title with `v2:`), and a label
+set by hand is never overridden.
 
 ## Architecture
 
