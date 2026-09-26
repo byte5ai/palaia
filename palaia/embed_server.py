@@ -65,6 +65,22 @@ def _count_entries(store: Store) -> int:
     return count
 
 
+def _entry_files(store: Store) -> frozenset[str]:
+    """The entry files across all tiers, as "tier/name" (listing only, no parsing).
+
+    A changed set means entries were added, removed or moved, so the search
+    index is stale. Directory mtimes would not do: every search rewrites the
+    access metadata of its hits via temp file and rename, which changes the
+    tier directory's mtime without changing any entry.
+    """
+    files = []
+    for tier in ("hot", "warm", "cold"):
+        tier_dir = store.root / tier
+        if tier_dir.exists():
+            files.extend(f"{tier}/{p.name}" for p in tier_dir.glob("*.md"))
+    return frozenset(files)
+
+
 def _warmup_missing(store: Store, engine: SearchEngine) -> dict:
     """Index any entries missing from the embedding cache. Returns stats."""
     provider = engine.provider
@@ -124,6 +140,7 @@ class EmbedServer:
         self._bm25_engine = SearchEngine(self.store)
         self._bm25_engine._provider = BM25Provider()
         self._last_entry_count = _count_entries(self.store)
+        self._last_entry_files = _entry_files(self.store)
         self._running = True
         self._warming_up = False
         self._stale_check_interval = stale_check_interval
@@ -156,6 +173,22 @@ class EmbedServer:
 
         self._stale_check_thread = threading.Thread(target=_check_loop, daemon=True)
         self._stale_check_thread.start()
+
+    def _refresh_index_if_store_changed(self) -> None:
+        """Rebuild the search index on the next query if entries were added,
+        removed or moved since the last check.
+
+        Entries are written by other processes (the CLI), and the stale-detection
+        thread only looks every 30s. Checking before each query makes an entry
+        searchable immediately — memory_write's duplicate guard in the OpenClaw
+        plugin depends on this. Only the index is invalidated; the loaded
+        embedding model is kept.
+        """
+        entry_files = _entry_files(self.store)
+        if entry_files != self._last_entry_files:
+            self._last_entry_files = entry_files
+            self.engine.invalidate_index()
+            self._bm25_engine.invalidate_index()
 
     def _start_idle_monitor(self) -> None:
         """Start background thread that shuts down after idle timeout."""
@@ -245,6 +278,7 @@ class EmbedServer:
         before = params.get("before")
         after = params.get("after")
 
+        self._refresh_index_if_store_changed()
         engine = self._bm25_engine if self._warming_up else self.engine
         results = engine.search(
             text,

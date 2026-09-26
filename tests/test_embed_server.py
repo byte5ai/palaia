@@ -139,6 +139,32 @@ class TestEmbedServerUnit:
         response = server.handle_request({})
         assert "error" in response
 
+    def test_query_sees_entry_written_by_another_process(self, store_with_entries):
+        """An entry written after the index was built is found by the very next
+        query, not only after the 30s stale check (Issue #466)."""
+        server = EmbedServer(store_with_entries.root)
+        query = {"method": "query", "params": {"text": "Kubernetes orchestrates containers"}}
+        first = server.handle_request(query)
+        assert not any(r["title"] == "Kubernetes" for r in first["result"]["results"])
+
+        # A separate Store instance stands in for the CLI process that writes
+        Store(store_with_entries.root).write(
+            "Kubernetes orchestrates containers", agent="test-agent", title="Kubernetes", tags=["devops"]
+        )
+
+        second = server.handle_request(query)
+        assert second["result"]["results"][0]["title"] == "Kubernetes"
+
+    def test_unchanged_store_keeps_the_index(self, store_with_entries):
+        """Queries against an unchanged store reuse the built index."""
+        server = EmbedServer(store_with_entries.root)
+        server.handle_request({"method": "query", "params": {"text": "Python"}})
+        built = server.engine._index_cache
+        assert built is not None
+
+        server.handle_request({"method": "query", "params": {"text": "Docker"}})
+        assert server.engine._index_cache is built
+
     def test_count_entries(self, store_with_entries):
         count = _count_entries(store_with_entries)
         assert count == 3
