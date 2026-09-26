@@ -541,6 +541,32 @@ would first show up as a real regression; this run is Phase-4 gate
 evidence about the unprompted rate on one real day, not a substitute for
 that suite.
 
+**Re-run after shortening "Check before you start" (#467, 2026-09-26).**
+The `palaia-messenger` skill's check-on-start paragraph was cut from nine
+sentences to two (call `messenger_check` before working out from files or
+history whether something is waiting; empty is a fine answer). The check
+probe was re-run against the shortened text, with the same harness and
+the same 3-attempt budget, to check that the shorter wording still fires:
+
+```
+$ cd v3 && PALAIA_EFFECTIVENESS=1 uv run pytest \
+    server/tests/effectiveness/test_spec407_skill_driven_handoff.py -s -v -k check
+...
+### SPEC-407 gate evidence — skill-driven check-on-start, unprompted
+- attempts: 3
+- checked its inbox unprompted: 3/3
+1 passed, 1 deselected in 76.10s (0:01:16)
+```
+
+Models reported by the CLI: `claude-opus-5-5` (with
+`claude-haiku-4-5-20251001` for the CLI's own side calls). Cost $1.0846
+for the three attempts ($0.3711/$0.3513/$0.3622). All three called
+`directory_register` (which is how a session gets the handle and secret
+`messenger_check` needs), then `messenger_check`, then `directory_list`,
+and touched nothing else first: 3/3, the same rate as the 2026-08-25 run
+with the long paragraph. The shortened text is kept. The handoff probe
+was not re-run because its paragraphs did not change.
+
 ### 8.5 Honest gaps
 
 - **A real second provider (e.g. a real `codex` binary)** was not part of

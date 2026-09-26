@@ -65,15 +65,9 @@ differently, or to mark yourself idle between bursts of activity.
 ## Check before you start
 
 Before diving into a task — especially one that picks up earlier work, or
-one someone else might reasonably be touching too — call `messenger_check`.
-Do this early and directly, before you spend time trying to work out from
-anything else — files, history, your own guess — whether there is
-something to pick up. Checking is how you find that out; it's not a
-fallback for once other ways of finding out come up empty. It's quick, and
-empty is a fine answer: it just means say so and carry on. Finding
-something changes what "starting" means; not looking does not make that go
-away, and if it turns out nothing local looks like the task you were
-expecting, that is itself a reason to check, not a reason to skip it.
+one someone else might reasonably be touching too — call `messenger_check`
+before working out from files or history whether something is waiting.
+Empty is a fine answer: say so and carry on.
 
 Do this again at natural pauses in a long task, not only once at the very
 start.
