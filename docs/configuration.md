@@ -96,6 +96,7 @@ When using palaia as an OpenClaw plugin, additional settings go in `openclaw.jso
 | `timeoutMs` | `3000` | Query timeout in milliseconds |
 | `memoryInject` | `true` | Enable Auto-Recall |
 | `autoCapture` | `true` | Enable Auto-Capture |
+| `captureOnCompaction` | `true` | Save a session summary (tagged `pre-compaction`) right before OpenClaw compacts the conversation |
 | `captureFrequency` | `significant` | When to capture: `always`, `significant`, `manual` |
 | `embeddingServer` | `true` | Keep embedding model loaded |
 | `showMemorySources` | `true` | Show memory source footnotes |

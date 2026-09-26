@@ -1,16 +1,17 @@
 /**
  * Session lifecycle hooks for palaia v3.
  *
- * Handles session_start, session_end, before_reset, llm_input, llm_output,
- * and after_tool_call hooks to provide:
+ * Handles session_start, session_end, before_reset, before_compaction,
+ * llm_input, llm_output, and after_tool_call hooks to provide:
  * - Session briefing on session start (context restoration)
  * - Automatic session summaries on session end/reset
+ * - Pre-compaction capture before the host compacts the conversation
  * - LLM model switch detection
  * - Tool observation tracking
  * - Token usage tracking
  */
 
-import type { OpenClawPluginApi } from "../types.js";
+import type { OpenClawPluginApi, BeforeCompactionEvent } from "../types.js";
 import type { PalaiaPluginConfig } from "../config.js";
 import { run, type RunnerOpts } from "../runner.js";
 import {
@@ -140,7 +141,10 @@ export function formatBriefing(briefing: PendingBriefing, maxChars: number): str
 
 /**
  * Extract and save a session summary from conversation messages.
- * Called during before_reset (with messages) or session_end (without).
+ * Called during before_reset (with messages) or session_end (without),
+ * and — forced — before compaction (see captureBeforeContextLoss).
+ *
+ * Returns true when a summary was written.
  */
 export async function captureSessionSummary(
   messages: unknown[] | undefined,
@@ -148,12 +152,15 @@ export async function captureSessionSummary(
   api: OpenClawPluginApi,
   config: PalaiaPluginConfig,
   logger: { info(...a: unknown[]): void; warn(...a: unknown[]): void },
-): Promise<void> {
+  captureOpts?: { force?: boolean; extraTags?: string[] },
+): Promise<boolean> {
   const opts = buildRunnerOpts(config);
   const state = getOrCreateSessionState(sessionKey);
+  const force = captureOpts?.force === true;
 
-  // Guard: prevent double-save (before_reset + session_end race)
-  if (state.summarySaved) return;
+  // Guard: prevent double-save (before_reset + session_end race).
+  // A forced capture (pre-compaction) deliberately bypasses it.
+  if (state.summarySaved && !force) return false;
   let summaryText: string | null = null;
 
   if (messages && messages.length > 0) {
@@ -199,15 +206,16 @@ export async function captureSessionSummary(
     }
   }
 
-  if (!summaryText) return;
+  if (!summaryText) return false;
 
   // Save session summary
   try {
     const scope = await getEffectiveCaptureScope(config);
+    const tags = [...new Set(["session-summary", ...(captureOpts?.extraTags ?? []), "auto-capture"])];
     const args: string[] = [
       "write", summaryText,
       "--type", "memory",
-      "--tags", "session-summary,auto-capture",
+      "--tags", tags.join(","),
       "--scope", scope,
     ];
     if (state.autoSessionId) args.push("--instance", state.autoSessionId);
@@ -215,11 +223,81 @@ export async function captureSessionSummary(
     if (agentName) args.push("--agent", agentName);
 
     await run(args, { ...opts, timeoutMs: 10_000 });
-    state.summarySaved = true;  // Only mark after successful write
+    // A forced capture must NOT set summarySaved: the session continues
+    // after compaction and still deserves its own session_end summary.
+    if (force) {
+      state.lastForcedCaptureAt = Date.now();
+    } else {
+      state.summarySaved = true;  // Only mark after successful write
+    }
     logger.info(`[palaia] Session summary saved (${summaryText.length} chars)`);
+    return true;
   } catch (error) {
     // Don't set summarySaved — allow retry from session_end if before_reset failed
     logger.warn(`[palaia] Failed to save session summary: ${error}`);
+    return false;
+  }
+}
+
+// ── Pre-Compaction Capture (#185) ───────────────────────────────────────
+
+/** Minimum gap between two forced captures in one session. */
+export const FORCED_CAPTURE_COOLDOWN_MS = 60_000;
+
+/**
+ * Force-capture the current conversation because the host is about to
+ * compact it. Called from the before_compaction hook and from the
+ * ContextEngine's compact(); on a host where palaia owns compaction both
+ * fire for one compaction (hook first, awaited), so the in-flight guard and
+ * the cooldown make the pair write a single entry.
+ *
+ * Message source, in order: the caller's `messages` (only the embedded
+ * auto-compaction hook path carries them), then the session's
+ * `recentMessages` buffer (filled by the ContextEngine), then — inside
+ * captureSessionSummary — the session's tool observations.
+ *
+ * Returns true when an entry was written. Never throws past its callers'
+ * try/catch: context loss is bad, blocking compaction is worse.
+ */
+export async function captureBeforeContextLoss(
+  messages: unknown[] | undefined,
+  sessionKey: string,
+  api: OpenClawPluginApi,
+  config: PalaiaPluginConfig,
+  logger: { info(...a: unknown[]): void; warn(...a: unknown[]): void },
+  reason: string,
+): Promise<boolean> {
+  const state = getOrCreateSessionState(sessionKey);
+
+  if (state.forcedCaptureInFlight) {
+    logger.info(`[palaia] ${reason} capture skipped: a pre-compaction capture is already running`);
+    return false;
+  }
+
+  const since = Date.now() - state.lastForcedCaptureAt;
+  if (state.lastForcedCaptureAt > 0 && since < FORCED_CAPTURE_COOLDOWN_MS) {
+    logger.info(`[palaia] ${reason} capture skipped: forced capture ${since}ms ago`);
+    return false;
+  }
+
+  const source =
+    Array.isArray(messages) && messages.length > 0 ? messages
+    : state.recentMessages.length > 0 ? state.recentMessages.slice()
+    : undefined;
+  if (!source && state.toolObservations.length === 0) {
+    logger.info(`[palaia] ${reason} capture skipped: no messages, no tool observations`);
+    return false;
+  }
+
+  const pending = captureSessionSummary(
+    source, sessionKey, api, config, logger,
+    { force: true, extraTags: ["pre-compaction"] },
+  );
+  state.forcedCaptureInFlight = pending;
+  try {
+    return await pending;
+  } finally {
+    if (state.forcedCaptureInFlight === pending) state.forcedCaptureInFlight = null;
   }
 }
 
@@ -363,6 +441,27 @@ export function registerSessionHooks(
         }
       } catch (error) {
         logger.warn(`[palaia] before_reset summary failed: ${error}`);
+      }
+    });
+  }
+
+  // ── before_compaction: capture before the host compacts (#185) ─────
+  // OpenClaw awaits this hook (30 s default timeout). When palaia's
+  // ContextEngine owns compaction the host fires it right before compact()
+  // without messages, so captureBeforeContextLoss falls back to the session
+  // buffer; compact() then finds the capture done. Registered here, not in
+  // registerHooks(), because that function only runs on the legacy path.
+  if (config.captureOnCompaction) {
+    api.on("before_compaction", async (event: any, ctx: any) => {
+      const sessionKey = ctx?.sessionKey || ctx?.sessionId;
+      if (!sessionKey) return;
+      try {
+        await captureBeforeContextLoss(
+          (event as BeforeCompactionEvent | undefined)?.messages,
+          sessionKey, api, config, logger, "before_compaction",
+        );
+      } catch (error) {
+        logger.warn(`[palaia] before_compaction capture failed: ${error}`);
       }
     });
   }

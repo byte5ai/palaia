@@ -72,6 +72,13 @@ export interface PalaiaPluginConfig {
   sessionBriefingMaxChars: number;
   /** Enable tool observation tracking via after_tool_call hook (default: true) */
   captureToolObservations: boolean;
+  /**
+   * Force a session-summary capture right before the host compacts the
+   * conversation — via the before_compaction hook and ContextEngine
+   * compact() — so content dropped by compaction is not lost (#185).
+   * Independent of autoCapture, like sessionSummary. (default: true)
+   */
+  captureOnCompaction: boolean;
   /** Recency boost factor for recall (0 = off, 0.3 = 30% boost for <24h entries) */
   recallRecencyBoost: number;
   /** Boost factor for manually written entries vs auto-captured (default: 1.3 = 30% boost) */
@@ -104,6 +111,7 @@ export const DEFAULT_CONFIG: PalaiaPluginConfig = {
   sessionBriefing: true,
   sessionBriefingMaxChars: 1500,
   captureToolObservations: true,
+  captureOnCompaction: true,
   recallRecencyBoost: 0.3,
   manualEntryBoost: 1.3,
 };

@@ -16,8 +16,8 @@ import type {
 } from "./types.js";
 import type { PalaiaPluginConfig } from "./config.js";
 import { run, recover, type RunnerOpts, getEmbedServerManager } from "./runner.js";
-import { getOrCreateSessionState } from "./hooks/state.js";
-import { formatBriefing } from "./hooks/session.js";
+import { getOrCreateSessionState, rememberRecentMessages } from "./hooks/state.js";
+import { formatBriefing, captureBeforeContextLoss } from "./hooks/session.js";
 
 import {
   extractMessageTexts,
@@ -435,6 +435,10 @@ export function createPalaiaContextEngine(
     async ingest(params) {
       if (params.message) {
         _lastMessages.push(params.message);
+        // Hosts that call ingest() instead of afterTurn() feed the
+        // pre-compaction buffer here (#185).
+        const sessionKey = params.sessionKey || params.sessionId;
+        if (sessionKey) rememberRecentMessages(sessionKey, [params.message], "append");
       }
       return { ingested: true };
     },
@@ -445,6 +449,16 @@ export function createPalaiaContextEngine(
     async afterTurn(params) {
       // Use params.messages if available (richer), else fall back to accumulated
       const messages = params?.messages?.length ? params.messages : _lastMessages;
+
+      // Keep the conversation for pre-compaction capture (#185). OpenClaw
+      // calls afterTurn() *instead of* ingest() when an engine defines it,
+      // and passes the full conversation snapshot, so this is the buffer's
+      // primary feed. Stored per session, not in this closure: the host
+      // resolves a fresh engine instance for queued compaction.
+      const sessionKey = params?.sessionKey || params?.sessionId;
+      if (sessionKey && params?.messages?.length) {
+        rememberRecentMessages(sessionKey, params.messages, "replace");
+      }
 
       try {
         await runAutoCapture(messages, api, config, logger);
@@ -563,8 +577,24 @@ export function createPalaiaContextEngine(
      * so reporting `compacted: true` for a store-only GC would make the host
      * skip its own compaction while the transcript keeps growing. Report
      * `compacted: false` until transcript reduction is implemented here.
+     *
+     * Before the GC, force-capture the conversation (#185): this call is the
+     * pre-compaction moment on hosts where palaia owns compaction. The host
+     * usually fired before_compaction just before, which already captured —
+     * the cooldown in captureBeforeContextLoss then makes this a no-op.
      */
     async compact(params) {
+      const sessionKey = params?.sessionKey || params?.sessionId;
+      if (config.captureOnCompaction && sessionKey) {
+        try {
+          await captureBeforeContextLoss(
+            undefined, sessionKey, api, config, logger, "compaction",
+          );
+        } catch (error) {
+          // Never let capture block compaction.
+          logger.warn(`[palaia] Pre-compaction capture failed: ${error}`);
+        }
+      }
       try {
         await run(["gc"], { ...opts, timeoutMs: 30_000 });
         logger.info(

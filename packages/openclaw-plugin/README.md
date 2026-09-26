@@ -53,6 +53,7 @@ All options are optional — sensible defaults are used:
         timeoutMs: 3000,                  // default: 3000
         memoryInject: true,               // default: true (inject HOT into context)
         maxInjectedChars: 4000,           // default: 4000
+        captureOnCompaction: true,        // default: true (save a summary before compaction)
       }
     }
   }
@@ -117,6 +118,9 @@ memory_write({ content: "Important finding", scope: "team", tags: ["project-x"] 
 - **HOT memory injection** — On by default: active memory is injected into agent
   context (`memoryInject: false` turns it off — note the [prompt-caching
   trade-off](../../docs/prompt-caching.md))
+- **Capture before compaction** — On by default: right before OpenClaw compacts
+  the conversation, palaia saves a session summary tagged `pre-compaction`, so
+  what compaction drops stays searchable (`captureOnCompaction: false` turns it off)
 - **Auto binary detection** — Finds `palaia` in PATH, pipx, or venv
 
 ## Architecture

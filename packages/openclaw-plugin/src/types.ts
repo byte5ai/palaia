@@ -121,6 +121,21 @@ export type BeforeResetEvent = {
   reason?: string;
 };
 
+/**
+ * before_compaction event (OpenClaw hook-types.ts `PluginHookBeforeCompactionEvent`,
+ * unchanged from v2026.5.7 to v2026.9.6). Handlers are awaited (30 s default
+ * timeout). When a ContextEngine owns compaction the host fires it right
+ * before `compact()` with `messageCount: -1` and no `messages`; only the
+ * fire-and-forget embedded auto-compaction path includes `messages`.
+ */
+export type BeforeCompactionEvent = {
+  messageCount: number;
+  compactingCount?: number;
+  tokenCount?: number;
+  messages?: unknown[];
+  sessionFile?: string;
+};
+
 /** agent_end event. */
 export type AgentEndEvent = {
   messages: unknown[];
