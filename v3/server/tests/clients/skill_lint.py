@@ -188,9 +188,7 @@ def lint_skill(skill: Skill) -> list[Issue]:
         issues.append(Issue(where, "body is empty — frontmatter alone teaches nothing"))
     line_count = len(skill.body.splitlines())
     if line_count > MAX_BODY_LINES:
-        issues.append(
-            Issue(where, f"body is {line_count} lines, over the {MAX_BODY_LINES} max")
-        )
+        issues.append(Issue(where, f"body is {line_count} lines, over the {MAX_BODY_LINES} max"))
     for word in find_jargon(skill.body):
         issues.append(Issue(where, f"body uses in-house word {word!r}"))
 
@@ -243,15 +241,11 @@ def lint_plugin_wrapper() -> list[Issue]:
                     issues.append(Issue(_PLUGIN_LABEL, f"{key!r} is required"))
             name = plugin.get("name")
             if isinstance(name, str) and not NAME_RE.match(name):
-                issues.append(
-                    Issue(_PLUGIN_LABEL, f"name {name!r} must be a hyphenated slug")
-                )
+                issues.append(Issue(_PLUGIN_LABEL, f"name {name!r} must be a hyphenated slug"))
             description = plugin.get("description")
             if isinstance(description, str):
                 for word in find_jargon(description):
-                    issues.append(
-                        Issue(_PLUGIN_LABEL, f"description uses in-house word {word!r}")
-                    )
+                    issues.append(Issue(_PLUGIN_LABEL, f"description uses in-house word {word!r}"))
 
     if not MARKETPLACE_MANIFEST.is_file():
         issues.append(Issue(_MARKET_LABEL, "missing"))
@@ -268,15 +262,14 @@ def lint_plugin_wrapper() -> list[Issue]:
     if not isinstance(plugins, list) or not plugins:
         issues.append(Issue(_MARKET_LABEL, "'plugins' must be a non-empty list"))
         return issues
+    shipped_skill_roots: set[Path] = set()
     for entry in plugins:
         if not isinstance(entry, dict):
             issues.append(Issue(_MARKET_LABEL, "each plugin must be an object"))
             continue
         source = str(entry.get("source", ""))
         if not source:
-            issues.append(
-                Issue(_MARKET_LABEL, f"plugin {entry.get('name')!r} has no source")
-            )
+            issues.append(Issue(_MARKET_LABEL, f"plugin {entry.get('name')!r} has no source"))
             continue
         resolved = (CLIENTS_ROOT / source).resolve()
         if not (resolved / ".claude-plugin" / "plugin.json").is_file():
@@ -287,8 +280,19 @@ def lint_plugin_wrapper() -> list[Issue]:
                 )
             )
         if not (resolved / "skills").is_dir():
+            issues.append(Issue(_MARKET_LABEL, f"source {source!r} carries no skills/"))
+        else:
+            shipped_skill_roots.add((resolved / "skills").resolve())
+    # Every skill package on disk must actually ship: a plugin loads the
+    # `skills/` directory under its source, so a package outside every
+    # listed source would pass the format lint and still never reach anyone.
+    for directory in discover_skills(CLIENTS_ROOT / "skills"):
+        if directory.parent.resolve() not in shipped_skill_roots:
             issues.append(
-                Issue(_MARKET_LABEL, f"source {source!r} carries no skills/")
+                Issue(
+                    _MARKET_LABEL,
+                    f"skill {directory.name!r} is under no listed plugin — it never ships",
+                )
             )
     return issues
 

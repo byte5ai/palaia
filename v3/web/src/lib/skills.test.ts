@@ -9,6 +9,21 @@ import {
   skillSupportFor,
 } from "./skills";
 
+// Every skill package on disk, so "every shipped package" is checked against
+// the directory rather than against a list typed here.
+const SHIPPED_SKILL_FILES = import.meta.glob(
+  "../../../clients/skills/*/SKILL.md",
+  { query: "?raw", import: "default", eager: true },
+);
+
+// Packages deliberately not offered on the connect-a-client page, each with
+// the reason. Anything shipped must be in SKILLS or here — never neither.
+const NOT_ON_CONNECT_PAGE: Record<string, string> = {
+  // Issue 449: it sets palaia up before any hub exists; the connect page
+  // belongs to a hub that is already running.
+  "palaia-install": "guided install, used before a hub exists",
+};
+
 describe("skill catalog", () => {
   it("carries every shipped package, read from the shipped files", () => {
     expect(SKILLS.map((s) => s.slug)).toEqual([
@@ -16,6 +31,20 @@ describe("skill catalog", () => {
       "palaia-capture",
       "palaia-messenger",
     ]);
+  });
+
+  it("accounts for every package on disk — offered here, or excluded with a reason", () => {
+    const onDisk = Object.keys(SHIPPED_SKILL_FILES)
+      .map((file) => file.split("/").at(-2)!)
+      .sort();
+    expect(onDisk.length).toBeGreaterThan(0);
+    const accounted = [
+      ...SKILLS.map((s) => s.slug),
+      ...Object.keys(NOT_ON_CONNECT_PAGE),
+    ].sort();
+    expect(accounted).toEqual(onDisk);
+    for (const slug of Object.keys(NOT_ON_CONNECT_PAGE))
+      expect(skillBySlug(slug)).toBeUndefined();
   });
 
   it("shows the skill's own words — the page cannot drift from the file", () => {
