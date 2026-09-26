@@ -99,6 +99,7 @@ describe("feature screens accessibility (issue 383)", () => {
     "/exposure",
     "/settings",
     "/review-queue",
+    "/backups",
     "/onboarding",
     "/no-such-page",
   ])("has no critical or serious axe-core violations at %s", async (path) => {

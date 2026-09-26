@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import io
 import tarfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,7 @@ from palaia_hub.backup_api import (
     UNGATED_TARGETS_DETAIL,
     build_backup_router,
 )
+from palaia_hub.backup_schedule import MANUAL_TRIGGER, BackupLedger, BackupScheduler
 from palaia_hub.backup_targets import SUCCEEDED_EVENT, build_targets
 from palaia_hub.config import (
     BackupSettings,
@@ -167,8 +169,11 @@ def test_the_configured_targets_are_listed(tmp_path: Path) -> None:
                 "carries_full_archive": True,
                 "secret_safe": True,
                 "keep_last": 2,
+                "running": False,
+                "last_run": None,
             }
-        ]
+        ],
+        "schedule": None,
     }
 
 
@@ -181,9 +186,7 @@ def test_running_a_target_writes_the_archive_on_the_hub_not_through_the_browser(
     destination = tmp_path / "backups"
     published: list[tuple[str, dict[str, Any]]] = []
 
-    response = _target_client(home, destination, published).post(
-        f"{BACKUP_TARGETS_PATH}/nas/run"
-    )
+    response = _target_client(home, destination, published).post(f"{BACKUP_TARGETS_PATH}/nas/run")
 
     assert response.status_code == 200
     body = response.json()
@@ -224,7 +227,7 @@ def test_a_hub_with_no_backup_section_lists_nothing_and_runs_nothing(tmp_path: P
     app.include_router(build_backup_router(home=home, session_gated=True))
     client = TestClient(app)
 
-    assert client.get(BACKUP_TARGETS_PATH).json() == {"targets": []}
+    assert client.get(BACKUP_TARGETS_PATH).json() == {"targets": [], "schedule": None}
     missing = client.post(f"{BACKUP_TARGETS_PATH}/nas/run")
     assert missing.status_code == 404
     assert "none are configured" in missing.json()["detail"]
@@ -243,3 +246,112 @@ def test_the_target_routes_refuse_on_a_hub_with_no_sign_in(tmp_path: Path) -> No
     assert listed.json()["detail"] == UNGATED_TARGETS_DETAIL
     assert ran.status_code == 403
     assert "palaia-hub backup --target" in ran.json()["detail"]
+
+
+# ------------------------------- last run, schedule and overlap (issue #438)
+
+
+def test_a_run_from_the_dashboard_is_listed_as_the_targets_last_run(tmp_path: Path) -> None:
+    home = _hub_home(tmp_path)
+    published: list[tuple[str, dict[str, Any]]] = []
+    client = _target_client(home, tmp_path / "backups", published)
+
+    ran = client.post(f"{BACKUP_TARGETS_PATH}/nas/run").json()
+    listed = client.get(BACKUP_TARGETS_PATH).json()["targets"][0]
+
+    last = listed["last_run"]
+    assert last["ok"] is True
+    assert last["trigger"] == MANUAL_TRIGGER
+    assert last["artifact"] == ran["artifact"]
+    assert last["bytes_written"] == ran["bytes_written"]
+    assert last["reason"] is None
+    assert listed["running"] is False
+    # The event says who started it, so an automation can tell them apart.
+    assert published[-1][1]["trigger"] == MANUAL_TRIGGER
+
+
+def test_a_failed_run_is_listed_with_its_reason(tmp_path: Path) -> None:
+    home = _hub_home(tmp_path)
+    client = _target_client(home, home / "inside")
+
+    client.post(f"{BACKUP_TARGETS_PATH}/nas/run")
+    last = client.get(BACKUP_TARGETS_PATH).json()["targets"][0]["last_run"]
+
+    assert last["ok"] is False
+    assert "inside the hub's own data directory" in last["reason"]
+    assert last["artifact"] is None
+
+
+def test_a_target_already_being_written_answers_409_and_writes_nothing(
+    tmp_path: Path,
+) -> None:
+    """Two writers of one target in the same second would share one
+    `.part` file — the second is refused instead."""
+    home = _hub_home(tmp_path)
+    destination = tmp_path / "backups"
+    settings = BackupSettings(
+        targets=[LocalDirectoryBackupTarget(name="nas", path=str(destination))]
+    )
+    ledger = BackupLedger(home, build_targets(settings))
+    app = FastAPI()
+    app.include_router(build_backup_router(home=home, session_gated=True, ledger=ledger))
+    client = TestClient(app)
+    lock = ledger._run_locks["nas"]  # noqa: SLF001 - hold it as a run in progress would
+
+    with lock:
+        busy = client.post(f"{BACKUP_TARGETS_PATH}/nas/run")
+        listed = client.get(BACKUP_TARGETS_PATH).json()["targets"][0]
+
+    assert busy.status_code == 409
+    assert "already being written" in busy.json()["detail"]
+    assert listed["running"] is True
+    assert not destination.exists()
+    assert ledger.last_run("nas") is None
+
+
+def test_the_schedule_is_listed_when_the_hub_has_one(tmp_path: Path) -> None:
+    home = _hub_home(tmp_path)
+    settings = BackupSettings(
+        interval_hours=24,
+        targets=[LocalDirectoryBackupTarget(name="nas", path=str(tmp_path / "backups"))],
+    )
+    ledger = BackupLedger(home, build_targets(settings))
+    scheduler = BackupScheduler(ledger, interval_seconds=24 * 3600)
+    app = FastAPI()
+    app.include_router(
+        build_backup_router(home=home, session_gated=True, ledger=ledger, scheduler=scheduler)
+    )
+
+    schedule = TestClient(app).get(BACKUP_TARGETS_PATH).json()["schedule"]
+
+    assert schedule == {
+        "interval_hours": 24,
+        "next_run_at": None,
+        "last_pass_at": None,
+        "running": False,
+    }
+
+
+def test_create_app_runs_the_schedule_only_when_it_is_configured(tmp_path: Path) -> None:
+    """Off by default; with `backup.interval_hours` the hub starts the timer
+    with its lifespan and stops it with it."""
+    home = _hub_home(tmp_path)
+    assert create_app(HubConfig(), home=home).state.backup_scheduler is None
+
+    config = HubConfig(
+        backup=BackupSettings(
+            interval_hours=6,
+            targets=[LocalDirectoryBackupTarget(name="nas", path=str(tmp_path / "backups"))],
+        )
+    )
+    app = create_app(config, home=home)
+    scheduler = app.state.backup_scheduler
+    assert isinstance(scheduler, BackupScheduler)
+    assert scheduler.interval_seconds == 6 * 3600
+
+    with TestClient(app):
+        # Started: the first pass is due after the start-up delay.
+        assert scheduler.next_run_at is not None
+        assert scheduler.next_run_at > time.time()
+    assert scheduler._task is None  # noqa: SLF001 - stopped with the lifespan
+    assert not (tmp_path / "backups").exists()

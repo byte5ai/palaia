@@ -12,7 +12,12 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from palaia_hub.config import BackupSettings, HubConfig, load_config
+from palaia_hub.config import (
+    BackupSettings,
+    HubConfig,
+    LocalDirectoryBackupTarget,
+    load_config,
+)
 
 
 def test_a_hub_configures_no_targets_by_default() -> None:
@@ -91,3 +96,40 @@ def test_an_unknown_key_in_a_target_is_refused() -> None:
     `keep_lastt` must not silently mean "keep everything forever"."""
     with pytest.raises(ValidationError):
         BackupSettings(targets=[{"name": "nas", "path": "/mnt/a", "keep_lastt": 3}])  # type: ignore[list-item]
+
+
+# ------------------------------------------------ the interval (issue #438)
+
+
+def test_no_schedule_by_default() -> None:
+    assert HubConfig().backup.interval_hours is None
+
+
+def test_an_interval_round_trips_from_yaml(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text(
+        "backup:\n"
+        "  interval_hours: 24\n"
+        "  targets:\n"
+        "    - {type: local_directory, name: nas, path: /mnt/nas/palaia-backups}\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(tmp_path)
+
+    assert config.backup.interval_hours == 24
+
+
+def test_an_interval_with_nowhere_to_write_is_refused() -> None:
+    with pytest.raises(ValidationError) as excinfo:
+        BackupSettings(interval_hours=24)
+
+    assert "nowhere to write" in str(excinfo.value)
+
+
+@pytest.mark.parametrize("hours", [0, 0.5, -1])
+def test_an_interval_shorter_than_an_hour_is_refused(hours: float) -> None:
+    with pytest.raises(ValidationError):
+        BackupSettings(
+            interval_hours=hours,
+            targets=[LocalDirectoryBackupTarget(name="nas", path="/mnt/nas")],
+        )
