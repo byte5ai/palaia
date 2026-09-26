@@ -63,6 +63,16 @@ def test_the_spec_404_messenger_skill_package_is_present() -> None:
     assert "palaia-messenger" in slugs, slugs
 
 
+def test_the_install_skill_package_is_present_and_ships() -> None:
+    """Issue #449: the guided-setup skill ships with the others. The one
+    plugin's `source: "./"` carries all of `skills/`, and
+    :func:`skill_lint.lint_plugin_wrapper` fails any package outside a
+    listed source, so being present here is being listed."""
+    slugs = {directory.name for directory in discover_skills()}
+    assert "palaia-install" in slugs, slugs
+    assert lint_plugin_wrapper() == []
+
+
 def test_messenger_skill_teaches_every_spec_404_habit() -> None:
     """Deliverable #1's five habits, each traceable to a line in the skill:
     register on start, check before starting work, the reply discipline,
@@ -261,3 +271,32 @@ def test_plugin_wrapper_lint_finds_a_broken_marketplace_source(
     issues = lint_plugin_wrapper()
     assert any("has no .claude-plugin/plugin.json" in issue.message for issue in issues), issues
     assert any("carries no skills/" in issue.message for issue in issues), issues
+
+
+def test_plugin_wrapper_lint_finds_a_skill_no_plugin_ships(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A skill package that sits outside every listed plugin source passes
+    the format lint and still never reaches anyone."""
+    (tmp_path / ".claude-plugin").mkdir()
+    (tmp_path / ".claude-plugin" / "plugin.json").write_text(
+        '{"name": "x", "description": "d", "version": "0.1.0"}', encoding="utf-8"
+    )
+    (tmp_path / ".claude-plugin" / "marketplace.json").write_text(
+        '{"name": "x", "plugins": [{"name": "x", "source": "./other"}]}', encoding="utf-8"
+    )
+    (tmp_path / "other" / ".claude-plugin").mkdir(parents=True)
+    (tmp_path / "other" / ".claude-plugin" / "plugin.json").write_text(
+        '{"name": "o", "description": "d", "version": "0.1.0"}', encoding="utf-8"
+    )
+    (tmp_path / "other" / "skills").mkdir()
+    _write(tmp_path / "skills", "sample-skill", GOOD_FRONTMATTER)
+    monkeypatch.setattr(skill_lint, "CLIENTS_ROOT", tmp_path)
+    monkeypatch.setattr(skill_lint, "PLUGIN_MANIFEST", tmp_path / ".claude-plugin" / "plugin.json")
+    monkeypatch.setattr(
+        skill_lint, "MARKETPLACE_MANIFEST", tmp_path / ".claude-plugin" / "marketplace.json"
+    )
+    issues = lint_plugin_wrapper()
+    assert any("'sample-skill' is under no listed plugin" in issue.message for issue in issues), (
+        issues
+    )

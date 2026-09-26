@@ -1,6 +1,6 @@
 {
   "name": "palaia-memory",
-  "description": "Makes an agent use palaia's shared memory without being told, and work alongside other agent sessions: when to recall, how to resume work, what deserves capturing, and when to register, check in and reply.",
+  "description": "Makes an agent use palaia's shared memory without being told, and work alongside other agent sessions: when to recall, how to resume work, what deserves capturing, and when to register, check in and reply. Also walks someone through installing palaia itself, step by step.",
   "version": "3.0.0-rc2",
   "author": {
     "name": "byte5",
