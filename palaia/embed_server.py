@@ -66,15 +66,17 @@ def _count_entries(store: Store) -> int:
 
 
 def _entry_files(store: Store) -> frozenset[str]:
-    """The entry files across all tiers, as "tier/name" (listing only, no parsing).
+    """The hot+warm entry files, as "tier/name" (listing only, no parsing).
 
     A changed set means entries were added, removed or moved, so the search
     index is stale. Directory mtimes would not do: every search rewrites the
     access metadata of its hits via temp file and rename, which changes the
-    tier directory's mtime without changing any entry.
+    tier directory's mtime without changing any entry. Like _count_entries,
+    this skips the cold archive: listing it on every query costs the most for
+    the tier searched least, and a move into cold still changes the warm set.
     """
     files = []
-    for tier in ("hot", "warm", "cold"):
+    for tier in ("hot", "warm"):
         tier_dir = store.root / tier
         if tier_dir.exists():
             files.extend(f"{tier}/{p.name}" for p in tier_dir.glob("*.md"))
