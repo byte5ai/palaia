@@ -48,9 +48,24 @@ Open a [GitHub Issue](https://github.com/byte5ai/palaia/issues). Include:
 - Steps to reproduce
 - Expected vs actual behavior
 
+## Two Development Tracks (v2 / v3)
+
+This repository hosts two strictly separated lines of development:
+
+- **v2 (stable, maintenance-only):** this branch. The code at the repo root
+  (`palaia/`, `tests/`, `packages/openclaw-plugin/`, `docs/`, `skills/`). Feature
+  development is frozen. Only critical hotfixes (security, data loss, broken release)
+  are made. Hotfix PRs target the **`v2-maintenance`** branch — never `main`. Release
+  tags `v2.x.y` are cut from `v2-maintenance`.
+- **v3 (active development):** lives entirely under `v3/` on `main`. See
+  `CONTRIBUTING.md` on `main` for the v3 rules.
+
+A PR touches files of exactly one track, and v2 code must not depend on v3 or vice versa.
+
 ## Branch Policy
 
-**`main` is protected.** Direct pushes are not allowed. All changes go through pull requests.
+**`main` is protected.** Direct pushes are not allowed. All changes, including v2
+hotfixes on `v2-maintenance`, go through pull requests.
 
 | Rule | Setting |
 |------|---------|
@@ -61,35 +76,40 @@ Open a [GitHub Issue](https://github.com/byte5ai/palaia/issues). Include:
 | Owner bypass | Yes (emergencies only) |
 
 **Workflow:**
-1. Create a feature branch: `git checkout -b feat/my-feature`
+1. Create a branch from `v2-maintenance`: `git checkout -b fix/my-hotfix origin/v2-maintenance`
 2. Develop, commit, push to your branch
-3. Open a PR against `main`
+3. Open a PR against `v2-maintenance`
 4. CI runs automatically
 5. Merge after CI passes
 
 **Branch naming:**
 - `feat/...` — new features
 - `fix/...` — bug fixes
+- `refactor/...` — restructuring without behavior change
 - `docs/...` — documentation only
 - `chore/...` — maintenance, cleanup
 
 ## Submitting Pull Requests
 
-1. **Create a branch** from `main`: `git checkout -b feat/my-feature`
+1. **Create a branch** from `v2-maintenance`: `git checkout -b fix/my-hotfix origin/v2-maintenance`
 2. **Write tests** for new functionality
 3. **Run the test suite**: `pytest tests/ -v && cd packages/openclaw-plugin && npx vitest run`
 4. **Lint your code**: `ruff check palaia/ tests/`
 5. **Commit** with a clear message (see Commit Convention below)
-6. **Open a PR** against `main`
+6. **Open a PR** against `v2-maintenance`
 
 ### PR Requirements
 
 - All tests must pass (Python 3.9-3.12 + TypeScript)
 - Ruff lint clean
 - New features need tests
-- No force pushes
+- One logical change per PR; a short title (<70 chars) with a conventional prefix
+- No force pushes, no skipped hooks (`--no-verify`)
+- Never commit secrets (`.env`, API keys, tokens, credentials)
 
 ## Commit Convention
+
+Prefixes: `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`, `perf:`, `release:`, `dev:`.
 
 ```
 feat: add memory compression
