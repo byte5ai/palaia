@@ -250,3 +250,42 @@ def test_private_access_via_alias(palaia_root):
     # Other agent still blocked
     result = store.read(entry_id, agent="agent2")
     assert result is None
+
+
+def test_search_native_vector_hits_respect_filters(palaia_root, monkeypatch):
+    """Native vector search scores every stored embedding; hits outside the scope or
+    the structured filters must not reach the results."""
+    from palaia.search import SearchEngine
+
+    config = dict(DEFAULT_CONFIG, agent="agent1", embedding_chain=["bm25"])
+    save_config(palaia_root, config)
+    store = Store(palaia_root)
+    ids = [
+        store.write("Deploy notes alpha", scope="team", agent="agent1", project="x", title="X team"),
+        store.write("Deploy notes beta", scope="private", agent="agent1", project="y", title="Y own private"),
+        store.write("Deploy notes gamma", scope="team", agent="agent1", project="y", title="Y team"),
+        store.write("Deploy notes delta", scope="private", agent="agent2", project="x", title="X foreign private"),
+    ]
+
+    class FakeProvider:
+        model_name = "fake"
+
+        def embed_query(self, text):
+            return [1.0, 0.0]
+
+        def embed(self, texts):
+            return [[1.0, 0.0] for _ in texts]
+
+    class FakeVecBackend:
+        _has_vec = True
+
+        def vector_search(self, vec, top_k):
+            return [(i, 0.99) for i in ids]  # unfiltered, like sqlite-vec / pgvector
+
+    monkeypatch.setattr(store, "_backend", FakeVecBackend(), raising=False)
+    engine = SearchEngine(store)
+    engine._provider = FakeProvider()
+    assert engine.has_embeddings
+
+    titles = {r["title"] for r in engine.search("deploy notes", agent="agent1", project="x")}
+    assert titles == {"X team"}

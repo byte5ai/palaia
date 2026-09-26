@@ -258,8 +258,11 @@ class SearchEngine:
                 logger.warning("Embedding search failed, using BM25 only: %s", e)
                 embed_norm = {}
 
-        # Combine scores: hybrid ranking
-        all_ids = set(bm25_norm.keys()) | set(embed_norm.keys())
+        # Combine scores: hybrid ranking. Only entries that passed the scope and
+        # structured filters above may be ranked — native vector search (sqlite-vec /
+        # pgvector) scores the whole embedding table, unfiltered.
+        eligible = {doc_id for doc_id, _text, _meta in docs_with_meta}
+        all_ids = (set(bm25_norm) | set(embed_norm)) & eligible
         combined = {}
         for doc_id in all_ids:
             bm25_s = bm25_norm.get(doc_id, 0.0)
