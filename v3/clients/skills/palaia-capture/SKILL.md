@@ -86,8 +86,10 @@ Capture is a drop target. Something else files it later.
 - One capture per idea.
 - Do not choose a folder, invent a title scheme, or tidy anything already
   stored.
-- An exact duplicate is recognised and dropped — never hold back for fear of
-  repeating yourself.
+- Repeating yourself is harmless. An exact copy of something saved that has
+  not been filed yet is recognised and dropped, and whatever files it later
+  checks what is already stored first. Never hold back for fear of repeating
+  yourself.
 - Say in one short line what you captured, then get on with the work.
 - If the tool reports a missing field, add it and retry once. Never fall back
   to writing a note by hand.
