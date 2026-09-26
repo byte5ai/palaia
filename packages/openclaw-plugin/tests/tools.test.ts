@@ -276,21 +276,28 @@ describe("tools", () => {
       );
     });
 
-    it("duplicate guard points the retry at the force parameter (Issue #466)", async () => {
-      mockRunJson.mockResolvedValueOnce({
-        results: [
-          {
-            id: "dup-1",
-            body: "Deploy checklist",
-            score: 0.93,
-            tier: "hot",
-            scope: "team",
-            title: "Deploy Steps",
-            path: "hot/dup-1.md",
-            created_at: new Date().toISOString(),
-          },
-        ],
-      });
+    /**
+     * A `palaia query --json` hit. `created` uses palaia's own format —
+     * Python's isoformat(): microseconds and a "+00:00" offset.
+     */
+    function queryHit(createdMsAgo: number | null) {
+      const created =
+        createdMsAgo === null
+          ? undefined
+          : new Date(Date.now() - createdMsAgo).toISOString().replace(/\.(\d{3})Z$/, ".$1000+00:00");
+      return {
+        id: "dup-1",
+        body: "Deploy checklist",
+        score: 0.93,
+        tier: "hot",
+        scope: "team",
+        title: "Deploy Steps",
+        ...(created === undefined ? {} : { created }),
+      };
+    }
+
+    it("duplicate guard blocks a similar entry from the last 24h and points the retry at force (Issue #466)", async () => {
+      mockRunJson.mockResolvedValueOnce({ results: [queryHit(60 * 60 * 1000)] });
 
       const result = await api.tools["memory_write"].def.execute("call-466", {
         content: "Deploy checklist",
@@ -298,10 +305,48 @@ describe("tools", () => {
 
       const text = result.content[0].text;
       expect(text).toContain("Similar entry already exists");
+      expect(text).toContain("dup-1");
       expect(text).toContain("force: true");
       expect(text).not.toContain("--force");
       // Only the guard query ran; nothing was written
       expect(mockRunJson).toHaveBeenCalledTimes(1);
+      expect(mockRunJson).toHaveBeenCalledWith(
+        ["query", "Deploy checklist", "--limit", "5"],
+        expect.objectContaining({ timeoutMs: 2000 })
+      );
+    });
+
+    it("duplicate guard ignores a similar entry older than 24h", async () => {
+      mockRunJson.mockResolvedValueOnce({ results: [queryHit(25 * 60 * 60 * 1000)] });
+      mockRunJson.mockResolvedValueOnce({
+        id: "new-old-dup",
+        tier: "hot",
+        scope: "team",
+        deduplicated: false,
+      });
+
+      const result = await api.tools["memory_write"].def.execute("call-466c", {
+        content: "Deploy checklist",
+      });
+
+      expect(result.content[0].text).toContain("Memory written: new-old-dup");
+    });
+
+    it("duplicate guard lets the write through when the hit has no created timestamp", async () => {
+      // palaia CLIs before #466 did not include `created` in query results
+      mockRunJson.mockResolvedValueOnce({ results: [queryHit(null)] });
+      mockRunJson.mockResolvedValueOnce({
+        id: "new-no-created",
+        tier: "hot",
+        scope: "team",
+        deduplicated: false,
+      });
+
+      const result = await api.tools["memory_write"].def.execute("call-466d", {
+        content: "Deploy checklist",
+      });
+
+      expect(result.content[0].text).toContain("Memory written: new-no-created");
     });
 
     it("force: true skips the duplicate guard", async () => {

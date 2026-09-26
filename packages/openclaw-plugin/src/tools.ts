@@ -26,6 +26,8 @@ interface QueryResult {
     tags?: string[];
     path?: string;
     decay_score?: number;
+    /** ISO-8601 creation timestamp (absent from palaia CLIs before #466) */
+    created?: string;
   }>;
 }
 
@@ -290,24 +292,20 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
               const now = Date.now();
               const oneDayMs = 24 * 60 * 60 * 1000;
               for (const r of dupCheckResult.results) {
-                if (r.score > 0.8) {
-                  // Check if created in last 24h — use any available date field
-                  const meta = r as any;
-                  const createdStr = meta.created_at || meta.createdAt || meta.date || "";
-                  if (createdStr) {
-                    const createdTime = new Date(createdStr).getTime();
-                    if (!isNaN(createdTime) && (now - createdTime) < oneDayMs) {
-                      const title = r.title || (r.content || r.body || "").slice(0, 60);
-                      const dateStr = new Date(createdTime).toISOString().split("T")[0];
-                      return {
-                        content: [
-                          {
-                            type: "text" as const,
-                            text: `Similar entry already exists (score: ${r.score.toFixed(2)}, created: ${dateStr}): '${title}'. Use palaia edit ${r.id} to update, or call again with force: true to write anyway.`,
-                          },
-                        ],
-                      };
-                    }
+                if (r.score > 0.8 && r.created) {
+                  // Only block on entries created in the last 24h
+                  const createdTime = new Date(r.created).getTime();
+                  if (!isNaN(createdTime) && (now - createdTime) < oneDayMs) {
+                    const title = r.title || (r.content || r.body || "").slice(0, 60);
+                    const dateStr = new Date(createdTime).toISOString().split("T")[0];
+                    return {
+                      content: [
+                        {
+                          type: "text" as const,
+                          text: `Similar entry already exists (score: ${r.score.toFixed(2)}, created: ${dateStr}): '${title}'. Use palaia edit ${r.id} to update, or call again with force: true to write anyway.`,
+                        },
+                      ],
+                    };
                   }
                 }
               }
