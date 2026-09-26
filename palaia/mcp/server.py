@@ -304,44 +304,58 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
                 Field(description="True (default): score entries without changing anything. False: apply GC."),
             ] = True,
             limit: Annotated[
-                int, Field(description="Dry run only: max entries to list, lowest GC score first", ge=1)
+                int, Field(description="Max entries to list (scored or pruned), lowest GC score first", ge=1)
             ] = 20,
         ) -> str:
             """Run garbage collection over the memory store.
 
             dry_run=True (default) changes nothing: it scores every entry and lists the
-            lowest-scored ones first, which are the first prune candidates. It does not
-            predict tier moves or budget pruning. dry_run=False moves entries between
-            hot/warm/cold tiers by decay score, prunes entries over the configured
-            storage budget, and reports the moves per direction and each pruned entry."""
+            lowest-scored ones first. It does not predict tier moves or budget pruning.
+            dry_run=False moves entries between hot/warm/cold tiers by decay score, prunes
+            entries over the configured storage budget, and reports the moves per
+            direction and the pruned entries. Only entries this agent may see are listed
+            by title; others are counted."""
             store = _get_store()
+            store.recover()
             result = store.gc(dry_run=dry_run, budget=True)
 
+            def visible(e: dict) -> bool:
+                return store.is_accessible(e.get("scope"), e.get("agent"), server_agent)
+
             if dry_run:
-                return _format_gc_dry_run(result.get("candidates", []), limit)
-            return _format_gc_result(result)
+                return _format_gc_dry_run(result.get("candidates", []), limit, visible, store.config)
+            return _format_gc_result(result, limit, visible)
 
     return mcp
 
 
-def _format_gc_dry_run(candidates: list[dict], limit: int) -> str:
+def _hidden_note(hidden: int) -> str:
+    return f" ({hidden} not visible to this agent)" if hidden else ""
+
+
+def _format_gc_dry_run(candidates: list[dict], limit: int, visible, config: dict) -> str:
     """Format the scored-entry ranking that Store.gc(dry_run=True) returns."""
     if not candidates:
-        return "GC dry run (no changes made): the store has no entries."
+        return "GC dry run (no changes made): no readable entries."
 
-    lines = [
-        f"GC dry run (no changes made): scored {len(candidates)} entries. "
-        "Lowest GC score = first prune candidate.",
-        "",
-    ]
-    for c in candidates[:limit]:
+    shown = [c for c in candidates if visible(c)]
+    lines = [f"GC dry run (no changes made): scored {len(candidates)} entries{_hidden_note(len(candidates) - len(shown))}."]
+    if config.get("max_entries_per_tier") is None and config.get("max_total_chars") is None:
+        lines.append("No storage budget is configured, so a real run prunes nothing.")
+    else:
+        lines.append(
+            "A storage budget is configured: a real run prunes the lowest-scored entries first "
+            "(within each over-full tier for max_entries_per_tier)."
+        )
+    lines.append("")
+    for c in shown[:limit]:
         lines.append(f"[{c['id']}] ({c['tier']}, score={c['score']:.4f}) {c['title']} — {c['reason']}")
-    if len(candidates) > limit:
-        lines.append(f"... and {len(candidates) - limit} more")
+    if len(shown) > limit:
+        lines.append(f"... and {len(shown) - limit} more")
     return "\n".join(lines)
 
 
-def _format_gc_result(result: dict) -> str:
+def _format_gc_result(result: dict, limit: int, visible) -> str:
     """Format the counters and pruned entries that Store.gc(dry_run=False) returns."""
     from palaia.store import TIERS
 
@@ -359,9 +373,15 @@ def _format_gc_result(result: dict) -> str:
         lines.append("  Tier moves: none — all entries are in their correct tier.")
 
     if pruned_entries:
-        lines.append(f"  Pruned (over storage budget): {len(pruned_entries)} entries")
-        for e in pruned_entries:
+        shown = [e for e in pruned_entries if visible(e)]
+        lines.append(
+            f"  Pruned (over storage budget): {len(pruned_entries)} entries"
+            f"{_hidden_note(len(pruned_entries) - len(shown))}"
+        )
+        for e in shown[:limit]:
             lines.append(f"    [{e['id']}] {e['title']} ({e['reason']})")
+        if len(shown) > limit:
+            lines.append(f"    ... and {len(shown) - limit} more")
 
     housekeeping = [
         (label, result.get(key))

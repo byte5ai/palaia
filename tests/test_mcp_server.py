@@ -278,6 +278,38 @@ class TestGC:
         assert result.count("budget:max_entries_per_tier") == 2
 
 
+    def test_gc_dry_run_hides_other_agents_private_entries(self, server, palaia_root_with_entries):
+        Store(palaia_root_with_entries).write(
+            body="Someone else's secret", title="Foreign secret", scope="private", agent="other-agent"
+        )
+        Store(palaia_root_with_entries).write(
+            body="My own secret", title="Own secret", scope="private", agent="test-agent"
+        )
+        result = _get_tool_fn(server, "palaia_gc")(dry_run=True)
+        assert "Foreign secret" not in result
+        assert "Own secret" in result
+        assert "scored 5 entries (1 not visible to this agent)" in result
+
+    def test_gc_dry_run_states_whether_a_budget_applies(self, server):
+        result = _get_tool_fn(server, "palaia_gc")(dry_run=True)
+        assert "No storage budget is configured, so a real run prunes nothing." in result
+
+    def test_gc_pruned_list_hides_other_agents_private_entries(self, palaia_root_with_entries):
+        from palaia.mcp.server import create_server
+
+        Store(palaia_root_with_entries).write(
+            body="Someone else's secret", title="Foreign secret", scope="private", agent="other-agent"
+        )
+        config = load_config(palaia_root_with_entries)
+        config["max_total_chars"] = 1
+        save_config(palaia_root_with_entries, config)
+
+        result = _get_tool_fn(create_server(palaia_root_with_entries), "palaia_gc")(dry_run=False)
+        assert "Pruned (over storage budget): 4 entries (1 not visible to this agent)" in result
+        assert "Foreign secret" not in result
+        assert "API Design" in result
+
+
 def _backdate(root, title, days):
     """Write an entry whose last access lies `days` in the past; return its id."""
     from datetime import datetime, timedelta, timezone

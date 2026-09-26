@@ -651,6 +651,8 @@ class Store:
                             "score": gc_s,
                             "tier": tier,
                             "reason": ", ".join(reason_parts) if reason_parts else "ok",
+                            "scope": meta.get("scope", "team"),
+                            "agent": meta.get("agent"),
                         }
                     )
             candidates.sort(key=lambda x: x["score"])
@@ -802,6 +804,8 @@ class Store:
                                 "title": meta.get("title", "(untitled)"),
                                 "score": gc_s,
                                 "reason": "budget:max_entries_per_tier",
+                                "scope": meta.get("scope", "team"),
+                                "agent": meta.get("agent"),
                             }
                         )
                         rel = str(p.relative_to(self.root))
@@ -822,6 +826,8 @@ class Store:
                         "title": meta.get("title", "(untitled)"),
                         "score": gc_s,
                         "reason": "budget:max_total_chars",
+                        "scope": meta.get("scope", "team"),
+                        "agent": meta.get("agent"),
                     }
                 )
                 rel = str(p.relative_to(self.root))
@@ -882,6 +888,12 @@ class Store:
 
     _ENTRY_ID_PREFIX = re.compile(r"[0-9a-fA-F-]+")
 
+    def is_accessible(
+        self, scope: str | None, owner: str | None, agent: str | None, scope_visibility: list[str] | None = None
+    ) -> bool:
+        """Whether ``agent`` may access an entry with this scope and owner (aliases resolved)."""
+        return can_access(scope or "team", agent, owner, None, self._resolve_names(agent), scope_visibility)
+
     def resolve_visible_id(
         self, entry_id: str, agent: str | None = None, scope_visibility: list[str] | None = None
     ) -> str | None:
@@ -893,7 +905,6 @@ class Store:
         """
         if not self._ENTRY_ID_PREFIX.fullmatch(entry_id or ""):
             return None
-        resolved = self._resolve_names(agent)
         for tier in TIERS:
             tier_dir = self.root / tier
             if not tier_dir.exists():
@@ -903,9 +914,7 @@ class Store:
                     meta, _body = parse_entry(path.read_text(encoding="utf-8"))
                 except (OSError, UnicodeDecodeError):
                     continue
-                if can_access(
-                    meta.get("scope", "team"), agent, meta.get("agent"), None, resolved, scope_visibility
-                ):
+                if self.is_accessible(meta.get("scope"), meta.get("agent"), agent, scope_visibility):
                     return path.stem
         return None
 
