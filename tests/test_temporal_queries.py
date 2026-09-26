@@ -110,6 +110,18 @@ class TestTemporalSearch:
         result_ids = [r["id"] for r in results]
         assert ids[2] not in result_ids
 
+    def test_results_carry_created(self, temporal_store):
+        """Results expose each entry's creation timestamp (Issue #466)."""
+        store, ids = temporal_store
+        engine = SearchEngine(store)
+        results = engine.search("decision update plan")
+        created_by_id = {r["id"]: r["created"] for r in results}
+        assert created_by_id == {
+            ids[0]: "2026-01-15T10:00:00+00:00",
+            ids[1]: "2026-02-15T10:00:00+00:00",
+            ids[2]: "2026-03-15T10:00:00+00:00",
+        }
+
 
 class TestEmbedServerTemporalQuery:
     """Verify embed-server _handle_query forwards before/after to SearchEngine."""
@@ -155,3 +167,15 @@ class TestEmbedServerTemporalQuery:
         assert ids[1] in result_ids
         assert ids[0] not in result_ids
         assert ids[2] not in result_ids
+
+    def test_results_carry_created(self, temporal_store):
+        """Embed-server results expose the creation timestamp too (Issue #466)."""
+        store, ids = temporal_store
+        server = EmbedServer(store.root)
+        response = server.handle_request({
+            "method": "query",
+            "params": {"text": "Early Decision"},
+        })
+        assert "result" in response
+        created_by_id = {r["id"]: r["created"] for r in response["result"]["results"]}
+        assert created_by_id[ids[0]] == "2026-01-15T10:00:00+00:00"

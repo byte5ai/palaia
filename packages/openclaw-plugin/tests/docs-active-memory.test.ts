@@ -66,7 +66,7 @@ describe("docs/openclaw-active-memory.md", () => {
   });
 
   it("quotes the real CLI-fallback timeout", () => {
-    const match = TOOLS_SRC.match(/timeoutMs:\s*(\d+)\s*\}\)/);
+    const match = TOOLS_SRC.match(/const SEARCH_CLI_TIMEOUT_MS\s*=\s*(\d+);/);
     expect(match, "memory_search CLI fallback timeout not found").not.toBeNull();
     const seconds = Number(match![1]) / 1000;
     expect(DOC).toContain(`${seconds} s timeout`);

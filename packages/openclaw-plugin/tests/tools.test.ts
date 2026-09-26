@@ -275,6 +275,188 @@ describe("tools", () => {
         expect.any(Object)
       );
     });
+
+    /**
+     * A `palaia query --json` hit. `created` uses palaia's own format —
+     * Python's isoformat(): microseconds and a "+00:00" offset. `score` is
+     * palaia's hybrid ranking score (0.4 * relative BM25 + 0.6 * cosine);
+     * `embed_score` is the raw cosine similarity, 0 without embeddings.
+     */
+    function queryHit(
+      createdMsAgo: number | null,
+      { embedScore = 0.95, bm25Score = 1.0 }: { embedScore?: number; bm25Score?: number } = {},
+    ) {
+      const created =
+        createdMsAgo === null
+          ? undefined
+          : new Date(Date.now() - createdMsAgo).toISOString().replace(/\.(\d{3})Z$/, ".$1000+00:00");
+      return {
+        id: "dup-1",
+        body: "Deploy checklist",
+        score: embedScore > 0 ? 0.4 * bm25Score + 0.6 * embedScore : bm25Score,
+        bm25_score: bm25Score,
+        embed_score: embedScore,
+        tier: "hot",
+        scope: "team",
+        title: "Deploy Steps",
+        ...(created === undefined ? {} : { created }),
+      };
+    }
+
+    /** Embed-server response wrapping the given query hits. */
+    function serverResults(...results: unknown[]) {
+      return { result: { results } };
+    }
+
+    const written = { id: "new-1", tier: "hot", scope: "team", deduplicated: false };
+
+    it("duplicate guard blocks a similar entry from the last 24h and points the retry at force (Issue #466)", async () => {
+      mockQuery.mockResolvedValueOnce(serverResults(queryHit(60 * 60 * 1000)));
+
+      const result = await api.tools["memory_write"].def.execute("call-466", {
+        content: "Deploy checklist",
+      });
+
+      const text = result.content[0].text;
+      expect(text).toContain("Similar entry already exists");
+      expect(text).toContain("dup-1");
+      expect(text).toContain("similarity: 0.95");
+      expect(text).toContain("force: true");
+      expect(text).not.toContain("--force");
+      // The guard asked the warm embed server; no CLI query, nothing written
+      expect(mockQuery).toHaveBeenCalledWith(
+        { text: "Deploy checklist", top_k: 5, include_cold: false },
+        3000
+      );
+      expect(mockRunJson).not.toHaveBeenCalled();
+    });
+
+    it("duplicate guard lets the write through without a CLI query when the embed server finds nothing", async () => {
+      mockQuery.mockResolvedValueOnce(serverResults());
+      mockRunJson.mockResolvedValueOnce(written);
+
+      const result = await api.tools["memory_write"].def.execute("call-466e", {
+        content: "Deploy checklist",
+      });
+
+      expect(result.content[0].text).toContain("Memory written: new-1");
+      expect(mockRunJson).toHaveBeenCalledTimes(1);
+      expect(mockRunJson).toHaveBeenCalledWith(["write", "Deploy checklist"], expect.any(Object));
+    });
+
+    it("duplicate guard falls back to a short CLI query when the embed server fails", async () => {
+      mockQuery.mockRejectedValueOnce(new Error("server down"));
+      mockRunJson.mockResolvedValueOnce({ results: [queryHit(60 * 60 * 1000)] });
+
+      const result = await api.tools["memory_write"].def.execute("call-466f", {
+        content: "Deploy checklist",
+      });
+
+      expect(result.content[0].text).toContain("Similar entry already exists");
+      expect(mockRunJson).toHaveBeenCalledTimes(1);
+      expect(mockRunJson).toHaveBeenCalledWith(
+        ["query", "Deploy checklist", "--limit", "5"],
+        expect.objectContaining({ timeoutMs: 2000 })
+      );
+    });
+
+    it("duplicate guard queries with title, tags and content, as palaia indexes entries", async () => {
+      mockQuery.mockResolvedValueOnce(serverResults());
+      mockRunJson.mockResolvedValueOnce(written);
+
+      await api.tools["memory_write"].def.execute("call-466j", {
+        content: "Run migrations, then restart workers",
+        title: "Deploy checklist",
+        tags: ["deploy", "ops"],
+      });
+
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "Deploy checklist deploy ops Run migrations, then restart workers" }),
+        3000
+      );
+    });
+
+    it("duplicate guard lets the write through when every search path fails", async () => {
+      mockQuery.mockRejectedValueOnce(new Error("server down"));
+      mockRunJson.mockRejectedValueOnce(new Error("palaia command timed out after 2000ms"));
+      mockRunJson.mockResolvedValueOnce(written);
+
+      const result = await api.tools["memory_write"].def.execute("call-466g", {
+        content: "Deploy checklist",
+      });
+
+      expect(result.content[0].text).toContain("Memory written: new-1");
+    });
+
+    it("duplicate guard ignores a recent hit at or below the similarity threshold", async () => {
+      // Hybrid score 0.934 would have passed the old `score > 0.8` check
+      mockQuery.mockResolvedValueOnce(serverResults(queryHit(60 * 60 * 1000, { embedScore: 0.89 })));
+      mockRunJson.mockResolvedValueOnce(written);
+
+      const result = await api.tools["memory_write"].def.execute("call-466h", {
+        content: "Deploy checklist",
+      });
+
+      expect(result.content[0].text).toContain("Memory written: new-1");
+    });
+
+    it("duplicate guard never blocks on BM25-only results, whose top hit always scores 1.0", async () => {
+      // BM25 scores are normalized to the best hit: an unrelated entry sharing
+      // one word ranks first with score 1.0. Without embeddings there is no
+      // absolute similarity, so the guard must not fire.
+      mockQuery.mockResolvedValueOnce(serverResults(queryHit(60 * 60 * 1000, { embedScore: 0 })));
+      mockRunJson.mockResolvedValueOnce(written);
+
+      const result = await api.tools["memory_write"].def.execute("call-466i", {
+        content: "Quarterly finance report checklist",
+      });
+
+      expect(result.content[0].text).toContain("Memory written: new-1");
+    });
+
+    it("duplicate guard ignores a similar entry older than 24h", async () => {
+      mockQuery.mockResolvedValueOnce(serverResults(queryHit(25 * 60 * 60 * 1000)));
+      mockRunJson.mockResolvedValueOnce(written);
+
+      const result = await api.tools["memory_write"].def.execute("call-466c", {
+        content: "Deploy checklist",
+      });
+
+      expect(result.content[0].text).toContain("Memory written: new-1");
+    });
+
+    it("duplicate guard lets the write through when the hit has no created timestamp", async () => {
+      // palaia versions before #466 did not include `created` in query results
+      mockQuery.mockResolvedValueOnce(serverResults(queryHit(null)));
+      mockRunJson.mockResolvedValueOnce(written);
+
+      const result = await api.tools["memory_write"].def.execute("call-466d", {
+        content: "Deploy checklist",
+      });
+
+      expect(result.content[0].text).toContain("Memory written: new-1");
+    });
+
+    it("force: true skips the duplicate guard", async () => {
+      mockRunJson.mockResolvedValueOnce({
+        id: "forced-1",
+        tier: "hot",
+        scope: "team",
+        deduplicated: false,
+      });
+
+      await api.tools["memory_write"].def.execute("call-466b", {
+        content: "Deploy checklist",
+        force: true,
+      });
+
+      expect(mockQuery).not.toHaveBeenCalled();
+      expect(mockRunJson).toHaveBeenCalledTimes(1);
+      expect(mockRunJson).toHaveBeenCalledWith(
+        ["write", "Deploy checklist"],
+        expect.any(Object)
+      );
+    });
   });
 
   describe("memory_search type filter (Issue #82)", () => {
