@@ -1,0 +1,42 @@
+name: Track label
+
+# Every issue and PR carries exactly one of `v2` / `v3`. The rules live in
+# .github/scripts/track-label.js; a label set by hand is never overridden.
+
+on:
+  issues:
+    types: [opened, reopened]
+  # pull_request_target so PRs from forks and Dependabot get a token that may
+  # label. Safe here: the job checks out only the base branch's
+  # .github/scripts and never runs code from the PR.
+  pull_request_target:
+    types: [opened, reopened, ready_for_review]
+  # Catch-all: PRs into v2-maintenance never trigger pull_request_target from
+  # this file (it runs the workflow of the base branch), and anything opened
+  # while the workflow was down is picked up too.
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: track-label-${{ github.event.pull_request.number || github.event.issue.number || 'sweep' }}
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const run = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/track-label.js`);
+            await run({ github, context, core });
