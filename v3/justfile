@@ -1,5 +1,5 @@
 # v3 dev commands. Run from v3/, e.g. `just test`.
-# Requires: uv (https://docs.astral.sh/uv/), Node 22+.
+# Requires: uv (https://docs.astral.sh/uv/), Node 26+.
 
 # Run every check (python + web): lint, typecheck, tests.
 default: lint test

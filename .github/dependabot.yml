@@ -26,7 +26,7 @@ updates:
       actions:
         patterns: ["*"]
 
-  # The v3 hub image's base images (node:22-slim, python:3.12-slim,
+  # The v3 hub image's base images (node:26-slim, python:3.12-slim,
   # ghcr.io/astral-sh/uv:0.8). Dependabot keeps a tag current and, once a
   # digest is written next to a tag, keeps that digest current too — it does
   # not convert a bare tag pin into a digest pin on its own, so the initial
@@ -37,3 +37,11 @@ updates:
       interval: weekly
     commit-message:
       prefix: "chore(v3)"
+    # A Node major is a deliberate move to the next LTS line, done together
+    # with node-version in v3-ci.yml and engines in the package.json files.
+    # Dependabot would otherwise propose every major, odd non-LTS lines
+    # included (#436 offered node 25, already end-of-life). Digest and
+    # patch updates within the pinned major still come through.
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]

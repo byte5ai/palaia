@@ -42,7 +42,7 @@ Layout established by SPEC-001:
   **not** a member of the uv workspace, so a spike's throwaway dependencies
   never affect `v3/server`.
 
-Prerequisites: [`uv`](https://docs.astral.sh/uv/), Node 22+, and
+Prerequisites: [`uv`](https://docs.astral.sh/uv/), Node 26+, and
 [`just`](https://github.com/casey/just) (or run the underlying commands
 directly — see `v3/justfile`).
 

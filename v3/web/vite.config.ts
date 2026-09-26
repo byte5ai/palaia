@@ -29,5 +29,9 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: './src/setupTests.ts',
+    // Node 25+ ships its own `localStorage` global, which shadows jsdom's and
+    // is undefined without --localstorage-file. Turn it off in the workers so
+    // tests get jsdom's Web Storage, as on Node 22.
+    execArgv: ['--no-experimental-webstorage'],
   },
 })
