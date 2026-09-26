@@ -272,9 +272,7 @@ def build_vault_server(
 
     def _ok(action: str, text: str, payload: BaseModel) -> ToolResult:
         """A successful result for ``action``, plus any guidance it earned."""
-        return nudged_result(
-            engine, action=action, text=text, payload=payload, vault_key=vault.key
-        )
+        return nudged_result(engine, action=action, text=text, payload=payload, vault_key=vault.key)
 
     def _note_ok(action: str, verb: str, note: NoteRecord) -> ToolResult:
         return _ok(action, _note_text(verb, note), note)
@@ -321,8 +319,7 @@ def build_vault_server(
         text = (
             f"{len(hits)} match(es) for {query!r}: "
             + ", ".join(
-                f"{h.title!r} ({h.permalink}, via {'+'.join(h.matched) or 'unknown'})"
-                for h in hits
+                f"{h.title!r} ({h.permalink}, via {'+'.join(h.matched) or 'unknown'})" for h in hits
             )
             if hits
             else f"no matches for {query!r}"
@@ -398,9 +395,7 @@ def build_vault_server(
                 )
             ),
         ] = "note",
-        tags: Annotated[
-            list[str] | None, Field(description="Tags to set. Omit for none.")
-        ] = None,
+        tags: Annotated[list[str] | None, Field(description="Tags to set. Omit for none.")] = None,
     ) -> ToolResult:
         if (err := scope_error("write")) is not None:
             return err

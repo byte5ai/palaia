@@ -96,9 +96,7 @@ def build_semantic_routing_server(profile: ProfileConfig, full_server: FastMCP) 
     )
     async def find_tool(
         query: Annotated[str, Field(description="What you want to do, in plain language.")],
-        limit: Annotated[
-            int, Field(description="Maximum matches to return.")
-        ] = DEFAULT_FIND_LIMIT,
+        limit: Annotated[int, Field(description="Maximum matches to return.")] = DEFAULT_FIND_LIMIT,
     ) -> ToolResult:
         tools = await full_server.list_tools()
         ranked = sorted(tools, key=lambda t: _score(query, t), reverse=True)
