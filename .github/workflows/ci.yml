@@ -1,10 +1,12 @@
 name: CI
 
+# v2 lives on `v2-maintenance`: hotfix PRs target it and it is where
+# `v2.x.y` tags are cut, so this workflow has to run there too.
 on:
   push:
-    branches: [main]
+    branches: [main, v2-maintenance]
   pull_request:
-    branches: [main]
+    branches: [main, v2-maintenance]
 
 jobs:
   test:
