@@ -158,7 +158,7 @@ All figures fetched from the GitHub API on 2026-09-26.
 |---|---|---|---|---|---|---|
 | [OpenRig](https://github.com/mvschwarz/openrig) | Apache-2.0 | 515 | v0.5.16, 2026-09-26 | 12 | 2026-04-01 | Pre-1.0, releases every few days |
 | [OpenClaw](https://github.com/openclaw/openclaw) | MIT (LICENSE file, "© 2026 OpenClaw Foundation", plus third-party notices). The GitHub API reports `NOASSERTION` | 390,563 | v2026.9.6, 2026-09-23 | 3,432 | 2025-11-24 | Calendar versioning |
-| [Claude Code](https://github.com/anthropics/claude-code) | Proprietary: "© Anthropic PBC. All rights reserved", Commercial Terms | 148,177 | — (repo carries no release objects) | — | 2025-02-22 | |
+| [Claude Code](https://github.com/anthropics/claude-code) | Proprietary: "© Anthropic PBC. All rights reserved", Commercial Terms | 148,177 | v2.1.283, 2026-09-25 | 58 | 2025-02-22 | Top level holds plugins, examples, scripts and the changelog; no CLI source directory |
 | [Claude Agent SDK (Python)](https://github.com/anthropics/claude-agent-sdk-python) | MIT per GitHub, but SDK use is governed by the Commercial Terms (§3.4) | 8,170 | v0.2.160, 2026-09-25 | 72 | 2025-06-11 | |
 | [Claude Agent SDK (TypeScript)](https://github.com/anthropics/claude-agent-sdk-typescript) | Proprietary: "© Anthropic PBC", Commercial Terms | 1,773 | v0.3.283, 2026-09-25 | 7 | 2025-09-27 | |
 | [Codex CLI](https://github.com/openai/codex) | Apache-2.0 | 126,579 | stable `rust-v0.157.1`, 2026-09-26; alpha pre-releases the same day | 631 | 2025-04-13 | |
@@ -178,7 +178,7 @@ are declared in YAML ("RigSpec": pods, members, edges, continuity policies) and 
 with `rig up`. Source: [README](https://github.com/mvschwarz/openrig/blob/main/README.md).
 
 **How it spawns agents.** Each member is a native `claude` or `codex` process in its own
-tmux session. OpenRig also runs "terminal nodes, and a Pi adapter". A managed Claude
+tmux session. OpenRig also runs "terminal nodes, and a Pi adapter using an RPC runner inside a terminal pane". "Pi" is OpenRig's own name for a runtime; what it refers to was not checked, and it is not palaia's Raspberry Pi appliance. A managed Claude
 launch uses `--permission-mode acceptEdits`, and a Codex launch uses
 `-s workspace-write`. The `--dangerously-skip-permissions` / `danger-full-access` mode
 ("YOLO") is off by default. OpenRig writes provider hooks and workspace trust into
@@ -426,7 +426,7 @@ exist:
 
 | Dimension | palaia directory + messenger | Claude Code cross-session messaging | Claude Code agent teams | OpenRig |
 |---|---|---|---|---|
-| Providers | Any MCP client; `platform` is an open enum | Claude Code only | Claude Code only | Claude Code + Codex (+ terminal, Pi) |
+| Providers | Any MCP client; `platform` is an open enum | Claude Code only | Claude Code only | Claude Code + Codex (+ terminal nodes, OpenRig's "Pi" runtime) |
 | Discovery | `directory_list` / `directory_query` by scope, capability, platform | `ListAgents` / `/list-agents` | Team `config.json` members | `rig ps`, topology graph |
 | Addressing | Server-minted handle | Session name (`/rename`, `--name`) | Teammate name | Seat `role@rig` |
 | Message shape | Typed envelope, subject, urgency, `expects_reply`, `memory://` refs | Plain text | Plain text + structured team protocol messages | `rig send` text, chatroom |
