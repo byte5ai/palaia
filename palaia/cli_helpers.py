@@ -76,29 +76,35 @@ def resolve_agent(args) -> str | None:
         return explicit
     try:
         root = get_root()
+    except FileNotFoundError:
+        root = None
+    resolved = resolve_agent_for_root(root)
+    if resolved == "default" and root is not None and load_config(root).get("multi_agent"):
+        from palaia.ui import dim, sym_warn
+        print(f"  {sym_warn()} Multi-agent setup detected but no agent identity set.", file=sys.stderr)
+        print(f"    Set PALAIA_AGENT env var or use --agent flag. {dim('Falling back to default.')}", file=sys.stderr)
+    return resolved
+
+
+def resolve_agent_for_root(root: Path | None) -> str:
+    """Resolve the agent identity for a store, without an explicit --agent.
+
+    Shared by the CLI and the MCP server, so both act as the same agent:
+    - multi-agent: PALAIA_AGENT > config agent > detected > 'default'
+    - single-agent: config agent > detected (PALAIA_AGENT, OpenClaw) > 'default'
+    """
+    if root is not None:
         config = load_config(root)
         if config.get("multi_agent"):
-            # Multi-agent: env var > config > detect > default
-            resolved = (
+            return (
                 os.environ.get("PALAIA_AGENT")
                 or config.get("agent")
                 or detect_current_agent()
                 or "default"
             )
-            if resolved == "default":
-                from palaia.ui import dim, sym_warn
-                print(f"  {sym_warn()} Multi-agent setup detected but no agent identity set.", file=sys.stderr)
-                print(f"    Set PALAIA_AGENT env var or use --agent flag. {dim('Falling back to default.')}", file=sys.stderr)
-            return resolved
-        else:
-            # Single-agent: config > env var > detect > default
-            config_agent = config.get("agent")
-            if config_agent:
-                return config_agent
-    except FileNotFoundError:
-        pass
-    detected = detect_current_agent()
-    return detected or "default"
+        if config.get("agent"):
+            return config["agent"]
+    return detect_current_agent() or "default"
 
 
 def resolve_agent_names(agent: str | None) -> set[str] | None:

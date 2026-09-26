@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time as _time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -878,6 +879,35 @@ class Store:
             result["budget"] = budget
 
         return result
+
+    _ENTRY_ID_PREFIX = re.compile(r"[0-9a-fA-F-]+")
+
+    def resolve_visible_id(
+        self, entry_id: str, agent: str | None = None, scope_visibility: list[str] | None = None
+    ) -> str | None:
+        """Resolve a full entry id or short prefix to the full id of an entry ``agent`` may access.
+
+        Entries the agent cannot access are skipped: a hidden entry neither shadows a
+        visible one that shares the prefix nor reveals that it exists. Returns None
+        when no accessible entry matches.
+        """
+        if not self._ENTRY_ID_PREFIX.fullmatch(entry_id or ""):
+            return None
+        resolved = self._resolve_names(agent)
+        for tier in TIERS:
+            tier_dir = self.root / tier
+            if not tier_dir.exists():
+                continue
+            for path in sorted(tier_dir.glob(f"{entry_id}*.md")):
+                try:
+                    meta, _body = parse_entry(path.read_text(encoding="utf-8"))
+                except (OSError, UnicodeDecodeError):
+                    continue
+                if can_access(
+                    meta.get("scope", "team"), agent, meta.get("agent"), None, resolved, scope_visibility
+                ):
+                    return path.stem
+        return None
 
     def _find_entry(self, entry_id: str) -> Path | None:
         """Find an entry file across tiers."""

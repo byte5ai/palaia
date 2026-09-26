@@ -250,3 +250,49 @@ def test_private_access_via_alias(palaia_root):
     # Other agent still blocked
     result = store.read(entry_id, agent="agent2")
     assert result is None
+
+
+# --- resolve_visible_id ---
+
+
+def _clone_entry(store, entry_id, new_id, **meta_changes):
+    """Copy an entry file under a chosen id (to control shared prefixes)."""
+    from palaia.entry import parse_entry, serialize_entry
+
+    meta, body = parse_entry((store.root / "hot" / f"{entry_id}.md").read_text(encoding="utf-8"))
+    meta.update(id=new_id, **meta_changes)
+    (store.root / "hot" / f"{new_id}.md").write_text(serialize_entry(meta, body), encoding="utf-8")
+
+
+def test_resolve_visible_id_skips_hidden_entries(store):
+    src = store.write("Template", scope="team", agent="agent1")
+    _clone_entry(store, src, "abc00000-0000-0000-0000-000000000001", scope="private", agent="agent2")
+    _clone_entry(store, src, "abc00000-0000-0000-0000-000000000002", scope="private", agent="agent1")
+
+    # The hidden agent2 entry sorts first but must neither shadow nor be revealed.
+    assert store.resolve_visible_id("abc", agent="agent1") == "abc00000-0000-0000-0000-000000000002"
+    assert store.resolve_visible_id("abc00000-0000-0000-0000-000000000001", agent="agent1") is None
+    assert store.resolve_visible_id("abc", agent="agent2") == "abc00000-0000-0000-0000-000000000001"
+    assert store.resolve_visible_id("abc", agent=None) is None
+
+
+@pytest.mark.parametrize("entry_id", ["", "../hot/x", "*", "abc*", "zz-not-hex"])
+def test_resolve_visible_id_rejects_malformed_ids(store, entry_id):
+    store.write("Team entry", scope="team", agent="agent1")
+    assert store.resolve_visible_id(entry_id, agent="agent1") is None
+
+
+# --- private write guard (shared by the CLI write service and MCP) ---
+
+
+def test_write_entry_refuses_private_project_default_without_identity(palaia_root, monkeypatch):
+    from palaia.project import ProjectManager
+    from palaia.services.write import write_entry
+
+    monkeypatch.delenv("PALAIA_AGENT", raising=False)
+    save_config(palaia_root, dict(DEFAULT_CONFIG, agent=None, multi_agent=True))
+    ProjectManager(palaia_root).create("secret", default_scope="private")
+
+    result = write_entry(palaia_root, body="Orphan via project default", project="secret", agent="default")
+    assert "without an agent identity" in result["error"]
+    assert write_entry(palaia_root, body="Owned", project="secret", agent="agent1").get("id")

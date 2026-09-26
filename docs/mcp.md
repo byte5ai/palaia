@@ -182,16 +182,26 @@ If no store is found, the server exits with an error message suggesting `palaia 
 
 ## Agent Identity
 
-The server acts as one agent, resolved once at startup:
+The server acts as one agent, resolved once at startup exactly like the CLI resolves it
+without `--agent`, so the CLI and the MCP server act as the same agent on a store:
 
-1. `PALAIA_AGENT` environment variable
-2. `agent` in the store's `config.json` (set by `palaia init --agent NAME`)
+- **multi-agent store** (`multi_agent: true`): `PALAIA_AGENT`, then `agent` in `config.json`,
+  then the detected OpenClaw agent, then `default`
+- **single-agent store**: `agent` in `config.json`, then the detected agent (`PALAIA_AGENT` or
+  OpenClaw), then `default`
 
 All tools use this identity for scope checks. The agent can read, search, list and edit its own
-`private` entries, while other agents' private entries stay hidden. `palaia_store` records it as the
-entry's owner unless the `agent` parameter names a different one.
+`private` entries. Other agents' private entries behave like missing entries: `palaia_read` and
+`palaia_edit` answer "Entry not found", and list and search don't show them.
 
-To run one server per agent against a shared store, set the identity in the host config:
+`palaia_store` records the identity as the entry's owner. The `agent` parameter can name a
+different owner for non-private entries only, because the server could not read or edit a private
+entry it doesn't own. In a multi-agent store without an identity (the `default` fallback),
+`palaia_store` refuses private entries, whether the scope is explicit or comes from a project or
+global default, just as `palaia write` does.
+
+To run one server per agent against a shared multi-agent store, set the identity in the host
+config:
 ```json
 {
   "mcpServers": {
@@ -202,9 +212,6 @@ To run one server per agent against a shared store, set the identity in the host
   }
 }
 ```
-
-Without any identity, `palaia_store` refuses to create a `private` entry (explicitly, or through a
-project's default scope), because no agent could ever read or edit it.
 
 ## Troubleshooting
 
