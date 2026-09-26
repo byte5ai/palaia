@@ -95,6 +95,9 @@ class TestToolRegistration:
             if not schema.get("description")
         ]
         assert undescribed == []
+        # Guard against a vacuous pass if the schema layout changes.
+        total = sum(len(tool.parameters.get("properties", {})) for tool in server._tool_manager._tools.values())
+        assert total == 32
 
 
 # ── palaia_search ────────────────────────────────────────────────
@@ -206,6 +209,14 @@ class TestEdit:
         fn = _get_tool_fn(server, "palaia_edit")
         result = fn(entry_id=entry_id, title="Updated Title")
         assert "updated" in result.lower()
+
+    def test_edit_by_short_prefix(self, server, palaia_root_with_entries):
+        store = Store(palaia_root_with_entries)
+        full_id = store.write(body="Original body", title="Prefix edit")
+        fn = _get_tool_fn(server, "palaia_edit")
+        result = fn(entry_id=full_id[:8], title="Edited via prefix")
+        assert "updated" in result.lower()
+        assert store.read(full_id)[0]["title"] == "Edited via prefix"
 
     def test_edit_not_found(self, server):
         fn = _get_tool_fn(server, "palaia_edit")

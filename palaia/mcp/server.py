@@ -139,10 +139,10 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
         tier: Annotated[str | None, Field(description="Tier to list: hot, warm, cold, or all")] = None,
         entry_type: Annotated[str | None, Field(description="Filter by type: memory, process, task")] = None,
         project: Annotated[str | None, Field(description="Filter by project name")] = None,
-        status: Annotated[str | None, Field(description="Filter by status")] = None,
+        status: Annotated[str | None, Field(description="Filter by status: open, in-progress, done, wontfix")] = None,
         limit: Annotated[int, Field(description="Max entries to return")] = 50,
     ) -> str:
-        """List entry summaries (id, type, tier, title, created, tags) for one tier
+        """List entry summaries (short id, type, tier, title, created, tags) for one tier
         (hot by default) or for all tiers with tier='all'. Bodies are not included;
         use palaia_read."""
         from palaia.services.query import list_entries
@@ -215,7 +215,7 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
             scope: Annotated[str | None, Field(description="Scope: team (default), private, public")] = None,
             project: Annotated[str | None, Field(description="Project name")] = None,
             agent: Annotated[str | None, Field(description="Agent name (auto-detected if not set)")] = None,
-            status: Annotated[str | None, Field(description="Task status: open, in-progress, done")] = None,
+            status: Annotated[str | None, Field(description="Task status: open, in-progress, done, wontfix")] = None,
             priority: Annotated[str | None, Field(description="Task priority: critical, high, medium, low")] = None,
         ) -> str:
             """Store a new memory entry. Use this to save context, decisions, patterns,
@@ -240,14 +240,18 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
             content: Annotated[str | None, Field(description="New content (replaces existing)")] = None,
             title: Annotated[str | None, Field(description="New title")] = None,
             tags: Annotated[list[str] | None, Field(description="New tags (replaces existing)")] = None,
-            status: Annotated[str | None, Field(description="New status")] = None,
-            priority: Annotated[str | None, Field(description="New priority")] = None,
+            status: Annotated[str | None, Field(description="New status: open, in-progress, done, wontfix")] = None,
+            priority: Annotated[str | None, Field(description="New priority: critical, high, medium, low")] = None,
             assignee: Annotated[str | None, Field(description="New assignee")] = None,
         ) -> str:
             """Edit an existing memory entry. Only provided fields change; content and
             tags replace the old values. An unknown id returns 'Entry not found' (as
             text, not an error)."""
             store = _get_store()
+            if len(entry_id) < 36:
+                from palaia.services.query import _resolve_short_id
+
+                entry_id = _resolve_short_id(store, entry_id) or entry_id
             try:
                 store.edit(
                     entry_id=entry_id,
