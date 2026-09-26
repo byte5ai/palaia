@@ -65,22 +65,15 @@ def _count_entries(store: Store) -> int:
     return count
 
 
-def _entry_files(store: Store) -> frozenset[str]:
-    """The hot+warm entry files, as "tier/name" (listing only, no parsing).
+_TIERS = ("hot", "warm", "cold")
 
-    A changed set means entries were added, removed or moved, so the search
-    index is stale. Directory mtimes would not do: every search rewrites the
-    access metadata of its hits via temp file and rename, which changes the
-    tier directory's mtime without changing any entry. Like _count_entries,
-    this skips the cold archive: listing it on every query costs the most for
-    the tier searched least, and a move into cold still changes the warm set.
-    """
-    files = []
-    for tier in ("hot", "warm"):
-        tier_dir = store.root / tier
-        if tier_dir.exists():
-            files.extend(f"{tier}/{p.name}" for p in tier_dir.glob("*.md"))
-    return frozenset(files)
+
+def _entry_files(store: Store, tier: str) -> frozenset[str]:
+    """Names of the entry files in one tier (listing only, no parsing)."""
+    tier_dir = store.root / tier
+    if not tier_dir.exists():
+        return frozenset()
+    return frozenset(p.name for p in tier_dir.glob("*.md"))
 
 
 def _warmup_missing(store: Store, engine: SearchEngine) -> dict:
@@ -134,19 +127,17 @@ def _warmup_missing(store: Store, engine: SearchEngine) -> dict:
 class EmbedServer:
     """JSON-RPC server for embedding queries. Supports stdio and Unix socket transport."""
 
-    def __init__(self, root: Path, stale_check_interval: float = 30.0, idle_timeout: float = 0):
+    def __init__(self, root: Path, idle_timeout: float = 0):
         self.root = root
         self.store = Store(root)
         self.engine = SearchEngine(self.store)
         # BM25-only fallback engine for queries during warmup (no GIL contention)
         self._bm25_engine = SearchEngine(self.store)
         self._bm25_engine._provider = BM25Provider()
-        self._last_entry_count = _count_entries(self.store)
-        self._last_entry_files = _entry_files(self.store)
+        # Entry files per tier as last seen — see _refresh_if_store_changed()
+        self._tier_files = {tier: _entry_files(self.store, tier) for tier in _TIERS}
         self._running = True
         self._warming_up = False
-        self._stale_check_interval = stale_check_interval
-        self._stale_check_thread: threading.Thread | None = None
         self._idle_timeout = idle_timeout  # 0 = no timeout
         self._last_activity = time.monotonic()
 
@@ -154,43 +145,29 @@ class EmbedServer:
         """Update last activity timestamp."""
         self._last_activity = time.monotonic()
 
-    def _start_stale_detection(self) -> None:
-        """Start background thread that checks for entry count changes every 30s."""
+    def _refresh_if_store_changed(self, include_cold: bool = False) -> None:
+        """Drop the search index and embedding cache if the store changed.
 
-        def _check_loop():
-            while self._running:
-                time.sleep(self._stale_check_interval)
-                if not self._running:
-                    break
-                try:
-                    current = _count_entries(self.store)
-                    if current != self._last_entry_count:
-                        self._last_entry_count = current
-                        # Force BM25 index rebuild on next query by resetting the engine
-                        self.engine = SearchEngine(self.store)
-                        # Reload embedding cache from disk
-                        self.store.embedding_cache.reload()
-                except Exception as e:
-                    logger.debug("Stale detection check failed: %s", e)
-
-        self._stale_check_thread = threading.Thread(target=_check_loop, daemon=True)
-        self._stale_check_thread.start()
-
-    def _refresh_index_if_store_changed(self) -> None:
-        """Rebuild the search index on the next query if entries were added,
-        removed or moved since the last check.
-
-        Entries are written by other processes (the CLI), and the stale-detection
-        thread only looks every 30s. Checking before each query makes an entry
-        searchable immediately — memory_write's duplicate guard in the OpenClaw
-        plugin depends on this. Only the index is invalidated; the loaded
-        embedding model is kept.
+        Other processes (the CLI) add, remove and move entries. Checking before
+        each request that reads the store makes a new entry visible at once —
+        memory_write's duplicate guard in the OpenClaw plugin depends on it.
+        The change signal is the set of entry files per tier: directory mtimes
+        would not do, because every search rewrites the access metadata of its
+        hits via temp file and rename. The cold archive is listed only when the
+        request reads it. On a change the index is rebuilt and the embedding
+        cache reloaded from disk (so a later save does not overwrite vectors
+        another process added); the loaded embedding model is kept.
         """
-        entry_files = _entry_files(self.store)
-        if entry_files != self._last_entry_files:
-            self._last_entry_files = entry_files
+        changed = False
+        for tier in _TIERS if include_cold else ("hot", "warm"):
+            files = _entry_files(self.store, tier)
+            if files != self._tier_files[tier]:
+                self._tier_files[tier] = files
+                changed = True
+        if changed:
             self.engine.invalidate_index()
             self._bm25_engine.invalidate_index()
+            self.store.embedding_cache.reload()
 
     def _start_idle_monitor(self) -> None:
         """Start background thread that shuts down after idle timeout."""
@@ -239,6 +216,7 @@ class EmbedServer:
 
     def _handle_status(self) -> dict:
         """Return entry count, cache coverage, and provider info."""
+        self._refresh_if_store_changed()
         entries = _count_entries(self.store)
         cache_stats = self.store.embedding_cache.stats()
         provider = self.engine.provider
@@ -257,6 +235,7 @@ class EmbedServer:
 
     def _handle_warmup(self) -> dict:
         """Index all missing entries."""
+        self._refresh_if_store_changed()
         stats = _warmup_missing(self.store, self.engine)
         return {"result": stats}
 
@@ -280,7 +259,7 @@ class EmbedServer:
         before = params.get("before")
         after = params.get("after")
 
-        self._refresh_index_if_store_changed()
+        self._refresh_if_store_changed(include_cold=include_cold)
         engine = self._bm25_engine if self._warming_up else self.engine
         results = engine.search(
             text,
@@ -331,7 +310,6 @@ class EmbedServer:
 
     def run_stdio(self) -> None:
         """Main loop: read JSON lines from stdin, write JSON responses to stdout."""
-        self._start_stale_detection()
         self._start_idle_monitor()
 
         # Signal ready IMMEDIATELY — warmup runs in background
@@ -405,7 +383,6 @@ class EmbedServer:
         _write_pid_file(pid_path)
 
         # Start background services
-        self._start_stale_detection()
         self._start_idle_monitor()
 
         # Background warmup

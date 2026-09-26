@@ -165,6 +165,42 @@ class TestEmbedServerUnit:
         server.handle_request({"method": "query", "params": {"text": "Docker"}})
         assert server.engine._index_cache is built
 
+    def test_store_change_reloads_embedding_cache(self, palaia_root):
+        """With the file-backed embedding cache (legacy backend) the server holds
+        the vectors in memory and saves them whole. After a store change it must
+        see vectors another process cached, or its next save would drop them."""
+        config = json.loads((palaia_root / "config.json").read_text())
+        config["database_backend"] = "legacy"
+        (palaia_root / "config.json").write_text(json.dumps(config))
+
+        server = EmbedServer(palaia_root)
+        assert server.store.embedding_cache.get_cached("from-cli") is None  # cache now in memory
+
+        cli = Store(palaia_root)
+        cli.embedding_cache.set_cached("from-cli", [0.1, 0.2], model="test")
+        cli.write("Kubernetes orchestrates containers", agent="test-agent", title="Kubernetes")
+
+        server.handle_request({"method": "query", "params": {"text": "Kubernetes"}})
+        assert server.store.embedding_cache.get_cached("from-cli") == [0.1, 0.2]
+
+    def test_cold_tier_checked_only_when_searched(self, store_with_entries):
+        """A change confined to the cold archive is picked up by the first query
+        that includes cold, and costs normal queries nothing."""
+        root = store_with_entries.root
+        server = EmbedServer(root)
+        cold_query = {"method": "query", "params": {"text": "Kubernetes", "include_cold": True}}
+        server.handle_request(cold_query)
+
+        # Another process archives a new entry straight into cold
+        entry_id = Store(root).write("Kubernetes orchestrates containers", agent="test-agent", title="Kubernetes")
+        (root / "hot" / f"{entry_id}.md").rename(root / "cold" / f"{entry_id}.md")
+
+        server.handle_request({"method": "query", "params": {"text": "Kubernetes"}})
+        assert entry_id not in server._tier_files["cold"]  # normal queries do not list cold
+
+        results = server.handle_request(cold_query)["result"]["results"]
+        assert any(r["id"] == entry_id for r in results)
+
     def test_count_entries(self, store_with_entries):
         count = _count_entries(store_with_entries)
         assert count == 3
