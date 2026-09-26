@@ -276,7 +276,9 @@ class SearchEngine:
         # Build output
         output = []
         for doc_id, score in ranked:
-            entry = self.store.read(doc_id)
+            # Same access scope as build_index(): without it, private entries the
+            # agent may see are ranked but then dropped here.
+            entry = self.store.read(doc_id, agent=agent, scope_visibility=scope_visibility)
             if entry:
                 meta, body = entry
                 result_entry = {

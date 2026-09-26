@@ -144,6 +144,25 @@ def test_all_entries_respects_scope(store):
     assert len(all_a2) == 2  # own private + team
 
 
+def test_search_respects_scope(palaia_root):
+    """search returns the agent's own private entries and hides other agents' ones."""
+    from palaia.search import SearchEngine
+
+    config = dict(DEFAULT_CONFIG, agent="agent1", embedding_chain=["bm25"])
+    save_config(palaia_root, config)
+    store = Store(palaia_root)
+    store.write("Launch codes for agent one", scope="private", agent="agent1", title="A1 secret")
+    store.write("Launch codes for agent two", scope="private", agent="agent2", title="A2 secret")
+    store.write("Launch codes shared with the team", scope="team", agent="agent1", title="Team note")
+
+    def titles(agent):
+        return {r["title"] for r in SearchEngine(store).search("launch codes", agent=agent)}
+
+    assert titles("agent1") == {"A1 secret", "Team note"}
+    assert titles("agent2") == {"A2 secret", "Team note"}
+    assert titles(None) == {"Team note"}
+
+
 # --- GC scope isolation ---
 
 
