@@ -69,7 +69,8 @@ uses the value as an exact tier filter.
 
 ### `memory_search` (always available)
 
-Search palaia memory (semantic + keyword ranking). `maxResults` defaults to the
+Search palaia memory (semantic + keyword ranking). `maxResults` (an integer from 1
+to 100, or up to the plugin's `maxResults` setting if that is larger) defaults to the
 plugin's `maxResults` setting; pass `tier: "all"` to include COLD entries:
 
 ```
@@ -78,7 +79,7 @@ memory_search({ query: "deployment process", maxResults: 5, tier: "all" })
 
 ### `memory_get` (always available)
 
-Read a specific memory entry:
+Read a specific memory entry. `from` (1-indexed) and `lines` are integers >= 1:
 
 ```
 memory_get({ path: "abc-123-uuid", from: 1, lines: 50 })

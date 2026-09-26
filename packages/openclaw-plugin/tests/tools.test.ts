@@ -15,6 +15,7 @@ vi.mock("../src/runner.js", () => ({
   getEmbedServerManager: vi.fn(() => ({ query: mockQuery })),
 }));
 
+import { Value } from "@sinclair/typebox/value";
 import { registerTools } from "../src/tools.js";
 import { runJson } from "../src/runner.js";
 import { DEFAULT_CONFIG } from "../src/config.js";
@@ -151,6 +152,90 @@ describe("tools", () => {
       expect(maxResults.default).toBeUndefined();
     });
 
+    describe("maxResults accepts only integers from 1 to the maximum (#483)", () => {
+      function searchSchema() {
+        return api.tools["memory_search"].def.parameters;
+      }
+
+      it("declares maxResults as an integer with minimum 1 and a maximum", () => {
+        const { maxResults } = searchSchema().properties;
+        expect(maxResults.type).toBe("integer");
+        expect(maxResults.minimum).toBe(1);
+        expect(maxResults.maximum).toBe(100);
+        expect(maxResults.description).toContain("1 to 100");
+      });
+
+      it.each([0, -3, 2.5, 101])("the schema rejects maxResults %s", (value) => {
+        expect(Value.Check(searchSchema(), { query: "test", maxResults: value })).toBe(false);
+      });
+
+      it.each([1, 7, 100])("the schema accepts maxResults %s", (value) => {
+        expect(Value.Check(searchSchema(), { query: "test", maxResults: value })).toBe(true);
+      });
+
+      it.each([0, -3, 2.5, 101, "5"])(
+        "execute() rejects maxResults %s without searching",
+        async (value) => {
+          const result = await api.tools["memory_search"].def.execute("call-483", {
+            query: "test",
+            maxResults: value,
+          });
+
+          expect(result.content[0].text).toBe(
+            `Invalid maxResults ${JSON.stringify(value)}: must be an integer from 1 to 100.`
+          );
+          expect(mockQuery).not.toHaveBeenCalled();
+          expect(mockRunJson).not.toHaveBeenCalled();
+        }
+      );
+
+      it.each([1, 100])("execute() passes maxResults %s through unchanged", async (value) => {
+        mockQuery.mockRejectedValueOnce(new Error("server down"));
+        mockRunJson.mockResolvedValueOnce({ results: [] });
+
+        await api.tools["memory_search"].def.execute("call-483b", {
+          query: "test",
+          maxResults: value,
+        });
+
+        expect(mockQuery).toHaveBeenCalledWith(
+          expect.objectContaining({ top_k: value }),
+          expect.any(Number)
+        );
+        expect(mockRunJson).toHaveBeenCalledWith(
+          ["query", "test", "--limit", String(value)],
+          expect.any(Object)
+        );
+      });
+
+      it("raises the maximum to a larger configured maxResults, so the default stays valid", () => {
+        const custom = createMockApi();
+        registerTools(custom, { ...DEFAULT_CONFIG, maxResults: 250 });
+        const { maxResults } = custom.tools["memory_search"].def.parameters.properties;
+        expect(maxResults.maximum).toBe(250);
+        expect(maxResults.description).toContain("default: 250");
+      });
+
+      it.each([0, -3, 2.5])(
+        "falls back to the built-in default for an invalid configured maxResults %s",
+        async (value) => {
+          const custom = createMockApi();
+          registerTools(custom, { ...DEFAULT_CONFIG, maxResults: value });
+          const def = custom.tools["memory_search"].def;
+          expect(def.parameters.properties.maxResults.description).toContain(
+            `default: ${DEFAULT_CONFIG.maxResults}`
+          );
+
+          mockQuery.mockResolvedValueOnce({ result: { results: [] } });
+          await def.execute("call-483c", { query: "test" });
+          expect(mockQuery).toHaveBeenCalledWith(
+            expect.objectContaining({ top_k: DEFAULT_CONFIG.maxResults }),
+            expect.any(Number)
+          );
+        }
+      );
+    });
+
     describe("schema descriptions follow the resolved config (#465)", () => {
       function registerWith(overrides: Partial<typeof DEFAULT_CONFIG>) {
         const custom = createMockApi();
@@ -254,6 +339,54 @@ describe("tools", () => {
         ["get", "abc-123", "--from", "5", "--lines", "2"],
         expect.any(Object)
       );
+    });
+
+    describe("from and lines accept only integers >= 1 (#483)", () => {
+      function getSchema() {
+        return api.tools["memory_get"].def.parameters;
+      }
+
+      it("declares from and lines as integers with minimum 1", () => {
+        const { from, lines } = getSchema().properties;
+        expect(from).toMatchObject({ type: "integer", minimum: 1 });
+        expect(lines).toMatchObject({ type: "integer", minimum: 1 });
+      });
+
+      it.each([
+        ["from", 0],
+        ["from", -1],
+        ["from", 1.5],
+        ["lines", 0],
+        ["lines", -3],
+        ["lines", 2.5],
+      ])("the schema rejects %s = %s", (name, value) => {
+        expect(Value.Check(getSchema(), { path: "abc-123", [name]: value })).toBe(false);
+      });
+
+      it("the schema accepts from and lines of 1 and above", () => {
+        expect(Value.Check(getSchema(), { path: "abc-123", from: 1, lines: 1 })).toBe(true);
+        expect(Value.Check(getSchema(), { path: "abc-123", from: 40, lines: 500 })).toBe(true);
+      });
+
+      it.each([
+        ["from", 0],
+        ["from", -1],
+        ["from", 1.5],
+        ["lines", 0],
+        ["lines", -3],
+        ["lines", 2.5],
+        ["lines", "2"],
+      ])("execute() rejects %s = %s without calling the CLI", async (name, value) => {
+        const result = await api.tools["memory_get"].def.execute("call-483d", {
+          path: "abc-123",
+          [name]: value,
+        });
+
+        expect(result.content[0].text).toBe(
+          `Invalid ${name} ${JSON.stringify(value)}: must be an integer >= 1.`
+        );
+        expect(mockRunJson).not.toHaveBeenCalled();
+      });
     });
   });
 

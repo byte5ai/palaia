@@ -72,6 +72,35 @@ function buildRunnerOpts(config: PalaiaPluginConfig): RunnerOpts {
 const SEARCH_CLI_TIMEOUT_MS = 15000;
 
 /**
+ * Upper bound for memory_search's maxResults (#483). The search backend has no
+ * cap of its own (`palaia query --limit` and the embed server's `top_k` take
+ * any positive integer); this keeps one tool call from flooding the context.
+ * A larger configured maxResults raises the bound, so the default is always valid.
+ */
+const SEARCH_MAX_RESULTS = 100;
+
+/** True for an integer >= 1: what `--limit`, `--from` and `--lines` accept. */
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1;
+}
+
+/**
+ * Tool result for an out-of-range numeric parameter. Hosts that skip schema
+ * validation would otherwise hand the value to the CLI (#483).
+ */
+function invalidIntegerParam(name: string, value: unknown, max?: number) {
+  const range = max === undefined ? "an integer >= 1" : `an integer from 1 to ${max}`;
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: `Invalid ${name} ${JSON.stringify(value)}: must be ${range}.`,
+      },
+    ],
+  };
+}
+
+/**
  * Search palaia: embed server first, CLI fallback.
  *
  * The embed server keeps the model loaded, and its queue does not count wait
@@ -181,7 +210,12 @@ async function findRecentDuplicate(
 export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig): void {
   const opts = buildRunnerOpts(config);
   // Resolved once so the schema description and execute() cannot disagree (#465).
-  const defaultSearchLimit = config.maxResults || DEFAULT_CONFIG.maxResults;
+  // A configured maxResults that is not a positive integer (the manifest only
+  // declares "number") falls back to the built-in default (#483).
+  const defaultSearchLimit = isPositiveInteger(config.maxResults)
+    ? config.maxResults
+    : DEFAULT_CONFIG.maxResults;
+  const searchMaxResults = Math.max(SEARCH_MAX_RESULTS, defaultSearchLimit);
   const configIncludesCold = config.tier === "all";
 
   // ── memory_search ──────────────────────────────────────────────
@@ -192,8 +226,10 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
     parameters: Type.Object({
       query: Type.String({ description: "Search query" }),
       maxResults: Type.Optional(
-        Type.Number({
-          description: `Maximum results (default: ${defaultSearchLimit}, the plugin's maxResults setting).`,
+        Type.Integer({
+          minimum: 1,
+          maximum: searchMaxResults,
+          description: `Maximum results, 1 to ${searchMaxResults} (default: ${defaultSearchLimit}, the plugin's maxResults setting).`,
         })
       ),
       tier: Type.Optional(
@@ -218,6 +254,13 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
         type?: string;
       }
     ) {
+      // Validate before anything else: an explicit 0 must not turn into the
+      // default, nor a negative or fractional value reach top_k/--limit (#483).
+      const limit = params.maxResults ?? defaultSearchLimit;
+      if (!isPositiveInteger(limit) || limit > searchMaxResults) {
+        return invalidIntegerParam("maxResults", params.maxResults, searchMaxResults);
+      }
+
       // Load scope visibility from priorities (Issue #145: agent isolation)
       let scopeVisibility: string[] | null = null;
       try {
@@ -234,7 +277,6 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
         // Non-fatal: proceed without scope filtering
       }
 
-      const limit = params.maxResults || defaultSearchLimit;
       const includeCold = params.tier === "all" || configIncludesCold;
 
       const result = await searchEntries(
@@ -291,16 +333,25 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
     parameters: Type.Object({
       path: Type.String({ description: "Memory path or UUID" }),
       from: Type.Optional(
-        Type.Number({ description: "Start from line number (1-indexed)" })
+        Type.Integer({ minimum: 1, description: "Start from line number (1-indexed)" })
       ),
       lines: Type.Optional(
-        Type.Number({ description: "Number of lines to return" })
+        Type.Integer({ minimum: 1, description: "Number of lines to return" })
       ),
     }),
     async execute(
       _id: string,
       params: { path: string; from?: number; lines?: number }
     ) {
+      // `palaia get` takes integers only, and a negative --lines would slice
+      // from the end of the entry (#483).
+      if (params.from != null && !isPositiveInteger(params.from)) {
+        return invalidIntegerParam("from", params.from);
+      }
+      if (params.lines != null && !isPositiveInteger(params.lines)) {
+        return invalidIntegerParam("lines", params.lines);
+      }
+
       const args: string[] = ["get", params.path];
       if (params.from != null) {
         args.push("--from", String(params.from));
