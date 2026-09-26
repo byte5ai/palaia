@@ -288,6 +288,47 @@ def test_an_unknown_recall_key_is_rejected(tmp_path: Path) -> None:
         load_config(home=tmp_path)
 
 
+# --- Smart Nudges: the similar-note check (issue #187) -----------------------
+
+
+def test_the_generated_default_file_round_trips_to_the_default_nudge_settings(
+    tmp_path: Path,
+) -> None:
+    from palaia_hub.config import NudgeSettings
+    from palaia_hub.nudges import DEFAULT_SIMILAR_NOTE_THRESHOLD
+
+    load_config(home=tmp_path)  # writes the template
+    from_file = load_config(home=tmp_path)  # reads it back
+
+    assert from_file.nudges == NudgeSettings()
+    assert from_file.nudges.effective_similar_note_threshold == DEFAULT_SIMILAR_NOTE_THRESHOLD
+
+
+def test_the_similar_note_check_can_be_tuned_or_switched_off(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text(
+        "nudges:\n  similar_note_threshold: 0.8\n", encoding="utf-8"
+    )
+    assert load_config(home=tmp_path).nudges.effective_similar_note_threshold == 0.8
+
+    (tmp_path / "config.yaml").write_text(
+        "nudges:\n  similar_note_check: false\n", encoding="utf-8"
+    )
+    assert load_config(home=tmp_path).nudges.effective_similar_note_threshold is None
+
+
+def test_a_similar_note_threshold_that_would_flag_everything_is_rejected(
+    tmp_path: Path,
+) -> None:
+    """Unrelated notes score ~0.1 (default model) to ~0.5 (bge-small); a
+    threshold below that turns every write into a warning."""
+    (tmp_path / "config.yaml").write_text(
+        "nudges:\n  similar_note_threshold: 0.2\n", encoding="utf-8"
+    )
+    with pytest.raises(ConfigError) as excinfo:
+        load_config(home=tmp_path)
+    assert "nudges.similar_note_threshold" in str(excinfo.value)
+
+
 # --------------------------------------------------------------- SPEC-301
 
 

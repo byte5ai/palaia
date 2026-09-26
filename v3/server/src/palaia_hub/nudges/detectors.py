@@ -15,7 +15,7 @@ Every text follows the same two-part shape — what happened, then ``Fix:``
 plus the concrete next action — and is held under
 :data:`~palaia_hub.nudges.models.MAX_NUDGE_CHARS`.
 
-The set is deliberately small and covers six actions. Three detectors named
+The set is deliberately small and covers seven actions. Three detectors named
 in issue #301 are *not* here yet, because the signal they need does not reach
 a tool result today: "a write landed in a vault whose index rebuild is
 pending", "token near expiry / profile changed since the token was minted",
@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from .models import INBOX_BACKLOG_THRESHOLD, Nudge, VaultSignals
+from .models import INBOX_BACKLOG_THRESHOLD, MAX_NUDGE_CHARS, Nudge, SimilarNote, VaultSignals
 
 #: What every detector is. Returning ``None`` is the normal case by far.
 Detector = Callable[[VaultSignals], Nudge | None]
@@ -145,6 +145,76 @@ def capture_was_duplicate(signals: VaultSignals) -> Nudge | None:
     )
 
 
+#: The actions whose result can carry :attr:`VaultSignals.similar_notes`.
+SIMILAR_NOTE_ACTIONS = ("write", "capture")
+
+#: At most this many similar notes are named in one nudge, and a title is cut
+#: to this many characters — naming three notes with full titles would not
+#: fit :data:`~palaia_hub.nudges.models.MAX_NUDGE_CHARS`.
+MAX_SIMILAR_NAMED = 3
+_SIMILAR_TITLE_CHARS = 48
+
+
+def _clip(text: str, width: int) -> str:
+    return text if len(text) <= width else text[: max(0, width - 1)].rstrip() + "…"
+
+
+def _similar_text(notes: tuple[SimilarNote, ...]) -> str:
+    """Name as many of ``notes`` (best first) as fit the length ceiling.
+
+    Greedy on purpose: the best match is always named — its title cut down
+    further if that is what it takes — and the second and third only when
+    the sentence still fits. A permalink is never cut: it is the identifier
+    the agent passes to ``read``/``edit``.
+    """
+
+    def render(named: tuple[SimilarNote, ...], title_chars: int) -> str:
+        refs = ", ".join(f"'{_clip(n.title, title_chars)}' ({n.permalink})" for n in named)
+        several = len(named) > 1
+        return (
+            f"Possible overlap or contradiction with existing note{'s' if several else ''} "
+            f"{refs}. Fix: if this updates {'one of them' if several else 'it'}, edit that "
+            "note instead of keeping two versions."
+        )
+
+    for count in range(min(len(notes), MAX_SIMILAR_NAMED), 1, -1):
+        text = render(notes[:count], _SIMILAR_TITLE_CHARS)
+        if len(text) <= MAX_NUDGE_CHARS:
+            return text
+    top = notes[:1]
+    text = render(top, _SIMILAR_TITLE_CHARS)
+    overflow = len(text) - MAX_NUDGE_CHARS
+    if overflow > 0:
+        text = render(top, max(1, min(_SIMILAR_TITLE_CHARS, len(top[0].title)) - overflow))
+    return text
+
+
+def write_resembles_existing(signals: VaultSignals) -> Nudge | None:
+    """A new note that closely resembles an existing one is how knowledge
+    drifts silently (issue #187).
+
+    Two notes saying nearly the same thing about the same subject are either
+    redundant or — worse — one of them is now wrong ("returns 200" next to
+    "returns 404"), and recall will happily serve both. The write itself
+    succeeded and is never blocked; this is the heads-up that names the
+    existing note so the agent can update it instead. The similarity was
+    measured (a true cosine similarity against the hub's threshold) before
+    this ran; a deduplicated capture wrote nothing and has its own nudge.
+    """
+    if signals.action not in SIMILAR_NOTE_ACTIONS or not signals.similar_notes:
+        return None
+    if signals.duplicate_capture:
+        return None
+    return Nudge(
+        key=f"{signals.action}.similar_note",
+        text=_similar_text(signals.similar_notes),
+        # The closest note is the fingerprint: another write resembling the
+        # *same* note stays quiet for the cooldown, one resembling a
+        # different note is a different warning and may speak up.
+        state=signals.similar_notes[0].permalink,
+    )
+
+
 def unresolved_values_on_read(signals: VaultSignals) -> Nudge | None:
     """A note whose value references did not resolve reads as if current.
 
@@ -174,6 +244,7 @@ DETECTORS: tuple[Detector, ...] = (
     context_budget_pressure,
     unresolved_values_on_read,
     capture_was_duplicate,
+    write_resembles_existing,
     inbox_backlog,
     search_found_nothing,
 )
@@ -192,6 +263,8 @@ def detect(signals: VaultSignals, detectors: tuple[Detector, ...] = DETECTORS) -
 
 __all__ = [
     "DETECTORS",
+    "MAX_SIMILAR_NAMED",
+    "SIMILAR_NOTE_ACTIONS",
     "Detector",
     "capture_was_duplicate",
     "context_budget_pressure",
@@ -200,4 +273,5 @@ __all__ = [
     "recall_degraded",
     "search_found_nothing",
     "unresolved_values_on_read",
+    "write_resembles_existing",
 ]

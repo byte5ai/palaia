@@ -24,14 +24,16 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
 from .db import IndexDatabase
 from .models import (
+    NoteSimilarity,
     SearchFilters,
     SearchHit,
     SearchMode,
@@ -351,6 +353,82 @@ class IndexSearch:
             if len(hits) >= limit:
                 break
         return hits
+
+    def similar(
+        self,
+        embedding: Sequence[float],
+        *,
+        limit: int = 3,
+        filters: SearchFilters | None = None,
+        exclude: Collection[str] = (),
+    ) -> list[NoteSimilarity]:
+        """The notes closest in meaning to ``embedding``, with a true similarity.
+
+        Unlike :meth:`vector` — whose ``score`` is ``1/(1+L2 distance)`` and
+        whose job is *ordering* — this answers "how similar, absolutely", so
+        a caller can hold the answer against a fixed threshold (issue #187).
+        The KNN pass picks the candidates (same over-fetch and in-KNN filter
+        as :meth:`vector`, issue #361); each candidate chunk is then scored by
+        sqlite-vec's ``vec_distance_cosine`` and a note's similarity is its
+        best chunk's ``1 - cosine distance``. Re-scoring the candidates rather
+        than trusting the L2 order keeps the number honest for an embedding
+        model that does not normalize its vectors.
+
+        ``exclude`` names note permalinks to leave out — typically the note
+        the text came from, which may already have a vector of its own.
+        """
+        if limit <= 0 or not self._db.vectors.available or not self._db.has_vec_table():
+            return []
+        import sqlite_vec
+
+        filters = filters or SearchFilters()
+        knn = max((limit + len(exclude)) * KNN_OVERFETCH_FACTOR, KNN_MIN_ROWS)
+        serialized = sqlite_vec.serialize_float32(list(embedding))
+        inner = _filter_clause(filters, "n2")
+        knn_sql = (
+            "SELECT rowid, vec_distance_cosine(embedding, ?) AS cos_dist FROM vec_chunks "
+            "WHERE embedding MATCH ? AND k = ?"
+        )
+        params: tuple[Any, ...] = (serialized, serialized, knn)
+        if inner.sql:
+            knn_sql += (
+                " AND rowid IN (SELECT c2.id FROM chunks c2 JOIN notes n2 ON n2.id = c2.note_id "
+                f"WHERE 1=1{inner.sql})"
+            )
+            params = (*params, *inner.params)
+        sql = (
+            "SELECT v.cos_dist AS cos_dist, n.permalink AS permalink, n.title AS title, "
+            "n.type AS type "
+            f"FROM ({knn_sql}) v "
+            "JOIN chunks c ON c.id = v.rowid "
+            "JOIN notes n ON n.id = c.note_id"
+        )
+        with self._db.lock:
+            try:
+                rows = self._db.conn.execute(sql, params).fetchall()
+            except sqlite3.Error as exc:  # pragma: no cover - vec table issues
+                logger.warning("similarity query failed: %s", exc)
+                return []
+
+        excluded = set(exclude)
+        best: dict[str, NoteSimilarity] = {}
+        for row in rows:
+            permalink = str(row["permalink"])
+            if permalink in excluded or row["cos_dist"] is None:
+                continue
+            similarity = 1.0 - float(row["cos_dist"])
+            if not math.isfinite(similarity):
+                continue
+            current = best.get(permalink)
+            if current is None or similarity > current.similarity:
+                best[permalink] = NoteSimilarity(
+                    permalink=permalink,
+                    title=str(row["title"]),
+                    similarity=similarity,
+                    type=str(row["type"]),
+                )
+        ranked = sorted(best.values(), key=lambda note: (-note.similarity, note.permalink))
+        return ranked[:limit]
 
     # ----------------------------------------------------------------- hybrid
 

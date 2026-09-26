@@ -14,7 +14,14 @@ from dataclasses import replace
 
 import pytest
 
-from palaia_hub.nudges import INBOX_BACKLOG_THRESHOLD, MAX_NUDGE_CHARS, Nudge, VaultSignals, detect
+from palaia_hub.nudges import (
+    INBOX_BACKLOG_THRESHOLD,
+    MAX_NUDGE_CHARS,
+    Nudge,
+    SimilarNote,
+    VaultSignals,
+    detect,
+)
 from palaia_hub.nudges.detectors import (
     DETECTORS,
     capture_was_duplicate,
@@ -23,6 +30,26 @@ from palaia_hub.nudges.detectors import (
     recall_degraded,
     search_found_nothing,
     unresolved_values_on_read,
+    write_resembles_existing,
+)
+
+# The worst case for the similar-note text: three matches, every title far
+# longer than a nudge can carry, and deep permalinks. The registry-wide
+# length check below runs on exactly this, so the ceiling is verified for the
+# input most likely to break it rather than for a comfortable one.
+LONG_SIMILAR_NOTES = (
+    SimilarNote(
+        permalink="projects/platform/api-gateway/health-endpoint-behaviour",
+        title="Health endpoint behaviour of the public API gateway after the v2 migration",
+    ),
+    SimilarNote(
+        permalink="projects/platform/api-gateway/status-codes",
+        title="Status codes the public API gateway returns for liveness and readiness probes",
+    ),
+    SimilarNote(
+        permalink="ops/runbooks/gateway-monitoring",
+        title="Runbook: monitoring the gateway's health endpoint from the on-call dashboard",
+    ),
 )
 
 # One signals record per detector that makes it fire, used both for the
@@ -41,6 +68,8 @@ FIRING_SIGNALS: dict[str, VaultSignals] = {
     "read.unresolved_values": VaultSignals(
         action="read", unresolved_values=("embed-missing: ops/limits#rate",)
     ),
+    "write.similar_note": VaultSignals(action="write", similar_notes=LONG_SIMILAR_NOTES),
+    "capture.similar_note": VaultSignals(action="capture", similar_notes=LONG_SIMILAR_NOTES),
 }
 
 
@@ -152,6 +181,69 @@ def test_unresolved_values_are_counted_and_the_first_is_named() -> None:
 
 def test_a_clean_read_says_nothing() -> None:
     assert unresolved_values_on_read(VaultSignals(action="read")) is None
+
+
+def test_a_similar_note_is_named_by_permalink_and_title() -> None:
+    """Issue #187: the agent needs the id to act on and the title to
+    recognize — and the warning must not claim more than it knows."""
+    nudge = write_resembles_existing(
+        VaultSignals(
+            action="write",
+            similar_notes=(SimilarNote(permalink="ops/health", title="Health endpoint"),),
+        )
+    )
+    assert nudge is not None
+    assert nudge.key == "write.similar_note"
+    assert "'Health endpoint' (ops/health)" in nudge.text
+    assert "Possible overlap or contradiction" in nudge.text
+    assert "edit that note" in nudge.text
+
+
+def test_up_to_three_similar_notes_are_named_when_they_fit() -> None:
+    notes = tuple(SimilarNote(permalink=f"ops/n{i}", title=f"Note {i}") for i in range(5))
+    nudge = write_resembles_existing(VaultSignals(action="write", similar_notes=notes))
+    assert nudge is not None
+    assert all(f"(ops/n{i})" in nudge.text for i in range(3))
+    assert "(ops/n3)" not in nudge.text
+
+
+def test_the_best_match_is_always_named_even_when_nothing_else_fits() -> None:
+    nudge = write_resembles_existing(FIRING_SIGNALS["write.similar_note"])
+    assert nudge is not None
+    assert f"({LONG_SIMILAR_NOTES[0].permalink})" in nudge.text
+    assert len(nudge.text) <= MAX_NUDGE_CHARS
+
+
+def test_similar_note_state_is_the_closest_note() -> None:
+    """The same note resembled again stays quiet for the cooldown; a
+    different closest note is a different warning."""
+    nudge = write_resembles_existing(FIRING_SIGNALS["write.similar_note"])
+    assert nudge is not None
+    assert nudge.state == LONG_SIMILAR_NOTES[0].permalink
+
+
+def test_a_capture_that_resembles_a_note_gets_its_own_key() -> None:
+    nudge = write_resembles_existing(FIRING_SIGNALS["capture.similar_note"])
+    assert nudge is not None
+    assert nudge.key == "capture.similar_note"
+
+
+def test_a_write_with_no_similar_note_says_nothing() -> None:
+    assert write_resembles_existing(VaultSignals(action="write")) is None
+    assert write_resembles_existing(VaultSignals(action="capture")) is None
+
+
+def test_a_deduplicated_capture_does_not_also_warn_about_similarity() -> None:
+    """Nothing was written, and ``capture.duplicate`` already names the
+    original — two nudges about one non-event would be noise."""
+    signals = VaultSignals(
+        action="capture",
+        duplicate_capture=True,
+        duplicate_permalink="inbox/health",
+        similar_notes=(SimilarNote(permalink="ops/health", title="Health"),),
+    )
+    assert write_resembles_existing(signals) is None
+    assert [nudge.key for nudge in detect(signals)] == ["capture.duplicate"]
 
 
 # --- the action gate --------------------------------------------------------

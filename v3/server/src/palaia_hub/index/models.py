@@ -115,6 +115,24 @@ class SearchHit:
 
 
 @dataclass(frozen=True, slots=True)
+class NoteSimilarity:
+    """How close one indexed note is to a piece of text, by meaning.
+
+    ``similarity`` is a **true cosine similarity** between the text's
+    embedding and the note's closest chunk (1.0 = same direction, 0.0 =
+    unrelated) — an absolute measure that can be compared against a fixed
+    threshold. That is what sets it apart from :attr:`SearchHit.score`, which
+    is a rank-fusion or BM25 value only meaningful *relative to the other hits
+    of the same query* (issue #481: a relative score is not a similarity).
+    """
+
+    permalink: str
+    title: str
+    similarity: float
+    type: str = "note"
+
+
+@dataclass(frozen=True, slots=True)
 class SearchResults:
     """A result page plus how it was produced.
 
@@ -198,6 +216,7 @@ __all__ = [
     "EmbedStatus",
     "HitKind",
     "IndexStatus",
+    "NoteSimilarity",
     "SearchFilters",
     "SearchHit",
     "SearchMode",
