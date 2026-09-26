@@ -1,15 +1,54 @@
 name: CI
 
+# Issue #487: no workflow-level path filter. A workflow that does not trigger
+# never reports its checks, so none of them could be required on `main` while
+# v3-only PRs skipped this workflow entirely. The workflow now always runs;
+# the `changes` job decides whether the v2 lanes have anything to do, and the
+# `ci-required` gate at the bottom is the one check that always reports.
 on:
   push:
     branches: [main, v2-maintenance]
-    paths-ignore: ['v3/**']
   pull_request:
     branches: [main, v2-maintenance]
-    paths-ignore: ['v3/**']
 
 jobs:
+  # The old `paths-ignore: ['v3/**']`, as a job: the v2 lanes run unless every
+  # changed file is under v3/. On a push to `main`, dorny/paths-filter compares
+  # against the commit before the push (`github.event.before`); on a PR it
+  # lists the PR's files through the API.
+  #
+  # v2-maintenance runs its own copy of this file, where `test (3.x)` and
+  # `test-plugin` are the required checks. Should this copy ever run there
+  # (a head branch forked from `main` by mistake), the filter is not
+  # consulted and every lane runs, exactly as before #487.
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      v2: ${{ steps.filter.outputs.v2 || 'true' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        if: >-
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'pull_request' && github.base_ref == 'main')
+        with:
+          # 'every': a file counts only if it matches all patterns, i.e. it
+          # is anywhere in the repository and not under v3/.
+          predicate-quantifier: 'every'
+          filters: |
+            v2:
+              - '**'
+              - '!v3/**'
+
   test:
+    needs: changes
+    if: ${{ needs.changes.outputs.v2 == 'true' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -38,6 +77,8 @@ jobs:
         run: pytest tests/ -v
 
   test-plugin:
+    needs: changes
+    if: ${{ needs.changes.outputs.v2 == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -50,3 +91,27 @@ jobs:
       - name: Run plugin tests
         working-directory: packages/openclaw-plugin
         run: npx vitest run
+
+  # Issue #487: the required check on `main`. It always reports, whatever
+  # the paths: it fails if any lane failed or was cancelled, and passes when
+  # every lane passed or was skipped because its area was untouched.
+  # `if: always()` rather than `!cancelled()` on purpose: a skipped required
+  # check counts as passing, so a cancelled run must report a failure here,
+  # not skip the gate. `changes` is in `needs` so a broken filter fails the
+  # gate instead of silently skipping every lane.
+  required:
+    name: ci-required
+    needs: [changes, test, test-plugin]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: every lane passed or was skipped
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          echo "$RESULTS"
+          if [ "$FAILED" = "true" ]; then
+            echo "::error::a CI lane failed or was cancelled"
+            exit 1
+          fi
