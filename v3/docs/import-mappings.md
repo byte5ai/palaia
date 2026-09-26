@@ -9,7 +9,7 @@
 
 Both importers are read-only clean-room re-implementations of the source
 on-disk format: neither imports code from the v2 `palaia/` package (the
-hard track-separation rule in `AGENTS.md` forbids that regardless of
+hard track-separation rule in `CONTRIBUTING.md` forbids that regardless of
 license) nor from basic-memory (AGPL-3.0, ADR-002 — this repository does not
 even vendor a copy of it; the mapping below is built against the public
 concept dossier in `research/basic-memory.md` and against v3's own grammar).

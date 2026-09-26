@@ -113,7 +113,7 @@ not block the cut (issue #388).
       network access allows (skips honestly otherwise, naming the
       structural fallback check).
 - [ ] Commit the version bump + changelog entry, PR it through the normal
-      process (this file's own repository is still `AGENTS.md`-governed —
+      process (this file's own repository is still `CONTRIBUTING.md`-governed —
       a feature branch, a PR, conventional commits).
 - [ ] Tag + release: dispatch `.github/workflows/v3-cut-release.yml` on
       the merge commit with `expected_version: 3.0.0`. It creates the
@@ -203,7 +203,7 @@ not block the cut (issue #388).
 ## 5. What this file deliberately does not cover
 
 Reverting a bad release (this repository's standing `git`/hotfix norms in
-`AGENTS.md` apply — a `v2-maintenance`-style hotfix branch for v3 is a
+`CONTRIBUTING.md` apply — a `v2-maintenance`-style hotfix branch for v3 is a
 judgment call for whoever holds the gate, not something pre-decided
 here), and any `3.0.x` patch release after this one (a lighter version of
 §3 above — bump `VERSION`, changelog, tag, no need to re-run §0–§2).

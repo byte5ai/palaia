@@ -2,49 +2,43 @@
 
 Thanks for your interest in contributing to palaia!
 
+palaia has two development tracks (details under [Two development tracks](#two-development-tracks)):
+new work goes into **v3**, under `v3/` on `main`; **v2**, the code at the repo root, only
+takes critical hotfixes, on the `v2-maintenance` branch. This file describes contributing
+on `main`. For a v2 hotfix, follow `CONTRIBUTING.md` on `v2-maintenance` instead — it
+carries v2's setup, versioning and release process.
+
 ## Development Setup
 
 ```bash
 git clone https://github.com/byte5ai/palaia.git
 cd palaia
-./script/setup          # installs deps + configures git hooks
-pytest tests/ -v
+git config core.hooksPath .hooks   # pre-push hook: blocks direct pushes to protected branches
+cd v3
+just setup   # uv sync --all-packages; npm ci in web/
+just test    # pytest + vitest
+just lint    # ruff check, mypy, eslint, tsc
 ```
 
-Or manually:
-```bash
-pip install -e ".[dev,fastembed]"
-git config core.hooksPath .hooks
-```
-
-For TypeScript plugin development:
-```bash
-cd packages/openclaw-plugin
-npm install
-npx vitest run
-```
+Prerequisites ([`uv`](https://docs.astral.sh/uv/), Node 22+,
+[`just`](https://github.com/casey/just)) and the equivalent raw commands are in
+[`v3/README.md`](v3/README.md#dev-setup).
 
 ## Code Style
 
-We use [ruff](https://docs.astral.sh/ruff/) for linting. Configuration is in `pyproject.toml`.
-
-```bash
-ruff check palaia/ tests/        # Check
-ruff check --fix palaia/ tests/  # Auto-fix
-```
-
-Intentional patterns in the codebase:
-- `E402` (imports after code): Logger setup before palaia imports — suppressed globally
-- `I001` (import sorting): Grouped imports with `# noqa` — suppressed globally
-- `F401` with `# noqa`: Backward-compat re-exports (tests import from `palaia.cli`)
+v3 Python is linted with [ruff](https://docs.astral.sh/ruff/) (line length 100) and
+type-checked with mypy in strict mode; both gate CI. Configuration is in
+`v3/pyproject.toml` and `v3/server/pyproject.toml`. `ruff format` is not enforced yet —
+format the files you touch; [`v3/README.md`](v3/README.md#dev-setup) records the
+decision and when it changes. The web app is linted with eslint and type-checked
+with `tsc` (`just lint` runs all four).
 
 ## Reporting Bugs
 
 Open a [GitHub Issue](https://github.com/byte5ai/palaia/issues). Include:
 
-- Python version (`python --version`)
-- palaia version (`palaia --version`)
-- `palaia doctor --json` output
+- Which palaia you run: the v3 hub (release or image tag) or v2 (`palaia --version`,
+  plus `palaia doctor --json` output and `python --version`)
 - Steps to reproduce
 - Expected vs actual behavior
 
@@ -65,148 +59,115 @@ Open a [GitHub Issue](https://github.com/byte5ai/palaia/issues). Include:
 | Track | Where | Base branch for PRs | What belongs there |
 |-------|-------|---------------------|--------------------|
 | **v2** (maintenance) | repo root (`palaia/`, `tests/`, `packages/`) | `v2-maintenance` | Critical hotfixes only (security, data loss, broken release) |
-| **v3** (active) | `v3/` | `main` | Everything new — planning docs now, code later |
+| **v3** (active) | `v3/` | `main` | Everything new |
 
-v2 and v3 are strictly separated: no imports, no shared tooling, one track per PR.
-See `AGENTS.md` ("Two Development Tracks") for the full rules and `v3/MASTERPLAN.md`
-for the v3 scope.
+- **v2 (stable, maintenance-only):** the code at the repo root (`palaia/`, `tests/`,
+  `packages/openclaw-plugin/`, `docs/`, `skills/`). Feature development is frozen.
+  Only critical hotfixes (security, data loss, broken release) are made. Hotfix PRs
+  target the **`v2-maintenance`** branch — never `main`. Release tags `v2.x.y` are cut
+  from `v2-maintenance`.
+- **v3 (active development):** lives entirely under **`v3/`** on `main`.
+  `v3/MASTERPLAN.md` is the source of truth for v3 scope and roadmap. Significant v3
+  decisions are recorded in `v3/decisions/` as ADRs.
+
+**Hard separation rules:**
+
+- Never import/require across the boundary: v2 code must not depend on `v3/` and vice versa.
+- No shared build tooling, lockfiles, or configs between the tracks.
+- A PR touches files of exactly one track (the only exception: intentional cross-references
+  in top-level docs such as the README pointer to v3).
+- v3 work must not modify v2 root files (`pyproject.toml`, `palaia/`, `packages/`, …).
+
+**v3 conventions:**
+
+- Repository language is **English** — code, comments, docs, ADRs, commit messages.
+- Every user-facing v3 feature must be checked against the standing design question
+  "is an MCP App the right or a sensible surface for this?" — see
+  `v3/MASTERPLAN.md` §4 (rule 8) and §5.7.
 
 **v2 hotfix release:** branch from `v2-maintenance`, PR back into `v2-maintenance`,
-bump the version files listed below, then tag (`v2.8.1`) from `v2-maintenance`.
-`publish.yml` builds from the tag — the root packaging on `main` is not involved.
+bump the version files listed in `CONTRIBUTING.md` on that branch, then tag (`v2.8.1`)
+from `v2-maintenance`. `publish.yml` builds from the tag — the root packaging on `main`
+is not involved.
 
 **Workflow:**
-1. Create a feature branch: `git checkout -b feat/my-feature`
+1. Create a branch from the track's base branch: `main` for v3,
+   `v2-maintenance` for a v2 hotfix
 2. Develop, commit, push to your branch
-3. Open a PR against `main`
+3. Open a PR against that same base branch
 4. CI runs automatically
 5. Merge after CI passes
 
 **Branch naming:**
 - `feat/...` — new features
 - `fix/...` — bug fixes
+- `refactor/...` — restructuring without behavior change
 - `docs/...` — documentation only
 - `chore/...` — maintenance, cleanup
 
 ## Submitting Pull Requests
 
-1. **Create a branch** from `main`: `git checkout -b feat/my-feature`
+1. **Create a branch** from `main`: `git checkout -b feat/my-feature origin/main`
 2. **Write tests** for new functionality
-3. **Run the test suite**: `pytest tests/ -v && cd packages/openclaw-plugin && npx vitest run`
-4. **Lint your code**: `ruff check palaia/ tests/`
-5. **Commit** with a clear message (see Commit Convention below)
-6. **Open a PR** against `main`
+3. **Run the checks** from `v3/`: `just test` and `just lint`
+4. **Commit** with a clear message (see Commit Convention below)
+5. **Open a PR** against `main`
 
 ### PR Requirements
 
-- All tests must pass (Python 3.9-3.12 + TypeScript)
-- Ruff lint clean
+- `just test` passes and `just lint` is clean (`v3-ci.yml` runs the same checks on every PR that touches `v3/`)
 - New features need tests
-- No force pushes
+- One logical change per PR; a short title (<70 chars) with a conventional prefix
+- No force pushes, no skipped hooks (`--no-verify`)
+- Never commit secrets (`.env`, API keys, tokens, credentials)
 
 ## Commit Convention
 
-```
-feat: add memory compression
-fix: resolve race condition in embed-server startup
-docs: update MCP server setup guide
-perf: use sqlite-vec for native KNN search
-release: palaia v2.4 — summary
-dev: v2.4.dev1 — testing embed-server auto-start
-```
+Prefixes: `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`, `perf:`, `release:`, `dev:`.
 
-## Versioning
-
-palaia uses **two-level versioning** (Major.Minor):
+v3 changes carry the `(v3)` scope:
 
 ```
-2.3      Stable release (public, all channels)
-2.4      Next stable release
-2.3.1    Hotfix (only for critical bugs: security, data loss, broken)
-2.4.dev1 Development build (PyPI pre-release, for testing)
-2.4b1    Beta (PyPI pre-release, opt-in)
+feat(v3): add the Telegram screen to the dashboard
+fix(v3): never issue a token id that starts with a dash
+docs(v3): describe the dashboard's Telegram screen
+release(v3): 3.0.0-rc2 — version bump, changelog, release notes
 ```
 
-**Rules:**
-- No patch version (z) in normal development — fixes go into the next minor
-- Patch version ONLY for critical hotfixes after a stable release
-- Dev builds (`2.4.dev1`) are PyPI pre-releases: `pip install palaia==2.4.dev1`
-- Regular `pip install palaia` always gets the latest stable
+## Releases
 
-## Release Process
-
-Releases are managed by maintainers. The process:
-
-1. **Development**: Commits go to `main`, CI runs on every push
-2. **Testing**: Dev builds (`v2.4.dev1` tags) publish to PyPI as pre-release
-3. **Stable release**: Version bump → tag → PyPI → ClawHub → GitHub Release
-
-### Channel order (important!)
-
-```
-1. git push --tags          → triggers PyPI CI
-2. Wait for PyPI            → version must appear before next step
-3. ClawHub publish          → only AFTER PyPI is live
-4. GitHub Release           → last
-```
-
-ClawHub and GitHub Release NEVER get dev/beta versions.
-
-### Version files (must all match)
-
-| File | Field |
-|------|-------|
-| `pyproject.toml` | `project.version` |
-| `palaia/__init__.py` | `__version__` |
-| `packages/openclaw-plugin/package.json` | `version` |
-| `palaia/SKILL.md` | YAML `version` |
-| `SKILL.md` (root copy) | YAML `version` |
-| `skills/palaia/SKILL.md` | YAML `version` |
+v3 is versioned in `v3/VERSION` and released through `v3-cut-release.yml`; the
+checklist is [`v3/RELEASING.md`](v3/RELEASING.md) and the history is
+[`v3/CHANGELOG.md`](v3/CHANGELOG.md). v2's versioning and release process (PyPI,
+ClawHub, npm) live in `CONTRIBUTING.md` on `v2-maintenance`.
 
 ### CI Workflows
 
 | Workflow | Trigger | What it does |
 |----------|---------|-------------|
-| `ci.yml` | Push to main, PRs | Ruff lint + pytest (3.9-3.12) + vitest |
-| `publish.yml` | `v2.*` tags | PyPI publish (all v2 tags) + npm publish (stable only) |
-
-npm is skipped for dev/beta tags (contains `dev`, `b`, or `rc` in tag name).
+| `v3-ci.yml` | Push/PRs to `main` touching `v3/**` or a `v3-*` workflow | Python (ruff, mypy, pytest), web, SDK, e2e, MCP bundle, docs site |
+| `v3-release.yml` | Push to `main`, `v3.*` tags | Hub container image (`edge` on `main`, `stable`/`beta` on tags) |
+| `v3-cut-release.yml` | Manual dispatch | Tags a v3 release and triggers the image builds |
+| `v3-pi-image.yml` | `v3.*` tags, manual dispatch | Raspberry Pi appliance image |
+| `ci.yml` | Push/PRs to `main` or `v2-maintenance`, ignoring `v3/**` | v2: ruff + pytest (3.9-3.12) + plugin vitest |
+| `publish.yml` | `v2.*` tags | v2 PyPI publish (all v2 tags) + npm publish (stable only) |
 
 `publish.yml` is v2-only: the tag filter is `v2.*` (and every job re-checks the
 `refs/tags/v2.` prefix), so a v3 release tag — `v3.*`, e.g. `v3.3.0.0` — never
-triggers a v2 PyPI/npm publish. v3 releases run through `v3-cut-release.yml`.
+triggers a v2 PyPI/npm publish.
 
 ## Architecture
 
-```
-palaia/
-  backends/        Storage backends (SQLite, PostgreSQL)
-  services/        Business logic (write, query, status, admin)
-  doctor/          Diagnostics (checks, fixes, detection)
-  mcp/             MCP server (Claude Desktop, Cursor)
-  hooks/           OpenClaw hook handlers
-  embed_server.py  Background embedding server (stdio + socket)
-  embed_client.py  Client for embed-server communication
-  search.py        Hybrid search (BM25 + native vector search)
-```
-
-### Key design principles
-
-- **No direct model loading in CLI paths**: All embedding operations go through the embed-server. Never import fastembed in a code path that runs on every CLI call.
-- **Standard install = optimal performance**: `pip install palaia[fastembed]` must deliver the best possible setup without manual optimization.
-- **Embed-server auto-starts**: First CLI query starts the daemon. No manual `palaia embed-server --socket --daemon` needed.
-- **sqlite-vec bundled**: Part of `palaia[fastembed]`, not a separate extra.
-
-### Architecture Decision Records
-
-Significant changes should be proposed as an ADR in `docs/adr/`. See existing ADRs for the format.
+How v3 works — components, data flows, and the evidence behind its claims — is in
+[`v3/docs/how-it-works.md`](v3/docs/how-it-works.md); `v3/MASTERPLAN.md` holds scope
+and roadmap. Significant v3 decisions are recorded as ADRs in `v3/decisions/`.
 
 ## Documentation
 
 | Document | Audience | Purpose |
 |----------|----------|---------|
 | `README.md` | Users + Contributors | Pitch, quickstart, links |
-| `palaia/SKILL.md` | AI Agents | Complete operational guide |
-| `docs/*.md` | Expert users | Detailed setup and configuration |
 | `CONTRIBUTING.md` | Contributors | This file |
-| `ARCHITECTURE.md` | Contributors | Module map, data flows |
+| `v3/README.md` | Contributors | v3 dev setup and ground rules |
+| `v3/MASTERPLAN.md` | Contributors | v3 scope and roadmap |
+| `v3/site/docs/` | Users | The v3 documentation site |

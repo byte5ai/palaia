@@ -112,7 +112,7 @@ Claude Desktop gets a one-click bundle: download, click, connected.
 - **[How it works](v3/docs/how-it-works.md):** the full feature list, the architecture, the test evidence behind the claims, and when palaia is not the right fit.
 - **[Security](v3/SECURITY.md)** and the [threat model](v3/docs/security/threat-model.md).
 - **[What is left before 3.0.0](v3/RELEASING.md)** and [what shipped](v3/CHANGELOG.md).
-- **For contributors:** [`CONTRIBUTING.md`](CONTRIBUTING.md), [`AGENTS.md`](AGENTS.md), and [`v3/README.md`](v3/README.md) for the dev setup.
+- **For contributors:** [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`v3/README.md`](v3/README.md) for the dev setup.
 
 ## Already using palaia v2?
 
