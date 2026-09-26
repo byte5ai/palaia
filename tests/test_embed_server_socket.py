@@ -187,23 +187,37 @@ class TestHandleRequest:
 
 # ── Socket transport integration ─────────────────────────────────
 
+
+def _start_server(server, sock_path, deadline=5.0):
+    """Run the embed-server in a daemon thread; return once it answers a ping.
+
+    The socket file appears at bind(), before listen() and before the server
+    loop runs, so waiting for the file alone races the first connect
+    (ECONNREFUSED, or a ping that times out on a busy runner).
+    """
+    from palaia.embed_client import EmbedServerClient
+
+    t = threading.Thread(
+        target=server.run_socket,
+        kwargs={"socket_path": sock_path},
+        daemon=True,
+    )
+    t.start()
+    end = time.monotonic() + deadline
+    while time.monotonic() < end:
+        if sock_path.exists():
+            probe = EmbedServerClient(sock_path)
+            ready = probe.ping(timeout=0.5)
+            probe.close()
+            if ready:
+                return t
+        time.sleep(0.05)
+    raise RuntimeError("Server did not start in time")
+
 class TestSocketTransport:
     def _start_server_thread(self, server, palaia_root):
         """Start embed-server in a background thread."""
-        t = threading.Thread(
-            target=server.run_socket,
-            kwargs={"socket_path": get_socket_path(palaia_root)},
-            daemon=True,
-        )
-        t.start()
-        # Wait for socket to appear
-        sock_path = get_socket_path(palaia_root)
-        for _ in range(50):
-            if sock_path.exists():
-                time.sleep(0.05)  # extra settle time
-                return t
-            time.sleep(0.05)
-        raise RuntimeError("Server did not start in time")
+        return _start_server(server, get_socket_path(palaia_root))
 
     def _send_recv(self, sock_path, request, timeout=2.0):
         """Send a request to the socket server and return response."""
@@ -318,17 +332,7 @@ class TestEmbedServerClient:
 
         server = EmbedServer(palaia_root)
         sock_path = get_socket_path(palaia_root)
-        # Start server in thread
-        t = threading.Thread(
-            target=server.run_socket,
-            kwargs={"socket_path": sock_path},
-            daemon=True,
-        )
-        t.start()
-        for _ in range(50):
-            if sock_path.exists():
-                break
-            time.sleep(0.05)
+        _start_server(server, sock_path)
 
         try:
             client = EmbedServerClient(sock_path)
@@ -342,16 +346,7 @@ class TestEmbedServerClient:
 
         server = EmbedServer(palaia_root_with_entries)
         sock_path = get_socket_path(palaia_root_with_entries)
-        t = threading.Thread(
-            target=server.run_socket,
-            kwargs={"socket_path": sock_path},
-            daemon=True,
-        )
-        t.start()
-        for _ in range(50):
-            if sock_path.exists():
-                break
-            time.sleep(0.05)
+        _start_server(server, sock_path)
 
         try:
             with EmbedServerClient(sock_path) as client:
@@ -366,16 +361,7 @@ class TestEmbedServerClient:
 
         server = EmbedServer(palaia_root_with_entries)
         sock_path = get_socket_path(palaia_root_with_entries)
-        t = threading.Thread(
-            target=server.run_socket,
-            kwargs={"socket_path": sock_path},
-            daemon=True,
-        )
-        t.start()
-        for _ in range(50):
-            if sock_path.exists():
-                break
-            time.sleep(0.05)
+        _start_server(server, sock_path)
 
         try:
             with EmbedServerClient(sock_path) as client:
@@ -389,16 +375,7 @@ class TestEmbedServerClient:
 
         server = EmbedServer(palaia_root)
         sock_path = get_socket_path(palaia_root)
-        t = threading.Thread(
-            target=server.run_socket,
-            kwargs={"socket_path": sock_path},
-            daemon=True,
-        )
-        t.start()
-        for _ in range(50):
-            if sock_path.exists():
-                break
-            time.sleep(0.05)
+        _start_server(server, sock_path)
 
         try:
             with EmbedServerClient(sock_path) as client:
@@ -472,16 +449,7 @@ class TestIdleTimeout:
         """Server shuts down after idle timeout."""
         server = EmbedServer(palaia_root, idle_timeout=1)  # 1 second
         sock_path = get_socket_path(palaia_root)
-        t = threading.Thread(
-            target=server.run_socket,
-            kwargs={"socket_path": sock_path},
-            daemon=True,
-        )
-        t.start()
-        for _ in range(50):
-            if sock_path.exists():
-                break
-            time.sleep(0.05)
+        t = _start_server(server, sock_path)
 
         # Wait for idle timeout
         t.join(timeout=5)
@@ -491,16 +459,7 @@ class TestIdleTimeout:
         """Activity resets the idle timer."""
         server = EmbedServer(palaia_root, idle_timeout=2)
         sock_path = get_socket_path(palaia_root)
-        t = threading.Thread(
-            target=server.run_socket,
-            kwargs={"socket_path": sock_path},
-            daemon=True,
-        )
-        t.start()
-        for _ in range(50):
-            if sock_path.exists():
-                break
-            time.sleep(0.05)
+        _start_server(server, sock_path)
 
         try:
             # Send pings to keep alive
