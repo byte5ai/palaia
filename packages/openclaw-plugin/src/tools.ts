@@ -64,6 +64,95 @@ function buildRunnerOpts(config: PalaiaPluginConfig): RunnerOpts {
 }
 
 /**
+ * memory_search's CLI-fallback budget; it includes process spawn overhead.
+ * Quoted in docs/openclaw-active-memory.md (checked by docs-active-memory.test.ts).
+ */
+const SEARCH_CLI_TIMEOUT_MS = 15000;
+
+/**
+ * Search palaia: embed server first, CLI fallback.
+ *
+ * The embed server keeps the model loaded, and its queue does not count wait
+ * time against the timeout. The CLI fallback spawns a fresh process (which
+ * may itself wait for an embed server to start), so each caller picks the
+ * budget it can afford via `cliTimeoutMs`.
+ */
+async function searchEntries(
+  query: { text: string; limit: number; includeCold: boolean; type?: string },
+  config: PalaiaPluginConfig,
+  opts: RunnerOpts,
+  cliTimeoutMs: number,
+): Promise<QueryResult> {
+  if (config.embeddingServer) {
+    try {
+      const mgr = getEmbedServerManager(opts);
+      const resp = await mgr.query({
+        text: query.text,
+        top_k: query.limit,
+        include_cold: query.includeCold,
+        ...(query.type ? { type: query.type } : {}),
+      }, config.timeoutMs || 3000);
+      if (resp?.result?.results && Array.isArray(resp.result.results)) {
+        return { results: resp.result.results };
+      }
+    } catch {
+      // Fall through to CLI
+    }
+  }
+
+  const args: string[] = ["query", query.text, "--limit", String(query.limit)];
+  if (query.includeCold) {
+    args.push("--all");
+  }
+  if (query.type) {
+    args.push("--type", query.type);
+  }
+  return runJson<QueryResult>(args, { ...opts, timeoutMs: cliTimeoutMs });
+}
+
+// memory_write's duplicate guard blocks on a hit scoring above
+// DUPLICATE_MIN_SCORE that was created within DUPLICATE_WINDOW_MS.
+const DUPLICATE_MIN_SCORE = 0.8;
+const DUPLICATE_WINDOW_MS = 24 * 60 * 60 * 1000;
+// Short CLI-fallback budget, so the guard never stalls a write
+const DUPLICATE_CLI_TIMEOUT_MS = 2000;
+
+/**
+ * Find a similar entry created in the last 24 hours, or null.
+ *
+ * Best-effort: if the search fails or times out, the write proceeds.
+ */
+async function findRecentDuplicate(
+  content: string,
+  config: PalaiaPluginConfig,
+  opts: RunnerOpts,
+): Promise<{ entry: QueryResult["results"][number]; created: Date } | null> {
+  let result: QueryResult;
+  try {
+    result = await searchEntries(
+      { text: content, limit: 5, includeCold: false },
+      config,
+      opts,
+      DUPLICATE_CLI_TIMEOUT_MS,
+    );
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(result?.results)) return null;
+
+  const now = Date.now();
+  for (const r of result.results) {
+    if (r.score > DUPLICATE_MIN_SCORE && r.created) {
+      const created = new Date(r.created);
+      if (!isNaN(created.getTime()) && now - created.getTime() < DUPLICATE_WINDOW_MS) {
+        return { entry: r, created };
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Register all palaia agent tools on the given plugin API.
  */
 export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig): void {
@@ -118,37 +207,12 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
       const limit = params.maxResults || config.maxResults || 5;
       const includeCold = params.tier === "all" || config.tier === "all";
 
-      // Try embed server first — its queue correctly handles concurrent requests
-      // without counting wait time against the timeout.
-      let result: QueryResult | null = null;
-      if (config.embeddingServer) {
-        try {
-          const mgr = getEmbedServerManager(opts);
-          const resp = await mgr.query({
-            text: params.query,
-            top_k: limit,
-            include_cold: includeCold,
-            ...(params.type ? { type: params.type } : {}),
-          }, config.timeoutMs || 3000);
-          if (resp?.result?.results && Array.isArray(resp.result.results)) {
-            result = { results: resp.result.results };
-          }
-        } catch {
-          // Fall through to CLI
-        }
-      }
-
-      // CLI fallback — longer timeout since it includes process spawn overhead
-      if (!result) {
-        const args: string[] = ["query", params.query, "--limit", String(limit)];
-        if (includeCold) {
-          args.push("--all");
-        }
-        if (params.type) {
-          args.push("--type", params.type);
-        }
-        result = await runJson<QueryResult>(args, { ...opts, timeoutMs: 15000 });
-      }
+      const result = await searchEntries(
+        { text: params.query, limit, includeCold, type: params.type },
+        config,
+        opts,
+        SEARCH_CLI_TIMEOUT_MS,
+      );
 
       // Apply scope visibility filter (Issue #145: agent isolation)
       let filteredResults = result.results || [];
@@ -283,35 +347,19 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
       ) {
         // Duplicate guard: check for similar recent entries before writing
         if (!params.force) {
-          try {
-            const dupCheckResult = await runJson<QueryResult>(
-              ["query", params.content, "--limit", "5"],
-              { ...opts, timeoutMs: 2000 },
-            );
-            if (dupCheckResult && Array.isArray(dupCheckResult.results)) {
-              const now = Date.now();
-              const oneDayMs = 24 * 60 * 60 * 1000;
-              for (const r of dupCheckResult.results) {
-                if (r.score > 0.8 && r.created) {
-                  // Only block on entries created in the last 24h
-                  const createdTime = new Date(r.created).getTime();
-                  if (!isNaN(createdTime) && (now - createdTime) < oneDayMs) {
-                    const title = r.title || (r.content || r.body || "").slice(0, 60);
-                    const dateStr = new Date(createdTime).toISOString().split("T")[0];
-                    return {
-                      content: [
-                        {
-                          type: "text" as const,
-                          text: `Similar entry already exists (score: ${r.score.toFixed(2)}, created: ${dateStr}): '${title}'. Use palaia edit ${r.id} to update, or call again with force: true to write anyway.`,
-                        },
-                      ],
-                    };
-                  }
-                }
-              }
-            }
-          } catch {
-            // Duplicate check timed out or failed — proceed with write
+          const dup = await findRecentDuplicate(params.content, config, opts);
+          if (dup) {
+            const { entry: r, created } = dup;
+            const title = r.title || (r.content || r.body || "").slice(0, 60);
+            const dateStr = created.toISOString().split("T")[0];
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Similar entry already exists (score: ${r.score.toFixed(2)}, created: ${dateStr}): '${title}'. Use palaia edit ${r.id} to update, or call again with force: true to write anyway.`,
+                },
+              ],
+            };
           }
         }
 
