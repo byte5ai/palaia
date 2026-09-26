@@ -198,6 +198,19 @@ export interface SessionState {
   briefingReady: Promise<void> | null;
   /** Resolver for briefingReady promise. */
   briefingReadyResolve: (() => void) | null;
+  /**
+   * Rolling window of the session's most recent conversation messages
+   * (capped at RECENT_MESSAGE_CAP), kept for pre-compaction capture (#185).
+   * Lives here — not in the ContextEngine closure — because OpenClaw
+   * resolves a fresh engine instance per call (e.g. for queued compaction),
+   * and because the before_compaction hook on the ownsCompaction path
+   * carries no messages of its own.
+   */
+  recentMessages: unknown[];
+  /** Timestamp of the last successful forced (pre-compaction) capture, 0 if none. */
+  lastForcedCaptureAt: number;
+  /** In-flight forced capture, so hook and compact() never extract concurrently. */
+  forcedCaptureInFlight: Promise<boolean> | null;
 }
 
 /** Session state map. Keyed by sessionKey. */
@@ -245,10 +258,37 @@ export function getOrCreateSessionState(sessionKey: string): SessionState {
       summarySaved: false,
       briefingReady: null,
       briefingReadyResolve: null,
+      recentMessages: [],
+      lastForcedCaptureAt: 0,
+      forcedCaptureInFlight: null,
     };
     sessionStateByKey.set(sessionKey, state);
   }
   return state;
+}
+
+/** Maximum number of messages kept in SessionState.recentMessages. */
+export const RECENT_MESSAGE_CAP = 200;
+
+/**
+ * Record conversation messages for pre-compaction capture (#185).
+ *
+ * - `"replace"`: `messages` is a full conversation snapshot (ContextEngine
+ *   `afterTurn`) — keep its last RECENT_MESSAGE_CAP entries.
+ * - `"append"`: `messages` are new messages (ContextEngine `ingest`) —
+ *   append and trim to the cap.
+ */
+export function rememberRecentMessages(
+  sessionKey: string,
+  messages: unknown[],
+  mode: "replace" | "append",
+): void {
+  if (!sessionKey || !Array.isArray(messages) || messages.length === 0) return;
+  const state = getOrCreateSessionState(sessionKey);
+  const combined = mode === "replace" ? messages : [...state.recentMessages, ...messages];
+  state.recentMessages = combined.length > RECENT_MESSAGE_CAP
+    ? combined.slice(combined.length - RECENT_MESSAGE_CAP)
+    : combined.slice();
 }
 
 /** Delete session state (cleanup). */

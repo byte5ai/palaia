@@ -6,7 +6,7 @@
  * Registers:
  * - Tools: memory_search, memory_get, memory_write
  * - MemoryPromptSection: Guided tool usage hints
- * - Session hooks (always): session_start, session_end, before_reset,
+ * - Session hooks (always): session_start, session_end, before_reset, before_compaction,
  *   llm_input, llm_output, after_tool_call, subagent_spawning, subagent_ended
  * - ContextEngine (modern) OR legacy hooks (before_prompt_build, agent_end,
  *   message_received, message_sending)

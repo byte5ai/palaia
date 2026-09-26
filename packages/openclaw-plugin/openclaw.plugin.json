@@ -42,6 +42,11 @@
         "default": true,
         "description": "Enable automatic memory capture after agent exchanges"
       },
+      "captureOnCompaction": {
+        "type": "boolean",
+        "default": true,
+        "description": "Save a session summary right before OpenClaw compacts the conversation, so compacted content is not lost"
+      },
       "captureFrequency": {
         "type": "string",
         "enum": ["every", "significant"],
@@ -124,6 +129,10 @@
     "autoCapture": {
       "label": "Auto-Capture",
       "description": "Automatically capture significant exchanges as memories (recommended: on)"
+    },
+    "captureOnCompaction": {
+      "label": "Capture Before Compaction",
+      "description": "Save a session summary before the context is compacted (recommended: on)"
     },
     "showMemorySources": {
       "label": "Memory Source Footnotes",
