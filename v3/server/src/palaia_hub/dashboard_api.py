@@ -39,11 +39,12 @@ an error — it is not a graph edge until the target note exists.
 from __future__ import annotations
 
 import dataclasses
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from .curator.profile import CURATOR_PROFILE_PATH
 from .curator.wiring import CuratorWiring
@@ -64,9 +65,11 @@ from .vault import (
     AmbiguousReferenceError,
     CommitInfo,
     InvalidPathError,
+    Note,
     NoteNotFoundError,
     VaultConfigError,
     VaultEngine,
+    VaultError,
     VaultInfo,
     VaultNotFoundError,
     VaultRegistry,
@@ -109,6 +112,11 @@ class VaultOut(BaseModel):
     path: str
     writable: bool
     note_count: int
+    #: A task-bound vault (issue #168): promote what is worth keeping, then
+    #: close it (``POST .../promote``, ``POST .../close``).
+    ephemeral: bool = False
+    #: When an ephemeral vault is due to be closed (ISO 8601 UTC), if set.
+    expires: str | None = None
 
 
 class CreateVaultRequest(BaseModel):
@@ -125,6 +133,65 @@ class CreateVaultRequest(BaseModel):
     #: Seed the two starter notes above (onboarding.html's "Start from a
     #: template" switch).
     template: bool = False
+    #: Create a task-bound vault (issue #168): gather the sources for one
+    #: task in it, promote what is worth keeping into a long-lived vault,
+    #: then close it. Written to the manifest as ``lifecycle: ephemeral``.
+    ephemeral: bool = False
+    #: Days until the ephemeral vault is due to be closed; the doctor warns
+    #: once it is overdue. Nothing is closed or deleted automatically.
+    ttl_days: int | None = Field(default=None, ge=1, le=3650)
+
+
+class PromoteRequest(BaseModel):
+    """Copy chosen notes out of a vault into another one (issue #168)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The vault the notes are copied into — usually a long-lived one.
+    target: str
+    #: The notes to copy, by permalink (or anything the vault resolves: a
+    #: path or a title). Order is kept; duplicates are refused.
+    notes: list[str] = Field(min_length=1, max_length=500)
+
+
+class PromotedNoteOut(BaseModel):
+    """One note :class:`PromoteRequest` copied."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str
+    permalink: str
+    path: str
+
+
+class PromoteOut(BaseModel):
+    """What ``POST .../promote`` copied, and where to."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str
+    target: str
+    promoted: list[PromotedNoteOut]
+
+
+class CloseVaultRequest(BaseModel):
+    """Close an ephemeral vault — the explicit, typed confirmation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Must repeat the vault's key exactly, so a stray or replayed call on
+    #: the wrong vault is refused instead of acted on.
+    confirm: str
+
+
+class CloseVaultOut(BaseModel):
+    """What ``POST .../close`` did."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    #: Where the vault's files — notes, git history, index — now live.
+    archived_to: str
 
 
 class ReviewDecisionRequest(BaseModel):
@@ -238,7 +305,15 @@ def _vault_out(key: str, info: VaultInfo) -> VaultOut:
         path=info.path,
         writable=info.writable,
         note_count=info.note_count,
+        ephemeral=info.ephemeral,
+        expires=info.expires,
     )
+
+
+#: Promotion never copies the vault manifest or a curator proposal: the
+#: first is the source vault's identity, the second only means anything
+#: inside the vault whose notes it proposes to change.
+_UNPROMOTABLE_DIRS = ("meta/", "review/")
 
 
 async def _get_engine(registry: VaultRegistry, vault_key: str) -> VaultEngine:
@@ -294,9 +369,24 @@ def build_dashboard_router(
 
     @router.post("/api/vaults", response_model=VaultOut)
     async def create_vault(body: CreateVaultRequest) -> VaultOut:
+        if body.ttl_days is not None and not body.ephemeral:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "only an ephemeral vault has a time limit. Fix: set ephemeral to "
+                    "true, or leave ttl_days out."
+                ),
+            )
         path = Path(body.path) if body.path else registry.home / "vaults" / body.key
+        expires = (
+            datetime.now(tz=UTC) + timedelta(days=body.ttl_days)
+            if body.ttl_days is not None
+            else None
+        )
         try:
-            engine = await registry.create(body.key, path, purpose=body.purpose)
+            engine = await registry.create(
+                body.key, path, purpose=body.purpose, ephemeral=body.ephemeral, expires=expires
+            )
         except VaultConfigError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if body.template:
@@ -344,6 +434,150 @@ def build_dashboard_router(
             )
 
         return _vault_out(body.key, engine.info())
+
+    @router.post("/api/vaults/{vault_key}/promote", response_model=PromoteOut)
+    async def promote_notes(vault_key: str, body: PromoteRequest) -> PromoteOut:
+        """Copy chosen notes into another vault (issue #168).
+
+        All-or-nothing up front: every note is resolved and every target
+        slot checked before the first write, so a refused request leaves
+        the target vault exactly as it was. Each note keeps its path, its
+        permalink (so wikilinks between promoted notes still resolve) and
+        its frontmatter, including who originally wrote it; the target
+        vault's commit names the source vault. The source is left alone —
+        closing it is a separate, explicit step.
+        """
+        if body.target == vault_key:
+            raise HTTPException(
+                status_code=400,
+                detail="a vault cannot promote notes into itself. Fix: name another target.",
+            )
+        source = await _get_engine(registry, vault_key)
+        target = await _get_engine(registry, body.target)
+        if not target.writable:
+            raise HTTPException(
+                status_code=409,
+                detail=f"vault {body.target!r} is read-only (unknown vault format version).",
+            )
+        plan: list[tuple[str, Note]] = []
+        seen: set[str] = set()
+        for reference in body.notes:
+            try:
+                entry = source.resolve(reference)
+                note = await source.read_note(entry.path)
+            except (NoteNotFoundError, AmbiguousReferenceError, InvalidPathError) as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            if entry.path in seen:
+                raise HTTPException(
+                    status_code=400, detail=f"note {reference!r} is listed more than once."
+                )
+            seen.add(entry.path)
+            if entry.path.startswith(_UNPROMOTABLE_DIRS):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{entry.path!r} is vault housekeeping (the manifest or a curator "
+                        f"proposal), not knowledge to keep. Fix: leave it out."
+                    ),
+                )
+            if note.undecodable or note.malformed_frontmatter:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"{entry.path!r} cannot be copied safely (broken frontmatter or "
+                        f"not UTF-8). Fix: repair it in the source vault first."
+                    ),
+                )
+            if (target.root / entry.path).exists() or target.known_entry(entry.path):
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"vault {body.target!r} already has a note at {entry.path!r}. "
+                        f"Nothing was copied. Fix: move or rename one of the two first."
+                    ),
+                )
+            if note.permalink and target.path_for_permalink(note.permalink) is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"vault {body.target!r} already has a note with the permalink "
+                        f"{note.permalink!r}. Nothing was copied. Fix: rename one of the "
+                        f"two first."
+                    ),
+                )
+            plan.append((reference, note))
+
+        promoted: list[PromotedNoteOut] = []
+        for reference, note in plan:
+            try:
+                result = await target.write_note(
+                    note.path,
+                    body=note.body,
+                    title=note.title,
+                    frontmatter=dict(note.frontmatter),
+                    permalink=note.permalink,
+                    summary=f"promote {note.permalink or note.path} from vault {vault_key}",
+                    must_create=True,
+                )
+            except VaultError as exc:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"stopped at {note.path!r}: {exc} — {len(promoted)} note(s) before "
+                        f"it were already copied into {body.target!r}."
+                    ),
+                ) from exc
+            written = result.note
+            promoted.append(
+                PromotedNoteOut(
+                    source=reference,
+                    permalink=(written.permalink if written else None) or note.path,
+                    path=written.path if written else note.path,
+                )
+            )
+        return PromoteOut(source=vault_key, target=body.target, promoted=promoted)
+
+    @router.post("/api/vaults/{vault_key}/close", response_model=CloseVaultOut)
+    async def close_vault(vault_key: str, body: CloseVaultRequest) -> CloseVaultOut:
+        """Close an ephemeral vault: unmount it and archive its files (issue #168).
+
+        Only an ephemeral vault can be closed — a long-lived vault is never
+        taken off a running hub. The vault's tools leave every profile, the
+        curator stops curating it, its watcher and index are released, and
+        its directory moves to the hub's archive. Nothing is deleted.
+        """
+        engine = await _get_engine(registry, vault_key)
+        if body.confirm != vault_key:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"confirmation does not match. Fix: send confirm={vault_key!r} to "
+                    f"close this vault."
+                ),
+            )
+        if not engine.info().ephemeral:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"vault {vault_key!r} is not ephemeral, and only an ephemeral vault "
+                    f"can be closed here. A long-lived vault stays until you remove it "
+                    f"by hand."
+                ),
+            )
+        if dynamic_gateway is not None and any(
+            v.key == vault_key for v in dynamic_gateway.config.vaults
+        ):
+            await dynamic_gateway.remove_vault(vault_key)
+        if curator is not None:
+            curator.remove_vault(vault_key)
+        watcher = watchers.pop(vault_key, None) if watchers is not None else None
+        if watcher is not None:
+            await watcher.stop()
+        index = indexes.pop(vault_key, None) if indexes is not None else None
+        if index is not None:
+            await index.close()
+        archived = await registry.archive(vault_key)
+        return CloseVaultOut(key=vault_key, archived_to=str(archived))
 
     @router.get("/api/vaults", response_model=list[VaultOut])
     async def list_vaults() -> list[VaultOut]:

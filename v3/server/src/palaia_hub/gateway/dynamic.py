@@ -598,6 +598,46 @@ class DynamicGateway:
                 await self._request_mount(profile)
         check_gateway_auth_policy(self._mode, self._profile_servers)
 
+    async def remove_vault(self, key: str) -> list[str]:
+        """Unmount one vault's tool family from every profile, live (issue #168).
+
+        The runtime counterpart of :meth:`add_vault`, used when an ephemeral
+        vault is closed: the vault leaves the config and its tool server is
+        dropped, and every profile that mounted it is rebuilt without it —
+        a profile left with no vault stays mounted (its other tools, and its
+        clients' connections, keep working). Returns the rebuilt profile
+        paths.
+
+        Raises:
+            GatewayConfigError: ``key`` is not mounted at this gateway.
+        """
+        async with self._lock:
+            if key not in self._vault_services:
+                raise GatewayConfigError(
+                    f"cannot remove vault {key!r}: it is not mounted at this gateway."
+                )
+            affected: list[ProfileConfig] = []
+            profiles: list[ProfileConfig] = []
+            for profile in self._config.profiles:
+                if key in profile.vaults:
+                    profile = profile.model_copy(
+                        update={"vaults": [v for v in profile.vaults if v != key]}
+                    )
+                    affected.append(profile)
+                profiles.append(profile)
+            self._config = self._config.model_copy(
+                update={
+                    "vaults": [v for v in self._config.vaults if v.key != key],
+                    "profiles": profiles,
+                }
+            )
+            self._vault_services.pop(key, None)
+            self._vault_servers.pop(key, None)
+            for profile in affected:
+                await self._request_mount(profile)
+        check_gateway_auth_policy(self._mode, self._profile_servers)
+        return [p.path for p in affected]
+
     async def remove_profile(self, path: str) -> None:
         """Unmount ``path`` (SPEC-301's ``DELETE /api/gateway/profiles/{path}``).
 

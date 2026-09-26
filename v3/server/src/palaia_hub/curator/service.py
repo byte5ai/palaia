@@ -120,6 +120,15 @@ class CuratorScheduler:
         if applier is not None:
             self._appliers[key] = applier
 
+    def remove_vault(self, key: str) -> None:
+        """Stop curating a vault that was closed at runtime (issue #168).
+
+        Same snapshot argument as :meth:`add_vault`: a pass already under
+        way finishes with the runner it snapshotted; the next one no longer
+        sees this vault. A no-op for an unknown key."""
+        self._runners.pop(key, None)
+        self._appliers.pop(key, None)
+
     # ------------------------------------------------------------------ loop
 
     async def _loop(self) -> None:
