@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time as _time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -131,6 +132,23 @@ class Store:
         """Run WAL recovery on startup."""
         return self.wal.recover(self)
 
+    def resolve_write_scope(self, scope: str | None = None, project: str | None = None) -> str:
+        """Return the scope write() would give a new entry, without side effects.
+
+        Follows the write() cascade: explicit scope, then the project's default
+        scope, then the global default_scope. A project that does not exist yet
+        would be created with the global default, so that default applies.
+        """
+        if scope is not None:
+            return normalize_scope(scope)
+        if project:
+            from palaia.project import ProjectManager
+
+            proj = ProjectManager(self.root).get(project)
+            if proj is not None:
+                return normalize_scope(proj.default_scope)
+        return normalize_scope(None, self.config["default_scope"])
+
     def write(
         self,
         body: str,
@@ -158,18 +176,12 @@ class Store:
             raise ValueError("Cannot write empty content. Provide a non-empty text body.")
 
         # Scope cascade
-        if scope is not None:
-            # Explicit scope always wins
-            scope = normalize_scope(scope)
-        elif project:
-            # Auto-create project if it doesn't exist, then use its default scope
+        if scope is None and project:
+            # Auto-create the project if it doesn't exist; it inherits the global default scope
             from palaia.project import ProjectManager
 
-            pm = ProjectManager(self.root)
-            proj = pm.ensure(project, default_scope=self.config["default_scope"])
-            scope = normalize_scope(proj.default_scope)
-        else:
-            scope = normalize_scope(None, self.config["default_scope"])
+            ProjectManager(self.root).ensure(project, default_scope=self.config["default_scope"])
+        scope = self.resolve_write_scope(scope, project)
 
         # Dedup check
         h = content_hash(body)
@@ -867,6 +879,35 @@ class Store:
             result["budget"] = budget
 
         return result
+
+    _ENTRY_ID_PREFIX = re.compile(r"[0-9a-fA-F-]+")
+
+    def resolve_visible_id(
+        self, entry_id: str, agent: str | None = None, scope_visibility: list[str] | None = None
+    ) -> str | None:
+        """Resolve a full entry id or short prefix to the full id of an entry ``agent`` may access.
+
+        Entries the agent cannot access are skipped: a hidden entry neither shadows a
+        visible one that shares the prefix nor reveals that it exists. Returns None
+        when no accessible entry matches.
+        """
+        if not self._ENTRY_ID_PREFIX.fullmatch(entry_id or ""):
+            return None
+        resolved = self._resolve_names(agent)
+        for tier in TIERS:
+            tier_dir = self.root / tier
+            if not tier_dir.exists():
+                continue
+            for path in sorted(tier_dir.glob(f"{entry_id}*.md")):
+                try:
+                    meta, _body = parse_entry(path.read_text(encoding="utf-8"))
+                except (OSError, UnicodeDecodeError):
+                    continue
+                if can_access(
+                    meta.get("scope", "team"), agent, meta.get("agent"), None, resolved, scope_visibility
+                ):
+                    return path.stem
+        return None
 
     def _find_entry(self, entry_id: str) -> Path | None:
         """Find an entry file across tiers."""

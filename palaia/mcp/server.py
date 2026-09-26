@@ -25,6 +25,12 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
         ),
     )
 
+    # Agent identity this server acts as, resolved exactly like the CLI does so both
+    # act as the same agent on a store. Every tool uses it for scope checks.
+    from palaia.cli_helpers import resolve_agent_for_root
+
+    server_agent = resolve_agent_for_root(root)
+
     # Lazy-init store and search engine (avoid import cost at module level)
     _store = None
     _engine = None
@@ -72,6 +78,7 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
             query,
             limit=limit,
             project=project,
+            agent=server_agent,
             entry_type=entry_type,
             status=status,
             priority=priority,
@@ -111,7 +118,10 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
         """Read a specific memory entry by ID. Returns the full content and metadata."""
         from palaia.services.query import get_entry
 
-        result = get_entry(root, entry_id)
+        full_id = _get_store().resolve_visible_id(entry_id, agent=server_agent)
+        if full_id is None:
+            return f"Entry not found: {entry_id}"
+        result = get_entry(root, full_id, agent=server_agent)
 
         if "error" in result:
             if result["error"] == "not_found":
@@ -152,6 +162,7 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
             root,
             tier=tier if not list_all else None,
             list_all=list_all,
+            agent=server_agent,
             entry_type=entry_type,
             project=project if project else None,
             status=status,
@@ -214,13 +225,27 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
             entry_type: Annotated[str | None, Field(description="Type: memory (default), process, task")] = None,
             scope: Annotated[str | None, Field(description="Scope: team (default), private, public")] = None,
             project: Annotated[str | None, Field(description="Project name")] = None,
-            agent: Annotated[str | None, Field(description="Agent name (auto-detected if not set)")] = None,
+            agent: Annotated[
+                str | None,
+                Field(description="Owning agent (default: this server's agent identity)"),
+            ] = None,
             status: Annotated[str | None, Field(description="Task status: open, in-progress, done, wontfix")] = None,
             priority: Annotated[str | None, Field(description="Task priority: critical, high, medium, low")] = None,
         ) -> str:
             """Store a new memory entry. Use this to save context, decisions, patterns,
             or any knowledge that should persist across sessions."""
+            from palaia.services.write import private_write_error
+
             store = _get_store()
+            owner = agent or server_agent
+            if owner != server_agent and store.resolve_write_scope(scope, project) == "private":
+                return (
+                    f"Cannot store a private entry for agent '{owner}': this server acts as "
+                    f"'{server_agent}' and could not read or edit it."
+                )
+            error = private_write_error(store, scope=scope, project=project, agent=owner)
+            if error:
+                return error
             entry_id = store.write(
                 body=content,
                 title=title,
@@ -228,7 +253,7 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
                 entry_type=entry_type,
                 scope=scope,
                 project=project,
-                agent=agent,
+                agent=owner,
                 status=status,
                 priority=priority,
             )
@@ -245,17 +270,18 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
             assignee: Annotated[str | None, Field(description="New assignee")] = None,
         ) -> str:
             """Edit an existing memory entry. Only provided fields change; content and
-            tags replace the old values. An unknown id returns 'Entry not found' (as
-            text, not an error)."""
+            tags replace the old values. An unknown id, including another agent's
+            private entry, returns 'Entry not found' (as text, not an error)."""
             store = _get_store()
-            if len(entry_id) < 36:
-                from palaia.services.query import _resolve_short_id
-
-                entry_id = _resolve_short_id(store, entry_id) or entry_id
+            full_id = store.resolve_visible_id(entry_id, agent=server_agent)
+            if full_id is None:
+                return f"Entry not found: {entry_id}"
+            entry_id = full_id
             try:
                 store.edit(
                     entry_id=entry_id,
                     body=content,
+                    agent=server_agent,
                     title=title,
                     tags=tags,
                     status=status,
@@ -263,8 +289,11 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
                     assignee=assignee,
                 )
                 return f"Updated entry {entry_id[:8]}"
-            except (FileNotFoundError, ValueError):
+            except FileNotFoundError:
                 return f"Entry not found: {entry_id}"
+            except ValueError as e:
+                # The entry exists (resolved above), so this is an invalid field value.
+                return f"Error: {e}"
             except PermissionError as e:
                 return f"Permission denied: {e}"
 

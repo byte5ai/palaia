@@ -8,8 +8,29 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-from palaia.config import load_config
 from palaia.store import Store
+
+
+def private_write_error(
+    store: Store, *, scope: str | None, project: str | None, agent: str | None
+) -> str | None:
+    """Explain why a write would create a private entry without an owning agent, else None.
+
+    Uses the scope the entry would actually get, so a private project or global
+    default scope is caught as well as an explicit one. In a multi-agent store,
+    no agent (or the 'default' fallback) is not an identity.
+    """
+    if store.resolve_write_scope(scope, project) != "private":
+        return None
+    if agent and agent != "default":
+        return None
+    if store.config.get("multi_agent") and not os.environ.get("PALAIA_AGENT"):
+        return (
+            "Cannot write with scope 'private' without an agent identity. "
+            "Private entries are only accessible to their owning agent. "
+            "Set PALAIA_AGENT env var or run 'palaia init --agent NAME'."
+        )
+    return None
 
 
 def write_entry(
@@ -38,17 +59,9 @@ def write_entry(
     recovered = store.recover()
 
     # Private scope requires an agent identity — reject early
-    eff_scope = scope or "team"
-    if eff_scope == "private" and (not agent or agent == "default"):
-        config = load_config(root)
-        if config.get("multi_agent") and not os.environ.get("PALAIA_AGENT"):
-            return {
-                "error": (
-                    "Cannot write with scope 'private' without an agent identity. "
-                    "Private entries are only accessible to their owning agent. "
-                    "Set PALAIA_AGENT env var or run 'palaia init --agent NAME'."
-                ),
-            }
+    error = private_write_error(store, scope=scope, project=project, agent=agent)
+    if error:
+        return {"error": error}
 
     # Similarity check for processes: warn before creating near-duplicates
     process_similarity_nudge: str | None = None

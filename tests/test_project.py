@@ -197,6 +197,36 @@ class TestScopeCascade:
         assert meta["scope"] == "team"
 
 
+class TestResolveWriteScope:
+    """resolve_write_scope() must predict write()'s scope without side effects."""
+
+    def test_explicit_scope_wins(self, pm, store):
+        pm.create("proj", default_scope="private")
+        assert store.resolve_write_scope("public", "proj") == "public"
+
+    def test_project_default(self, pm, store):
+        pm.create("proj", default_scope="private")
+        assert store.resolve_write_scope(None, "proj") == "private"
+
+    def test_global_default(self, store):
+        assert store.resolve_write_scope() == "team"
+
+    def test_unknown_project_uses_global_default_without_creating_it(self, pm, store):
+        assert store.resolve_write_scope(None, "not-yet") == "team"
+        assert pm.get("not-yet") is None
+
+    @pytest.mark.parametrize("scope,project_scope", [(None, "private"), ("team", "private"), (None, None)])
+    def test_matches_write(self, pm, store, scope, project_scope):
+        project = None
+        if project_scope:
+            pm.create("proj", default_scope=project_scope)
+            project = "proj"
+        predicted = store.resolve_write_scope(scope, project)
+        eid = store.write(f"entry {scope} {project_scope}", scope=scope, project=project)
+        meta, _ = parse_entry((store.root / "hot" / f"{eid}.md").read_text())
+        assert meta["scope"] == predicted
+
+
 # --- Project Query Filter ---
 
 

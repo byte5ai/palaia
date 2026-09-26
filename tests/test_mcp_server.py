@@ -4,11 +4,19 @@ from __future__ import annotations
 
 import pytest
 
-from palaia.config import DEFAULT_CONFIG, save_config
+from palaia.config import DEFAULT_CONFIG, load_config, save_config
 from palaia.store import Store
 
 # Skip all if mcp not installed
 mcp = pytest.importorskip("mcp")
+
+
+@pytest.fixture(autouse=True)
+def _isolated_agent_identity(monkeypatch, tmp_path_factory):
+    """Keep the host's identity out: the server resolves its agent like the CLI does,
+    from PALAIA_AGENT, the store config and ~/.openclaw/config.json."""
+    monkeypatch.delenv("PALAIA_AGENT", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path_factory.mktemp("home")))
 
 
 @pytest.fixture
@@ -233,6 +241,143 @@ class TestGC:
         assert isinstance(result, str)
         # With only 3 entries, nothing should move
         assert "nothing to do" in result.lower() or "dry run" in result.lower()
+
+
+# ── Agent identity ───────────────────────────────────────────────
+
+
+def _raw_meta(root, entry_id):
+    from palaia.entry import parse_entry
+
+    for tier in ("hot", "warm", "cold"):
+        path = root / tier / f"{entry_id}.md"
+        if path.exists():
+            return parse_entry(path.read_text(encoding="utf-8"))[0]
+    raise FileNotFoundError(entry_id)
+
+
+def _stored_id(result):
+    # "Stored entry ab12cd34 (memory)"
+    return result.split()[2]
+
+
+class TestAgentIdentity:
+    """The server acts as the agent the CLI would resolve ("test-agent" from the config here)."""
+
+    def test_store_stamps_server_agent(self, server, palaia_root_with_entries):
+        result = _get_tool_fn(server, "palaia_store")(content="Team note from MCP")
+        assert _raw_meta(palaia_root_with_entries, _full_id(palaia_root_with_entries, result))["agent"] == "test-agent"
+
+    def test_explicit_agent_param_owns_team_entry(self, server, palaia_root_with_entries):
+        result = _get_tool_fn(server, "palaia_store")(content="Note for someone else", agent="other-agent")
+        assert _raw_meta(palaia_root_with_entries, _full_id(palaia_root_with_entries, result))["agent"] == "other-agent"
+
+    def test_private_entry_for_foreign_owner_is_refused(self, server, palaia_root_with_entries):
+        result = _get_tool_fn(server, "palaia_store")(
+            content="Secret for bob", scope="private", agent="bob"
+        )
+        assert result.startswith("Cannot store a private entry for agent 'bob'")
+        assert not any("Secret for bob" in p.read_text() for p in palaia_root_with_entries.glob("*/*.md"))
+
+    def test_single_agent_config_wins_over_env(self, palaia_root_with_entries, monkeypatch):
+        """Same precedence as the CLI: in single-agent mode the config's agent wins."""
+        from palaia.mcp.server import create_server
+
+        monkeypatch.setenv("PALAIA_AGENT", "env-agent")
+        server = create_server(palaia_root_with_entries)
+        result = _get_tool_fn(server, "palaia_store")(content="Single-agent note")
+        assert _raw_meta(palaia_root_with_entries, _full_id(palaia_root_with_entries, result))["agent"] == "test-agent"
+
+    def test_multi_agent_env_wins_over_config(self, palaia_root_with_entries, monkeypatch):
+        from palaia.mcp.server import create_server
+
+        config = load_config(palaia_root_with_entries)
+        config["multi_agent"] = True
+        save_config(palaia_root_with_entries, config)
+        monkeypatch.setenv("PALAIA_AGENT", "env-agent")
+        server = create_server(palaia_root_with_entries)
+        result = _get_tool_fn(server, "palaia_store")(content="Multi-agent note")
+        assert _raw_meta(palaia_root_with_entries, _full_id(palaia_root_with_entries, result))["agent"] == "env-agent"
+
+    def test_same_identity_as_cli(self, palaia_root_with_entries, monkeypatch):
+        from palaia.cli_helpers import resolve_agent
+        from palaia.mcp.server import create_server
+
+        monkeypatch.setenv("PALAIA_HOME", str(palaia_root_with_entries))
+        monkeypatch.chdir(palaia_root_with_entries.parent)
+        server = create_server(palaia_root_with_entries)
+        result = _get_tool_fn(server, "palaia_store")(content="Who am I")
+        stored_as = _raw_meta(palaia_root_with_entries, _full_id(palaia_root_with_entries, result))["agent"]
+        assert stored_as == resolve_agent(type("Args", (), {"agent": None})())
+
+    def test_own_private_entry_round_trip(self, server):
+        stored = _get_tool_fn(server, "palaia_store")(
+            content="Launch codes live in the vault", title="Private plan", scope="private"
+        )
+        short_id = _stored_id(stored)
+
+        assert "Launch codes" in _get_tool_fn(server, "palaia_read")(entry_id=short_id)
+        assert "Private plan" in _get_tool_fn(server, "palaia_search")(query="launch codes vault")
+        assert "Private plan" in _get_tool_fn(server, "palaia_list")()
+
+        edited = _get_tool_fn(server, "palaia_edit")(entry_id=short_id, title="Private plan v2")
+        assert edited.startswith("Updated entry")
+        assert "Private plan v2" in _get_tool_fn(server, "palaia_read")(entry_id=short_id)
+
+    def test_other_agents_private_entry_is_indistinguishable_from_missing(self, server, palaia_root_with_entries):
+        other_id = Store(palaia_root_with_entries).write(
+            body="Someone else's secret", title="Not yours", scope="private", agent="other-agent"
+        )
+
+        for entry_id in (other_id, other_id[:8]):
+            assert _get_tool_fn(server, "palaia_read")(entry_id=entry_id) == f"Entry not found: {entry_id}"
+            edited = _get_tool_fn(server, "palaia_edit")(entry_id=entry_id, title="Hijacked")
+            assert edited == f"Entry not found: {entry_id}"
+        assert "Not yours" not in _get_tool_fn(server, "palaia_list")()
+        assert "Not yours" not in _get_tool_fn(server, "palaia_search")(query="someone else secret")
+        assert _raw_meta(palaia_root_with_entries, other_id)["title"] == "Not yours"
+
+    def test_edit_reports_invalid_values(self, server, palaia_root_with_entries):
+        eid = Store(palaia_root_with_entries).write(body="A task", entry_type="task", title="Task")
+        result = _get_tool_fn(server, "palaia_edit")(entry_id=eid, status="closed")
+        assert result.startswith("Error:")
+        assert "not found" not in result.lower()
+
+
+class TestNoAgentIdentity:
+    """Multi-agent store, no PALAIA_AGENT, no config agent: the identity falls back to
+    'default', which is not an owner for private entries (same rule as the CLI)."""
+
+    @pytest.fixture
+    def anonymous_server(self, palaia_root_with_entries):
+        from palaia.mcp.server import create_server
+        from palaia.project import ProjectManager
+
+        config = load_config(palaia_root_with_entries)
+        config["agent"] = None
+        config["multi_agent"] = True
+        save_config(palaia_root_with_entries, config)
+        ProjectManager(palaia_root_with_entries).create("secret-project", default_scope="private")
+        return create_server(palaia_root_with_entries)
+
+    def test_explicit_private_store_is_refused(self, anonymous_server, palaia_root_with_entries):
+        result = _get_tool_fn(anonymous_server, "palaia_store")(content="Orphan secret", scope="private")
+        assert result.startswith("Cannot write with scope 'private' without an agent identity")
+        assert not any("Orphan secret" in p.read_text() for p in palaia_root_with_entries.glob("*/*.md"))
+
+    def test_private_project_default_store_is_refused(self, anonymous_server):
+        result = _get_tool_fn(anonymous_server, "palaia_store")(content="Orphan via project", project="secret-project")
+        assert result.startswith("Cannot write with scope 'private' without an agent identity")
+
+    def test_team_store_still_works(self, anonymous_server):
+        result = _get_tool_fn(anonymous_server, "palaia_store")(content="Shared note without identity")
+        assert result.startswith("Stored entry")
+
+
+def _full_id(root, stored_result):
+    from palaia.services.query import _resolve_short_id
+
+    return _resolve_short_id(Store(root), _stored_id(stored_result))
 
 
 # ── Server creation ─────────────────────────────────────────────
