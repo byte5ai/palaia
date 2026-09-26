@@ -291,6 +291,7 @@ class SearchEngine:
                     "body": body[:200] + ("..." if len(body) > 200 else ""),
                     "tier": self._get_tier(doc_id),
                     "decay_score": meta.get("decay_score", 0),
+                    "created": meta.get("created", ""),
                 }
                 # Include task fields if present
                 if meta.get("status"):
