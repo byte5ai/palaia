@@ -10,6 +10,57 @@ logger = logging.getLogger(__name__)
 
 from palaia.store import Store
 
+# The "Similar process found" nudge fires when an existing process's embedding
+# similarity (`embed_score`, the raw cosine similarity) to the new one reaches
+# this value. It cannot use the ranking `score`: SearchEngine normalizes BM25 to
+# the best hit, so with BM25-only search the top hit always scores 1.0, however
+# unrelated it is (#481). Calibrated in #480 with the default fastembed model
+# (bge-small-en-v1.5), comparing entries as "title tags body": near-duplicates
+# 0.90-0.97, paraphrases 0.84-0.88, same topic but different content
+# 0.75-0.83. The nudge only advises "consider updating it", which is right for
+# a paraphrase, so it sits below the blocking duplicate guard's 0.89 and above
+# the same-topic band. Other embedding providers are not calibrated.
+PROCESS_SIMILARITY_MIN_EMBED = 0.85
+
+
+def _process_similarity_nudge(
+    store: Store, *, body: str, title: str | None, tags: list[str] | None
+) -> str | None:
+    """Name an existing process that looks like the one about to be written, else None.
+
+    Needs embeddings: without an embedding similarity (BM25-only store, or an
+    embedding failure) it never nudges. Best-effort: errors mean no nudge.
+    """
+    try:
+        from palaia.entry import extract_title_from_content
+        from palaia.search import SearchEngine
+
+        # Compare the new entry as SearchEngine.build_index() indexes and embeds
+        # stored ones: "title tags body", with the title create_entry() would
+        # auto-extract when none is given.
+        effective_title = title if title else extract_title_from_content(body)
+        query = f"{effective_title or ''} {' '.join(tags or [])} {body}"
+
+        engine = SearchEngine(store)
+        results = engine.search(query, top_k=5, entry_type="process")
+        # Results are ranked by the hybrid score, so the most similar process
+        # need not be the first hit.
+        best = max(results, key=lambda r: r.get("embed_score") or 0.0, default=None)
+        if best is None:
+            return None
+        similarity = best.get("embed_score") or 0.0
+        if similarity < PROCESS_SIMILARITY_MIN_EMBED:
+            return None
+        similar_title = best.get("title") or "(untitled)"
+        similar_id = best.get("id", "???")[:8]
+        return (
+            f"[palaia] Similar process found: '{similar_title}' "
+            f"(id: {similar_id}, similarity: {similarity:.2f}). "
+            f"Consider updating it with `palaia edit {similar_id}` instead."
+        )
+    except Exception:
+        return None  # Never block writes with nudge errors
+
 
 def private_write_error(
     store: Store, *, scope: str | None, project: str | None, agent: str | None
@@ -66,23 +117,7 @@ def write_entry(
     # Similarity check for processes: warn before creating near-duplicates
     process_similarity_nudge: str | None = None
     if entry_type == "process":
-        try:
-            from palaia.search import SearchEngine
-
-            engine = SearchEngine(store)
-            results = engine.search(body, top_k=3, entry_type="process")
-            for r in results:
-                if r.get("score", 0) > 0.8:
-                    similar_title = r.get("title", "(untitled)")
-                    similar_id = r.get("id", "???")[:8]
-                    process_similarity_nudge = (
-                        f"[palaia] Similar process found: '{similar_title}' "
-                        f"(id: {similar_id}, score: {r['score']:.2f}). "
-                        f"Consider updating it with `palaia edit {similar_id}` instead."
-                    )
-                    break
-        except Exception:
-            pass  # Never block writes with nudge errors
+        process_similarity_nudge = _process_similarity_nudge(store, body=body, title=title, tags=tags)
 
     entry_id = store.write(
         body=body,

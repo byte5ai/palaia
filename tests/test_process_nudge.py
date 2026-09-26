@@ -479,3 +479,173 @@ class TestProcessNudgeOnQuery:
         # Since we use embedding_provider: none, only tag matching is available
         # and query doesn't pass tags, so no nudge expected here without embeddings
         # This is correct graceful degradation behavior
+
+
+class TestWriteSimilarProcessNudge:
+    """`palaia write --type process` "Similar process found" nudge (#481).
+
+    It must judge by embedding similarity, not by the relative ranking score,
+    which is 1.0 for the top BM25 hit however unrelated it is.
+    """
+
+    @staticmethod
+    def _similar_nudges(result):
+        return [n for n in result.get("nudge", []) if "Similar process found" in n]
+
+    @staticmethod
+    def _bm25_only(monkeypatch):
+        from palaia.embeddings import BM25Provider
+
+        monkeypatch.setattr("palaia.search._resolve_semantic_provider", lambda config: BM25Provider())
+
+    @staticmethod
+    def _stub_search(monkeypatch, results):
+        calls = []
+
+        def fake_search(self, query, **kwargs):
+            calls.append((query, kwargs))
+            return results
+
+        monkeypatch.setattr("palaia.search.SearchEngine.search", fake_search)
+        return calls
+
+    @pytest.mark.parametrize(
+        ("existing", "new"),
+        [
+            (
+                "Deploy checklist: run migrations, then restart workers",
+                "Quarterly finance report checklist for the auditors",
+            ),
+            (
+                "Team lunch is on Friday at the Italian place",
+                "Restart the office coffee machine on Mondays",
+            ),
+        ],
+    )
+    def test_bm25_only_store_never_nudges_on_unrelated_process(self, palaia_root, monkeypatch, existing, new):
+        from palaia.search import SearchEngine
+        from palaia.services.write import write_entry
+
+        self._bm25_only(monkeypatch)
+        store = Store(palaia_root)
+        store.write(body=existing, entry_type="process", agent="TestAgent")
+
+        # The unrelated process is the top BM25 hit with a relative score of
+        # 1.0 — what the nudge used to warn on.
+        hits = SearchEngine(store).search(new, top_k=3, entry_type="process")
+        assert hits and hits[0]["score"] == 1.0 and hits[0]["embed_score"] == 0.0
+
+        result = write_entry(palaia_root, body=new, entry_type="process", agent="TestAgent")
+        assert "error" not in result
+        assert self._similar_nudges(result) == []
+
+    def test_nudges_above_threshold(self, palaia_root, monkeypatch):
+        from palaia.services.write import PROCESS_SIMILARITY_MIN_EMBED, write_entry
+
+        self._stub_search(
+            monkeypatch,
+            [
+                {"id": "unrelated-0000", "title": "Unrelated", "score": 1.0, "embed_score": 0.2},
+                {
+                    "id": "abcdef12-3456",
+                    "title": "Deploy checklist",
+                    "score": 0.7,
+                    "embed_score": PROCESS_SIMILARITY_MIN_EMBED + 0.05,
+                },
+            ],
+        )
+        result = write_entry(palaia_root, body="Deploy: migrate, then restart", entry_type="process")
+        nudges = self._similar_nudges(result)
+        # The most similar process wins, not the top-ranked hit
+        assert len(nudges) == 1
+        assert "'Deploy checklist'" in nudges[0]
+        assert "abcdef12" in nudges[0]
+        assert f"similarity: {PROCESS_SIMILARITY_MIN_EMBED + 0.05:.2f}" in nudges[0]
+
+    def test_no_nudge_below_threshold(self, palaia_root, monkeypatch):
+        from palaia.services.write import PROCESS_SIMILARITY_MIN_EMBED, write_entry
+
+        self._stub_search(
+            monkeypatch,
+            [
+                {
+                    "id": "abcdef12-3456",
+                    "title": "Deploy checklist",
+                    "score": 1.0,
+                    "embed_score": PROCESS_SIMILARITY_MIN_EMBED - 0.05,
+                },
+            ],
+        )
+        result = write_entry(palaia_root, body="Deploy: migrate, then restart", entry_type="process")
+        assert self._similar_nudges(result) == []
+
+    def test_only_checked_for_processes(self, palaia_root, monkeypatch):
+        from palaia.services.write import write_entry
+
+        calls = self._stub_search(
+            monkeypatch, [{"id": "abcdef12-3456", "title": "Deploy checklist", "score": 1.0, "embed_score": 0.99}]
+        )
+        result = write_entry(palaia_root, body="Deploy: migrate, then restart", entry_type="memory")
+        assert calls == []
+        assert self._similar_nudges(result) == []
+
+    def test_queries_with_title_tags_and_body(self, palaia_root, monkeypatch):
+        from palaia.services.write import write_entry
+
+        calls = self._stub_search(monkeypatch, [])
+        write_entry(
+            palaia_root,
+            body="Run migrations, then restart workers",
+            title="Deploy checklist",
+            tags=["deploy", "ops"],
+            entry_type="process",
+        )
+        assert calls[0][0] == "Deploy checklist deploy ops Run migrations, then restart workers"
+        assert calls[0][1].get("entry_type") == "process"
+
+    def test_query_uses_auto_title_like_the_index(self, palaia_root, monkeypatch):
+        from palaia.services.write import write_entry
+
+        calls = self._stub_search(monkeypatch, [])
+        body = "# Deploy checklist\nRun migrations, then restart workers"
+        entry = write_entry(palaia_root, body=body, entry_type="process")
+
+        # Same text the index builds for the stored entry
+        meta, stored_body = Store(palaia_root).read(entry["id"])
+        indexed = f"{meta.get('title', '')} {' '.join(meta.get('tags', []))} {stored_body}"
+        assert calls[0][0] == indexed
+        assert calls[0][0].startswith("Deploy checklist  # Deploy checklist")
+
+    def test_real_embedding_similarity(self, palaia_root, monkeypatch):
+        """End to end through SearchEngine with a stub embedding provider."""
+        from palaia.services.write import write_entry
+
+        class TopicProvider:
+            """Unit vectors by topic: same topic = similarity 1.0, else 0.0."""
+
+            name = "stub"
+
+            def embed_query(self, text):
+                text = text.lower()
+                if "deploy" in text:
+                    return [1.0, 0.0, 0.0]
+                if "lunch" in text:
+                    return [0.0, 1.0, 0.0]
+                return [0.0, 0.0, 1.0]
+
+            def embed(self, texts):
+                return [self.embed_query(t) for t in texts]
+
+        monkeypatch.setattr("palaia.search._resolve_semantic_provider", lambda config: TopicProvider())
+        store = Store(palaia_root)
+        existing = store.write(
+            body="Run migrations, then restart workers", title="Deploy checklist", entry_type="process"
+        )
+        store.write(body="Order pizza for the team on Friday", title="Lunch", entry_type="process")
+
+        similar = write_entry(palaia_root, body="Deploy: migrate the database first", entry_type="process")
+        nudges = self._similar_nudges(similar)
+        assert len(nudges) == 1 and existing[:8] in nudges[0]
+
+        unrelated = write_entry(palaia_root, body="Water the office plants", entry_type="process")
+        assert self._similar_nudges(unrelated) == []
