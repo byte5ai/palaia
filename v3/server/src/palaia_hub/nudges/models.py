@@ -50,6 +50,18 @@ DEFAULT_COOLDOWN_SECONDS = 900.0
 #: inbox is simply doing its job and saying so would be filler.
 INBOX_BACKLOG_THRESHOLD = 10
 
+#: Cosine similarity at or above which a just-written note is said to
+#: resemble an existing one (issue #187) — the default of the hub's
+#: ``nudges.similar_note_threshold`` setting. Measured, not guessed: on the
+#: default embedding model (all-MiniLM-L6-v2) note pairs where the second
+#: contradicts or updates the first ("returns 200" / "returns 404", "100 rpm"
+#: / "raised to 500 rpm") scored 0.68-0.85, while two notes on the same
+#: subject but different aspects scored 0.42-0.53 and unrelated notes ~0.1.
+#: With BAAI/bge-small-en-v1.5 the same contradiction pairs scored 0.77-0.87
+#: and the same-subject pairs 0.63-0.65. 0.70 sits between the two clusters
+#: for both. The issue's proposed 0.85 would have missed most contradictions.
+DEFAULT_SIMILAR_NOTE_THRESHOLD = 0.70
+
 
 @dataclass(frozen=True)
 class Nudge:
@@ -85,14 +97,30 @@ class Nudge:
 
 
 @dataclass(frozen=True)
+class SimilarNote:
+    """An existing note that a just-written one closely resembles (issue #187).
+
+    Just enough to name it in a nudge: the permalink an agent can pass to
+    ``read``/``edit``, and the title a human recognizes. How similar it is was
+    already decided upstream, against the hub's configured threshold — a
+    detector only reports what cleared it.
+    """
+
+    permalink: str
+    title: str
+
+
+@dataclass(frozen=True)
 class VaultSignals:
     """The deterministic facts about one completed vault operation.
 
-    Every field is something the hub already knows by the time a result is
-    returned — no field here costs an extra read, an extra query or an extra
-    model call. A caller fills in what its operation actually produced and
-    leaves the rest at its default; ``None`` on the optional counters means
-    "not measured by this operation", which is distinct from ``0``.
+    Every field but one is something the hub already knows by the time a
+    result is returned — it costs no extra read, query or model call. The
+    exception is :attr:`similar_notes`, whose signal (issue #187) cannot be
+    had for free; its docstring says what it costs. A caller fills in what
+    its operation actually produced and leaves the rest at its default;
+    ``None`` on the optional counters means "not measured by this
+    operation", which is distinct from ``0``.
     """
 
     #: The vault action that just completed (``"search"``, ``"recall"``, ...).
@@ -130,12 +158,21 @@ class VaultSignals:
     #: (``NoteRecord.resolution_warnings``, format spec §5.3).
     unresolved_values: tuple[str, ...] = field(default_factory=tuple)
 
+    #: Existing notes whose meaning is close to what ``write``/``capture``
+    #: just stored, best match first (issue #187). The one field here that
+    #: is *not* free: it costs the write one query embedding and one vector
+    #: lookup, done by the vault service after the write succeeded and only
+    #: when vectors are available — see ``docs/nudges.md`` §4.
+    similar_notes: tuple[SimilarNote, ...] = field(default_factory=tuple)
+
 
 __all__ = [
     "DEFAULT_COOLDOWN_SECONDS",
+    "DEFAULT_SIMILAR_NOTE_THRESHOLD",
     "INBOX_BACKLOG_THRESHOLD",
     "MAX_NUDGES_PER_RESULT",
     "MAX_NUDGE_CHARS",
     "Nudge",
+    "SimilarNote",
     "VaultSignals",
 ]

@@ -43,11 +43,17 @@ deterministic guidance, when there is any. Each success path goes through
 detectors in :mod:`palaia_hub.nudges` over the result the call just produced
 and attaches what the rate policy allows. Nothing extra is read or computed
 to make that decision, and a call that trips no detector returns exactly the
-``ToolResult`` it did before.
+``ToolResult`` it did before. The one exception is issue #187's similar-note
+check on ``write``/``capture``: after the note is stored, the tool asks the
+vault which existing notes it closely resembles (one query embedding, skipped
+when no vectors are available), so the result can name a possible overlap or
+contradiction. It never blocks or fails the write.
 """
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Sequence
 from typing import Annotated, Any, Literal
 
 from fastmcp import FastMCP
@@ -78,9 +84,12 @@ from .vault_protocol import (
     ReviewDecideResult,
     ReviewQueueResult,
     SearchHit,
+    SimilarNoteHit,
     VaultService,
     VaultServiceError,
 )
+
+logger = logging.getLogger("palaia_hub.gateway.memory_tools")
 
 # --- alias-absorbing parameter types ---------------------------------------
 # SPEC-105 deliverable #4 names these two alias groups explicitly: a query
@@ -270,9 +279,35 @@ def build_vault_server(
     def desc(detail: str) -> str:
         return f"{purpose}\n\n{detail}"
 
-    def _ok(action: str, text: str, payload: BaseModel) -> ToolResult:
+    def _ok(
+        action: str,
+        text: str,
+        payload: BaseModel,
+        *,
+        similar_notes: Sequence[SimilarNoteHit] = (),
+    ) -> ToolResult:
         """A successful result for ``action``, plus any guidance it earned."""
-        return nudged_result(engine, action=action, text=text, payload=payload, vault_key=vault.key)
+        return nudged_result(
+            engine,
+            action=action,
+            text=text,
+            payload=payload,
+            vault_key=vault.key,
+            similar_notes=similar_notes,
+        )
+
+    async def _similar_to(title: str, body: str, *, exclude: str) -> list[SimilarNoteHit]:
+        """Issue #187: existing notes the one just stored closely resembles.
+
+        Asked only after the write succeeded, and never allowed to undo that:
+        a :class:`VaultService` is supposed to swallow its own failures here,
+        and this guard covers one that does not.
+        """
+        try:
+            return await service.similar_notes(title, body, exclude=exclude)
+        except Exception:  # noqa: BLE001 - advice must never fail a write
+            logger.warning("similar-note check raised; write result sent without it", exc_info=True)
+            return []
 
     def _note_ok(action: str, verb: str, note: NoteRecord) -> ToolResult:
         return _ok(action, _note_text(verb, note), note)
@@ -403,7 +438,8 @@ def build_vault_server(
             note = await service.write(title, body, folder=folder, type=type, tags=tags)
         except VaultServiceError as exc:
             return _error_result(exc)
-        return _note_ok("write", "created", note)
+        similar = await _similar_to(title, body, exclude=note.permalink)
+        return _ok("write", _note_text("created", note), note, similar_notes=similar)
 
     @server.tool(
         name="edit",
@@ -662,7 +698,14 @@ def build_vault_server(
             if result.duplicate
             else f"captured to {result.permalink!r} (capture_id {result.capture_id})"
         )
-        return _ok("capture", text, result)
+        # A deduplicated capture wrote nothing, so there is nothing new to
+        # compare — `capture.duplicate` already points at the original.
+        similar = (
+            []
+            if result.duplicate
+            else await _similar_to(what_it_concerns, content, exclude=result.permalink)
+        )
+        return _ok("capture", text, result, similar_notes=similar)
 
     @server.tool(
         name="inbox_status",

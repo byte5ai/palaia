@@ -28,10 +28,12 @@ from __future__ import annotations
 from .detectors import DETECTORS, Detector, detect
 from .models import (
     DEFAULT_COOLDOWN_SECONDS,
+    DEFAULT_SIMILAR_NOTE_THRESHOLD,
     INBOX_BACKLOG_THRESHOLD,
     MAX_NUDGE_CHARS,
     MAX_NUDGES_PER_RESULT,
     Nudge,
+    SimilarNote,
     VaultSignals,
 )
 from .service import ANONYMOUS_SESSION, NudgeEngine
@@ -39,6 +41,7 @@ from .service import ANONYMOUS_SESSION, NudgeEngine
 __all__ = [
     "ANONYMOUS_SESSION",
     "DEFAULT_COOLDOWN_SECONDS",
+    "DEFAULT_SIMILAR_NOTE_THRESHOLD",
     "DETECTORS",
     "INBOX_BACKLOG_THRESHOLD",
     "MAX_NUDGES_PER_RESULT",
@@ -46,6 +49,7 @@ __all__ = [
     "Detector",
     "Nudge",
     "NudgeEngine",
+    "SimilarNote",
     "VaultSignals",
     "detect",
 ]

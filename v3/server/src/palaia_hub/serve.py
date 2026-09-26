@@ -259,7 +259,11 @@ async def build_production_app(
         # the public bus. Constructed here, started by the app lifespan.
         watchers[record.name] = VaultWatcher(engine)
         engines[record.name] = engine
-        vault_services[record.name] = EngineVaultService(engine, index)
+        vault_services[record.name] = EngineVaultService(
+            engine,
+            index,
+            similar_note_threshold=config.nudges.effective_similar_note_threshold,
+        )
         mounts.append(
             VaultMountConfig(
                 key=record.name,

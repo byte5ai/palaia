@@ -61,6 +61,7 @@ from .vault_protocol import (
     ReviewQueueResult,
     SearchHit,
     SearchResponse,
+    SimilarNoteHit,
     VaultService,
     VaultServiceError,
 )
@@ -82,6 +83,11 @@ class FakeVaultService:
 
     def __init__(self) -> None:
         self._notes: dict[str, NoteRecord] = {}
+        #: What :meth:`similar_notes` answers (issue #187). There are no
+        #: vectors here to measure a real similarity with, so — like the
+        #: real adapter without an index — it answers nothing unless a test
+        #: says otherwise by setting this.
+        self.similar: list[SimilarNoteHit] = []
 
     def seed(self, note: NoteRecord) -> None:
         """Directly insert a note (fixture setup helper, bypasses write())."""
@@ -259,6 +265,11 @@ class FakeVaultService:
         return CaptureResult(
             permalink=permalink, title=note.title, capture_id=capture_id, status="uncurated"
         )
+
+    async def similar_notes(
+        self, title: str, body: str, *, exclude: str = ""
+    ) -> list[SimilarNoteHit]:
+        return [hit for hit in self.similar if hit.permalink != exclude]
 
     async def inbox_status(self) -> InboxStatusResult:
         captures = [note for note in self._inbox_notes() if note.status == "uncurated"]
@@ -474,8 +485,7 @@ class FakeVaultService:
             body, note_warnings = self._resolved_body(note, caller)
             observations = self._observations(note, caller)
             summary_lines = [
-                f"- [{obs.category}] {obs.text}"
-                for obs in observations[: bg.SUMMARY_OBSERVATIONS]
+                f"- [{obs.category}] {obs.text}" for obs in observations[: bg.SUMMARY_OBSERVATIONS]
             ]
             summary = (
                 "\n".join([heading, "(summarized to fit the token budget)", *summary_lines]) + "\n"

@@ -29,6 +29,8 @@ from palaia_hub.gateway.vault_protocol import (
     InboxStatusResult,
     NoteRecord,
     SearchHit,
+    SimilarNoteHit,
+    VaultServiceError,
 )
 from palaia_hub.nudges import ANONYMOUS_SESSION, Nudge, NudgeEngine, VaultSignals
 from palaia_hub.recall.models import ContextResult, RecallEntry, RecallResult
@@ -85,6 +87,21 @@ def test_a_note_record_carries_its_resolution_warnings() -> None:
     )
     signals = signals_for("read", note)
     assert signals.unresolved_values == ("embed-missing: ops/rate#value",)
+
+
+def test_similar_notes_are_handed_in_not_read_off_the_result() -> None:
+    """Issue #187: the similar-note signal does not live on ``NoteRecord``
+    (that would put an empty field on every read/edit/move payload), so the
+    write tool passes it in explicitly — best match first, scores dropped."""
+    note = NoteRecord(permalink="ops/new", title="New")
+    hits = [
+        SimilarNoteHit(permalink="ops/health", title="Health", similarity=0.91),
+        SimilarNoteHit(permalink="ops/status", title="Status", similarity=0.74),
+    ]
+    signals = signals_for("write", note, similar_notes=hits)
+    assert [n.permalink for n in signals.similar_notes] == ["ops/health", "ops/status"]
+    assert signals.similar_notes[0].title == "Health"
+    assert signals_for("write", note).similar_notes == ()
 
 
 def test_a_search_result_is_matched_structurally_by_its_hit_list() -> None:
@@ -242,3 +259,92 @@ async def test_an_injected_engine_is_the_one_the_tools_use(
         result = await client.call_tool("list", {})
     assert result.structured_content is not None
     assert result.structured_content["guidance"] == ["Something is off. Fix: do the thing."]
+
+
+# --- issue #187: a write that resembles an existing note ----------------------
+
+
+@pytest.mark.anyio
+async def test_a_write_resembling_an_existing_note_names_it(
+    vault_config: VaultMountConfig,
+) -> None:
+    """The core of issue #187, over the wire: the note is written, and the
+    result the agent reads names the existing note it may contradict."""
+    service = FakeVaultService()
+    service.similar = [
+        SimilarNoteHit(permalink="ops/health-endpoint", title="Health endpoint", similarity=0.84)
+    ]
+    server = build_vault_server(vault_config, service)
+    async with Client(server) as client:
+        result = await client.call_tool(
+            "write", {"title": "Health check", "body": "GET /health now returns 404."}
+        )
+    assert result.is_error is False
+    assert result.structured_content is not None
+    assert result.structured_content["permalink"] == "health-check", "the write went through"
+    (line,) = result.structured_content["guidance"]
+    assert "'Health endpoint' (ops/health-endpoint)" in line
+    text = result.content[0].text  # type: ignore[union-attr]
+    assert text.startswith("created")
+    assert GUIDANCE_HEADING in text and "ops/health-endpoint" in text
+    # The payload is the note as stored — no similarity field leaks into it.
+    assert "similar_notes" not in result.structured_content
+
+
+@pytest.mark.anyio
+async def test_a_write_resembling_nothing_carries_no_guidance(
+    vault_config: VaultMountConfig,
+) -> None:
+    server = build_vault_server(vault_config, FakeVaultService())
+    async with Client(server) as client:
+        result = await client.call_tool("write", {"title": "Fresh", "body": "Something new."})
+    assert result.structured_content is not None
+    assert "guidance" not in result.structured_content
+
+
+@pytest.mark.anyio
+async def test_a_capture_resembling_an_existing_note_names_it(
+    vault_config: VaultMountConfig,
+) -> None:
+    service = FakeVaultService()
+    service.similar = [
+        SimilarNoteHit(permalink="projects/api-gateway", title="API Gateway", similarity=0.8)
+    ]
+    server = build_vault_server(vault_config, service)
+    async with Client(server) as client:
+        result = await client.call_tool(
+            "capture",
+            {
+                "what_it_concerns": "API Gateway",
+                "why_keep": "The limit changed.",
+                "content": "Ingest is now capped at 500 req/min.",
+            },
+        )
+    assert result.structured_content is not None
+    (line,) = result.structured_content["guidance"]
+    assert "(projects/api-gateway)" in line
+
+
+class _BrokenSimilarityVault(FakeVaultService):
+    """A service that breaks the protocol's "never raise" promise."""
+
+    async def similar_notes(
+        self, title: str, body: str, *, exclude: str = ""
+    ) -> list[SimilarNoteHit]:
+        raise VaultServiceError("similarity backend exploded")
+
+
+@pytest.mark.anyio
+async def test_a_failing_similarity_check_never_fails_the_write(
+    vault_config: VaultMountConfig,
+) -> None:
+    """Advice about a write that already succeeded must not turn it into an
+    error — the write result goes out without the advice."""
+    service = _BrokenSimilarityVault()
+    server = build_vault_server(vault_config, service)
+    async with Client(server) as client:
+        result = await client.call_tool("write", {"title": "Fresh", "body": "Something new."})
+    assert result.is_error is False
+    assert result.structured_content is not None
+    assert "guidance" not in result.structured_content
+    assert (await service.read("fresh")).body == "Something new."
