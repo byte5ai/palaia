@@ -13,38 +13,63 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import re
 import sys
+from dataclasses import dataclass
 
-# Supported MCP SDK range. Keep in sync with the `mcp` extra in pyproject.toml.
+# Supported MCP SDK range. Keep MCP_SDK_REQUIREMENT in sync with the `mcp` extra in
+# pyproject.toml, and the bounds below with MCP_SDK_REQUIREMENT.
 # 1.2.0 introduced `mcp.server.fastmcp`; 2.x renamed FastMCP and dropped that module.
 MCP_SDK_REQUIREMENT = "mcp>=1.2.0,<2"
+_MCP_SDK_MIN = (1, 2)  # inclusive
+_MCP_SDK_MAX = (2,)  # exclusive
 
 
-def check_mcp_sdk() -> tuple[str, str] | None:
-    """Check that a supported MCP SDK is installed.
+@dataclass(frozen=True)
+class McpSdkStatus:
+    """Result of check_mcp_sdk().
 
-    Returns None if palaia-mcp can run, otherwise a ``(problem, fix)`` pair of
-    user-facing strings.
+    state is "ok", "missing" or "unsupported"; problem and fix are user-facing
+    strings, set unless state is "ok".
     """
-    try:
-        import mcp  # noqa: F401
-    except ImportError:
-        return "MCP SDK not installed", "pip install 'palaia[mcp]'"
+
+    state: str
+    installed_version: str | None = None
+    problem: str | None = None
+    fix: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.state == "ok"
+
+
+def _release(version: str) -> tuple[int, ...] | None:
+    """Leading numeric release segment of a version string ("1.30.0rc1" -> (1, 30, 0))."""
+    match = re.match(r"\d+(?:\.\d+)*", version)
+    return tuple(int(part) for part in match.group().split(".")) if match else None
+
+
+def check_mcp_sdk() -> McpSdkStatus:
+    """Check the installed MCP SDK version against the supported range.
+
+    Reads package metadata only; it does not import the SDK.
+    """
+    from importlib.metadata import PackageNotFoundError, version
 
     try:
-        from mcp.server.fastmcp import FastMCP  # noqa: F401
-    except ImportError:
-        from importlib.metadata import PackageNotFoundError, version
+        installed = version("mcp")
+    except PackageNotFoundError:
+        return McpSdkStatus("missing", problem="MCP SDK not installed", fix="pip install 'palaia[mcp]'")
 
-        try:
-            installed = f"mcp {version('mcp')}"
-        except PackageNotFoundError:
-            installed = "The installed MCP SDK"
-        return (
-            f"{installed} is not supported (palaia needs {MCP_SDK_REQUIREMENT})",
-            f"pip install '{MCP_SDK_REQUIREMENT}'",
+    release = _release(installed)
+    if release is None or not (_MCP_SDK_MIN <= release < _MCP_SDK_MAX):
+        return McpSdkStatus(
+            "unsupported",
+            installed_version=installed,
+            problem=f"mcp {installed} is not supported (palaia needs {MCP_SDK_REQUIREMENT})",
+            fix=f"pip install '{MCP_SDK_REQUIREMENT}'",
         )
-    return None
+    return McpSdkStatus("ok", installed_version=installed)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -71,10 +96,9 @@ def main(argv: list[str] | None = None) -> None:
 
     args = parser.parse_args(argv)
 
-    sdk_problem = check_mcp_sdk()
-    if sdk_problem:
-        problem, fix = sdk_problem
-        print(f"Error: {problem}. Install with: {fix}", file=sys.stderr)
+    sdk = check_mcp_sdk()
+    if not sdk.ok:
+        print(f"Error: {sdk.problem}. Install with: {sdk.fix}", file=sys.stderr)
         sys.exit(1)
 
     from pathlib import Path
@@ -100,7 +124,13 @@ def main(argv: list[str] | None = None) -> None:
             sys.exit(1)
         root = found
 
-    from palaia.mcp.server import create_server
+    try:
+        from palaia.mcp.server import create_server
+    except ImportError as e:
+        # A supported version that still fails to import is a broken install
+        # (e.g. a missing dependency) — show the real cause.
+        print(f"Error: mcp {sdk.installed_version} failed to import: {e}", file=sys.stderr)
+        sys.exit(1)
 
     server = create_server(root, read_only=args.read_only)
     server.run(transport=args.transport)
