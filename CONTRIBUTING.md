@@ -50,7 +50,7 @@ Open a [GitHub Issue](https://github.com/byte5ai/palaia/issues). Include:
 |------|---------|
 | Direct push to main / v2-maintenance | Blocked |
 | Pull request required | Yes |
-| CI must pass | Yes (test 3.11) |
+| CI must pass | Yes — on `main`: `ci-required` and `v3-ci-required`, branch up to date; on `v2-maintenance`: `test (3.9)`–`test (3.12)` and `test-plugin` |
 | Force push | Blocked |
 | Owner bypass | Yes (emergencies only) |
 
@@ -116,6 +116,9 @@ is not involved.
 ### PR Requirements
 
 - `just test` passes and `just lint` is clean (`v3-ci.yml` runs the same checks on every PR that touches `v3/`)
+- The two gate checks are green: `ci-required` (from `ci.yml`) and `v3-ci-required` (from `v3-ci.yml`).
+  Both run on every PR to `main`; each fails if one of its lanes failed or was cancelled, and
+  passes when the lanes passed or were skipped because their area was untouched
 - New features need tests
 - One logical change per PR; a short title (<70 chars) with a conventional prefix
 - No force pushes, no skipped hooks (`--no-verify`)
@@ -145,11 +148,11 @@ ClawHub, npm) live in `CONTRIBUTING.md` on `v2-maintenance`.
 
 | Workflow | Trigger | What it does |
 |----------|---------|-------------|
-| `v3-ci.yml` | Push/PRs to `main` touching `v3/**` or a `v3-*` workflow | Python (ruff, mypy, pytest), web, SDK, e2e, MCP bundle, docs site |
+| `v3-ci.yml` | Every push/PR to `main`; lanes run only when `v3/**` or a `v3-*` workflow changed (per area) | Python (ruff, mypy, pytest), web, SDK, e2e, MCP bundle, docs site; gate check `v3-ci-required` |
 | `v3-release.yml` | Push to `main`, `v3.*` tags | Hub container image (`edge` on `main`, `stable`/`beta` on tags) |
 | `v3-cut-release.yml` | Manual dispatch | Tags a v3 release and triggers the image builds |
 | `v3-pi-image.yml` | `v3.*` tags, manual dispatch | Raspberry Pi appliance image |
-| `ci.yml` | Push/PRs to `main` or `v2-maintenance`, ignoring `v3/**` | v2: ruff + pytest (3.9-3.12) + plugin vitest |
+| `ci.yml` | Every push/PR to `main` or `v2-maintenance`; on `main` the lanes skip when only `v3/**` changed | v2: ruff + pytest (3.9-3.12) + plugin vitest; gate check `ci-required` |
 | `publish.yml` | `v2.*` tags | v2 PyPI publish (all v2 tags) + npm publish (stable only) |
 | `track-label.yml` | New issues/PRs, daily sweep, manual dispatch | Adds the `v2` or `v3` label to every issue and PR that has neither |
 

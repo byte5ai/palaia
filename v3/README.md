@@ -74,9 +74,11 @@ cd v3/web && npm ci && npm test && npm run build
 ```
 
 CI: [`.github/workflows/v3-ci.yml`](../.github/workflows/v3-ci.yml) runs the
-Python and web checks above on any push/PR to `main` that touches `v3/**`.
-It is independent of the v2 `ci.yml` (repo root), which ignores `v3/**`
-changes.
+Python and web checks above on any push/PR to `main` that touches `v3/**`;
+the workflow itself starts on every push/PR to `main` so its `v3-ci-required`
+gate always reports (the check `main` requires), and lanes whose area is
+untouched are skipped. It is independent of the v2 `ci.yml` (repo root), whose
+lanes skip when only `v3/**` changed.
 
 ### Running the packaged hub locally
 
