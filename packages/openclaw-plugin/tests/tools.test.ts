@@ -360,6 +360,22 @@ describe("tools", () => {
       );
     });
 
+    it("duplicate guard queries with title, tags and content, as palaia indexes entries", async () => {
+      mockQuery.mockResolvedValueOnce(serverResults());
+      mockRunJson.mockResolvedValueOnce(written);
+
+      await api.tools["memory_write"].def.execute("call-466j", {
+        content: "Run migrations, then restart workers",
+        title: "Deploy checklist",
+        tags: ["deploy", "ops"],
+      });
+
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "Deploy checklist deploy ops Run migrations, then restart workers" }),
+        3000
+      );
+    });
+
     it("duplicate guard lets the write through when every search path fails", async () => {
       mockQuery.mockRejectedValueOnce(new Error("server down"));
       mockRunJson.mockRejectedValueOnce(new Error("palaia command timed out after 2000ms"));
@@ -373,8 +389,8 @@ describe("tools", () => {
     });
 
     it("duplicate guard ignores a recent hit at or below the similarity threshold", async () => {
-      // Hybrid score 0.928 would have passed the old `score > 0.8` check
-      mockQuery.mockResolvedValueOnce(serverResults(queryHit(60 * 60 * 1000, { embedScore: 0.88 })));
+      // Hybrid score 0.934 would have passed the old `score > 0.8` check
+      mockQuery.mockResolvedValueOnce(serverResults(queryHit(60 * 60 * 1000, { embedScore: 0.89 })));
       mockRunJson.mockResolvedValueOnce(written);
 
       const result = await api.tools["memory_write"].def.execute("call-466h", {

@@ -42,13 +42,13 @@ palaia registers three agent tools (`packages/openclaw-plugin/src/tools.ts`):
 
 | Tool | Availability | Parameters |
 |---|---|---|
-| `memory_search` | always (`tools.ts:162`) | `query`, `maxResults`, `tier`, `type` |
-| `memory_get` | always (`tools.ts:258`) | `path`, `from`, `lines` |
-| `memory_write` | opt-in — registered with `{ optional: true }` (`tools.ts:296,405`), so each agent must allow it | `content`, `scope`, `tags`, `type`, `project`, `title`, `force` |
+| `memory_search` | always (`tools.ts:185`) | `query`, `maxResults`, `tier`, `type` |
+| `memory_get` | always (`tools.ts:281`) | `path`, `from`, `lines` |
+| `memory_write` | opt-in — registered with `{ optional: true }` (`tools.ts:319,428`), so each agent must allow it | `content`, `scope`, `tags`, `type`, `project`, `title`, `force` |
 
 **There is no tool named `palaia`, and none named `palaia query`.** `palaia query` is a
 CLI command ([CLI reference](cli-reference.md#palaia-query)) that `memory_search` shells
-out to internally (`tools.ts:103-110`). Anywhere a host config wants *tool names*, the
+out to internally (`tools.ts:105-112`). Anywhere a host config wants *tool names*, the
 values are `memory_search` and `memory_get`.
 
 ## Setup A — palaia as the memory backend
@@ -132,16 +132,16 @@ repository:
 ### Timeouts
 
 `timeoutMs` (default `3000`) bounds the **embed-server socket query** only
-(`tools.ts:94`). When that path is unavailable, `memory_search` falls back to a
+(`tools.ts:96`). When that path is unavailable, `memory_search` falls back to a
 `palaia query … --json` subprocess with a **hard-coded 15 s timeout** that no config key
-changes (`tools.ts:70`). So raising `timeoutMs` buys headroom on the fast path — useful
+changes (`tools.ts:72`). So raising `timeoutMs` buys headroom on the fast path — useful
 on a cold index — and does nothing for the fallback. Keep the embed server on
 (`embeddingServer: true`, the default) instead; see [Embedding server](embed-server.md).
 
 ## What palaia adds over a plain memory search
 
 Through the tool, the sub-agent gains tier and entry-class filters that a flat
-memory store has no equivalent for (`tools.ts:166-181`):
+memory store has no equivalent for (`tools.ts:189-204`):
 
 ```js
 // only SOPs and processes, across hot and warm
@@ -180,7 +180,7 @@ simulates what a given query would inject.
   capture-model check skips entirely, because it only proceeds when
   `plugins.slots.memory == "palaia"` (`checks.py:1348-1349`). Expected, not a fault.
 - **Scope isolation follows `PALAIA_AGENT`.** `memory_search` resolves scope visibility
-  from the `PALAIA_AGENT` environment variable (`tools.ts:195`), not from the calling
+  from the `PALAIA_AGENT` environment variable (`tools.ts:218`), not from the calling
   agent's id. If a memory sub-agent runs under a different identity and you rely on
   `private` scopes, verify what `PALAIA_AGENT` is set to in that process. See
   [Multi-agent](multi-agent.md).

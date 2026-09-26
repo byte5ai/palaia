@@ -117,14 +117,25 @@ async function searchEntries(
 // DUPLICATE_WINDOW_MS. It cannot use the ranking `score`: palaia normalizes
 // BM25 to the best hit, so with BM25-only search the top hit always scores
 // 1.0, however unrelated it is. `embed_score` is the raw cosine similarity.
-// Calibrated against stored entries with the default fastembed model
-// (bge-small-en-v1.5): identical text 0.94, near-duplicates (reworded, or one
-// step added) 0.91-0.93, true paraphrases 0.84-0.85, same topic but different
-// content 0.75-0.81. 0.88 splits near-duplicates from paraphrases.
-const DUPLICATE_MIN_SIMILARITY = 0.88;
+// Calibrated through a real embed server with the default fastembed model
+// (bge-small-en-v1.5), querying with duplicateQueryText(): near-duplicates
+// (reworded, or one step added) 0.90-0.97 — at least 0.95 when they share
+// the title — paraphrases 0.84-0.88, same topic but different content
+// 0.75-0.83. 0.89 splits near-duplicates from paraphrases.
+const DUPLICATE_MIN_SIMILARITY = 0.89;
 const DUPLICATE_WINDOW_MS = 24 * 60 * 60 * 1000;
 // Short CLI-fallback budget, so the guard never stalls a write
 const DUPLICATE_CLI_TIMEOUT_MS = 2000;
+
+/**
+ * The text to compare a new entry by: palaia indexes and embeds each entry
+ * as "title tags body" (palaia/search.py, build_index), so the query must be
+ * built the same way. Querying with the body alone scores a titled
+ * near-duplicate 0.85-0.87 — below the threshold — instead of 0.95+.
+ */
+function duplicateQueryText(entry: { content: string; title?: string; tags?: string[] }): string {
+  return [entry.title, ...(entry.tags ?? []), entry.content].filter(Boolean).join(" ");
+}
 
 /**
  * Find a near-duplicate entry created in the last 24 hours, or null.
@@ -134,14 +145,14 @@ const DUPLICATE_CLI_TIMEOUT_MS = 2000;
  * search fails or times out, the write proceeds.
  */
 async function findRecentDuplicate(
-  content: string,
+  text: string,
   config: PalaiaPluginConfig,
   opts: RunnerOpts,
 ): Promise<{ entry: QueryResult["results"][number]; similarity: number; created: Date } | null> {
   let result: QueryResult;
   try {
     result = await searchEntries(
-      { text: content, limit: 5, includeCold: false },
+      { text, limit: 5, includeCold: false },
       config,
       opts,
       DUPLICATE_CLI_TIMEOUT_MS,
@@ -359,7 +370,7 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
       ) {
         // Duplicate guard: check for similar recent entries before writing
         if (!params.force) {
-          const dup = await findRecentDuplicate(params.content, config, opts);
+          const dup = await findRecentDuplicate(duplicateQueryText(params), config, opts);
           if (dup) {
             const { entry: r, similarity, created } = dup;
             const title = r.title || (r.content || r.body || "").slice(0, 60);
