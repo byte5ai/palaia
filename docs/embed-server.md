@@ -66,7 +66,7 @@ Newline-delimited JSON-RPC over the transport:
 
 - **PID file**: `~/.palaia/embed-server.pid` — tracks the running daemon
 - **Socket file**: `~/.palaia/embed.sock` — Unix domain socket
-- **Stale detection**: Background thread checks entry count every 30s, rebuilds index on changes
+- **Stale detection**: Before each `query`, `status` and `warmup`, the server compares the entry files per tier with what it last saw (the cold tier only for queries that include it). If entries were added, removed or moved — typically by the CLI in another process — it rebuilds the search index and reloads the embedding cache, so a new entry is found by the very next query. The loaded embedding model is kept.
 - **Warmup**: Indexes uncached entries in background on startup. Queries use BM25 fallback during warmup.
 - **Idle timeout**: Auto-shutdown after configurable idle period (default 30 min)
 

@@ -13,7 +13,63 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import re
 import sys
+from dataclasses import dataclass
+
+# Supported MCP SDK range. Keep MCP_SDK_REQUIREMENT in sync with the `mcp` extra in
+# pyproject.toml, and the bounds below with MCP_SDK_REQUIREMENT.
+# 1.2.0 introduced `mcp.server.fastmcp`; 2.x renamed FastMCP and dropped that module.
+MCP_SDK_REQUIREMENT = "mcp>=1.2.0,<2"
+_MCP_SDK_MIN = (1, 2)  # inclusive
+_MCP_SDK_MAX = (2,)  # exclusive
+
+
+@dataclass(frozen=True)
+class McpSdkStatus:
+    """Result of check_mcp_sdk().
+
+    state is "ok", "missing" or "unsupported"; problem and fix are user-facing
+    strings, set unless state is "ok".
+    """
+
+    state: str
+    installed_version: str | None = None
+    problem: str | None = None
+    fix: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.state == "ok"
+
+
+def _release(version: str) -> tuple[int, ...] | None:
+    """Leading numeric release segment of a version string ("1.30.0rc1" -> (1, 30, 0))."""
+    match = re.match(r"\d+(?:\.\d+)*", version)
+    return tuple(int(part) for part in match.group().split(".")) if match else None
+
+
+def check_mcp_sdk() -> McpSdkStatus:
+    """Check the installed MCP SDK version against the supported range.
+
+    Reads package metadata only; it does not import the SDK.
+    """
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        installed = version("mcp")
+    except PackageNotFoundError:
+        return McpSdkStatus("missing", problem="MCP SDK not installed", fix="pip install 'palaia[mcp]'")
+
+    release = _release(installed)
+    if release is None or not (_MCP_SDK_MIN <= release < _MCP_SDK_MAX):
+        return McpSdkStatus(
+            "unsupported",
+            installed_version=installed,
+            problem=f"mcp {installed} is not supported (palaia needs {MCP_SDK_REQUIREMENT})",
+            fix=f"pip install '{MCP_SDK_REQUIREMENT}'",
+        )
+    return McpSdkStatus("ok", installed_version=installed)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -40,13 +96,9 @@ def main(argv: list[str] | None = None) -> None:
 
     args = parser.parse_args(argv)
 
-    try:
-        from mcp.server.fastmcp import FastMCP  # noqa: F401
-    except ImportError:
-        print(
-            "Error: MCP SDK not installed. Install with: pip install 'palaia[mcp]'",
-            file=sys.stderr,
-        )
+    sdk = check_mcp_sdk()
+    if not sdk.ok:
+        print(f"Error: {sdk.problem}. Install with: {sdk.fix}", file=sys.stderr)
         sys.exit(1)
 
     from pathlib import Path
@@ -72,7 +124,13 @@ def main(argv: list[str] | None = None) -> None:
             sys.exit(1)
         root = found
 
-    from palaia.mcp.server import create_server
+    try:
+        from palaia.mcp.server import create_server
+    except ImportError as e:
+        # A supported version that still fails to import is a broken install
+        # (e.g. a missing dependency) — show the real cause.
+        print(f"Error: mcp {sdk.installed_version} failed to import: {e}", file=sys.stderr)
+        sys.exit(1)
 
     server = create_server(root, read_only=args.read_only)
     server.run(transport=args.transport)
