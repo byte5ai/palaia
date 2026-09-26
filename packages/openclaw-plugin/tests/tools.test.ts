@@ -2,7 +2,10 @@
  * Tests for src/tools.ts — memory_search, memory_get, memory_write with mock runner.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // Mock the runner module
 const mockQuery = vi.fn();
@@ -15,12 +18,21 @@ vi.mock("../src/runner.js", () => ({
   getEmbedServerManager: vi.fn(() => ({ query: mockQuery })),
 }));
 
+// The real priorities module, with resolvePriorities wrapped so tests can
+// inspect its arguments or make it throw.
+vi.mock("../src/priorities.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/priorities.js")>();
+  return { ...actual, resolvePriorities: vi.fn(actual.resolvePriorities) };
+});
+
 import { Value } from "@sinclair/typebox/value";
 import { registerTools } from "../src/tools.js";
 import { runJson } from "../src/runner.js";
 import { DEFAULT_CONFIG } from "../src/config.js";
+import { resolvePriorities, resetPrioritiesCache } from "../src/priorities.js";
 
 const mockRunJson = vi.mocked(runJson);
+const mockResolvePriorities = vi.mocked(resolvePriorities);
 
 /**
  * Fake plugin API that captures registered tools.
@@ -300,6 +312,120 @@ describe("tools", () => {
       });
 
       expect(result.content[0].text).toBe("No results found.");
+    });
+  });
+
+  describe("memory_search resolves the tier like auto-recall (#482)", () => {
+    let workspace: string;
+    const savedAgent = process.env.PALAIA_AGENT;
+
+    function writePriorities(prio: object) {
+      mkdirSync(join(workspace, ".palaia"), { recursive: true });
+      writeFileSync(join(workspace, ".palaia", "priorities.json"), JSON.stringify(prio));
+    }
+
+    async function searchIncludesCold(
+      overrides: Partial<typeof DEFAULT_CONFIG>,
+      params: Record<string, unknown> = {},
+    ): Promise<boolean> {
+      const custom = createMockApi();
+      registerTools(custom, { ...DEFAULT_CONFIG, workspace, ...overrides });
+      mockQuery.mockResolvedValueOnce({ result: { results: [] } });
+      await custom.tools["memory_search"].def.execute("call-482", { query: "test", ...params });
+      return mockQuery.mock.calls.at(-1)![0].include_cold;
+    }
+
+    beforeEach(() => {
+      workspace = mkdtempSync(join(tmpdir(), "palaia-tools-482-"));
+      resetPrioritiesCache();
+      process.env.PALAIA_AGENT = "alice";
+    });
+
+    afterEach(() => {
+      rmSync(workspace, { recursive: true, force: true });
+      resetPrioritiesCache();
+      if (savedAgent === undefined) delete process.env.PALAIA_AGENT;
+      else process.env.PALAIA_AGENT = savedAgent;
+    });
+
+    it("includes cold entries when this agent's override sets tier \"all\"", async () => {
+      writePriorities({ version: 1, blocked: [], agents: { alice: { tier: "all" } } });
+      expect(await searchIncludesCold({ tier: "hot" })).toBe(true);
+    });
+
+    it("ignores another agent's tier override", async () => {
+      writePriorities({ version: 1, blocked: [], agents: { bob: { tier: "all" } } });
+      expect(await searchIncludesCold({ tier: "hot" })).toBe(false);
+    });
+
+    it("includes cold entries when the global override sets tier \"all\"", async () => {
+      writePriorities({ version: 1, blocked: [], tier: "all" });
+      expect(await searchIncludesCold({ tier: "hot" })).toBe(true);
+    });
+
+    it("lets an agent override narrow a plugin tier of \"all\"; tier: \"all\" still widens it", async () => {
+      writePriorities({ version: 1, blocked: [], agents: { alice: { tier: "hot" } } });
+      expect(await searchIncludesCold({ tier: "all" })).toBe(false);
+      expect(await searchIncludesCold({ tier: "all" }, { tier: "all" })).toBe(true);
+    });
+
+    it("resolves with the configured captureProject, as recall does", async () => {
+      writePriorities({ version: 1, blocked: [], projects: { alpha: { recallTypeWeight: { task: 2 } } } });
+      await searchIncludesCold({ captureProject: "alpha" });
+      expect(mockResolvePriorities).toHaveBeenLastCalledWith(
+        expect.objectContaining({ projects: expect.any(Object) }),
+        expect.objectContaining({ tier: DEFAULT_CONFIG.tier }),
+        "alice",
+        "alpha",
+      );
+    });
+
+    it("matches recall for a project-level tier: projects carry no tier override", async () => {
+      // resolvePriorities applies only blocked and recallTypeWeight per project,
+      // so recall ignores this entry and memory_search must too.
+      writePriorities({ version: 1, blocked: [], projects: { alpha: { tier: "all" } } });
+      expect(await searchIncludesCold({ tier: "hot", captureProject: "alpha" })).toBe(false);
+    });
+
+    it("applies this agent's scopeVisibility together with the project", async () => {
+      writePriorities({
+        version: 1,
+        blocked: [],
+        agents: { alice: { scopeVisibility: ["private"] } },
+        projects: { alpha: { blocked: [] } },
+      });
+      const custom = createMockApi();
+      registerTools(custom, { ...DEFAULT_CONFIG, workspace, captureProject: "alpha" });
+      mockQuery.mockResolvedValueOnce({
+        result: {
+          results: [
+            { id: "a", body: "mine", score: 1, tier: "hot", scope: "private" },
+            { id: "b", body: "team entry", score: 0.9, tier: "hot", scope: "team" },
+          ],
+        },
+      });
+      const result = await custom.tools["memory_search"].def.execute("call-482b", { query: "test" });
+      expect(result.content[0].text).toContain("mine");
+      expect(result.content[0].text).not.toContain("team entry");
+    });
+
+    it.each([
+      ["all", true],
+      ["hot", false],
+    ])("falls back to the plugin tier %s when resolving priorities fails", async (tier, cold) => {
+      mockResolvePriorities.mockImplementationOnce(() => {
+        throw new Error("broken priorities");
+      });
+      expect(await searchIncludesCold({ tier })).toBe(cold);
+    });
+
+    it("the tier description names the priorities override", () => {
+      for (const tier of ["hot", "all"]) {
+        const custom = createMockApi();
+        registerTools(custom, { ...DEFAULT_CONFIG, tier });
+        const { tier: tierParam } = custom.tools["memory_search"].def.parameters.properties;
+        expect(tierParam.description).toContain(".palaia/priorities.json");
+      }
     });
   });
 

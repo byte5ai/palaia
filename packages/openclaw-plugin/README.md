@@ -63,7 +63,8 @@ All options are optional — sensible defaults are used:
 `"all"` from everything else — `"all"` adds COLD entries, while `"hot"` and `"warm"`
 both search HOT + WARM. List-based recall (`recallMode: "list"`, or the fallback whenever
 query-based recall yields no entries — no match, a too-short message, or a query error)
-uses the value as an exact tier filter.
+uses the value as an exact tier filter. `memory_search` and recall both apply a `tier`
+override from `.palaia/priorities.json` (global or per-agent) on top of this setting.
 
 ## Agent Tools
 

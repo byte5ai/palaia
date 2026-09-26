@@ -234,9 +234,11 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
       ),
       tier: Type.Optional(
         Type.String({
+          // Registration is synchronous and priorities.json can change at any
+          // time, so the description names the override instead of its value (#482).
           description: configIncludesCold
-            ? "Has no effect here: the plugin's tier setting is \"all\", so every search already includes cold (archived) entries."
-            : "Pass \"all\" to include cold (archived) entries; any other value searches hot and warm.",
+            ? "Usually has no effect here: the plugin's tier setting is \"all\", so searches already include cold (archived) entries. A tier override in .palaia/priorities.json (global or for this agent) takes precedence over that setting; pass \"all\" to include cold entries regardless."
+            : "Pass \"all\" to include cold (archived) entries; any other value searches hot and warm, unless a tier override of \"all\" in .palaia/priorities.json (global or for this agent) already includes cold entries.",
         })
       ),
       type: Type.Optional(
@@ -261,23 +263,28 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
         return invalidIntegerParam("maxResults", params.maxResults, searchMaxResults);
       }
 
-      // Load scope visibility from priorities (Issue #145: agent isolation)
+      // Resolve priorities exactly like auto-recall (hooks/index.ts,
+      // context-engine.ts): scope visibility (Issue #145: agent isolation) and
+      // the tier, with global, per-agent and per-project overrides (#482).
       let scopeVisibility: string[] | null = null;
+      let effectiveTier = config.tier;
       try {
         const prio = await loadPriorities(config.workspace || "");
         const agentId = process.env.PALAIA_AGENT || undefined;
+        const project = config.captureProject || undefined;
         const resolvedPrio = resolvePriorities(prio, {
           recallTypeWeight: config.recallTypeWeight,
           recallMinScore: config.recallMinScore,
           maxInjectedChars: config.maxInjectedChars,
           tier: config.tier,
-        }, agentId);
+        }, agentId, project);
         scopeVisibility = resolvedPrio.scopeVisibility;
+        effectiveTier = resolvedPrio.tier;
       } catch {
-        // Non-fatal: proceed without scope filtering
+        // Non-fatal: proceed without scope filtering, with the plugin's tier
       }
 
-      const includeCold = params.tier === "all" || configIncludesCold;
+      const includeCold = params.tier === "all" || effectiveTier === "all";
 
       const result = await searchEntries(
         { text: params.query, limit, includeCold, type: params.type },
