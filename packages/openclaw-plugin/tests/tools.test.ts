@@ -133,6 +133,66 @@ describe("tools", () => {
       );
     });
 
+    it("falls back to the configured maxResults when the param is omitted", async () => {
+      mockQuery.mockResolvedValueOnce({ result: { results: [] } });
+
+      await api.tools["memory_search"].def.execute("call-2b", {
+        query: "test",
+      });
+
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ top_k: DEFAULT_CONFIG.maxResults }),
+        expect.any(Number)
+      );
+    });
+
+    it("declares no schema default for maxResults, so hosts cannot override the config (#465)", () => {
+      const maxResults = api.tools["memory_search"].def.parameters.properties.maxResults;
+      expect(maxResults.default).toBeUndefined();
+    });
+
+    describe("schema descriptions follow the resolved config (#465)", () => {
+      function registerWith(overrides: Partial<typeof DEFAULT_CONFIG>) {
+        const custom = createMockApi();
+        registerTools(custom, { ...DEFAULT_CONFIG, ...overrides });
+        return custom.tools["memory_search"].def;
+      }
+
+      it("states the default maxResults", () => {
+        const { maxResults } = api.tools["memory_search"].def.parameters.properties;
+        expect(maxResults.description).toContain(`default: ${DEFAULT_CONFIG.maxResults}`);
+      });
+
+      it("states a configured maxResults, and execute() uses that same value", async () => {
+        const def = registerWith({ maxResults: 25 });
+        expect(def.parameters.properties.maxResults.description).toContain("default: 25");
+
+        mockQuery.mockResolvedValueOnce({ result: { results: [] } });
+        await def.execute("call-2c", { query: "test" });
+        expect(mockQuery).toHaveBeenCalledWith(
+          expect.objectContaining({ top_k: 25 }),
+          expect.any(Number)
+        );
+      });
+
+      it("describes tier as the switch for cold entries by default", () => {
+        const { tier } = api.tools["memory_search"].def.parameters.properties;
+        expect(tier.description).toContain('Pass "all" to include cold');
+      });
+
+      it("says tier has no effect when the plugin tier setting is already \"all\"", async () => {
+        const def = registerWith({ tier: "all" });
+        expect(def.parameters.properties.tier.description).toContain("no effect");
+
+        mockQuery.mockResolvedValueOnce({ result: { results: [] } });
+        await def.execute("call-3b", { query: "test", tier: "hot" });
+        expect(mockQuery).toHaveBeenCalledWith(
+          expect.objectContaining({ include_cold: true }),
+          expect.any(Number)
+        );
+      });
+    });
+
     it("passes include_cold for tier=all", async () => {
       mockQuery.mockResolvedValueOnce({ result: { results: [] } });
 

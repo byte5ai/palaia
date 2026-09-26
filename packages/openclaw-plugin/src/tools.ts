@@ -8,7 +8,7 @@
 
 import { Type } from "@sinclair/typebox";
 import { run, runJson, getEmbedServerManager, type RunnerOpts } from "./runner.js";
-import type { PalaiaPluginConfig } from "./config.js";
+import { DEFAULT_CONFIG, type PalaiaPluginConfig } from "./config.js";
 import { sanitizeScope, isValidScope } from "./hooks/index.js";
 import { loadPriorities, resolvePriorities } from "./priorities.js";
 import type { OpenClawPluginApi } from "./types.js";
@@ -180,20 +180,27 @@ async function findRecentDuplicate(
  */
 export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig): void {
   const opts = buildRunnerOpts(config);
+  // Resolved once so the schema description and execute() cannot disagree (#465).
+  const defaultSearchLimit = config.maxResults || DEFAULT_CONFIG.maxResults;
+  const configIncludesCold = config.tier === "all";
 
   // ── memory_search ──────────────────────────────────────────────
   api.registerTool({
     name: "memory_search",
     description:
-      "Semantically search palaia memory for relevant notes and context.",
+      "Search palaia memory for entries relevant to a query (semantic + keyword ranking; keyword-only when no embedding provider is available). Returns matching entries as text, each with its source path, score and tier, filtered to the scopes this agent may see. Use memory_get with a returned path to read one entry.",
     parameters: Type.Object({
       query: Type.String({ description: "Search query" }),
       maxResults: Type.Optional(
-        Type.Number({ description: "Max results (default: 5)", default: 5 })
+        Type.Number({
+          description: `Maximum results (default: ${defaultSearchLimit}, the plugin's maxResults setting).`,
+        })
       ),
       tier: Type.Optional(
         Type.String({
-          description: "hot|warm|all (default: hot+warm)",
+          description: configIncludesCold
+            ? "Has no effect here: the plugin's tier setting is \"all\", so every search already includes cold (archived) entries."
+            : "Pass \"all\" to include cold (archived) entries; any other value searches hot and warm.",
         })
       ),
       type: Type.Optional(
@@ -227,8 +234,8 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
         // Non-fatal: proceed without scope filtering
       }
 
-      const limit = params.maxResults || config.maxResults || 5;
-      const includeCold = params.tier === "all" || config.tier === "all";
+      const limit = params.maxResults || defaultSearchLimit;
+      const includeCold = params.tier === "all" || configIncludesCold;
 
       const result = await searchEntries(
         { text: params.query, limit, includeCold, type: params.type },
