@@ -64,15 +64,16 @@ A PR touches files of exactly one track, and v2 code must not depend on v3 or vi
 
 ## Branch Policy
 
-**`main` is protected.** Direct pushes are not allowed. All changes, including v2
-hotfixes on `v2-maintenance`, go through pull requests.
+**`v2-maintenance` is protected.** Direct pushes are not allowed. All changes, including
+v2 hotfixes, go through pull requests.
 
 | Rule | Setting |
 |------|---------|
-| Direct push to main | Blocked |
+| Direct push to `v2-maintenance` | Blocked (branch protection, and the `.hooks/pre-push` hook locally) |
 | Pull request required | Yes |
-| CI must pass | Yes (test 3.11) |
-| Force push | Blocked |
+| CI must pass | Yes: `test (3.9)`–`test (3.12)` and `test-plugin` |
+| Branch up to date before merge | Yes |
+| Force push / branch deletion | Blocked |
 | Owner bypass | Yes (emergencies only) |
 
 **Workflow:**
