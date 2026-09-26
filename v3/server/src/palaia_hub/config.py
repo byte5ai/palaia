@@ -369,7 +369,13 @@ market:
 # this hub's own older archives in that directory once there are more than
 # that many; set it to null to keep every one of them.
 #
+# `interval_hours` has the running hub write to every target by itself,
+# that many hours apart (at least 1). Leave it out (the default) and nothing
+# is written unless you ask. The clock survives a restart: a hub that was
+# down when a backup was due writes one shortly after it starts again.
+#
 # backup:
+#   interval_hours: 24
 #   targets:
 #     - type: local_directory
 #       name: nas
@@ -986,6 +992,28 @@ class BackupSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     targets: list[LocalDirectoryBackupTarget] = Field(default_factory=list)
+    #: Issue #438: the interval half of "a simple interval/retention
+    #: setting" (#297) — retention is each target's own ``keep_last``. Set,
+    #: the running hub writes to every target this many hours apart
+    #: (:class:`palaia_hub.backup_schedule.BackupScheduler`). ``None`` (the
+    #: default) schedules nothing: a hub writes an archive by itself only once
+    #: an operator has asked for it. At least one hour — every run is the
+    #: *full* archive, and a shorter interval would mostly measure how fast
+    #: retention can delete what the previous run just wrote.
+    interval_hours: float | None = Field(default=None, ge=1.0, le=24.0 * 366)
+
+    @model_validator(mode="after")
+    def _check_schedule_has_somewhere_to_write(self) -> BackupSettings:
+        """An interval with no target would validate into a hub that looks
+        scheduled and never writes a byte — refused, the same way an
+        unimplemented target ``type`` is."""
+        if self.interval_hours is not None and not self.targets:
+            raise ValueError(
+                "backup.interval_hours is set, but no backup.targets are configured — the "
+                "schedule would have nowhere to write, and would never produce a backup. "
+                "Fix: add a target under `backup.targets`, or remove `interval_hours`."
+            )
+        return self
 
     @model_validator(mode="after")
     def _check_names_are_unique(self) -> BackupSettings:
