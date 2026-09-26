@@ -278,9 +278,14 @@ describe("tools", () => {
 
     /**
      * A `palaia query --json` hit. `created` uses palaia's own format —
-     * Python's isoformat(): microseconds and a "+00:00" offset.
+     * Python's isoformat(): microseconds and a "+00:00" offset. `score` is
+     * palaia's hybrid ranking score (0.4 * relative BM25 + 0.6 * cosine);
+     * `embed_score` is the raw cosine similarity, 0 without embeddings.
      */
-    function queryHit(createdMsAgo: number | null) {
+    function queryHit(
+      createdMsAgo: number | null,
+      { embedScore = 0.95, bm25Score = 1.0 }: { embedScore?: number; bm25Score?: number } = {},
+    ) {
       const created =
         createdMsAgo === null
           ? undefined
@@ -288,7 +293,9 @@ describe("tools", () => {
       return {
         id: "dup-1",
         body: "Deploy checklist",
-        score: 0.93,
+        score: embedScore > 0 ? 0.4 * bm25Score + 0.6 * embedScore : bm25Score,
+        bm25_score: bm25Score,
+        embed_score: embedScore,
         tier: "hot",
         scope: "team",
         title: "Deploy Steps",
@@ -313,6 +320,7 @@ describe("tools", () => {
       const text = result.content[0].text;
       expect(text).toContain("Similar entry already exists");
       expect(text).toContain("dup-1");
+      expect(text).toContain("similarity: 0.95");
       expect(text).toContain("force: true");
       expect(text).not.toContain("--force");
       // The guard asked the warm embed server; no CLI query, nothing written
@@ -364,12 +372,27 @@ describe("tools", () => {
       expect(result.content[0].text).toContain("Memory written: new-1");
     });
 
-    it("duplicate guard ignores a recent hit scoring 0.8 or below", async () => {
-      mockQuery.mockResolvedValueOnce(serverResults({ ...queryHit(60 * 60 * 1000), score: 0.8 }));
+    it("duplicate guard ignores a recent hit at or below the similarity threshold", async () => {
+      // Hybrid score 0.928 would have passed the old `score > 0.8` check
+      mockQuery.mockResolvedValueOnce(serverResults(queryHit(60 * 60 * 1000, { embedScore: 0.88 })));
       mockRunJson.mockResolvedValueOnce(written);
 
       const result = await api.tools["memory_write"].def.execute("call-466h", {
         content: "Deploy checklist",
+      });
+
+      expect(result.content[0].text).toContain("Memory written: new-1");
+    });
+
+    it("duplicate guard never blocks on BM25-only results, whose top hit always scores 1.0", async () => {
+      // BM25 scores are normalized to the best hit: an unrelated entry sharing
+      // one word ranks first with score 1.0. Without embeddings there is no
+      // absolute similarity, so the guard must not fire.
+      mockQuery.mockResolvedValueOnce(serverResults(queryHit(60 * 60 * 1000, { embedScore: 0 })));
+      mockRunJson.mockResolvedValueOnce(written);
+
+      const result = await api.tools["memory_write"].def.execute("call-466i", {
+        content: "Quarterly finance report checklist",
       });
 
       expect(result.content[0].text).toContain("Memory written: new-1");

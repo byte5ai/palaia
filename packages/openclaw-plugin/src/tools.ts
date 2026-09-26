@@ -26,6 +26,8 @@ interface QueryResult {
     tags?: string[];
     path?: string;
     decay_score?: number;
+    /** Raw embedding cosine similarity to the query; 0 without embeddings */
+    embed_score?: number;
     /** ISO-8601 creation timestamp (absent from palaia CLIs before #466) */
     created?: string;
   }>;
@@ -110,23 +112,32 @@ async function searchEntries(
   return runJson<QueryResult>(args, { ...opts, timeoutMs: cliTimeoutMs });
 }
 
-// memory_write's duplicate guard blocks on a hit scoring above
-// DUPLICATE_MIN_SCORE that was created within DUPLICATE_WINDOW_MS.
-const DUPLICATE_MIN_SCORE = 0.8;
+// memory_write's duplicate guard blocks on a hit whose embedding similarity
+// exceeds DUPLICATE_MIN_SIMILARITY and that was created within
+// DUPLICATE_WINDOW_MS. It cannot use the ranking `score`: palaia normalizes
+// BM25 to the best hit, so with BM25-only search the top hit always scores
+// 1.0, however unrelated it is. `embed_score` is the raw cosine similarity.
+// Calibrated against stored entries with the default fastembed model
+// (bge-small-en-v1.5): identical text 0.94, near-duplicates (reworded, or one
+// step added) 0.91-0.93, true paraphrases 0.84-0.85, same topic but different
+// content 0.75-0.81. 0.88 splits near-duplicates from paraphrases.
+const DUPLICATE_MIN_SIMILARITY = 0.88;
 const DUPLICATE_WINDOW_MS = 24 * 60 * 60 * 1000;
 // Short CLI-fallback budget, so the guard never stalls a write
 const DUPLICATE_CLI_TIMEOUT_MS = 2000;
 
 /**
- * Find a similar entry created in the last 24 hours, or null.
+ * Find a near-duplicate entry created in the last 24 hours, or null.
  *
- * Best-effort: if the search fails or times out, the write proceeds.
+ * Needs embeddings: hits without an embedding similarity (BM25-only search,
+ * or an embed server still warming up) never block. Best-effort: if the
+ * search fails or times out, the write proceeds.
  */
 async function findRecentDuplicate(
   content: string,
   config: PalaiaPluginConfig,
   opts: RunnerOpts,
-): Promise<{ entry: QueryResult["results"][number]; created: Date } | null> {
+): Promise<{ entry: QueryResult["results"][number]; similarity: number; created: Date } | null> {
   let result: QueryResult;
   try {
     result = await searchEntries(
@@ -142,10 +153,11 @@ async function findRecentDuplicate(
 
   const now = Date.now();
   for (const r of result.results) {
-    if (r.score > DUPLICATE_MIN_SCORE && r.created) {
+    const similarity = r.embed_score ?? 0;
+    if (similarity > DUPLICATE_MIN_SIMILARITY && r.created) {
       const created = new Date(r.created);
       if (!isNaN(created.getTime()) && now - created.getTime() < DUPLICATE_WINDOW_MS) {
-        return { entry: r, created };
+        return { entry: r, similarity, created };
       }
     }
   }
@@ -297,7 +309,7 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
     {
       name: "memory_write",
       description:
-        "Write a new entry to palaia (WAL-backed, crash-safe). Intended for processes/SOPs and tasks; conversation knowledge is captured automatically. Unless force is true, a similar entry (score > 0.8) created in the last 24 hours blocks the write and is reported instead; update that entry, or retry with force: true.",
+        "Write a new entry to palaia (WAL-backed, crash-safe). Intended for processes/SOPs and tasks; conversation knowledge is captured automatically. Unless force is true, a near-duplicate entry created in the last 24 hours blocks the write and is reported instead; update that entry, or retry with force: true. Near-duplicates are detected by embedding similarity, so without an embedding provider the check is skipped.",
       parameters: Type.Object({
         content: Type.String({ description: "Memory content to write" }),
         scope: Type.Optional(
@@ -349,14 +361,14 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
         if (!params.force) {
           const dup = await findRecentDuplicate(params.content, config, opts);
           if (dup) {
-            const { entry: r, created } = dup;
+            const { entry: r, similarity, created } = dup;
             const title = r.title || (r.content || r.body || "").slice(0, 60);
             const dateStr = created.toISOString().split("T")[0];
             return {
               content: [
                 {
                   type: "text" as const,
-                  text: `Similar entry already exists (score: ${r.score.toFixed(2)}, created: ${dateStr}): '${title}'. Use palaia edit ${r.id} to update, or call again with force: true to write anyway.`,
+                  text: `Similar entry already exists (similarity: ${similarity.toFixed(2)}, created: ${dateStr}): '${title}'. Use palaia edit ${r.id} to update, or call again with force: true to write anyway.`,
                 },
               ],
             };
