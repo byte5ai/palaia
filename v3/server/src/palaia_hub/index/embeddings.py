@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from .models import fingerprint
 
@@ -105,6 +105,47 @@ class Embedder(Protocol):
         ...
 
 
+def align_truncation_with_fixed_padding(tokenizer: Any) -> int | None:
+    """Truncate to the fixed padding length when the tokenizer pads to one.
+
+    A ``tokenizers.Tokenizer`` that pads every sequence to a fixed length
+    but truncates only at a longer one produces sequences of different
+    lengths, and fastembed's ``np.array([e.ids for e in encoded])`` then
+    fails with "inhomogeneous shape" for any batch that mixes short and long
+    texts. Nothing gets embedded.
+
+    fastembed takes the truncation length from ``tokenizer_config.json``
+    (``min(model_max_length, max_length)``) but keeps whatever padding
+    ``tokenizer.json`` declares. The 2026-09-27 revision of
+    ``qdrant/all-MiniLM-L6-v2-onnx`` (palaia's default model) dropped
+    ``max_length: 128`` from its tokenizer config and kept fixed padding at
+    128, so truncation moved to 256. Every hub that downloaded the model
+    from then on could not embed.
+
+    Truncating at the padding length is what the model did before that
+    revision, so new vectors match the ones existing indexes already hold.
+    Returns the new truncation length, or ``None`` when nothing had to
+    change.
+    """
+    padding = getattr(tokenizer, "padding", None)
+    truncation = getattr(tokenizer, "truncation", None)
+    if not isinstance(padding, dict):
+        return None
+    # The Python binding reports a fixed length as ``length`` (``None`` for
+    # dynamic padding); ``tokenizer.json`` spells it ``strategy: {Fixed: n}``.
+    fixed = padding.get("length")
+    strategy = padding.get("strategy")
+    if fixed is None and isinstance(strategy, dict):
+        fixed = strategy.get("Fixed")
+    if not isinstance(fixed, int) or fixed <= 0:
+        return None
+    current = truncation.get("max_length") if isinstance(truncation, dict) else None
+    if isinstance(current, int) and current <= fixed:
+        return None
+    tokenizer.enable_truncation(max_length=fixed)
+    return fixed
+
+
 class FastEmbedEmbedder:
     """:class:`Embedder` backed by fastembed's local ONNX models.
 
@@ -134,6 +175,17 @@ class FastEmbedEmbedder:
                 f"Fix: check the model name, or the network/cache for its "
                 f"first download. Search stays available as FTS-only."
             ) from exc
+        tokenizer = getattr(getattr(self._model, "model", None), "tokenizer", None)
+        if tokenizer is not None:
+            aligned = align_truncation_with_fixed_padding(tokenizer)
+            if aligned is not None:
+                logger.info(
+                    "embedding model %s pads to %d tokens but truncated later; "
+                    "truncating at %d so every batch has one shape",
+                    self._config.model,
+                    aligned,
+                    aligned,
+                )
         self._dim = len(self.embed(["dimension probe"])[0])
 
     @property
