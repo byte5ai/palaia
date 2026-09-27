@@ -80,8 +80,7 @@ def verify_verifier(code_verifier: str | None, code_challenge: str) -> None:
     if not secrets.compare_digest(challenge_for(code_verifier), code_challenge):
         raise OAuthError(
             "invalid_grant",
-            "the code_verifier does not match the code_challenge from the "
-            "authorization request.",
+            "the code_verifier does not match the code_challenge from the authorization request.",
         )
 
 

@@ -189,9 +189,7 @@ class ProposalApplier:
             try:
                 await self._execute(operation)
             except (VaultError, ValueError) as exc:
-                logger.warning(
-                    "curator apply: %s failed on %s: %s", permalink, operation.op, exc
-                )
+                logger.warning("curator apply: %s failed on %s: %s", permalink, operation.op, exc)
                 return await self._finish(
                     proposal,
                     "apply-failed",
@@ -222,9 +220,7 @@ class ProposalApplier:
             return
         current = await self._engine.read_note(proposal.path)
         body = f"{current.body.rstrip(chr(10))}\n\n{render_pre_images(pre_images)}"
-        await self._engine.edit_note(
-            proposal.path, body=body, expected_checksum=current.checksum
-        )
+        await self._engine.edit_note(proposal.path, body=body, expected_checksum=current.checksum)
 
     async def _execute(self, operation: PlanOperation) -> None:
         if isinstance(operation, AppendOp):
@@ -290,9 +286,7 @@ class ProposalApplier:
                 expected_checksum=current.checksum,
             )
         except VaultError:
-            logger.exception(
-                "curator apply: could not stamp status %r on %s", status, permalink
-            )
+            logger.exception("curator apply: could not stamp status %r on %s", status, permalink)
         return ProposalResult(
             vault=self._engine.name,
             permalink=permalink,

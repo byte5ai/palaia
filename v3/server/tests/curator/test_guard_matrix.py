@@ -160,9 +160,7 @@ def test_policy_refuses_every_forbidden_call(
     assert len(message) > 80
 
 
-@pytest.mark.parametrize(
-    ("label", "action", "arguments"), ALLOWED, ids=[row[0] for row in ALLOWED]
-)
+@pytest.mark.parametrize(("label", "action", "arguments"), ALLOWED, ids=[row[0] for row in ALLOWED])
 def test_policy_allows_the_curator_surface(
     label: str, action: str, arguments: dict[str, Any]
 ) -> None:
@@ -181,9 +179,7 @@ def test_provenance_is_shape_checked_when_no_session_is_registered() -> None:
 def _curator_gateway(mount: VaultMountConfig) -> Any:
     config = GatewayConfig(vaults=[mount], profiles=[curator_profile([mount.key])])
     middleware = curator_profile_middleware([mount])
-    gateway = build_gateway(
-        config, {mount.key: FakeVaultService()}, profile_middleware=middleware
-    )
+    gateway = build_gateway(config, {mount.key: FakeVaultService()}, profile_middleware=middleware)
     return gateway, middleware[CURATOR_PROFILE_PATH][0]
 
 

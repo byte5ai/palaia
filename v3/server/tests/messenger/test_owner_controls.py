@@ -57,9 +57,7 @@ async def test_send_as_owner_needs_no_session_secret(
     recipient, _ = await _register(directory)
     # No `session_secret` keyword exists on this call at all; if it needed
     # one, this call would be a TypeError, not a runtime auth failure.
-    result = await service.send_as_owner(
-        message_type="inform", to=recipient, subject="hi"
-    )
+    result = await service.send_as_owner(message_type="inform", to=recipient, subject="hi")
     assert result.recipients == [recipient]
 
 

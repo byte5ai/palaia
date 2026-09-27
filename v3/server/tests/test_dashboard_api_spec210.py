@@ -24,9 +24,7 @@ def _client(
 ) -> TestClient:
     registry = VaultRegistry(tmp_path / "home")
     indexes: dict[str, VaultIndex] = {} if with_indexes else None  # type: ignore[assignment]
-    dynamic_gateway = (
-        DynamicGateway(GatewayConfig(), {}) if with_dynamic_gateway else None
-    )
+    dynamic_gateway = DynamicGateway(GatewayConfig(), {}) if with_dynamic_gateway else None
     app = create_app(
         HubConfig(),
         vault_registry=registry,

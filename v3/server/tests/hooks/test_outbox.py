@@ -78,7 +78,10 @@ def test_deliveries_survive_a_restart(tmp_path: Path) -> None:
     path = tmp_path / "outbox.sqlite3"
     outbox = HookOutbox(path)
     outbox.enqueue(
-        hook_id="h1", event_id="e1", event_name="memory.entry.created", payload=b'{"n":1}',
+        hook_id="h1",
+        event_id="e1",
+        event_name="memory.entry.created",
+        payload=b'{"n":1}',
         signature="sig-1",
     )
     outbox.close()

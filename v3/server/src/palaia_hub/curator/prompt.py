@@ -58,8 +58,7 @@ def build_prompt(
     parts = [ROLE_BLOCK.format(vault_name=vault_name, purpose=purpose.rstrip("."))]
     if curation_note and curation_note.strip():
         parts.append(
-            "## This vault's own curation rules (meta/curation.md)\n\n"
-            f"{curation_note.strip()}"
+            f"## This vault's own curation rules (meta/curation.md)\n\n{curation_note.strip()}"
         )
     parts.append(
         "## The capture to curate\n\n"

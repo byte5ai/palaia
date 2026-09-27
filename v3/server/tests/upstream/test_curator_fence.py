@@ -44,9 +44,7 @@ VAULT = VaultMountConfig(key="work", name="work", purpose="Work vault.")
 
 
 def _upstream(url: str) -> UpstreamConfig:
-    return UpstreamConfig(
-        key="fixture", kind="http", display_name="Fixture server", url=url
-    )
+    return UpstreamConfig(key="fixture", kind="http", display_name="Fixture server", url=url)
 
 
 def test_the_schema_refuses_upstreams_on_the_curator_profile() -> None:
@@ -89,9 +87,7 @@ async def test_the_live_curator_profile_carries_no_upstream_tools(
         config,
         {"work": FakeVaultService()},
         upstream_service=service,
-        profile_middleware=curator_profile_middleware(
-            [VAULT], active_captures=ActiveCaptures()
-        ),
+        profile_middleware=curator_profile_middleware([VAULT], active_captures=ActiveCaptures()),
     )
     await gateway.start()
     await service.probe_all()

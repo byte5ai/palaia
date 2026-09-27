@@ -153,9 +153,7 @@ class TelegramRuntime:
         try:
             me = await self.service.check_bot(key)
         except TelegramError as exc:
-            result = BotCheck(
-                ok=False, checked_at=float(self._now()), error=summary_line(str(exc))
-            )
+            result = BotCheck(ok=False, checked_at=float(self._now()), error=summary_line(str(exc)))
         else:
             username = me.get("username")
             result = BotCheck(
@@ -223,9 +221,7 @@ class TelegramRuntime:
             # Only reachable by starting a runtime whose own client was
             # already released — a second lifespan over one app. Polling
             # against a closed client would only fill the log.
-            logger.warning(
-                "telegram runtime was already shut down; not restarting its poll tasks"
-            )
+            logger.warning("telegram runtime was already shut down; not restarting its poll tasks")
             return
         if self._started:
             return
@@ -250,9 +246,7 @@ class TelegramRuntime:
             return
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
         for key, result in zip(tasks, results, strict=True):
-            if isinstance(result, BaseException) and not isinstance(
-                result, asyncio.CancelledError
-            ):
+            if isinstance(result, BaseException) and not isinstance(result, asyncio.CancelledError):
                 logger.warning(
                     "telegram poll task for bot %r had already stopped: %s: %s",
                     key,
@@ -367,9 +361,7 @@ class TelegramRuntime:
                 try:
                     await closer()
                 except Exception as exc:  # noqa: BLE001 — shutdown must finish
-                    logger.warning(
-                        "closing the Telegram API client failed: %s", type(exc).__name__
-                    )
+                    logger.warning("closing the Telegram API client failed: %s", type(exc).__name__)
 
 
 __all__ = ["POLL_TASK_PREFIX", "TelegramRuntime"]

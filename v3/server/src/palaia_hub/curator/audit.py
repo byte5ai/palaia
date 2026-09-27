@@ -56,9 +56,7 @@ class CuratorAudit:
     is what keeps the runner testable without a SQLite file or a bus.
     """
 
-    def __init__(
-        self, *, publish: Publisher | None = None, stash: StashLike | None = None
-    ) -> None:
+    def __init__(self, *, publish: Publisher | None = None, stash: StashLike | None = None) -> None:
         self._publish = publish
         self._stash = stash
 

@@ -121,8 +121,7 @@ def validate_metadata(document: Any, *, expected_client_id: str) -> dict[str, An
         # or trying to be issued tokens under someone else's identity.
         raise OAuthError(
             "invalid_client_metadata",
-            "the metadata document's 'client_id' must equal the URL it was "
-            "fetched from.",
+            "the metadata document's 'client_id' must equal the URL it was fetched from.",
         )
     redirect_uris = document.get("redirect_uris")
     if not isinstance(redirect_uris, list) or not redirect_uris:
@@ -171,9 +170,7 @@ def validate_metadata(document: Any, *, expected_client_id: str) -> dict[str, An
 
 def _as_str(value: Any, field: str) -> str:
     if not isinstance(value, str) or not value:
-        raise OAuthError(
-            "invalid_client_metadata", f"'{field}' must contain non-empty strings."
-        )
+        raise OAuthError("invalid_client_metadata", f"'{field}' must contain non-empty strings.")
     return value
 
 

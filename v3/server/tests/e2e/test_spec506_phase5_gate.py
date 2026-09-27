@@ -101,9 +101,7 @@ def _wait_for_health(port: int, timeout: float = _STARTUP_TIMEOUT) -> None:
     last_error: Exception | None = None
     while time.monotonic() < deadline:
         try:
-            with urllib.request.urlopen(
-                f"http://127.0.0.1:{port}/api/health", timeout=0.5
-            ) as resp:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=0.5) as resp:
                 if resp.status == 200:
                     return
         except (OSError, urllib.error.URLError) as exc:

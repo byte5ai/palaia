@@ -39,6 +39,7 @@ def item(key: str, *, full: str, summary: str = "", stub: str = "") -> BudgetIte
 # The estimator and the elider
 # --------------------------------------------------------------------------
 
+
 def test_estimate_is_monotone_in_length() -> None:
     previous = 0
     for length in range(0, 500, 17):
@@ -74,6 +75,7 @@ def test_stub_line_is_bounded() -> None:
 # The floor: what makes "never zero results" compatible with the bound
 # --------------------------------------------------------------------------
 
+
 def test_min_budget_always_fits_a_stub() -> None:
     """A stub, plus a bounded header, must fit inside the budget floor.
 
@@ -98,6 +100,7 @@ def test_effective_budget_raises_absurd_values_to_the_floor() -> None:
 # --------------------------------------------------------------------------
 # Tier degradation
 # --------------------------------------------------------------------------
+
 
 def test_everything_fits_at_full_tier_when_the_budget_is_generous() -> None:
     plan = plan_budget([item("a", full="A" * 40), item("b", full="B" * 40)], max_tokens=4000)
@@ -158,6 +161,7 @@ def test_overhead_is_charged_against_the_budget() -> None:
 # --------------------------------------------------------------------------
 # The property test
 # --------------------------------------------------------------------------
+
 
 def _random_items(rng: random.Random) -> list[BudgetItem]:
     items: list[BudgetItem] = []

@@ -29,9 +29,7 @@ def _validate_key(value: str, *, what: str) -> str:
     if not value:
         raise ValueError(f"{what} must not be empty")
     if any(ch not in _KEY_CHARSET for ch in value):
-        raise ValueError(
-            f"{what} {value!r} must use only lowercase letters, digits, '-', '_'"
-        )
+        raise ValueError(f"{what} {value!r} must use only lowercase letters, digits, '-', '_'")
     return value
 
 
@@ -308,8 +306,7 @@ class GatewayConfig(BaseModel):
             unknown_up = [u for u in profile.upstreams if u not in known_upstreams]
             if unknown_up:
                 raise ValueError(
-                    f"profile {profile.path!r} references unknown external server(s) "
-                    f"{unknown_up}"
+                    f"profile {profile.path!r} references unknown external server(s) {unknown_up}"
                 )
         # SPEC-302 deliverable #5: two upstreams (or an upstream and a
         # vault's memory tool family) claiming the same tool-name prefix is

@@ -92,8 +92,11 @@ def build_checklist(
                 title="The public URL serves valid TLS",
                 detail=(
                     f"Last self-test against {last_self_test.checked_url}: "
-                    + ("reachable over a valid TLS handshake." if last_self_test.reachable else
-                       f"not reachable ({last_self_test.error})")
+                    + (
+                        "reachable over a valid TLS handshake."
+                        if last_self_test.reachable
+                        else f"not reachable ({last_self_test.error})"
+                    )
                 ),
                 auto=True,
                 passed=last_self_test.reachable,

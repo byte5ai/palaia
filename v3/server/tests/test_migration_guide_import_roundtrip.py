@@ -72,7 +72,7 @@ def test_published_command_round_trips_the_golden_v2_fixture(
     # claim ("does nothing new") — every permalink already resolves.
     main(argv[1:])
     second_run = capsys.readouterr().out
-    assert "created: 0" in second_run or "\"created\": 0" in second_run
+    assert "created: 0" in second_run or '"created": 0' in second_run
 
     after_second = _tree_hashes(FIXTURE)
     assert after_second == before, "a re-run must also never modify the v2 fixture store"

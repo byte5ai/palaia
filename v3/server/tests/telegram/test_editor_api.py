@@ -84,16 +84,12 @@ def app(
 ) -> FastAPI:
     app = FastAPI()
     app.include_router(
-        build_telegram_dashboard_router(
-            runtime, secrets, config_path=config_path, publish=events
-        )
+        build_telegram_dashboard_router(runtime, secrets, config_path=config_path, publish=events)
     )
     return app
 
 
-async def _call(
-    app: FastAPI, method: str, path: str, body: Any = None
-) -> httpx.Response:
+async def _call(app: FastAPI, method: str, path: str, body: Any = None) -> httpx.Response:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://hub") as client:
         return await client.request(method, path, json=body)
@@ -127,9 +123,7 @@ async def test_a_bot_is_added_saved_and_applied(
     service: TelegramService,
     events: RecordingBus,
 ) -> None:
-    status = await _ok(
-        app, "POST", "/api/telegram/bots", {"key": "alerts", "label": "Alerts bot"}
-    )
+    status = await _ok(app, "POST", "/api/telegram/bots", {"key": "alerts", "label": "Alerts bot"})
     alerts = _bot(status, "alerts")
     assert alerts["label"] == "Alerts bot"
     assert alerts["token_secret"] == "telegram_alerts"
@@ -148,18 +142,14 @@ async def test_a_bot_is_added_saved_and_applied(
 
 
 async def test_a_webhook_bot_gets_its_echo_secret_named(app: FastAPI) -> None:
-    status = await _ok(
-        app, "POST", "/api/telegram/bots", {"key": "hooked", "transport": "webhook"}
-    )
+    status = await _ok(app, "POST", "/api/telegram/bots", {"key": "hooked", "transport": "webhook"})
     hooked = _bot(status, "hooked")
     assert hooked["webhook_secret"] == "telegram_hooked_webhook"
     assert hooked["webhook_secret_stored"] is False
     assert hooked["polling"] is None
 
 
-async def test_a_duplicate_or_malformed_bot_is_refused(
-    app: FastAPI, config_path: Path
-) -> None:
+async def test_a_duplicate_or_malformed_bot_is_refused(app: FastAPI, config_path: Path) -> None:
     before = config_path.read_text(encoding="utf-8")
     duplicate = await _call(app, "POST", "/api/telegram/bots", {"key": "support"})
     assert duplicate.status_code == 409
@@ -177,9 +167,7 @@ async def test_a_secret_name_the_store_would_refuse_is_refused(app: FastAPI) -> 
     assert "secret name" in response.json()["detail"]
 
 
-async def test_a_bot_body_carrying_a_token_is_refused(
-    app: FastAPI, config_path: Path
-) -> None:
+async def test_a_bot_body_carrying_a_token_is_refused(app: FastAPI, config_path: Path) -> None:
     """The token belongs in the secret store. A client that sends one along
     with the bot is told so — the field is not silently dropped, and it is
     certainly not written to config.yaml."""

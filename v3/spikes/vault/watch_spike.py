@@ -18,6 +18,7 @@ background thread: (1) single content edit, (2) rapid rename+edit
 "changes" batches come out and with what latency from the edit to the
 watcher observing it.
 """
+
 from __future__ import annotations
 
 import argparse

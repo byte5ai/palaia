@@ -47,9 +47,7 @@ def _wait_for_health(port: int, timeout: float = _STARTUP_TIMEOUT) -> None:
     last_error: Exception | None = None
     while time.monotonic() < deadline:
         try:
-            with urllib.request.urlopen(
-                f"http://127.0.0.1:{port}/api/health", timeout=0.5
-            ) as resp:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=0.5) as resp:
                 if resp.status == 200:
                     return
         except (OSError, urllib.error.URLError) as exc:
@@ -163,7 +161,7 @@ def test_claude_code_connects_and_round_trips_write_search_read(
     # this test documents the behavior, not just tolerates it) and that our
     # diagnostic middleware identified the request.
     log_text = log_path.read_text()
-    assert ' 400 Bad Request' in log_text or '" 400 ' in log_text, (
+    assert " 400 Bad Request" in log_text or '" 400 ' in log_text, (
         "expected the known FastMCP 3.4.7 pre-handshake 400 in the gateway "
         f"log; log was:\n{log_text}"
     )

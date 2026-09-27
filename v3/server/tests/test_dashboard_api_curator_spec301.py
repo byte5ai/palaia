@@ -40,9 +40,7 @@ def test_vault_created_via_the_wizard_joins_the_curator_profile(tmp_path: Path) 
 
     mount = VaultMountConfig(key="work", name="work", purpose="Work vault.")
     hub_config = HubConfig(curator={"enabled": True})
-    curator = build_curator(
-        hub_config, {"work": engine}, [mount], home=home, with_stash=False
-    )
+    curator = build_curator(hub_config, {"work": engine}, [mount], home=home, with_stash=False)
     gateway = DynamicGateway(
         GatewayConfig(
             vaults=[mount],

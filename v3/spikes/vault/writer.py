@@ -12,6 +12,7 @@ the change. After each fully-completed iteration it appends the note's
 permalink to progress.log so the checker can tell how many writes were
 confirmed complete before the kill landed.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -78,9 +79,12 @@ def main() -> None:
             tree = index.write_tree()
             parents = [parent] if parent is not None else []
             parent = repo.create_commit(
-                "HEAD", AUTHOR, AUTHOR,
+                "HEAD",
+                AUTHOR,
+                AUTHOR,
                 f"chore(vault): write {permalink} (agent=spike, client=kill_test)",
-                tree, parents,
+                tree,
+                parents,
             )
             progress.write(f"{i}\t{permalink}\t{time.time()}\n")
             progress.flush()

@@ -56,9 +56,7 @@ async def main() -> None:
 
                 tools = await session.list_tools()
                 names = sorted(t.name for t in tools.tools)
-                print(
-                    f"--- tool surface for profile '{profile}' ({len(names)}): {names}"
-                )
+                print(f"--- tool surface for profile '{profile}' ({len(names)}): {names}")
 
                 if tool_name:
                     print(f"--- calling {tool_name}({tool_args})")

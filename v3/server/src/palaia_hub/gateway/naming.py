@@ -127,9 +127,7 @@ def decompose_final_name(namespace: str, final_name: str) -> str:
     return final_name
 
 
-def resolve_tool_names(
-    namespace: str, renames: dict[str, str] | None
-) -> dict[str, str]:
+def resolve_tool_names(namespace: str, renames: dict[str, str] | None) -> dict[str, str]:
     """Sanitize a vault's configured renames into a ``mount(tool_names=...)`` dict.
 
     ``renames`` maps a base action name (``"search"``, ``"write"``, ...) to

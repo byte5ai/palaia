@@ -48,9 +48,7 @@ pytestmark = [
         os.environ.get(ENV_FLAG) != "1",
         reason=f"real-runner smoke test: set {ENV_FLAG}=1 to run it (spends model calls)",
     ),
-    pytest.mark.skipif(
-        shutil.which("claude") is None, reason="the `claude` CLI is not on PATH"
-    ),
+    pytest.mark.skipif(shutil.which("claude") is None, reason="the `claude` CLI is not on PATH"),
 ]
 
 _HUB_SCRIPT = Path(__file__).parent / "support" / "curator_hub.py"

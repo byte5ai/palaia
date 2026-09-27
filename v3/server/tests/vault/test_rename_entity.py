@@ -167,9 +167,7 @@ async def test_rename_can_also_rename_the_file_in_the_same_commit(
 ) -> None:
     engine = await golden_vault(make_engine)
     commits_before = len(git(engine.root, "log", "--format=%H").splitlines())
-    result = await engine.rename_entity(
-        "projects/api-gateway", "Edge Gateway", rename_file=True
-    )
+    result = await engine.rename_entity("projects/api-gateway", "Edge Gateway", rename_file=True)
     assert result.note.path == "projects/edge-gateway.md"
     assert not (engine.root / "projects/api-gateway.md").exists()
     assert len(git(engine.root, "log", "--format=%H").splitlines()) == commits_before + 1

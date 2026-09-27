@@ -132,9 +132,7 @@ def test_team_mount_present_only_with_both_services() -> None:
         assert rest.get("/mcp/team").status_code == 404
 
     messenger = MessengerService(MessengerStore(":memory:"), directory)
-    both = create_app(
-        HubConfig(), directory_service=directory, messenger_service=messenger
-    )
+    both = create_app(HubConfig(), directory_service=directory, messenger_service=messenger)
     with TestClient(both) as rest:
         # 406, not 404 — same "the mount exists" proof the hub_status/
         # market mount tests use (see test_apps_hub_status.py's docstring).

@@ -35,9 +35,7 @@ async def _run(vault_root: Path, port: int) -> None:
         profile_middleware=curator_profile_middleware([mount]),
     )
     app = create_app(HubConfig(auth_enabled=False), gateway=gateway)
-    server = uvicorn.Server(
-        uvicorn.Config(app, host="127.0.0.1", port=port, log_config=None)
-    )
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_config=None))
     try:
         await server.serve()
     finally:

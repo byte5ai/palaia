@@ -37,10 +37,7 @@ from palaia_hub.recall.embeds import (
 from palaia_hub.vault import frontmatter as fm
 
 CORPUS_DIR = (
-    Path(__file__).resolve().parents[3]
-    / "docs"
-    / "vault-format-conformance"
-    / "resolution"
+    Path(__file__).resolve().parents[3] / "docs" / "vault-format-conformance" / "resolution"
 )
 
 

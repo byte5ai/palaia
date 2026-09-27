@@ -649,9 +649,7 @@ def to_json(note: ParsedNote) -> dict[str, Any]:
             }
             for r in note.relations
         ],
-        "embeds": [
-            {"target": e.target, "anchor": e.anchor, "line": e.line} for e in note.embeds
-        ],
+        "embeds": [{"target": e.target, "anchor": e.anchor, "line": e.line} for e in note.embeds],
         "anchors": [{"id": a.id, "line": a.line} for a in note.anchors],
         "warnings": warnings_json,
     }

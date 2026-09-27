@@ -51,9 +51,7 @@ def _corpus_texts() -> list[tuple[str, str]]:
     ]
 
 
-@pytest.mark.parametrize(
-    "name,text", _corpus_texts(), ids=[name for name, _ in _corpus_texts()]
-)
+@pytest.mark.parametrize("name,text", _corpus_texts(), ids=[name for name, _ in _corpus_texts()])
 def test_render_parse_reaches_a_fixed_point(name: str, text: str) -> None:
     first = parse_note(text, name)
     rendered_once = render_note(first)

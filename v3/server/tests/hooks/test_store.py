@@ -66,5 +66,3 @@ def test_store_persists_across_instances(tmp_path: Path) -> None:
     assert record.url == "https://example.com/hook"
     assert record.secret == created.secret
     assert record.events == ["inbox.captured"]
-
-

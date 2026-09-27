@@ -24,9 +24,7 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
-async def _open_index(
-    tmp_path: Path, *, on_event: object
-) -> tuple[VaultEngine, VaultIndex]:
+async def _open_index(tmp_path: Path, *, on_event: object) -> tuple[VaultEngine, VaultIndex]:
     engine = VaultEngine(tmp_path / "vault", "work", bus=EventBus())
     await engine.open(purpose="hub events test", create=True)
     index = VaultIndex(

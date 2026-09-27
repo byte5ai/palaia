@@ -19,8 +19,8 @@ Context read first, per the SPEC's execution notes: MASTERPLAN §5.2
 `gateway.py` builds one `FastMCP` app (`build_full_profile`) that:
 
 ```python
-gw.mount(local_server, namespace="local")                 # in-process
-remote_proxy = FastMCP.as_proxy(REMOTE_UPSTREAM_URL)       # remote, over HTTP
+gw.mount(local_server, namespace="local")  # in-process
+remote_proxy = FastMCP.as_proxy(REMOTE_UPSTREAM_URL)  # remote, over HTTP
 gw.mount(remote_proxy, namespace="remote", tool_names={"echo": "say"})
 ```
 
@@ -80,10 +80,13 @@ should expose, turn each into its own ASGI app via `.http_app()`, and combine
 them under one Starlette parent:
 
 ```python
-app = Starlette(routes=[
-    Mount("/mcp/full", app=full_profile.http_app(path="/")),
-    Mount("/mcp/memory-only", app=memory_only_profile.http_app(path="/")),
-], lifespan=combine_lifespans(_full_asgi.lifespan, _memory_only_asgi.lifespan))
+app = Starlette(
+    routes=[
+        Mount("/mcp/full", app=full_profile.http_app(path="/")),
+        Mount("/mcp/memory-only", app=memory_only_profile.http_app(path="/")),
+    ],
+    lifespan=combine_lifespans(_full_asgi.lifespan, _memory_only_asgi.lifespan),
+)
 ```
 
 Evidence — the two paths expose different tool counts from the same running

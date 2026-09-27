@@ -21,9 +21,7 @@ from .conftest import BOT_A_TOKEN, FakeBotApi, message_update
 
 
 @pytest.mark.anyio
-async def test_the_first_poll_sends_no_offset(
-    service: TelegramService, api: FakeBotApi
-) -> None:
+async def test_the_first_poll_sends_no_offset(service: TelegramService, api: FakeBotApi) -> None:
     """Telegram then hands over whatever it is still holding, rather than
     nothing — which is what an operator restarting the hub expects."""
     poller = LongPoller(service, "support")
@@ -40,9 +38,7 @@ async def test_the_poll_asks_only_for_the_update_types_this_connector_handles(
 
 
 @pytest.mark.anyio
-async def test_the_poll_uses_the_bots_own_token(
-    service: TelegramService, api: FakeBotApi
-) -> None:
+async def test_the_poll_uses_the_bots_own_token(service: TelegramService, api: FakeBotApi) -> None:
     await LongPoller(service, "support").poll_once()
     assert api.get_updates_calls[0]["token"] == BOT_A_TOKEN
 
@@ -78,7 +74,9 @@ async def test_the_offset_moves_past_an_update_nothing_understood(
 
 @pytest.mark.anyio
 async def test_the_offset_moves_past_a_message_that_failed_to_deliver(
-    service: TelegramService, api: FakeBotApi, vault  # noqa: ANN001
+    service: TelegramService,
+    api: FakeBotApi,
+    vault,  # noqa: ANN001
 ) -> None:
     """A vault that refuses a capture is a hub-side problem to fix, not a
     reason to replay the same message on a loop."""
@@ -109,7 +107,9 @@ async def test_an_empty_batch_leaves_the_offset_alone(
 
 @pytest.mark.anyio
 async def test_every_update_in_a_batch_is_dispatched(
-    service: TelegramService, api: FakeBotApi, messenger  # noqa: ANN001
+    service: TelegramService,
+    api: FakeBotApi,
+    messenger,  # noqa: ANN001
 ) -> None:
     api.queue = [
         [
@@ -208,7 +208,9 @@ async def test_a_failure_is_kept_as_one_scrubbed_line_through_a_recovery(
 
 @pytest.mark.anyio
 async def test_the_bot_state_event_fires_on_a_transition_only(
-    service: TelegramService, api: FakeBotApi, bus  # noqa: ANN001
+    service: TelegramService,
+    api: FakeBotApi,
+    bus,  # noqa: ANN001
 ) -> None:
     poller = LongPoller(service, "support", sleep=_no_sleep)
     # The first answer is news — an open panel stops saying "not checked
@@ -237,7 +239,9 @@ async def test_the_bot_state_event_fires_on_a_transition_only(
 
 @pytest.mark.anyio
 async def test_a_bot_that_fails_from_the_start_announces_only_the_failure(
-    service: TelegramService, api: FakeBotApi, bus  # noqa: ANN001
+    service: TelegramService,
+    api: FakeBotApi,
+    bus,  # noqa: ANN001
 ) -> None:
     poller = LongPoller(service, "support", sleep=_no_sleep)
     api.fail_with = TelegramApiError("getUpdates", "Unauthorized", status=401)

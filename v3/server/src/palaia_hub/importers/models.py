@@ -123,7 +123,6 @@ class ImportReport:
                 for item in self.items
             ],
             "skipped": [
-                {"source_path": item.source_path, "reason": item.reason}
-                for item in self.skipped
+                {"source_path": item.source_path, "reason": item.reason} for item in self.skipped
             ],
         }

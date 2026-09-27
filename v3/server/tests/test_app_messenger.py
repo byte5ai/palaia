@@ -231,9 +231,7 @@ def test_send_as_owner_route_rejects_an_over_long_subject() -> None:
     app = create_app(HubConfig(), messenger_service=service, directory_service=directory)
     client = TestClient(app)
 
-    response = client.post(
-        "/api/messenger/send", json={"to": "someone", "subject": "s" * 300}
-    )
+    response = client.post("/api/messenger/send", json={"to": "someone", "subject": "s" * 300})
     assert response.status_code == 422  # the schema itself refuses it
 
 
@@ -242,9 +240,7 @@ def test_send_as_owner_route_names_an_unknown_recipient_in_the_body() -> None:
     app = create_app(HubConfig(), messenger_service=service, directory_service=directory)
     client = TestClient(app)
 
-    response = client.post(
-        "/api/messenger/send", json={"to": "nobody-registered", "subject": "hi"}
-    )
+    response = client.post("/api/messenger/send", json={"to": "nobody-registered", "subject": "hi"})
     assert response.status_code == 400
     assert "nobody-registered" in response.json()["detail"]
 

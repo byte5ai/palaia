@@ -60,9 +60,7 @@ def test_revoke_marks_token_revoked(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     assert reloaded.verify(created.token) is None
 
 
-def test_revoke_unknown_id_exits_nonzero(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_revoke_unknown_id_exits_nonzero(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("PALAIA_HOME", str(tmp_path))
 
     with pytest.raises(SystemExit) as excinfo:

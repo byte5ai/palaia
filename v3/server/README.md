@@ -50,7 +50,11 @@ in-memory `FakeVaultService`.
 from palaia_hub.app import create_app
 from palaia_hub.config import HubConfig
 from palaia_hub.gateway import (
-    FakeVaultService, GatewayConfig, ProfileConfig, VaultMountConfig, build_gateway,
+    FakeVaultService,
+    GatewayConfig,
+    ProfileConfig,
+    VaultMountConfig,
+    build_gateway,
 )
 
 config = GatewayConfig(
@@ -127,10 +131,10 @@ from palaia_hub.vault import EventBus, VaultEngine
 
 engine = VaultEngine(path, "work", bus=EventBus())
 await engine.open()
-index = VaultIndex(engine)      # embeddings on by default
-await index.open()              # builds, subscribes to change events, starts the embed worker
+index = VaultIndex(engine)  # embeddings on by default
+await index.open()  # builds, subscribes to change events, starts the embed worker
 results = await index.search("who owns the gateway?", mode="hybrid", limit=5)
-index.status()                  # notes/observations/relations + embed backlog
+index.status()  # notes/observations/relations + embed backlog
 ```
 
 - **Modes** `fts | vector | hybrid`. Hits are addressable below note
@@ -164,7 +168,7 @@ from palaia_hub.recall import RecallService
 
 recall = RecallService(index, vault="work")
 await recall.recall(query="how do we write commit messages", model="anthropic/opus-5")
-await recall.recall(ref="memory://glossary/pricing")     # or a title, path, or glob
+await recall.recall(ref="memory://glossary/pricing")  # or a title, path, or glob
 await recall.build_context(ref="projects/recall-engine", depth=2, max_tokens=4000)
 ```
 

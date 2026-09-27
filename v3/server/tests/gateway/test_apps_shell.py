@@ -92,7 +92,7 @@ def test_page_makes_zero_external_network_requests(name: str) -> None:
 def test_page_is_one_self_contained_document_with_a_csp_meta_tag(name: str) -> None:
     html = _PAGES[name]()
     assert html.startswith("<!doctype html>")
-    assert "<meta http-equiv=\"Content-Security-Policy\"" in html
+    assert '<meta http-equiv="Content-Security-Policy"' in html
     assert "default-src 'none'" in html
     # Fonts and the bridge script are inline, not referenced.
     assert "data:font/woff2;base64," in html
@@ -136,8 +136,6 @@ def test_vendored_bridge_exposes_the_expected_view_sdk_classes() -> None:
         " throw new Error('PostMessageTransport missing');"
         "console.log('ok');"
     )
-    result = subprocess.run(
-        ["node", "-e", probe], capture_output=True, text=True, timeout=30
-    )
+    result = subprocess.run(["node", "-e", probe], capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "ok"

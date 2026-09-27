@@ -173,9 +173,7 @@ def test_signing_out_invalidates_the_session_server_side(hub: Hub) -> None:
         # was minted by the real sign-in flow, so it lives on real time.
         assert hub.server.store.get_login_session(session, hub.server.now()) is not None
 
-        response = client.post(
-            "/oauth/logout", headers={CSRF_HEADER: client.cookies[CSRF_COOKIE]}
-        )
+        response = client.post("/oauth/logout", headers={CSRF_HEADER: client.cookies[CSRF_COOKIE]})
 
     assert response.status_code == 204
     assert hub.server.store.get_login_session(session, hub.server.now()) is None
@@ -185,9 +183,7 @@ def test_signing_out_clears_both_cookies(hub: Hub) -> None:
     """A CSRF token left behind outlives the session it belonged to."""
     with _client(hub.app) as client:
         _sign_in(client)
-        response = client.post(
-            "/oauth/logout", headers={CSRF_HEADER: client.cookies[CSRF_COOKIE]}
-        )
+        response = client.post("/oauth/logout", headers={CSRF_HEADER: client.cookies[CSRF_COOKIE]})
 
     cleared = _set_cookies(response)
     assert SESSION_COOKIE in cleared

@@ -29,9 +29,7 @@ from servers.local_memory import local_server
 from starlette.applications import Starlette
 from starlette.routing import Mount
 
-REMOTE_UPSTREAM_URL = os.environ.get(
-    "REMOTE_UPSTREAM_URL", "http://127.0.0.1:8811/mcp"
-)
+REMOTE_UPSTREAM_URL = os.environ.get("REMOTE_UPSTREAM_URL", "http://127.0.0.1:8811/mcp")
 GATEWAY_PORT = int(os.environ.get("GATEWAY_PORT", "8900"))
 
 # --- Q3: static bearer-token auth, independent per profile -----------------

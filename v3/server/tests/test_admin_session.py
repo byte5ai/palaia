@@ -217,7 +217,7 @@ def test_every_gated_route_refuses_a_caller_with_no_session(walk_hub: Hub) -> No
 
 
 def test_every_gated_route_answers_a_signed_in_caller(walk_hub: Hub) -> None:
-    """"Works with one": the gate is what changed, not the route's own answer,
+    """ "Works with one": the gate is what changed, not the route's own answer,
     so this asserts only that nothing is refused for lack of a session."""
     with TestClient(walk_hub.app) as client:
         client.cookies.set(SESSION_COOKIE, walk_hub.session_cookie())
@@ -462,9 +462,7 @@ def test_open_mode_public_bind_sign_in_and_one_admin_call(tmp_path: Path) -> Non
             csrf = client.cookies[CSRF_COOKIE]
             assert csrf
             assert client.get("/api/vaults").status_code == 200
-            created = client.post(
-                "/api/vaults", json={"key": "work"}, headers={CSRF_HEADER: csrf}
-            )
+            created = client.post("/api/vaults", json={"key": "work"}, headers={CSRF_HEADER: csrf})
             assert created.status_code == 200, created.text
 
             # Signing out closes the door again.

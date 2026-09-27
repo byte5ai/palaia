@@ -13,6 +13,7 @@ rebuild from files -> identical search results?
 Prints per-query result sets before/after rebuild and a PASS/FAIL verdict,
 plus build timings and sizes.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -103,19 +104,19 @@ def main() -> None:
     print(
         f"build #1 (fresh):        {b1['n_entities']} entities, {b1['n_observations']} obs, "
         f"{b1['n_relations']} rel, {b1['n_parse_errors']} parse errors, "
-        f"{b1['total_seconds']:.3f}s, db={b1['db_size_bytes']/1024:.1f} KiB"
+        f"{b1['total_seconds']:.3f}s, db={b1['db_size_bytes'] / 1024:.1f} KiB"
     )
     print(
         f"build #2 (after rm db):  {b2['n_entities']} entities, {b2['n_observations']} obs, "
         f"{b2['n_relations']} rel, {b2['n_parse_errors']} parse errors, "
-        f"{b2['total_seconds']:.3f}s, db={b2['db_size_bytes']/1024:.1f} KiB"
+        f"{b2['total_seconds']:.3f}s, db={b2['db_size_bytes'] / 1024:.1f} KiB"
     )
     print()
     for q in report["queries"]:
         before = report["results_before_rebuild"][q]
         after = report["results_after_rebuild"][q]
         mark = "==" if before == after else "!="
-        print(f'  query {q!r:24s} before={before!r} {mark} after={after!r}')
+        print(f"  query {q!r:24s} before={before!r} {mark} after={after!r}")
     print()
     verdict = "PASS" if report["identical_search_results"] else "FAIL"
     print(f"identical_search_results: {report['identical_search_results']}  [{verdict}]")

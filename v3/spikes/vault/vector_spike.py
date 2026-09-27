@@ -10,6 +10,7 @@ embed cost, hybrid merge sketch.
 
     uv run vector_spike.py --n 1000
 """
+
 from __future__ import annotations
 
 import argparse
@@ -65,9 +66,7 @@ def run(n: int) -> dict:
     conn.enable_load_extension(False)
     conn.execute(f"CREATE VIRTUAL TABLE vec_entities USING vec0(embedding float[{dim}])")
     # sqlite-vec vec0 rowids must be assigned explicitly to align with entities.
-    conn.execute(
-        "CREATE TABLE vec_rowid_map (rowid_ INTEGER PRIMARY KEY, permalink TEXT NOT NULL)"
-    )
+    conn.execute("CREATE TABLE vec_rowid_map (rowid_ INTEGER PRIMARY KEY, permalink TEXT NOT NULL)")
 
     t0 = time.perf_counter()
     for i, (entity, emb) in enumerate(zip(entities, embeddings, strict=True)):
@@ -105,7 +104,7 @@ def run(n: int) -> dict:
     t0 = time.perf_counter()
     fts_rows = conn.execute(
         "SELECT permalink, rank FROM fts WHERE fts MATCH ? ORDER BY rank LIMIT 10",
-        ('"' + query_text.replace('"', ' ') + '"',),
+        ('"' + query_text.replace('"', " ") + '"',),
     ).fetchall()
     # Phrase queries rarely hit in free prose; fall back to OR-of-terms for the sketch.
     if not fts_rows:

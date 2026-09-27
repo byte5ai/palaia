@@ -137,6 +137,10 @@ jobs:
       - name: ruff check
         run: uv run ruff check .
 
+      - name: ruff format
+        # Issue #407: formatting is enforced. Fix locally with `just fmt`.
+        run: uv run ruff format --check .
+
       - name: mypy
         run: uv run mypy server/src
 

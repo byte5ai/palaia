@@ -176,8 +176,7 @@ def map_v2_entry(entry: V2SourceEntry) -> MappedNote | SkippedItem:
             + ".\n\n"
             + f"- [entity] {safe_title}\n"
             + "- [why] Imported from palaia v2 as a task; a curator should file "
-            "this properly or discard it.\n"
-            + f"- [raw] {entry.body.strip()}\n"
+            "this properly or discard it.\n" + f"- [raw] {entry.body.strip()}\n"
         )
         if sanitize_note:
             body += f"- [imported-title] {source_title}\n"

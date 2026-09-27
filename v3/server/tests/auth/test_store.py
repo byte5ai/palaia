@@ -251,9 +251,7 @@ def test_a_raising_on_verified_hook_does_not_break_verification(tmp_path: Path) 
     assert record.id == created.info.id
 
 
-def test_token_ids_never_start_with_a_dash(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_token_ids_never_start_with_a_dash(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """``palaia-hub token revoke <id>`` reads a leading ``-`` as an option, so
     an id drawn with one is redrawn rather than issued (the CI flake behind
     ``test_revoke_marks_token_revoked``: one id in 64 used to start with it)."""

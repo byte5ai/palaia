@@ -209,9 +209,7 @@ def _build_profile_server(
     # 6750-compliant 401 + WWW-Authenticate. `None` (the default) preserves
     # this SPEC's exact prior behavior: no auth at all, same as before this
     # parameter existed.
-    server = FastMCP(
-        name=f"palaia-gateway-{profile.path}", instructions=instructions, auth=auth
-    )
+    server = FastMCP(name=f"palaia-gateway-{profile.path}", instructions=instructions, auth=auth)
     # `middleware` (SPEC-206): per-profile request middleware, applied here
     # rather than after the fact, so a profile *rebuilt* at runtime
     # (DynamicGateway) never comes back without the policy it was mounted

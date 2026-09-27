@@ -255,9 +255,7 @@ def anyio_backend() -> str:
 
 @pytest.fixture
 def secrets() -> FakeSecrets:
-    return FakeSecrets(
-        {"telegram_support": BOT_A_TOKEN, "telegram_personal": BOT_B_TOKEN}
-    )
+    return FakeSecrets({"telegram_support": BOT_A_TOKEN, "telegram_personal": BOT_B_TOKEN})
 
 
 @pytest.fixture

@@ -28,9 +28,7 @@ def _stub_config(**kwargs: Any) -> EmbeddingConfig:
     return EmbeddingConfig(enabled=True, model="stub/hashed-bow", **kwargs)
 
 
-async def test_indexed_search_returns_ranked_hits(
-    golden_work_vault: Path, open_index: Any
-) -> None:
+async def test_indexed_search_returns_ranked_hits(golden_work_vault: Path, open_index: Any) -> None:
     engine, index = await open_index(golden_work_vault)
     service = EngineVaultService(engine, index)
     hits = (await service.search("API Gateway", limit=5)).hits
@@ -41,9 +39,7 @@ async def test_indexed_search_returns_ranked_hits(
     assert len(hits) <= 5
 
 
-async def test_indexed_search_excludes_meta_notes(
-    golden_work_vault: Path, open_index: Any
-) -> None:
+async def test_indexed_search_excludes_meta_notes(golden_work_vault: Path, open_index: Any) -> None:
     """Format spec §6: ``meta`` stays out of normal recall."""
     engine, index = await open_index(golden_work_vault)
     service = EngineVaultService(engine, index)

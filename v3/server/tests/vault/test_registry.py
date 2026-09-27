@@ -83,9 +83,7 @@ async def test_duplicate_name_is_refused(registry: VaultRegistry, tmp_path: Path
         await registry.create("work", tmp_path / "vaults/other")
 
 
-async def test_shared_or_nested_paths_are_refused(
-    registry: VaultRegistry, tmp_path: Path
-) -> None:
+async def test_shared_or_nested_paths_are_refused(registry: VaultRegistry, tmp_path: Path) -> None:
     await registry.create("work", tmp_path / "vaults/work")
     with pytest.raises(VaultConfigError, match="share its directory"):
         await registry.create("copy", tmp_path / "vaults/work")
@@ -133,9 +131,7 @@ async def test_register_refuses_a_directory_that_is_not_a_vault(
         await registry.register("plain", plain)
 
 
-def test_registry_defaults_to_the_hub_home(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_registry_defaults_to_the_hub_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PALAIA_HOME", str(tmp_path / "hub-home"))
     registry = VaultRegistry()
     assert registry.registry_path == tmp_path / "hub-home" / "vaults.yaml"

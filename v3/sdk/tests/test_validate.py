@@ -73,9 +73,9 @@ def test_config_field_type_outside_subset_is_rejected(tmp_path: Path) -> None:
     }
     _write(tmp_path, manifest)
     issues = validate_manifest(tmp_path)
-    assert any(
-        "config_schema field 'mode' has type 'enum'" in issue.message for issue in issues
-    ), issues
+    assert any("config_schema field 'mode' has type 'enum'" in issue.message for issue in issues), (
+        issues
+    )
 
 
 def test_jargon_in_one_liner_is_rejected(tmp_path: Path) -> None:

@@ -68,9 +68,7 @@ class _RecordingClient:
         self._client = client
         self._sink = sink
 
-    async def call_tool(
-        self, name: str, arguments: dict[str, object] | None = None
-    ) -> object:
+    async def call_tool(self, name: str, arguments: dict[str, object] | None = None) -> object:
         result = await self._client.call_tool(name, arguments or {}, raise_on_error=False)
         text = result.content[0].text if result.content else ""  # type: ignore[union-attr]
         self._sink.append((name, arguments or {}, bool(result.is_error), text))

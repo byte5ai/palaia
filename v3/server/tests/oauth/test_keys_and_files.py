@@ -72,9 +72,7 @@ def test_a_key_on_the_wrong_curve_is_refused_with_an_actionable_message(
     from joserfc.jwk import ECKey
 
     directory = oauth_dir(tmp_path)
-    (directory / SIGNING_KEY_FILE).write_bytes(
-        ECKey.generate_key("P-384").as_pem(private=True)
-    )
+    (directory / SIGNING_KEY_FILE).write_bytes(ECKey.generate_key("P-384").as_pem(private=True))
 
     with pytest.raises(ValueError, match="ES256"):
         SigningKey.load_or_create(tmp_path)

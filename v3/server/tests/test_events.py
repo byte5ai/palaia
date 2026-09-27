@@ -181,9 +181,7 @@ def test_hub_started_is_observable_on_the_bus_before_any_sse_client(
     proc = _spawn_hub(tmp_path, port, extra_env={"PALAIA_HEALTH_EVENT_INTERVAL_SECONDS": "60"})
     try:
         _wait_for_health(port)
-        _post_json(
-            port, "/api/hooks", {"url": local_receiver.url, "events": ["hub.started"]}
-        )
+        _post_json(port, "/api/hooks", {"url": local_receiver.url, "events": ["hub.started"]})
     finally:
         _stop_hub(proc)
 

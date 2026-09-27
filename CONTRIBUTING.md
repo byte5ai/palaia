@@ -17,7 +17,7 @@ git config core.hooksPath .hooks   # pre-push hook: blocks direct pushes to prot
 cd v3
 just setup   # uv sync --all-packages; npm ci in web/
 just test    # pytest + vitest
-just lint    # ruff check, mypy, eslint, tsc
+just lint    # ruff check + format check, mypy, eslint, tsc
 ```
 
 Prerequisites ([`uv`](https://docs.astral.sh/uv/), Node 26+,
@@ -27,11 +27,10 @@ Prerequisites ([`uv`](https://docs.astral.sh/uv/), Node 26+,
 ## Code Style
 
 v3 Python is linted with [ruff](https://docs.astral.sh/ruff/) (line length 100) and
-type-checked with mypy in strict mode; both gate CI. Configuration is in
-`v3/pyproject.toml` and `v3/server/pyproject.toml`. `ruff format` is not enforced yet —
-format the files you touch; [`v3/README.md`](v3/README.md#dev-setup) records the
-decision and when it changes. The web app is linted with eslint and type-checked
-with `tsc` (`just lint` runs all four).
+type-checked with mypy in strict mode, and `ruff format --check` enforces the
+formatting (issue #407); all three gate CI. Run `just fmt` before you push.
+Configuration is in `v3/pyproject.toml` and `v3/server/pyproject.toml`. The web app is
+linted with eslint and type-checked with `tsc` (`just lint` runs all of them).
 
 ## Reporting Bugs
 

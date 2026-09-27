@@ -55,9 +55,7 @@ async def test_no_log_line_from_a_full_cycle_contains_the_value(
     # And the production filter would have caught it even if it had been
     # there — asserted on a deliberately leaky line so the test proves the
     # filter works rather than merely that nothing leaked.
-    assert FIXTURE_BEARER_TOKEN not in redact(
-        f"Authorization: Bearer {FIXTURE_BEARER_TOKEN}"
-    )
+    assert FIXTURE_BEARER_TOKEN not in redact(f"Authorization: Bearer {FIXTURE_BEARER_TOKEN}")
     filtered = RedactionFilter()
     for record in caplog.records:
         assert filtered.filter(record) is True

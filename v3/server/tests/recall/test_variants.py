@@ -37,6 +37,7 @@ class Line:
 # parse_model_scope
 # --------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
@@ -147,6 +148,7 @@ def test_dropped_indices_are_the_complement_of_the_served_ones() -> None:
 # --------------------------------------------------------------------------
 # Grouping: "consecutive" is load-bearing
 # --------------------------------------------------------------------------
+
 
 def test_only_consecutive_same_category_lines_form_a_group() -> None:
     lines = (
