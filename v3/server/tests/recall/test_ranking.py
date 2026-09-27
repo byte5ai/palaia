@@ -14,6 +14,7 @@ from palaia_hub.recall.ranking import (
     Candidate,
     RankingWeights,
     access_factor,
+    access_fade,
     decay_factors,
     parse_timestamp,
     rank_candidates,
@@ -114,6 +115,82 @@ def test_access_growth_is_logarithmic_not_linear() -> None:
     first = access_factor(1, weights=DEFAULT_WEIGHTS)
     second = access_factor(2, weights=DEFAULT_WEIGHTS) - first
     assert second < first, "the second access must count for less than the first"
+
+
+# --------------------------------------------------------------------------
+# access fade (issue #196: retrieval reinforces, disuse fades)
+# --------------------------------------------------------------------------
+
+def test_access_fade_is_one_on_recall_and_halves_each_half_life() -> None:
+    half_life = DEFAULT_WEIGHTS.access_half_life_days
+    assert access_fade(iso(0), now=NOW, weights=DEFAULT_WEIGHTS) == pytest.approx(1.0)
+    assert access_fade(iso(half_life), now=NOW, weights=DEFAULT_WEIGHTS) == pytest.approx(
+        0.5, abs=1e-6
+    )
+    assert access_fade(iso(2 * half_life), now=NOW, weights=DEFAULT_WEIGHTS) == pytest.approx(
+        0.25, abs=1e-6
+    )
+
+
+def test_access_fade_is_monotone_in_time_since_last_recall() -> None:
+    fades = [access_fade(iso(days), now=NOW, weights=DEFAULT_WEIGHTS) for days in range(0, 720, 15)]
+    assert fades == sorted(fades, reverse=True)
+    assert all(0.0 < fade <= 1.0 for fade in fades)
+
+
+def test_an_unknown_last_recall_does_not_fade() -> None:
+    # A row without a stamp is no evidence of disuse — same stance as undated
+    # notes under recency.
+    for raw in ("", "not-a-date"):
+        assert access_fade(raw, now=NOW, weights=DEFAULT_WEIGHTS) == 1.0
+
+
+def test_a_zero_access_half_life_switches_the_fade_off() -> None:
+    weights = RankingWeights(access_half_life_days=0.0)
+    ancient = note("a")
+    faded_off = decay_factors(
+        ancient, hits=20, inbound=0, now=NOW, weights=weights, last_access=iso(3650)
+    )
+    lifetime = decay_factors(ancient, hits=20, inbound=0, now=NOW, weights=weights)
+    assert faded_off == lifetime
+    assert faded_off.access == pytest.approx(1.0)
+
+
+def test_access_term_fades_with_disuse_but_never_below_zero() -> None:
+    a = note("a")
+    fresh = decay_factors(a, hits=20, inbound=0, now=NOW, last_access=iso(0))
+    stale = decay_factors(a, hits=20, inbound=0, now=NOW, last_access=iso(365))
+    assert fresh.access == pytest.approx(1.0)
+    assert 0.0 < stale.access < 0.1
+    assert stale.boost < fresh.boost
+    # The fade only ever *removes* boost, so the documented bound still holds.
+    assert fresh.boost <= DEFAULT_WEIGHTS.max_boost
+
+
+def test_a_note_recalled_recently_outranks_one_that_was_hot_long_ago() -> None:
+    # Two adjacent candidates, the older favorite one rank ahead. It was served
+    # thirty times, a year ago; the second ten times, yesterday. Retrieval
+    # recency must win: "what you keep asking for", not "what you once did".
+    notes = {"hot-once": note("hot-once"), "in-use": note("in-use")}
+    candidates = [
+        Candidate(ref=p, permalink=p, kind="note", snippet="", relevance_score=0.0)
+        for p in ("hot-once", "in-use")
+    ]
+    ranked = rank_candidates(
+        candidates,
+        notes,
+        hits={"hot-once": 30, "in-use": 10},
+        inbound={},
+        now=NOW,
+        last_access={"hot-once": iso(365), "in-use": iso(1)},
+    )
+    assert [entry.permalink for entry in ranked] == ["in-use", "hot-once"]
+
+    # Without the stamps the lifetime counter decides, as it did before #196.
+    lifetime = rank_candidates(
+        candidates, notes, hits={"hot-once": 30, "in-use": 10}, inbound={}, now=NOW
+    )
+    assert [entry.permalink for entry in lifetime] == ["hot-once", "in-use"]
 
 
 # --------------------------------------------------------------------------
@@ -274,6 +351,19 @@ def test_a_candidate_whose_note_vanished_is_dropped_not_defaulted() -> None:
 
 def test_default_config_reproduces_the_default_weights() -> None:
     assert weights_from_settings(RecallSettings()) == RankingWeights()
+
+
+def test_access_half_life_reaches_the_scorer_and_zero_is_allowed() -> None:
+    assert (
+        weights_from_settings(RecallSettings(access_half_life_days=7.0)).access_half_life_days
+        == 7.0
+    )
+    assert (
+        weights_from_settings(RecallSettings(access_half_life_days=0.0)).access_half_life_days
+        == 0.0
+    )
+    with pytest.raises(ValueError):
+        RecallSettings(access_half_life_days=-1.0)
 
 
 def test_config_weights_reach_the_scorer() -> None:

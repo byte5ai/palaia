@@ -324,6 +324,7 @@ class RecallService:
             inbound=inbound,
             now=self._clock(),
             weights=self._weights,
+            last_access={key: stat.last_access for key, stat in access.items()},
         )
         return ranked[:limit]
 
@@ -523,6 +524,7 @@ class RecallService:
                 inbound=inbound.get(node.permalink, 0),
                 now=now,
                 weights=self._weights,
+                last_access=access[node.permalink].last_access,
             ).boost
 
         seeds = [node for node in nodes if node.is_seed]

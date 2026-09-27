@@ -26,6 +26,7 @@ and is the wrong moment to add a second, unrelated instruction.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import replace
 from typing import Any
 
@@ -33,9 +34,9 @@ from fastmcp.server.dependencies import get_context
 from fastmcp.tools.base import ToolResult
 from pydantic import BaseModel
 
-from ..nudges import ANONYMOUS_SESSION, NudgeEngine, VaultSignals
+from ..nudges import ANONYMOUS_SESSION, NudgeEngine, SimilarNote, VaultSignals
 from ..recall.models import ContextResult, RecallResult
-from .vault_protocol import CaptureResult, InboxStatusResult, NoteRecord
+from .vault_protocol import CaptureResult, InboxStatusResult, NoteRecord, SimilarNoteHit
 
 #: Heading for the guidance block appended to the human-readable half. Short
 #: and literal: a model scanning tool output should be able to tell in one
@@ -63,7 +64,13 @@ def current_session_key() -> str:
         return ANONYMOUS_SESSION
 
 
-def signals_for(action: str, result: object, *, vault_key: str = "") -> VaultSignals:
+def signals_for(
+    action: str,
+    result: object,
+    *,
+    vault_key: str = "",
+    similar_notes: Sequence[SimilarNoteHit] = (),
+) -> VaultSignals:
     """Read one completed call's deterministic facts off its result object.
 
     Unrecognized results (and actions that carry no signal today) produce a
@@ -71,8 +78,20 @@ def signals_for(action: str, result: object, *, vault_key: str = "") -> VaultSig
     record with nothing else in it simply fires nothing. That is what lets
     every tool route through the same helper without each needing its own
     branch here.
+
+    ``similar_notes`` is the one fact that does not live on the result
+    (issue #187): ``write``/``capture`` ask the vault for it separately and
+    hand it in, because putting it on :class:`NoteRecord` would add an empty
+    field to every ``read``/``edit``/``move`` payload for a signal only a
+    write produces.
     """
-    signals = VaultSignals(action=action, vault_key=vault_key)
+    signals = VaultSignals(
+        action=action,
+        vault_key=vault_key,
+        similar_notes=tuple(
+            SimilarNote(permalink=n.permalink, title=n.title) for n in similar_notes
+        ),
+    )
     if isinstance(result, RecallResult):
         return replace(
             signals,
@@ -114,6 +133,7 @@ def nudged_result(
     text: str,
     payload: BaseModel,
     vault_key: str = "",
+    similar_notes: Sequence[SimilarNoteHit] = (),
 ) -> ToolResult:
     """A successful tool result, carrying whatever guidance applies.
 
@@ -121,7 +141,9 @@ def nudged_result(
     ``ToolResult(content=..., structured_content=...)`` the tool would have
     returned on its own.
     """
-    nudges = engine.emit(signals_for(action, payload, vault_key=vault_key))
+    nudges = engine.emit(
+        signals_for(action, payload, vault_key=vault_key, similar_notes=similar_notes)
+    )
     if not nudges:
         return ToolResult(content=text, structured_content=payload)
     lines = "\n".join(f"- {nudge.text}" for nudge in nudges)
