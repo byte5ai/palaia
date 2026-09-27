@@ -70,11 +70,14 @@ import threading
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .backup_targets import BackupRun, BackupTarget, BackupTargetError, run_target
 from .events.schema import HubEventHook
 from .vault.atomic import atomic_write_bytes
+
+if TYPE_CHECKING:
+    from .vault_remote import VaultRemotes
 
 logger = logging.getLogger("palaia_hub.backup_schedule")
 
@@ -337,6 +340,10 @@ class BackupScheduler:
             any positive value is accepted here so tests need not wait.
         startup_delay_seconds: how soon after start a pass that is already
             due (or has never run) begins.
+        vault_remotes: the vaults pushed to a git repository (issue #438).
+            Given, every pass pushes each of them after the folder targets.
+            Their results land under ``vault:<key>`` in :meth:`run_pass`'s
+            outcome.
     """
 
     def __init__(
@@ -346,10 +353,12 @@ class BackupScheduler:
         interval_seconds: float,
         startup_delay_seconds: float = DEFAULT_STARTUP_DELAY_SECONDS,
         clock: Callable[[], float] = time.time,
+        vault_remotes: VaultRemotes | None = None,
     ) -> None:
         if interval_seconds <= 0:
             raise ValueError("interval_seconds must be positive")
         self._ledger = ledger
+        self._vault_remotes = vault_remotes
         self._interval = float(interval_seconds)
         self._startup_delay = max(0.0, startup_delay_seconds)
         self._clock = clock
@@ -456,6 +465,21 @@ class BackupScheduler:
                 outcome[name] = False
                 continue
             outcome[name] = True
+        if self._vault_remotes is not None:
+            # Issue #438: the vaults pushed to a git repository ride the same
+            # pass. push_all records and publishes each failure itself and
+            # moves on; anything else is logged, never allowed to stop the
+            # timer.
+            try:
+                pushed = await asyncio.to_thread(
+                    self._vault_remotes.push_all, trigger=SCHEDULE_TRIGGER
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - the timer must keep going
+                logger.exception("backup: the scheduled vault pushes failed")
+            else:
+                outcome.update({f"vault:{vault}": ok for vault, ok in pushed.items()})
         return outcome
 
 

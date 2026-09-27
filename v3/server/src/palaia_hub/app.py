@@ -101,6 +101,8 @@ from .upstream.monitor import UpstreamHealthMonitor
 from .upstream.secrets import SecretStore
 from .upstream.service import UpstreamService
 from .vault import VaultNotFoundError, VaultRegistry, VaultWatcher
+from .vault_remote import VaultRemotes
+from .vault_remote_api import build_vault_remote_router
 
 # Name of the env var that, when set to a positive number of seconds, adds a
 # `/api/_test/slow` route that sleeps that long before responding. This
@@ -583,8 +585,26 @@ def create_app(
     backup_ledger = BackupLedger(
         hub_home, build_backup_targets(config.backup), publish=_publish_backup
     )
+    # Issue #438: vaults pushed to a git repository the owner names in the
+    # dashboard. Needs the registry (what to push) and the secret store
+    # (where the token lives); the schedule below pushes them on every pass.
+    vault_remotes: VaultRemotes | None = None
+    if vault_registry is not None and secret_store is not None:
+        registry_for_remotes = vault_registry
+        vault_remotes = VaultRemotes(
+            hub_home,
+            secret_store,
+            lambda: {
+                record.name: record.path.expanduser() for record in registry_for_remotes.records()
+            },
+            publish=_publish_backup,
+        )
     backup_scheduler = (
-        BackupScheduler(backup_ledger, interval_seconds=config.backup.interval_hours * 3600)
+        BackupScheduler(
+            backup_ledger,
+            interval_seconds=config.backup.interval_hours * 3600,
+            vault_remotes=vault_remotes,
+        )
         if config.backup.interval_hours is not None
         else None
     )
@@ -896,6 +916,10 @@ def create_app(
             scheduler=backup_scheduler,
         )
     )
+    if vault_remotes is not None:
+        app.include_router(
+            build_vault_remote_router(vault_remotes, session_gated=admin_session_enforced)
+        )
 
     if token_store is not None:
         app.include_router(build_auth_router(token_store, dynamic_gateway=dynamic_gateway))
