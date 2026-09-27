@@ -126,6 +126,19 @@ class CaptureResult(BaseModel):
     duplicate: bool = False
 
 
+class SimilarNoteHit(BaseModel):
+    """An existing note that closely resembles a just-written one (issue #187).
+
+    ``similarity`` is a true cosine similarity (0..1, higher = closer in
+    meaning) — never a rank or a BM25 score, which only order one query's
+    hits and cannot be held against a fixed threshold (issue #481).
+    """
+
+    permalink: str
+    title: str
+    similarity: float
+
+
 class InboxStatusResult(BaseModel):
     """Inbox health: how many uncurated captures, the oldest, the newest."""
 
@@ -359,6 +372,22 @@ class VaultService(Protocol):
 
     async def inbox_status(self) -> InboxStatusResult:
         """Summarize ``inbox/``: uncurated count, oldest entry age, last capture."""
+        ...
+
+    async def similar_notes(
+        self, title: str, body: str, *, exclude: str = ""
+    ) -> list[SimilarNoteHit]:
+        """Existing notes whose meaning is close to ``title``/``body`` (issue #187).
+
+        Called by ``write``/``capture`` *after* the note was stored, to warn
+        about a possible overlap or contradiction — never to block it. Only
+        notes above the implementation's configured similarity threshold are
+        returned, best first, at most three; ``exclude`` is the permalink of
+        the note just written. An implementation that cannot measure a true
+        similarity (no index, no vectors yet) returns ``[]`` rather than
+        guessing, and one that fails returns ``[]`` too: this is advice on a
+        write that already succeeded, and must never turn it into an error.
+        """
         ...
 
     async def recall(

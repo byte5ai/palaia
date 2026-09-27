@@ -30,7 +30,7 @@ import asyncio
 import contextlib
 import logging
 import time
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Collection, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -50,11 +50,19 @@ from palaia_hub.vault import (
 )
 
 from .db import INDEX_RELATIVE_PATH, IndexDatabase
-from .embeddings import Embedder, EmbedderUnavailableError, EmbeddingConfig, build_embedder
+from .embeddings import (
+    Embedder,
+    EmbedderUnavailableError,
+    EmbeddingConfig,
+    build_embedder,
+    chunk_text,
+    embeddable_text,
+)
 from .graph import GraphReader
 from .models import (
     EmbedStatus,
     IndexStatus,
+    NoteSimilarity,
     SearchFilters,
     SearchMode,
     SearchResults,
@@ -345,6 +353,46 @@ class VaultIndex:
                 query_embedding=embedding,
                 vectors_reason=reason,
             )
+        )
+
+    async def similar_notes(
+        self,
+        title: str,
+        body: str,
+        *,
+        limit: int = 3,
+        filters: SearchFilters | None = None,
+        exclude: Collection[str] = (),
+    ) -> list[NoteSimilarity]:
+        """Indexed notes closest in meaning to a note-shaped ``title``/``body``.
+
+        Issue #187: the signal behind the "this resembles an existing note"
+        nudge on ``write``/``capture``. Each result carries a true cosine
+        similarity (see :meth:`IndexSearch.similar`), best first; callers
+        apply their own threshold.
+
+        The text is embedded the way the index embeds a note's first chunk
+        (:func:`~.embeddings.embeddable_text`, then
+        :func:`~.embeddings.chunk_text`), so like is compared with like. This
+        costs one *query* embedding — the same price a hybrid search pays —
+        and never touches the backlog: the note's own vectors still come from
+        the background worker. Returns ``[]`` whenever a vector query could
+        not run (embeddings disabled, no backend, nothing embedded yet) —
+        there is no text-only fallback, because a lexical score is not a
+        similarity.
+        """
+        chunks = chunk_text(
+            embeddable_text(title, body, ()),
+            max_chars=self._embedding.max_chars,
+            overlap_chars=self._embedding.overlap_chars,
+        )
+        if not chunks or limit <= 0:
+            return []
+        embedding, _reason = await self._embed_query(chunks[0].text)
+        if embedding is None:
+            return []
+        return await asyncio.to_thread(
+            lambda: self.searcher.similar(embedding, limit=limit, filters=filters, exclude=exclude)
         )
 
     async def _embed_query(self, query: str) -> tuple[Sequence[float] | None, str]:

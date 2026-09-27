@@ -248,20 +248,66 @@ def test_the_changelog_header_test_accepts_exactly_the_documented_forms(
 # Issue #392: the v3 CI's path filter. This file and `test_pi_image.py` pin
 # the v3 workflows' structure, but `v3-ci.yml` ran only for `v3/**` — a PR
 # editing just `.github/workflows/v3-*.yml` got no v3 CI at all.
+#
+# Issue #487: that filter moved from the workflow trigger into the `changes`
+# job, so the workflow always runs and its `v3-ci-required` gate always
+# reports — the one check `main` requires. A workflow-level filter would
+# leave a root-only PR waiting forever on a check that never runs.
 # ---------------------------------------------------------------------------
 
 _CI_WORKFLOW_PATH = _WORKFLOW_PATH.with_name("v3-ci.yml")
+_CI_GATE_JOB = "required"
+
+
+def _load_ci_workflow() -> dict:
+    return yaml.safe_load(_CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+
+
+def _ci_filters(workflow: dict) -> dict:
+    steps = workflow["jobs"]["changes"]["steps"]
+    step = next(s for s in steps if s.get("id") == "filter")
+    return yaml.safe_load(step["with"]["filters"])
 
 
 @pytest.mark.parametrize("trigger", ["push", "pull_request"])
-def test_v3_ci_runs_for_changes_to_the_v3_workflow_files_themselves(trigger: str) -> None:
-    workflow = yaml.safe_load(_CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    paths = workflow[True][trigger]["paths"]
-    assert "v3/**" in paths
-    assert ".github/workflows/v3-*.yml" in paths, (
-        f"v3-ci.yml `{trigger}.paths` must include the v3 workflow files, or a PR "
-        "touching only them runs no v3 CI (issue #392)"
+def test_v3_ci_triggers_on_every_change_to_main(trigger: str) -> None:
+    on = _load_ci_workflow()[True][trigger]
+    assert on["branches"] == ["main"]
+    assert "paths" not in on and "paths-ignore" not in on, (
+        f"v3-ci.yml `{trigger}` must not filter paths at the workflow level: the "
+        "required gate would then never report on PRs outside the filter "
+        "(issue #487). Gate lanes through the `changes` job instead."
     )
+
+
+def test_v3_ci_runs_for_changes_to_the_v3_workflow_files_themselves() -> None:
+    workflow = _load_ci_workflow()
+    python = workflow["jobs"]["python"]
+    assert python["needs"] == "changes"
+    assert "needs.changes.outputs.v3 == 'true'" in python["if"]
+    v3 = _ci_filters(workflow)["v3"]
+    assert "v3/**" in v3
+    assert ".github/workflows/v3-*.yml" in v3, (
+        "the `v3` filter that gates the python lane must include the v3 workflow "
+        "files, or a PR touching only them runs no v3 tests (issue #392)"
+    )
+
+
+def test_the_v3_ci_gate_needs_every_lane_and_always_reports() -> None:
+    jobs = _load_ci_workflow()["jobs"]
+    gate = jobs[_CI_GATE_JOB]
+    assert gate["name"] == "v3-ci-required", (
+        "the gate's name is the check `main` requires — renaming it silently "
+        "un-requires CI until branch protection is updated (issue #487)"
+    )
+    assert gate["if"] == "always()"
+    assert set(gate["needs"]) == set(jobs) - {_CI_GATE_JOB}, (
+        "every v3-ci.yml job must be in the gate's `needs`, or a failing lane "
+        "no longer blocks the merge (issue #487)"
+    )
+    script = " ".join(step.get("run", "") + str(step.get("env", "")) for step in gate["steps"])
+    assert "contains(needs.*.result, 'failure')" in script
+    assert "contains(needs.*.result, 'cancelled')" in script
 
 
 # ---------------------------------------------------------------------------
