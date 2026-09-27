@@ -38,6 +38,7 @@ from .automations import (
 )
 from .automations.outbox import OUTBOX_RELATIVE_PATH as AUTOMATIONS_OUTBOX_RELATIVE_PATH
 from .backup_api import build_backup_router
+from .backup_schedule import BackupLedger, BackupScheduler
 from .backup_targets import EVENT_ORIGIN as BACKUP_EVENT_ORIGIN
 from .backup_targets import build_targets as build_backup_targets
 from .config import HubConfig, config_file_path, load_config, palaia_home
@@ -567,6 +568,27 @@ def create_app(
         )
         event_bus.on(automation_dispatcher.on_event)
 
+    hub_home = home or palaia_home()
+
+    # Issue #297: the configured backup targets, and issue #438: the one
+    # ledger every run from this hub goes through (the dashboard's run action
+    # and the schedule alike — which is what keeps the two from writing the
+    # same archive at once). Building either has no filesystem side effect:
+    # a target creates nothing until it is run, and the ledger only reads
+    # its status file. The scheduler exists only when
+    # `backup.interval_hours` is set — off by default.
+    def _publish_backup(action: str, data: dict[str, Any]) -> None:
+        publish_event(event_bus, action, origin=BACKUP_EVENT_ORIGIN, data=data)
+
+    backup_ledger = BackupLedger(
+        hub_home, build_backup_targets(config.backup), publish=_publish_backup
+    )
+    backup_scheduler = (
+        BackupScheduler(backup_ledger, interval_seconds=config.backup.interval_hours * 3600)
+        if config.backup.interval_hours is not None
+        else None
+    )
+
     # One lifespan runs every background concern: the events ticker
     # (SPEC-109), the webhook delivery worker (SPEC-201), and, when a
     # gateway is mounted, its session-manager lifespan (SPEC-105 —
@@ -597,6 +619,10 @@ def create_app(
         # whose Telegram is unreachable still starts instantly.
         if telegram_runtime is not None:
             await telegram_runtime.start()
+        # Issue #438: last, so the first pass (itself delayed past start-up)
+        # never competes with anything above for the event loop.
+        if backup_scheduler is not None:
+            await backup_scheduler.start()
         publish_event(
             event_bus,
             "hub.started",
@@ -621,6 +647,12 @@ def create_app(
                     await stack.enter_async_context(team_asgi_app.lifespan(app_))
                 yield
         finally:
+            # First: a backup pass that begins while the hub shuts down is
+            # pure waste. A run already in its worker thread finishes (or is
+            # cut short by the exit) on its own — see backup_schedule's
+            # module docstring for why that is safe.
+            if backup_scheduler is not None:
+                await backup_scheduler.aclose()
             await stop_background_tasks(tasks)
             if curator is not None:
                 await curator.aclose()
@@ -658,7 +690,7 @@ def create_app(
     app.state.config = config
     app.state.start_time = start_time
     app.state.event_bus = event_bus
-    hub_home = home or palaia_home()
+    app.state.backup_scheduler = backup_scheduler
 
     # SPEC-504: local-only first-run funnel instrumentation (MASTERPLAN
     # §13's time-to-first-memory metric, §10's "no data leaves the host"
@@ -853,18 +885,15 @@ def create_app(
     # actually wraps it — without the gate it refuses outright, because the
     # archive is key material, not "the vault" the locked-mode LAN posture
     # was written for.
-    # Issue #297: the same router carries the configured backup targets.
-    # Building them here has no filesystem side effect — a target creates
-    # nothing until it is actually run.
-    def _publish_backup(action: str, data: dict[str, Any]) -> None:
-        publish_event(event_bus, action, origin=BACKUP_EVENT_ORIGIN, data=data)
-
+    # Issue #297: the same router carries the configured backup targets —
+    # run through the ledger built above, next to the lifespan that starts
+    # the schedule (issue #438).
     app.include_router(
         build_backup_router(
             home=hub_home,
             session_gated=admin_session_enforced,
-            targets=build_backup_targets(config.backup),
-            publish=_publish_backup,
+            ledger=backup_ledger,
+            scheduler=backup_scheduler,
         )
     )
 

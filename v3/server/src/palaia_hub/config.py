@@ -30,6 +30,11 @@ from pydantic import (
     model_validator,
 )
 
+# Issue #187: the similar-note threshold's measured default. The nudges
+# package imports only the stdlib — nothing from MCP, the gateway or the
+# vault — so it is as safe to import this early as the modules below.
+from .nudges.models import DEFAULT_SIMILAR_NOTE_THRESHOLD
+
 # SPEC-502: the hub's one on-disk posture rule, applied to `config.yaml`
 # below. Stdlib only, so it is safe to import this early.
 from .security.files import harden_directory, harden_file
@@ -156,6 +161,9 @@ recall:
   half_life_days: 30
   # Access count at which the access boost is maxed out.
   access_saturation: 20
+  # Days without being recalled after which a note's access boost has
+  # halved, so what nobody asks for anymore gives way. 0 = never fade.
+  access_half_life_days: 90
   # Inbound-link count at which the centrality half of significance is maxed.
   centrality_saturation: 12
   # Share of significance that comes from inbound links rather than the
@@ -164,6 +172,21 @@ recall:
   # Recency score for a note carrying no created/modified date at all.
   # Undated is not evidence of stale, so the default sits in the middle.
   unknown_recency: 0.5
+
+# Smart Nudges: short, deterministic guidance attached to a memory tool's
+# result. After `write`/`capture`, the hub checks whether the new note means
+# nearly the same as an existing one — a possible overlap or contradiction —
+# and names that note so the agent can update it instead of keeping two
+# versions (issue #187). The write itself is never blocked. The check costs
+# one query embedding per write and is skipped while no vectors are ready.
+nudges:
+  # Set to false to skip the similar-note check entirely.
+  similar_note_check: true
+  # Cosine similarity (0-1) at or above which a note counts as "similar".
+  # 0.70 was measured on the default embedding model: notes that update or
+  # contradict each other scored 0.68-0.85, notes on the same subject but
+  # different aspects 0.42-0.53. Raise it for fewer, surer warnings.
+  similar_note_threshold: 0.7
 
 # OAuth 2.1 authorization server (SPEC-203). Off by default: it needs an
 # `issuer` — the public https URL clients get redirected to — which cannot be
@@ -369,7 +392,13 @@ market:
 # this hub's own older archives in that directory once there are more than
 # that many; set it to null to keep every one of them.
 #
+# `interval_hours` has the running hub write to every target by itself,
+# that many hours apart (at least 1). Leave it out (the default) and nothing
+# is written unless you ask. The clock survives a restart: a hub that was
+# down when a backup was due writes one shortly after it starts again.
+#
 # backup:
+#   interval_hours: 24
 #   targets:
 #     - type: local_directory
 #       name: nas
@@ -448,9 +477,32 @@ class RecallSettings(BaseModel):
     significance_weight: float = Field(default=0.25, ge=0.0, le=10.0)
     half_life_days: float = Field(default=30.0, gt=0.0)
     access_saturation: float = Field(default=20.0, gt=0.0)
+    access_half_life_days: float = Field(default=90.0, ge=0.0)
     centrality_saturation: float = Field(default=12.0, gt=0.0)
     centrality_weight: float = Field(default=0.35, ge=0.0, le=1.0)
     unknown_recency: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+class NudgeSettings(BaseModel):
+    """Smart Nudge tuning (issue #301), today only the similar-note check.
+
+    The check (issue #187) warns after ``write``/``capture`` when the new note
+    means nearly the same as an existing one. The threshold is a true cosine
+    similarity; the lower bound stops a typo from turning every write into a
+    warning (unrelated notes score ~0.1 on the default model, ~0.5 on
+    bge-small), and the default is measured — see
+    :data:`palaia_hub.nudges.DEFAULT_SIMILAR_NOTE_THRESHOLD`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    similar_note_check: bool = True
+    similar_note_threshold: float = Field(default=DEFAULT_SIMILAR_NOTE_THRESHOLD, ge=0.5, le=1.0)
+
+    @property
+    def effective_similar_note_threshold(self) -> float | None:
+        """The threshold the vault service is built with; ``None`` = check off."""
+        return self.similar_note_threshold if self.similar_note_check else None
 
 
 class GitHubIdpSettings(BaseModel):
@@ -986,6 +1038,28 @@ class BackupSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     targets: list[LocalDirectoryBackupTarget] = Field(default_factory=list)
+    #: Issue #438: the interval half of "a simple interval/retention
+    #: setting" (#297) — retention is each target's own ``keep_last``. Set,
+    #: the running hub writes to every target this many hours apart
+    #: (:class:`palaia_hub.backup_schedule.BackupScheduler`). ``None`` (the
+    #: default) schedules nothing: a hub writes an archive by itself only once
+    #: an operator has asked for it. At least one hour — every run is the
+    #: *full* archive, and a shorter interval would mostly measure how fast
+    #: retention can delete what the previous run just wrote.
+    interval_hours: float | None = Field(default=None, ge=1.0, le=24.0 * 366)
+
+    @model_validator(mode="after")
+    def _check_schedule_has_somewhere_to_write(self) -> BackupSettings:
+        """An interval with no target would validate into a hub that looks
+        scheduled and never writes a byte — refused, the same way an
+        unimplemented target ``type`` is."""
+        if self.interval_hours is not None and not self.targets:
+            raise ValueError(
+                "backup.interval_hours is set, but no backup.targets are configured — the "
+                "schedule would have nowhere to write, and would never produce a backup. "
+                "Fix: add a target under `backup.targets`, or remove `interval_hours`."
+            )
+        return self
 
     @model_validator(mode="after")
     def _check_names_are_unique(self) -> BackupSettings:
@@ -1033,6 +1107,8 @@ class HubConfig(BaseModel):
         "compose", "umbrel", "casaos", "runtipi", "truenas", "home_assistant", "unknown"
     ] = "unknown"
     recall: RecallSettings = Field(default_factory=RecallSettings)
+    #: Smart Nudge tuning — the similar-note check (issue #187).
+    nudges: NudgeSettings = Field(default_factory=NudgeSettings)
     oauth: OAuthSettings = Field(default_factory=OAuthSettings)
     curator: CuratorSettings = Field(default_factory=CuratorSettings)
     exposure: ExposureSettings = Field(default_factory=ExposureSettings)

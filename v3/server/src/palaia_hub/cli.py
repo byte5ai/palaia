@@ -21,6 +21,7 @@ import getpass
 import json
 import sys
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 
 import uvicorn
@@ -28,6 +29,7 @@ import uvicorn
 from .auth import TokenError, TokenStore
 from .auth.scopes import vault_scope
 from .backup import archive_filename, iter_archive_bytes
+from .backup_schedule import BackupLedger
 from .backup_targets import BackupTarget, BackupTargetError, run_target
 from .backup_targets import build_targets as build_backup_targets
 from .compose_update import DEFAULT_IMAGE, rewrite_compose_channel
@@ -877,25 +879,49 @@ def _backup_command(args: argparse.Namespace) -> None:
             "backup: --out writes one archive to a path you name, --target writes to a "
             "destination configured in config.yaml. Fix: pass one or the other."
         )
-    targets = build_backup_targets(load_config().backup)
+    settings = load_config().backup
+    targets = build_backup_targets(settings)
     if args.list_targets:
-        _backup_list_targets(targets)
+        _backup_list_targets(targets, interval_hours=settings.interval_hours)
         return
     _backup_to_targets(targets, requested=args.targets, run_all=args.all_targets)
 
 
-def _backup_list_targets(targets: Mapping[str, BackupTarget]) -> None:
+def _backup_list_targets(
+    targets: Mapping[str, BackupTarget], *, interval_hours: float | None
+) -> None:
     if not targets:
         print(
             "No backup destinations are configured. Add them under `backup.targets` in "
             f"{config_file_path()} — see that file's own comments for the shape."
         )
         return
+    # Issue #438: what the running hub last did, read from its status file.
+    # Reading it writes nothing — this command must not touch the home.
+    ledger = BackupLedger(palaia_home(), targets)
     for target in targets.values():
         described = target.describe()
         keep = described.get("keep_last")
         retention = "keeps every archive" if keep is None else f"keeps the newest {keep}"
         print(f"{target.name}  {target.kind}  {target.destination}  ({retention})")
+        last = ledger.last_run(target.name)
+        if last is not None:
+            when = _utc_stamp(last.finished_at)
+            outcome = f"wrote {last.artifact}" if last.ok else f"FAILED: {last.reason}"
+            print(f"    last run by the hub ({last.trigger}), {when}: {outcome}")
+    if interval_hours is None:
+        print(
+            "Not scheduled: the running hub writes these only when asked. Set "
+            f"`backup.interval_hours` in {config_file_path()} to have it write them by itself."
+        )
+    else:
+        print(
+            f"Scheduled: the running hub writes to every one of these every {interval_hours:g} h."
+        )
+
+
+def _utc_stamp(epoch_seconds: float) -> str:
+    return datetime.fromtimestamp(epoch_seconds, UTC).strftime("%Y-%m-%d %H:%M UTC")
 
 
 def _backup_to_targets(

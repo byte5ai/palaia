@@ -33,12 +33,15 @@ of ``config.yaml``. Omitting it uses
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
 from palaia_hub.events.schema import HubEventHook
 from palaia_hub.index import SearchFilters, VaultIndex
+from palaia_hub.nudges import DEFAULT_SIMILAR_NOTE_THRESHOLD
+from palaia_hub.nudges.detectors import MAX_SIMILAR_NAMED
 from palaia_hub.recall import DEFAULT_WEIGHTS, RankingWeights
 from palaia_hub.recall.budget import DEFAULT_MAX_TOKENS
 from palaia_hub.recall.models import ContextResult, RecallResult
@@ -71,6 +74,7 @@ from .vault_protocol import (
     ReviewQueueResult,
     SearchHit,
     SearchResponse,
+    SimilarNoteHit,
     VaultService,
     VaultServiceError,
     matched_channels,
@@ -95,6 +99,21 @@ _ENGINE_CALLER_ERRORS: tuple[type[Exception], ...] = (
     UncommittedWriteError,
     VolatileNameError,
 )
+
+
+#: Issue #187: how long ``write``/``capture`` wait for the similar-note check
+#: before answering without it. The check normally costs one query embedding
+#: (~15 ms on the default model, ~150 ms on bge-small); the ceiling is for the
+#: first call after a restart, when the embedding model still has to load.
+#: The check keeps running past it — so a loaded model is not thrown away —
+#: but the write's result does not wait for it.
+SIMILAR_NOTES_TIMEOUT_SECONDS = 2.0
+
+#: Note types a similar-note warning never points at: the vault manifest and
+#: other ``meta`` notes (format spec §6, excluded from normal recall), and the
+#: curator's review proposals (§8), which *describe* changes to notes rather
+#: than being knowledge an agent should edit.
+_SIMILAR_EXCLUDED_TYPES: tuple[str, ...] = ("meta", "proposal")
 
 
 def _tag_list(value: Any) -> list[str]:
@@ -169,9 +188,7 @@ def _note_to_record(note: Note) -> NoteRecord:
 def _note_to_summary(note: Note) -> NoteSummary:
     record = _note_to_record(note)
     return NoteSummary(
-        **record.model_dump(
-            exclude={"body", "created", "resolved_body", "resolution_warnings"}
-        )
+        **record.model_dump(exclude={"body", "created", "resolved_body", "resolution_warnings"})
     )
 
 
@@ -182,6 +199,11 @@ class EngineVaultService:
     adapter does not manage the engine's lifecycle, only translates calls.
     The same goes for ``index``: pass an already-opened
     :class:`~palaia_hub.index.VaultIndex` to get indexed + hybrid search.
+
+    ``similar_note_threshold`` is the hub's ``nudges.similar_note_threshold``
+    (issue #187): the true cosine similarity at or above which
+    :meth:`similar_notes` names an existing note after a ``write``/``capture``.
+    ``None`` switches that check off (``nudges.similar_note_check: false``).
 
     ``on_event`` is SPEC-201's ``inbox.captured`` hook point: given, called
     after every ``capture()`` (including a duplicate-acknowledged one) with
@@ -197,9 +219,17 @@ class EngineVaultService:
         *,
         ranking: RankingWeights = DEFAULT_WEIGHTS,
         on_event: HubEventHook | None = None,
+        similar_note_threshold: float | None = DEFAULT_SIMILAR_NOTE_THRESHOLD,
     ) -> None:
         self._engine = engine
         self._index = index
+        #: Issue #187: the cosine similarity at which :meth:`similar_notes`
+        #: reports an existing note; ``None`` switches the check off.
+        self._similar_threshold = similar_note_threshold
+        #: Similar-note checks that outlived their timeout (see
+        #: :data:`SIMILAR_NOTES_TIMEOUT_SECONDS`), held so they are not
+        #: garbage-collected mid-flight.
+        self._background: set[asyncio.Future[Any]] = set()
         #: SPEC-201's ``inbox.captured`` hook point — see :data:`HubEventHook`.
         self._on_event = on_event
         # SPEC-106's recall layer works entirely off the index (identity
@@ -207,9 +237,7 @@ class EngineVaultService:
         # live there), so it exists only when an index does — see
         # `_recall_service` for what an index-less adapter answers instead.
         self._recall = (
-            RecallService(index, vault=engine.name, weights=ranking)
-            if index is not None
-            else None
+            RecallService(index, vault=engine.name, weights=ranking) if index is not None else None
         )
 
     async def search(self, query: str, *, limit: int = 10) -> SearchResponse:
@@ -496,6 +524,61 @@ class EngineVaultService:
         except Exception:  # noqa: BLE001 - a hook must not break a capture
             logger.exception("inbox.captured hook failed")
 
+    async def similar_notes(
+        self, title: str, body: str, *, exclude: str = ""
+    ) -> list[SimilarNoteHit]:
+        """Existing notes at or above the similarity threshold (issue #187).
+
+        Needs the index's vectors: without an index, with embeddings off, or
+        before anything is embedded, there is no true similarity to hold
+        against a threshold, and the answer is ``[]`` — a lexical score is not
+        a substitute (issue #481). Never raises and never waits longer than
+        :data:`SIMILAR_NOTES_TIMEOUT_SECONDS`: the write it advises on has
+        already succeeded.
+        """
+        threshold = self._similar_threshold
+        if self._index is None or threshold is None:
+            return []
+        check = asyncio.ensure_future(
+            self._index.similar_notes(
+                title,
+                body,
+                limit=MAX_SIMILAR_NAMED,
+                filters=SearchFilters(exclude_types=_SIMILAR_EXCLUDED_TYPES),
+                exclude=(exclude,) if exclude else (),
+            )
+        )
+        self._background.add(check)
+        check.add_done_callback(self._settle_background)
+        try:
+            found = await asyncio.wait_for(
+                asyncio.shield(check), timeout=SIMILAR_NOTES_TIMEOUT_SECONDS
+            )
+        except TimeoutError:
+            logger.info(
+                "similar-note check took over %.1fs; answering without it",
+                SIMILAR_NOTES_TIMEOUT_SECONDS,
+            )
+            return []
+        except Exception:  # noqa: BLE001 - advice must never fail a write
+            logger.warning("similar-note check failed", exc_info=True)
+            return []
+        return [
+            SimilarNoteHit(
+                permalink=note.permalink,
+                title=note.title,
+                similarity=round(note.similarity, 4),
+            )
+            for note in found
+            if note.similarity >= threshold
+        ]
+
+    def _settle_background(self, check: asyncio.Future[Any]) -> None:
+        """Forget a finished check; mark a late failure as seen, not lost."""
+        self._background.discard(check)
+        if not check.cancelled() and check.exception() is not None:
+            logger.debug("late similar-note check failed: %s", check.exception())
+
     async def inbox_status(self) -> InboxStatusResult:
         captures = [
             note
@@ -666,9 +749,7 @@ class EngineVaultService:
         except _ENGINE_CALLER_ERRORS as exc:
             raise VaultServiceError(str(exc)) from exc
         assert result.note is not None
-        return ReviewDecideResult(
-            permalink=result.note.permalink or permalink, status=decision
-        )
+        return ReviewDecideResult(permalink=result.note.permalink or permalink, status=decision)
 
 
 if TYPE_CHECKING:

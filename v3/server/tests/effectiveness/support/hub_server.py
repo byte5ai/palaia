@@ -42,6 +42,7 @@ from palaia_hub.gateway.vault_protocol import (
     NoteRecord,
     NoteSummary,
     SearchResponse,
+    SimilarNoteHit,
     VaultService,
 )
 from palaia_hub.gateway.wiring import EngineVaultService
@@ -142,6 +143,14 @@ class RecordingService:
     async def inbox_status(self) -> InboxStatusResult:
         self._record("inbox_status")
         return await self._inner.inbox_status()
+
+    async def similar_notes(
+        self, title: str, body: str, *, exclude: str = ""
+    ) -> list[SimilarNoteHit]:
+        # Deliberately not recorded: this is the write/capture tool's own
+        # follow-up (issue #187), not a call the agent made — logging it would
+        # count one agent action twice.
+        return await self._inner.similar_notes(title, body, exclude=exclude)
 
     async def recall(
         self, *, query: str = "", ref: str = "", limit: int = 5, model: str = ""

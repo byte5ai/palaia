@@ -8,6 +8,7 @@ import { Home } from "./Home";
 import {
   Agents,
   Automations,
+  Backups,
   Clients,
   Explorer,
   Exposure,
@@ -37,6 +38,7 @@ const BUILT_PATHS = new Set([
   "/agents",
   "/telegram",
   "/review-queue",
+  "/backups",
 ]);
 
 const placeholderRoutes = NAV_GROUPS.flatMap((group) => group.items)
@@ -84,6 +86,7 @@ export const routes: RouteObject[] = [
           { path: "agents", element: <Agents /> },
           { path: "telegram", element: <Telegram /> },
           { path: "review-queue", element: <ReviewQueue /> },
+          { path: "backups", element: <Backups /> },
           ...placeholderRoutes,
           { path: "*", element: <NotFound /> },
         ],

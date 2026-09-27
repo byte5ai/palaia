@@ -7,12 +7,14 @@ exclusions, written on the host.
 
 from __future__ import annotations
 
+import json
 import stat
 import tarfile
 from pathlib import Path
 
 import pytest
 
+from palaia_hub.backup_schedule import STATUS_FILENAME
 from palaia_hub.cli import main
 
 
@@ -132,7 +134,47 @@ def test_listing_targets_writes_nothing(
     assert "nas" in printed
     assert str(destination) in printed
     assert "keeps the newest 3" in printed
+    assert "Not scheduled" in printed
     assert not destination.exists()
+
+
+def test_listing_targets_shows_the_schedule_and_what_the_hub_last_did(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Issue #438: on a hub whose dashboard has no sign-in, this is where
+    the operator sees whether the schedule is actually producing backups."""
+    destination = tmp_path / "nas"
+    home = _home_with_target(tmp_path, destination)
+    config = home / "config.yaml"
+    config.write_text(
+        config.read_text(encoding="utf-8").replace("backup:\n", "backup:\n  interval_hours: 12\n"),
+        encoding="utf-8",
+    )
+    (home / STATUS_FILENAME).write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "last_pass_at": 1_800_000_000,
+                "targets": {
+                    "nas": {
+                        "finished_at": 1_800_000_000,
+                        "ok": False,
+                        "trigger": "schedule",
+                        "reason": "the share is not mounted",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PALAIA_HOME", str(home))
+
+    main(["backup", "--list-targets"])
+
+    printed = capsys.readouterr().out
+    assert "every 12 h" in printed
+    assert "last run by the hub (schedule), 2027-01-15 08:00 UTC" in printed
+    assert "FAILED: the share is not mounted" in printed
 
 
 def test_an_unknown_target_name_is_a_one_line_error(

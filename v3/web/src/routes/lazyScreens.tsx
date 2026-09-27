@@ -11,6 +11,9 @@ export const Agents = lazy(() =>
 export const Automations = lazy(() =>
   import("./Automations").then((m) => ({ default: m.Automations })),
 );
+export const Backups = lazy(() =>
+  import("./Backups").then((m) => ({ default: m.Backups })),
+);
 export const Clients = lazy(() =>
   import("./Clients").then((m) => ({ default: m.Clients })),
 );
