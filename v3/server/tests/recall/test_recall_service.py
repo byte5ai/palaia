@@ -8,10 +8,11 @@ behavior on references, globs and sub-note addresses.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
-from recall_helpers import frozen_clock, open_vault
+from recall_helpers import FROZEN_NOW, frozen_clock, open_vault
 
 from palaia_hub.index import VaultIndex
 from palaia_hub.recall import RecallService
@@ -405,6 +406,63 @@ async def test_repeated_access_raises_a_notes_ranking(
     finally:
         await index.close()
         await engine.close()
+
+
+async def test_a_note_nobody_recalls_anymore_loses_its_access_boost(
+    tmp_path: Path,
+) -> None:
+    # Issue #196: retrieval reinforces, disuse fades. Same two-indistinguishable-
+    # notes setup as above; the loser is served until it wins, then the hub
+    # sits unused for two years and the query is asked again.
+    root = tmp_path / "fade"
+    root.mkdir()
+    engine, index = await open_vault(root, "fade")
+    try:
+        for slug in ("alpha", "beta"):
+            await engine.write_note(
+                f"notes/{slug}.md",
+                body="Shared subject matter for the ranking probe.",
+                title=slug.title(),
+                frontmatter={"type": "note"},
+            )
+        await index.reindex()
+        now: list[datetime] = [FROZEN_NOW]
+        service = RecallService(index, vault="fade", clock=lambda: now[0])
+        baseline = await service.recall(query="ranking probe", limit=2, include_body=False)
+        winner, loser = (entry.permalink for entry in baseline.entries)
+        for _ in range(30):
+            await service.recall(ref=loser, include_body=False)
+        reinforced = await service.recall(query="ranking probe", limit=2, include_body=False)
+        assert reinforced.entries[0].permalink == loser
+
+        # Two years (about eight access half-lives) without a recall. Read
+        # with counting off so the probe itself does not refresh the stamp.
+        now[0] = FROZEN_NOW + timedelta(days=730)
+        probe = RecallService(index, vault="fade", track_access=False, clock=lambda: now[0])
+        faded = await probe.recall(query="ranking probe", limit=2, include_body=False)
+        assert [entry.permalink for entry in faded.entries] == [winner, loser]
+        assert faded.entries[1].access < 0.01
+        # The counter itself is untouched — fading is computed, never written.
+        assert index.graph.access([loser])[loser].hits >= 30
+    finally:
+        await index.close()
+        await engine.close()
+
+
+async def test_ranking_with_the_fade_writes_nothing(
+    golden_work: tuple[VaultEngine, VaultIndex],
+) -> None:
+    # The fade reuses the access row recall already reads, so ranking stays
+    # a pure read: with counting off, neither recall nor build_context may
+    # change a single row of the index.
+    engine, index = golden_work
+    tracked = RecallService(index, vault=engine.name, clock=frozen_clock())
+    await tracked.recall(query="api gateway", limit=3, include_body=False)
+    before = index.db.conn.total_changes
+    service = RecallService(index, vault=engine.name, track_access=False, clock=frozen_clock())
+    await service.recall(query="api gateway", limit=3, include_body=False)
+    await service.build_context(ref="projects/api-gateway", depth=1)
+    assert index.db.conn.total_changes == before
 
 
 async def test_access_survives_a_reindex(golden_work: tuple[VaultEngine, VaultIndex]) -> None:

@@ -32,9 +32,16 @@ and it cannot drag an unrelated-but-fresh note onto a specific query.
   (they change on checkout, which would make ranking depend on how the vault
   arrived on disk rather than on its content).
 * **access** — how often recall has actually served this note, saturating
-  logarithmically. Frequently-used memories are what the user keeps coming
-  back to; the counter lives in the index (see ``note_access`` in
-  :mod:`palaia_hub.index.schema`).
+  logarithmically, *and how long ago it last did* (issue #196, retrieval as
+  reinforcement). Frequently-used memories are what the user keeps coming
+  back to — but a note that was hot last year and has not been served since
+  should not keep that boost forever, so the count-saturated term fades with
+  a half-life over the time since the last recall
+  (:attr:`RankingWeights.access_half_life_days`; 0 switches the fade off).
+  Each recall resets the fade by stamping ``last_access``; notes nobody asks
+  for drift back to the no-boost baseline. Both numbers live in the index
+  (see ``note_access`` in :mod:`palaia_hub.index.schema`) and are already
+  read on the hot path, so the fade costs no extra query and no extra write.
 * **significance** — how load-bearing the note is, from two signals that
   need no clock and no counters: its entry type (a ``decision`` outranks a
   ``capture``) and its inbound-link centrality (an entity everything points
@@ -106,6 +113,16 @@ class RankingWeights:
     access_saturation: float = 20.0
     """Access count at which the access term reaches 1.0."""
 
+    access_half_life_days: float = 90.0
+    """Days since a note was last recalled after which its access term halves.
+
+    ``0`` switches the fade off (a lifetime counter, the pre-#196 behavior).
+    Deliberately three times :attr:`half_life_days`: being *served* is a
+    weaker, noisier signal than being *edited*, so a note recalled once a
+    quarter should keep half its usage boost rather than be half-forgotten
+    after a month without a matching query.
+    """
+
     centrality_saturation: float = 12.0
     """Inbound relation count at which the centrality term reaches 1.0."""
 
@@ -150,6 +167,8 @@ class WeightSettings(Protocol):
     @property
     def access_saturation(self) -> float: ...
     @property
+    def access_half_life_days(self) -> float: ...
+    @property
     def centrality_saturation(self) -> float: ...
     @property
     def centrality_weight(self) -> float: ...
@@ -165,6 +184,7 @@ def weights_from_settings(settings: WeightSettings) -> RankingWeights:
         significance=settings.significance_weight,
         half_life_days=settings.half_life_days,
         access_saturation=settings.access_saturation,
+        access_half_life_days=settings.access_half_life_days,
         centrality_saturation=settings.centrality_saturation,
         centrality_weight=settings.centrality_weight,
         unknown_recency=settings.unknown_recency,
@@ -241,9 +261,25 @@ def access_factor(hits: int, *, weights: RankingWeights) -> float:
     return min(math.log1p(float(hits)) / ceiling, 1.0)
 
 
-def significance_factor(
-    note_type: str, inbound: int, *, weights: RankingWeights
-) -> float:
+def access_fade(last_access: str, *, now: datetime, weights: RankingWeights) -> float:
+    """How much of the access term survives since the last recall — ``(0, 1]``.
+
+    ``exp(-ln2 · days / access_half_life_days)``: 1.0 right after a recall,
+    0.5 one half-life later. An empty or unparseable ``last_access`` (a row
+    written before the stamp existed, a hand-edited index) is *no* evidence of
+    disuse and does not fade — same reasoning as
+    :attr:`RankingWeights.unknown_recency`.
+    """
+    if weights.access_half_life_days <= 0:
+        return 1.0
+    parsed = parse_timestamp(last_access)
+    if parsed is None:
+        return 1.0
+    days = days_between(parsed, now)
+    return math.exp(-math.log(2.0) * days / weights.access_half_life_days)
+
+
+def significance_factor(note_type: str, inbound: int, *, weights: RankingWeights) -> float:
     """Blend entry-type weight with inbound-link centrality."""
     base = weights.type_significance.get(
         note_type.strip().casefold(), weights.default_type_significance
@@ -264,19 +300,18 @@ def decay_factors(
     inbound: int,
     now: datetime,
     weights: RankingWeights = DEFAULT_WEIGHTS,
+    last_access: str = "",
 ) -> DecayFactors:
     """The decay factors of one note — the pure core of the scoring."""
     recency = recency_factor(note.timestamp, now=now, weights=weights)
     access = access_factor(hits, weights=weights)
+    if access > 0.0:
+        access *= access_fade(last_access, now=now, weights=weights)
     significance = significance_factor(note.type, inbound, weights=weights)
     boost = (
-        weights.recency * recency
-        + weights.access * access
-        + weights.significance * significance
+        weights.recency * recency + weights.access * access + weights.significance * significance
     )
-    return DecayFactors(
-        recency=recency, access=access, significance=significance, boost=boost
-    )
+    return DecayFactors(recency=recency, access=access, significance=significance, boost=boost)
 
 
 def relevance_of(rank: int) -> float:
@@ -303,13 +338,18 @@ def rank_candidates(
     inbound: Mapping[str, int],
     now: datetime,
     weights: RankingWeights = DEFAULT_WEIGHTS,
+    last_access: Mapping[str, str] | None = None,
 ) -> list[RankedRef]:
     """Score and re-order ``candidates``; ties break on ``ref`` alphabetically.
+
+    ``last_access`` maps a permalink to its last-recall timestamp and drives
+    the access fade; a missing entry means "no fade" (see :func:`access_fade`).
 
     ``candidates`` must arrive in the retriever's own order — that order *is*
     the relevance term. A candidate whose note is missing from ``notes`` (a
     delete racing a query) is dropped rather than scored against defaults.
     """
+    last_seen: Mapping[str, str] = last_access or {}
     ranked: list[RankedRef] = []
     for rank, candidate in enumerate(candidates):
         note = notes.get(candidate.permalink)
@@ -321,6 +361,7 @@ def rank_candidates(
             inbound=inbound.get(candidate.permalink, 0),
             now=now,
             weights=weights,
+            last_access=last_seen.get(candidate.permalink, ""),
         )
         ranked.append(
             RankedRef(
@@ -350,6 +391,7 @@ __all__ = [
     "RankingWeights",
     "WeightSettings",
     "access_factor",
+    "access_fade",
     "days_between",
     "decay_factors",
     "parse_timestamp",
