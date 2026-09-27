@@ -34,7 +34,9 @@ async def test_no_index_url_serves_the_bundled_entries_without_touching_the_netw
 
     assert result.stale is False
     assert result.warning == NO_INDEX_NOTE
-    assert [entry.id for entry in result.entries] == ["palaia.fetch", "palaia.filesystem"]
+    # Issue #409: the bundled starter index ships empty — nothing is offered
+    # that could not be installed.
+    assert result.entries == ()
     assert again.entries == result.entries
 
 

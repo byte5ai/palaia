@@ -1,57 +1,5 @@
 {
-  "entries": [
-    {
-      "config_schema": {
-        "properties": {
-          "user_agent": {
-            "title": "User agent string",
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "id": "palaia.fetch",
-      "kind": "container",
-      "maintainer": "palaia",
-      "name": "Fetch",
-      "one_liner": "Fetch and convert web pages to markdown for an agent to read.",
-      "permissions": [
-        "network"
-      ],
-      "source": {
-        "type": "image",
-        "value": "ghcr.io/palaia/addon-fetch:1.0.0"
-      },
-      "verified": true
-    },
-    {
-      "config_schema": {
-        "properties": {
-          "mount_path": {
-            "title": "Folder to expose",
-            "type": "string"
-          }
-        },
-        "required": [
-          "mount_path"
-        ],
-        "type": "object"
-      },
-      "id": "palaia.filesystem",
-      "kind": "container",
-      "maintainer": "palaia",
-      "name": "Filesystem",
-      "one_liner": "Read and write files inside a folder you choose, sandboxed.",
-      "permissions": [
-        "filesystem"
-      ],
-      "source": {
-        "type": "image",
-        "value": "ghcr.io/palaia/addon-filesystem:1.0.0"
-      },
-      "verified": true
-    }
-  ],
-  "generated_at": "2026-08-24T00:00:00Z",
+  "entries": [],
+  "generated_at": "2026-09-27T00:00:00Z",
   "schema_version": 1
 }

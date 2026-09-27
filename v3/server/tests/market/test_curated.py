@@ -111,9 +111,10 @@ async def test_a_document_signed_with_the_wrong_key_is_refused(
 
     assert result.stale is True
     assert "signature" in result.warning.lower()
-    # No last-good copy: the bundled starter entries are the fallback (they
-    # are trusted as packaged, not by this key — issue #409).
-    assert [entry.id for entry in result.entries] == ["palaia.fetch", "palaia.filesystem"]
+    # No last-good copy: the bundled starter index is the fallback (trusted
+    # as packaged, not by this key — issue #409). It ships empty, and never
+    # the refused document's entries.
+    assert result.entries == ()
 
 
 @pytest.mark.anyio

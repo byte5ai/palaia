@@ -26,19 +26,22 @@ goes back into storage.
 **palaia publishes no curated index for 3.0.0, and no hub looks for one by
 default.** `DEFAULT_INDEX_URL` is `None`: a hub with no `market.index_url`
 serves `server/src/palaia_hub/market/data/starter-index.json` — the
-add-ons bundled with the release — and the marketplace page says exactly
-that. The starter index carries no signature: it ships inside the package,
+add-ons bundled with the release, currently none — and the marketplace
+page says so; it still lists the official MCP registry and entries added
+by hand. The starter index carries no signature: it ships inside the package,
 so it is trusted the way the code is, and the key its old signature used
 had no private half anywhere (it was discarded after signing), which made
 that signature a formality rather than a check. Only a *fetched* index is
 signature-verified.
 
-Two things in the starter index are the owner's to confirm before 3.0.0
-ships them as "bundled add-ons": the container entries point at
-`ghcr.io/palaia/addon-fetch:1.0.0` and `ghcr.io/palaia/addon-filesystem:1.0.0`,
-which this repository's CI never pulls — check they exist and are yours, or
-remove them (the skill entry that pointed at a non-existent
-`addons.` host is already gone).
+The starter index ships **empty**. Its two container entries ("Fetch" and
+"Filesystem") pointed at `ghcr.io/palaia/addon-fetch:1.0.0` and
+`ghcr.io/palaia/addon-filesystem:1.0.0`, which were never published, so
+installing them from the marketplace could only fail; they were removed
+(issue #409); building real add-ons is issue #512. Add an entry back only
+once its image is published —
+`server/tests/market/test_starter_index.py` checks every container image in
+the starter index against its registry.
 
 Publishing a real index is an **owner action**, done once, in this order.
 Where the index lives is also the owner's call — the natural place is next
@@ -111,5 +114,5 @@ The starter index shipped at
 this script against a keypair generated solely for that purpose, whose
 private key was discarded after signing — it exists to give a fresh hub
 something real to browse and to exercise the verification path in tests,
-not as the production palaia index. Until the owner action above has
-happened, it is also what every hub's marketplace shows.
+not as the production palaia index. It is empty now (see "Current state"
+above).

@@ -69,9 +69,10 @@ DEFAULT_INDEX_URL: str | None = None
 #: What the marketplace says when no index is configured — the honest
 #: state of a 3.0.0 hub, not a failure.
 NO_INDEX_NOTE = (
-    "No curated add-on index is configured for this hub, so the marketplace shows "
-    "the add-ons bundled with this release. An operator can point it at a published "
-    "index with `market.index_url` and `market.public_key` in config.yaml."
+    "No curated add-on index is configured for this hub, so the marketplace lists "
+    "servers from the official MCP registry and the ones added here by hand. An "
+    "operator can point it at a published index with `market.index_url` and "
+    "`market.public_key` in config.yaml."
 )
 DEFAULT_TIMEOUT_SECONDS = 8.0
 DEFAULT_MAX_BYTES = 5 * 1024 * 1024
@@ -115,6 +116,12 @@ def load_starter_index() -> dict[str, Any]:
     #2's "ship a small starter index as a repo file") — what a hub with no
     configured index browses, and what a hub whose index is unreachable
     falls back to when it has no last-verified copy.
+
+    It ships **empty** (issue #409): its two container entries named images
+    that were never published, so installing them could only fail. An entry
+    belongs here only once its source can actually be installed —
+    ``server/tests/market/test_starter_index.py`` checks each container
+    image against its registry.
 
     It is trusted the way the rest of the package is trusted (issue #409):
     it ships inside the wheel/image, so tampering with it is tampering with

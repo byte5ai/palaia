@@ -28,6 +28,7 @@ from palaia_hub.gateway.apps.market_app import (
 )
 from palaia_hub.market.curated import CuratedIndexClient
 from palaia_hub.market.manual import ManualEntryStore
+from palaia_hub.market.models import ManualEntryCreate, SourceLocator
 from palaia_hub.market.service import MarketService
 from palaia_hub.registry.client import RegistryClient
 
@@ -50,18 +51,34 @@ def _market_service(tmp_path: Path) -> MarketService:
         last_good_path=tmp_path / "last_good.json",
     )
     manual_store = ManualEntryStore(tmp_path / "manual.sqlite3")
+    # The bundled starter index ships empty (issue #409), so the entries the
+    # app browses and searches come from the manual source.
+    for entry_id, name, one_liner in (
+        ("example.fetch", "Fetch", "Fetch web pages as markdown."),
+        ("example.filesystem", "Filesystem", "Read and write files in one folder."),
+    ):
+        manual_store.add(
+            ManualEntryCreate(
+                id=entry_id,
+                name=name,
+                one_liner=one_liner,
+                kind="container",
+                source=SourceLocator(type="image", value=f"ghcr.io/example/{entry_id}:1"),
+                maintainer="example",
+            )
+        )
     return MarketService(
         registry_client=registry_client, curated_client=curated_client, manual_store=manual_store
     )
 
 
 @pytest.mark.anyio
-async def test_collect_market_browse_reads_the_starter_index(tmp_path: Path) -> None:
+async def test_collect_market_browse_lists_the_market_entries(tmp_path: Path) -> None:
     deps = MarketAppDeps(market_service=_market_service(tmp_path), dashboard_url=None)
 
     result = await collect_market_browse(deps)
 
-    assert {e.id for e in result.entries} >= {"palaia.fetch", "palaia.filesystem"}
+    assert {e.id for e in result.entries} >= {"example.fetch", "example.filesystem"}
     assert result.dashboard_url is None
 
 
@@ -98,7 +115,7 @@ async def test_a_search_query_narrows_the_plain_text_summary(tmp_path: Path) -> 
         result = await client.call_tool("browse_marketplace", {"query": "filesystem"})
 
     assert result.structured_content["query"] == "filesystem"
-    assert [e["id"] for e in result.structured_content["entries"]] == ["palaia.filesystem"]
+    assert [e["id"] for e in result.structured_content["entries"]] == ["example.filesystem"]
 
 
 def test_the_page_never_calls_a_server_tool_to_install() -> None:
