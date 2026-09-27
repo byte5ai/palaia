@@ -281,3 +281,26 @@ def test_oauth_login_reaches_the_hub_not_the_dashboard_shell(running_container: 
             f"somewhere else entirely: {resp.text[:200]}"
         )
         assert "<html" not in resp.text.lower(), resp.text[:200]
+
+
+def test_the_image_can_create_a_vault(running_container: str) -> None:
+    """Every vault is a git repository driven through the `git` binary
+    (`palaia_hub/vault/gitlayer.py`). The image once shipped without git, so
+    the hub started and answered /api/health, but creating a vault failed
+    with a 500 ("No such file or directory: 'git'"). Health alone cannot
+    catch that; creating a vault through the running container can.
+    """
+    resp = httpx.post(
+        f"http://127.0.0.1:{HOST_PORT}/api/vaults",
+        json={"key": "smoke"},
+        timeout=30.0,
+    )
+    assert resp.status_code == 200, resp.text
+    head = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        ["docker", "exec", running_container, "git", "-C", "/data/vaults/smoke", "log"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert head.returncode == 0, head.stdout + head.stderr
+    assert "initialize vault smoke" in head.stdout, head.stdout
