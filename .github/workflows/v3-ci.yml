@@ -1,15 +1,15 @@
 name: v3 CI
 
+# Issue #487: no workflow-level path filter. A workflow that does not trigger
+# never reports its checks, so none of them could be required on `main` while
+# root-only PRs skipped this workflow entirely. The workflow now always runs;
+# the `changes` job below decides which lanes have anything to do, and the
+# `v3-ci-required` gate at the bottom is the one check that always reports.
 on:
   push:
     branches: [main]
-    # The v3 workflow files count as v3 (issue #392): test_release_workflow.py
-    # and test_pi_image.py pin their structure, so a PR that edits only one
-    # of them must run this CI, not just the v2 one.
-    paths: ['v3/**', '.github/workflows/v3-*.yml']
   pull_request:
     branches: [main]
-    paths: ['v3/**', '.github/workflows/v3-*.yml']
 
 # Issue #421: a new push to the same PR (or branch) cancels the in-flight run
 # instead of letting a now-superseded full matrix run to completion on the
@@ -25,19 +25,27 @@ defaults:
 jobs:
   # Issue #421: path-scope the heavy lanes. A change confined to one area
   # (the dashboard, the sdk, the docs site, the bundle tooling, …) no longer
-  # spins up every job. The `python` job is deliberately NOT gated here: the
-  # doc/copy-lint tests are woven through the suite (server/tests/docs_site,
-  # *_copy_lint.py, test_migration_guide_*, clients/skill_lint.py,
-  # deploy/test_store_manifests.py, …), so making docs-only PRs skip it would
-  # silently drop coverage. Splitting those out so docs PRs can skip the full
-  # suite is tracked separately. Every filter also lists the v3 workflow files
-  # so that editing this file re-runs the lanes it governs.
+  # spins up every job. The `python` job is gated only on the track (`v3`,
+  # the old workflow-level path filter, issue #487), deliberately not on an
+  # area: the doc/copy-lint tests are woven through the suite
+  # (server/tests/docs_site, *_copy_lint.py, test_migration_guide_*,
+  # clients/skill_lint.py, deploy/test_store_manifests.py, …), so making
+  # docs-only PRs skip it would silently drop coverage. Splitting those out so
+  # docs PRs can skip the full suite is tracked separately. Every filter also
+  # lists the v3 workflow files so that editing this file re-runs the lanes it
+  # governs — they count as v3 (issue #392): test_release_workflow.py and
+  # test_pi_image.py pin their structure.
+  #
+  # On a push to `main`, dorny/paths-filter compares against the commit
+  # before the push (`github.event.before`); on a PR it lists the PR's files
+  # through the API.
   changes:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: read
     outputs:
+      v3: ${{ steps.filter.outputs.v3 }}
       web: ${{ steps.filter.outputs.web }}
       docs_site: ${{ steps.filter.outputs.docs_site }}
       mcpb: ${{ steps.filter.outputs.mcpb }}
@@ -54,6 +62,9 @@ jobs:
           # lane that was actually affected is not. `clients/**` feeds both the
           # dashboard and the docs-site generated "Connect your AI" pages.
           filters: |
+            v3:
+              - 'v3/**'
+              - '.github/workflows/v3-*.yml'
             web:
               - 'v3/web/**'
               - 'v3/clients/**'
@@ -84,6 +95,8 @@ jobs:
               - '.github/workflows/v3-*.yml'
 
   python:
+    needs: changes
+    if: ${{ needs.changes.outputs.v3 == 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -433,3 +446,29 @@ jobs:
       # build output, so it needs no Node/Astro step at all — it already
       # runs in the `python` job above, via that job's ordinary
       # `uv run pytest` over server/tests/docs_site/.
+
+  # Issue #487: the required check on `main`. It always reports, whatever
+  # the paths: it fails if any lane failed or was cancelled, and passes when
+  # every lane passed or was skipped because its area was untouched.
+  # `if: always()` rather than `!cancelled()` on purpose: a skipped required
+  # check counts as passing, so a cancelled run (a superseded push, see
+  # `concurrency` above) must report a failure here, not skip the gate.
+  # `changes` is in `needs` so a broken filter fails the gate instead of
+  # silently skipping every lane. A new lane must be added to `needs` too —
+  # test_release_workflow.py checks that.
+  required:
+    name: v3-ci-required
+    needs: [changes, python, sdk, e2e, mcpb, web, dependency-audit, docs-site]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: every lane passed or was skipped
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          echo "$RESULTS"
+          if [ "$FAILED" = "true" ]; then
+            echo "::error::a v3 CI lane failed or was cancelled"
+            exit 1
+          fi
