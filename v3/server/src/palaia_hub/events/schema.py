@@ -136,6 +136,13 @@ EventName = Literal[
     # inside the archive, never anything about its contents.
     "backup.target.succeeded",
     "backup.target.failed",
+    # Issue #438: one event per push of a vault to the git repository the
+    # owner configured, either way round, for the same reason as the pair
+    # above. `data` is `{vault, url, branch, commit, trigger}` on success and
+    # `{vault, url, branch, reason, trigger}` on failure. The reason is
+    # scrubbed of the token; the token itself is never on the bus.
+    "backup.vault_remote.pushed",
+    "backup.vault_remote.failed",
     # Issue #411 (the Telegram connector). Additive to the v1 vocabulary,
     # same rule as every addition above.
     #

@@ -237,6 +237,8 @@ or a `systemd` timer around it reads.
 |---|---|---|
 | `backup.target.succeeded` | `target`, `kind`, `destination`, `artifact`, `bytes_written`, `pruned`, `duration_seconds`, `trigger` | A destination received a complete archive. `pruned` names the older archives that destination's retention deleted. |
 | `backup.target.failed` | `target`, `kind`, `destination`, `reason`, `trigger` | The run did not complete — an unmounted share, a full disk, a destination refused by the secret-safety rule. `reason` is the same plain-language message the CLI prints and the REST route returns. |
+| `backup.vault_remote.pushed` | `vault`, `url`, `branch`, `commit`, `trigger` | A vault was pushed to the git repository the owner configured (issue #438). `commit` is the vault's HEAD that is now on that branch. |
+| `backup.vault_remote.failed` | `vault`, `url`, `branch`, `reason`, `trigger` | The push did not happen: the repository refused the token, has commits the vault does not have, or could not be reached. `reason` is scrubbed of the token; the token is never on the bus. |
 
 ### 3.10 Telegram connector events (issue #411, additive)
 
