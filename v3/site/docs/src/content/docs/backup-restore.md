@@ -56,16 +56,58 @@ own older files in that folder once there are more than that many — files
 palaia didn't write are never touched. Write `keep_last: null` to keep
 every one of them.
 
-Restart palaia, then take a backup whenever you like:
+Restart palaia. The dashboard's **Backups** screen (also linked from the
+backup card on the home screen) now lists that folder, when palaia last
+backed up into it and whether that worked, with a **Back up now** button
+next to it. The file goes straight from palaia into the folder, never
+through your browser.
+
+On the machine palaia runs on, the same thing from the command line:
 
 ```bash
 palaia-hub backup --target nas     # one folder
 palaia-hub backup --all-targets    # every folder you've configured
-palaia-hub backup --list-targets   # which ones are configured
+palaia-hub backup --list-targets   # which ones are configured, and how the last backup went
 ```
 
 Running in Docker, put `docker exec palaia-hub` in front, e.g.
 `docker exec palaia-hub palaia-hub backup --target nas`.
+
+### Back up on a schedule
+
+To have palaia back up by itself, add how many hours apart, in the same
+`backup` section:
+
+```yaml
+backup:
+  interval_hours: 24
+  targets:
+    - type: local_directory
+      name: nas
+      path: /mnt/nas/palaia-backups
+      keep_last: 7
+```
+
+After a restart, palaia writes a backup into every folder you've listed
+once a day — `24` hours apart; the shortest you can set is `1`. Together
+with `keep_last`, that is a rolling week of daily backups that looks after
+itself. The Backups screen shows when the next one is due.
+
+A few things it takes care of for you:
+
+- **Restarts don't reset the clock.** palaia remembers when it last backed
+  up. If it was switched off when a backup was due, it writes one about a
+  minute after it starts again.
+- **One folder that fails doesn't stop the others.** An unplugged drive is
+  reported, and the next folder still gets its backup.
+- **Never twice at once.** Pressing **Back up now** while a scheduled
+  backup is being written into that folder just tells you it's already on
+  its way.
+
+If you used to run `palaia-hub backup --all-targets` from your own
+scheduler (a `cron` entry or a timer), remove it once `interval_hours` is
+set — two schedulers writing into one folder at the same moment can get in
+each other's way.
 
 **The same warning applies, and more so:** that file can act as your hub.
 Only point this at a place you'd be comfortable storing a password — an
@@ -74,13 +116,15 @@ saved data is refused outright: every backup would contain every earlier
 one, and losing that disk would take all of them at once.
 
 If a backup fails — the drive isn't mounted, the share is full — you'll
-hear about it rather than find out later: the command says exactly what
-went wrong and exits with an error, so a scheduler wrapping it notices. A
-backup started from the running hub also raises an event, which you can
-route to a notification like any other.
+hear about it rather than find out later: the Backups screen shows what
+went wrong next to that folder, and the command says exactly what went
+wrong and exits with an error. Every backup palaia writes by itself or from
+the dashboard also raises an event, which you can route to a notification
+like any other — including telling a scheduled one apart from one you
+started.
 
-<!-- screenshot: the configured backup folders on the dashboard, with the
-     "Back up now" action next to one -->
+<!-- screenshot: the Backups screen — the configured folders, each with its
+     last backup and a "Back up now" action, and the schedule below -->
 
 ## Restore
 

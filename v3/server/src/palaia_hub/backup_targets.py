@@ -35,11 +35,12 @@ is complete (so a hub killed mid-write never leaves a truncated file under a
 name that looks finished), at mode ``0600``, followed by retention over this
 hub's *own* archives in that directory and nothing else.
 
-**Not implemented here, on purpose:** the user-defined external target, the
-per-vault git remote, and a scheduler. They are named in the config's own
+**Not implemented here, on purpose:** the user-defined external target and
+the per-vault git remote. They are named in the config's own
 validation error (:class:`palaia_hub.config.LocalDirectoryBackupTarget`) so
 an operator who writes one is told it does not exist yet, instead of getting
-a config that validates and never produces a backup.
+a config that validates and never produces a backup. The interval that runs
+every target by itself lives in :mod:`palaia_hub.backup_schedule`.
 """
 
 from __future__ import annotations
@@ -304,17 +305,29 @@ def build_targets(settings: BackupSettings) -> dict[str, BackupTarget]:
 
 
 def run_target(
-    target: BackupTarget, home: Path, *, publish: HubEventHook | None = None
+    target: BackupTarget,
+    home: Path,
+    *,
+    publish: HubEventHook | None = None,
+    trigger: str | None = None,
 ) -> BackupRun:
     """Run one target and report the outcome on the event bus.
 
     Issue #297: *"failures surface as events/notifications, never
     silently."* Both outcomes are published — a failure carries the reason
     in plain language — and the exception is re-raised either way, so the
-    caller (REST route, CLI) still decides what to do about it. Publishing
-    itself never masks the run's own result: an event bus that raises here
-    would otherwise turn a completed backup into a reported failure.
+    caller (REST route, scheduler, CLI) still decides what to do about it.
+    Publishing itself never masks the run's own result: an event bus that
+    raises here would otherwise turn a completed backup into a reported
+    failure.
+
+    ``trigger`` (issue #438) says who started the run — ``"manual"`` for
+    the dashboard's run action, ``"schedule"`` for
+    :class:`palaia_hub.backup_schedule.BackupScheduler` — and is added to
+    both events' ``data`` when given, so an automation can tell "my nightly
+    backup failed" from "the one I just clicked failed".
     """
+    extra: dict[str, Any] = {} if trigger is None else {"trigger": trigger}
     try:
         run = target.run(home)
     except Exception as exc:
@@ -326,10 +339,11 @@ def run_target(
                 "kind": target.kind,
                 "destination": target.destination,
                 "reason": str(exc),
+                **extra,
             },
         )
         raise
-    _publish(publish, SUCCEEDED_EVENT, run.to_json())
+    _publish(publish, SUCCEEDED_EVENT, {**run.to_json(), **extra})
     return run
 
 

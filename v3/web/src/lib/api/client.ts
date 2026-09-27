@@ -749,6 +749,61 @@ export interface TelegramStatus {
   editable: boolean;
 }
 
+/** Issue 438's backup screen — hand-written like `UpdateCheckResponse`:
+ * the routes return `dict[str, Any]`, and the committed schema predates
+ * them. Mirrors `palaia_hub.backup_api` (the list), `BackupTarget.describe`
+ * and `palaia_hub.backup_schedule.TargetRunRecord`/`BackupScheduler.status`.
+ * Times are seconds since the epoch. No field carries anything from inside
+ * an archive. */
+export interface BackupLastRun {
+  finished_at: number;
+  ok: boolean;
+  trigger: "manual" | "schedule";
+  artifact: string | null;
+  bytes_written: number | null;
+  pruned: number;
+  duration_seconds: number | null;
+  /** Why a failed run failed, in the hub's own words. */
+  reason: string | null;
+}
+
+export interface BackupTargetInfo {
+  name: string;
+  kind: string;
+  destination: string;
+  carries_full_archive: boolean;
+  secret_safe: boolean;
+  /** Local-directory targets only: how many archives it keeps. */
+  keep_last?: number | null;
+  running: boolean;
+  last_run: BackupLastRun | null;
+}
+
+export interface BackupSchedule {
+  interval_hours: number;
+  /** `null` while a scheduled pass is running. */
+  next_run_at: number | null;
+  last_pass_at: number | null;
+  running: boolean;
+}
+
+export interface BackupTargetsResponse {
+  targets: BackupTargetInfo[];
+  /** `null` when `backup.interval_hours` is not set. */
+  schedule: BackupSchedule | null;
+}
+
+/** `POST /api/backup/targets/{name}/run` — `BackupRun.to_json`. */
+export interface BackupRunResult {
+  target: string;
+  kind: string;
+  destination: string;
+  artifact: string;
+  bytes_written: number;
+  pruned: string[];
+  duration_seconds: number;
+}
+
 /** Base URL for API calls. Empty string = same-origin (the hub serves the
  * dashboard build itself, per this SPEC's static-serving deliverable), so
  * this only needs a value in local dev against a hub on another port. */
@@ -1019,6 +1074,14 @@ export const api = {
   backupUrl: () => `${API_BASE}/api/backup`,
   /** The archive itself, fetched like every other call (issue 382). */
   downloadBackup: () => requestBlob("/api/backup"),
+  /** Issue 438: the folders this hub writes its backup into by itself,
+   * how each one's last run went, and the schedule if there is one. */
+  listBackupTargets: () =>
+    getJson<BackupTargetsResponse>("/api/backup/targets"),
+  /** Write one backup into that folder now. 409 while one is already being
+   * written; 500 with the reason when the folder could not take it. */
+  runBackupTarget: (name: string) =>
+    postJson<BackupRunResult>(`/api/backup/targets/${seg(name)}/run`, {}),
   /** Any hub-served file by its dashboard-relative path — the Claude
    * Desktop bundle, for one. */
   downloadFile: (path: string) => requestBlob(path),

@@ -227,3 +227,14 @@ export function TelegramIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+/** Issue 438: the backup screen — a box with something going into it. */
+export function BackupIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M4 9.5v9a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-9" />
+      <path d="M3.5 6.5h17v3h-17z" />
+      <path d="M12 3v7.5M9.5 8 12 10.5 14.5 8" />
+    </Icon>
+  );
+}

@@ -9,7 +9,8 @@ Three routes, one posture:
 * ``POST /api/backup/targets/{name}/run`` writes one now — the dashboard's
   half of issue #297's "on demand", with no browser in the data path: the
   bytes go from the hub to the operator's directory, never through the
-  client that asked for it.
+  client that asked for it. A target already being written (by the
+  schedule, issue #438, or an earlier click) answers 409.
 
 Always mounted, the same posture as ``/api/health``/``/api/info``/the funnel
 router (:mod:`palaia_hub.app`): every hub has a home directory from the
@@ -50,7 +51,13 @@ from starlette.concurrency import run_in_threadpool
 from starlette.responses import StreamingResponse
 
 from .backup import ARCHIVE_MEDIA_TYPE, archive_filename, iter_archive_bytes
-from .backup_targets import BackupTarget, BackupTargetError, run_target
+from .backup_schedule import (
+    MANUAL_TRIGGER,
+    BackupLedger,
+    BackupScheduler,
+    BackupTargetBusyError,
+)
+from .backup_targets import BackupTarget, BackupTargetError
 from .events.schema import HubEventHook
 
 BACKUP_PATH = "/api/backup"
@@ -88,6 +95,8 @@ def build_backup_router(
     session_gated: bool = True,
     targets: Mapping[str, BackupTarget] | None = None,
     publish: HubEventHook | None = None,
+    ledger: BackupLedger | None = None,
+    scheduler: BackupScheduler | None = None,
 ) -> APIRouter:
     """Build the ``/api/backup`` router.
 
@@ -105,9 +114,20 @@ def build_backup_router(
         publish: the event hook every run reports its outcome on (issue
             #297: failures are never silent). Omitted, runs still happen
             and still return their result; nothing lands on the bus.
+            Ignored when ``ledger`` is given — the ledger carries its own.
+        ledger: the :class:`~palaia_hub.backup_schedule.BackupLedger` every
+            run goes through (issue #438) — shared with ``scheduler`` so a
+            click and a scheduled run of one target never overlap, and the
+            source of each target's ``last_run``. Omitted, one is built here
+            over ``targets``.
+        scheduler: the running hub's
+            :class:`~palaia_hub.backup_schedule.BackupScheduler`, when
+            ``backup.interval_hours`` is set. Only read, for the list
+            route's ``schedule`` block; ``None`` answers ``schedule: null``.
     """
     router = APIRouter(tags=["backup"])
-    configured: Mapping[str, BackupTarget] = targets or {}
+    runs = ledger if ledger is not None else BackupLedger(home, targets or {}, publish=publish)
+    configured: Mapping[str, BackupTarget] = runs.targets
 
     @router.get(BACKUP_PATH)
     async def download_backup() -> StreamingResponse:
@@ -125,10 +145,25 @@ def build_backup_router(
 
     @router.get(BACKUP_TARGETS_PATH)
     async def list_targets() -> dict[str, Any]:
-        """Every configured destination, in ``config.yaml`` order."""
+        """Every configured destination, in ``config.yaml`` order, with how
+        its last run went — and the schedule, when there is one (issue
+        #438: "surfaced in the dashboard")."""
         if not session_gated:
             raise HTTPException(status_code=403, detail=UNGATED_TARGETS_DETAIL)
-        return {"targets": [target.describe() for target in configured.values()]}
+        listed = []
+        for name, target in configured.items():
+            last = runs.last_run(name)
+            listed.append(
+                {
+                    **target.describe(),
+                    "running": runs.is_running(name),
+                    "last_run": None if last is None else last.to_json(),
+                }
+            )
+        return {
+            "targets": listed,
+            "schedule": None if scheduler is None else scheduler.status(),
+        }
 
     @router.post(BACKUP_TARGET_RUN_PATH)
     async def run_backup_target(name: str) -> dict[str, Any]:
@@ -151,7 +186,13 @@ def build_backup_router(
                 ),
             )
         try:
-            run = await run_in_threadpool(run_target, target, home, publish=publish)
+            run = await run_in_threadpool(runs.run, name, trigger=MANUAL_TRIGGER)
+        except BackupTargetBusyError as exc:
+            # Issue #438: the schedule (or an earlier click) is already
+            # writing this very backup. A second writer would collide with
+            # it on the same second-stamped file name, so this one is
+            # refused rather than queued — the backup is on its way.
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except BackupTargetError as exc:
             # The operator's own destination failed — an unmounted share, a
             # full disk, a directory the hub cannot write. That is a 500
