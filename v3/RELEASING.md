@@ -91,8 +91,9 @@ not block the cut (issue #388).
       beyond the version bump itself, say so in one line rather than
       duplicating the `rc1` section.
 - [ ] Write `v3/docs/release-notes/3.0.0.md`, saying plainly that the
-      marketplace shows the add-ons bundled with the release unless an
-      operator configures a published index (`market.index_url` +
+      marketplace lists the official MCP registry and manually added
+      entries, and bundles no add-ons of its own, unless an operator
+      configures a published index (`market.index_url` +
       `market.public_key`) — palaia publishes none for 3.0.0 (issue #409;
       the owner steps to change that are in `v3/tools/README.md`). Its first line is
       `# <release title>`; the cut workflow publishes the rest as the
