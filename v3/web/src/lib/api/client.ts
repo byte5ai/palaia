@@ -793,6 +793,45 @@ export interface BackupTargetsResponse {
   schedule: BackupSchedule | null;
 }
 
+/** Issue 438: a vault pushed to a git repository the owner names. Mirrors
+ * `palaia_hub.vault_remote.VaultRemotes.describe`. The token is write-only:
+ * the hub only ever says whether one is stored. */
+export interface VaultPushRecord {
+  ok: boolean;
+  trigger: "manual" | "schedule";
+  finished_at: number;
+  /** The pushed commit, on success. */
+  commit: string | null;
+  /** Why a failed push failed, in the hub's words (no token in it). */
+  reason: string | null;
+}
+
+export interface VaultRemoteInfo {
+  vault: string;
+  /** `false` for a push left behind by a vault that no longer exists. */
+  registered: boolean;
+  remote: {
+    url: string;
+    branch: string;
+    username: string;
+    has_token: boolean;
+  } | null;
+  pushing: boolean;
+  last_push: VaultPushRecord | null;
+}
+
+export interface VaultRemotesResponse {
+  vaults: VaultRemoteInfo[];
+}
+
+export interface VaultRemoteRequest {
+  url: string;
+  branch?: string;
+  username?: string;
+  /** Leave out to keep the stored token. */
+  token?: string;
+}
+
 /** `POST /api/backup/targets/{name}/run` — `BackupRun.to_json`. */
 export interface BackupRunResult {
   target: string;
@@ -1082,6 +1121,23 @@ export const api = {
    * written; 500 with the reason when the folder could not take it. */
   runBackupTarget: (name: string) =>
     postJson<BackupRunResult>(`/api/backup/targets/${seg(name)}/run`, {}),
+  /** Issue 438: every vault and the git repository it is pushed to, if any.
+   * 404 on a hub without a secret store (nowhere to keep the token). */
+  listVaultRemotes: () =>
+    getJson<VaultRemotesResponse>("/api/backup/vault-remotes"),
+  /** Set or change where a vault is pushed. 422 with the fix for a bad URL. */
+  saveVaultRemote: (vault: string, body: VaultRemoteRequest) =>
+    putJson<VaultRemoteInfo>(`/api/backup/vault-remotes/${seg(vault)}`, body),
+  /** Stop pushing a vault; the hub deletes its token. */
+  removeVaultRemote: (vault: string) =>
+    deleteJson<{ removed: string }>(`/api/backup/vault-remotes/${seg(vault)}`),
+  /** Push now. 409 while that vault is already being pushed; 500 with the
+   * reason when the repository refused. */
+  pushVault: (vault: string) =>
+    postJson<VaultPushRecord & { vault: string }>(
+      `/api/backup/vault-remotes/${seg(vault)}/push`,
+      {},
+    ),
   /** Any hub-served file by its dashboard-relative path — the Claude
    * Desktop bundle, for one. */
   downloadFile: (path: string) => requestBlob(path),

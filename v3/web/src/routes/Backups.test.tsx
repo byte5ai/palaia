@@ -1,9 +1,13 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ToastProvider } from "../components/Toast";
-import type { BackupTargetInfo, BackupTargetsResponse } from "../lib/api/client";
+import type {
+  BackupTargetInfo,
+  BackupTargetsResponse,
+  VaultRemoteInfo,
+} from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
 import { formatRelative } from "../lib/format";
 import { Backups } from "./Backups";
@@ -81,6 +85,13 @@ const BANNED = [
   /\blocal_directory\b/i,
   /\bcron\b/i,
 ];
+
+beforeEach(() => {
+  // A hub without a secret store: the git card hides itself (404).
+  vi.spyOn(api, "listVaultRemotes").mockRejectedValue(
+    new ApiError("/api/backup/vault-remotes", 404, { detail: "Not Found" }),
+  );
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -214,6 +225,183 @@ describe("Backups (issue 438)", () => {
     await screen.findByTestId("backup-target-nas");
 
     const text = container.textContent ?? "";
+    for (const pattern of BANNED) {
+      expect(text).not.toMatch(pattern);
+    }
+  });
+});
+
+const PUSHED: VaultRemoteInfo = {
+  vault: "work",
+  registered: true,
+  remote: {
+    url: "https://github.com/me/notes.git",
+    branch: "main",
+    username: "x-access-token",
+    has_token: true,
+  },
+  pushing: false,
+  last_push: {
+    ok: true,
+    trigger: "schedule",
+    finished_at: NOW - 3600,
+    commit: "0123456789abcdef",
+    reason: null,
+  },
+};
+
+const NOT_PUSHED: VaultRemoteInfo = {
+  vault: "family",
+  registered: true,
+  remote: null,
+  pushing: false,
+  last_push: null,
+};
+
+describe("Backups: memories in git (issue 438)", () => {
+  it("hides the card on a hub that cannot keep a token", async () => {
+    vi.spyOn(api, "listBackupTargets").mockResolvedValue(SCHEDULED);
+
+    mount();
+
+    await screen.findByTestId("backup-target-nas");
+    await waitFor(() => expect(api.listVaultRemotes).toHaveBeenCalled());
+    expect(screen.queryByTestId("vault-remotes")).toBeNull();
+  });
+
+  it("lists each memory with its repository and how the last push went", async () => {
+    vi.spyOn(api, "listBackupTargets").mockResolvedValue(SCHEDULED);
+    vi.spyOn(api, "listVaultRemotes").mockResolvedValue({
+      vaults: [PUSHED, NOT_PUSHED],
+    });
+
+    mount();
+
+    const card = await screen.findByTestId("vault-remotes");
+    expect(card).toHaveTextContent(/every scheduled backup pushes them too/i);
+    const work = await screen.findByTestId("vault-remote-work");
+    expect(work).toHaveTextContent("https://github.com/me/notes.git");
+    expect(work).toHaveTextContent(/pushed/);
+    expect(work).toHaveTextContent("0123456");
+    const family = screen.getByTestId("vault-remote-family");
+    expect(family).toHaveTextContent(/not pushed anywhere/i);
+    expect(
+      within(family).getByRole("button", { name: /push to a git repository/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("sets up a push with a write-only token", async () => {
+    vi.spyOn(api, "listBackupTargets").mockResolvedValue({ targets: [], schedule: null });
+    const list = vi
+      .spyOn(api, "listVaultRemotes")
+      .mockResolvedValue({ vaults: [NOT_PUSHED] });
+    const save = vi.spyOn(api, "saveVaultRemote").mockResolvedValue({
+      ...NOT_PUSHED,
+      remote: {
+        url: "https://github.com/me/family.git",
+        branch: "main",
+        username: "x-access-token",
+        has_token: true,
+      },
+    });
+
+    mount();
+
+    const card = await screen.findByTestId("vault-remotes");
+    expect(card).toHaveTextContent(/pushed when you ask/i);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /push to a git repository/i }),
+    );
+    const form = screen.getByTestId("vault-remote-form-family");
+    fireEvent.change(within(form).getByLabelText(/repository address/i), {
+      target: { value: "https://github.com/me/family.git" },
+    });
+    const token = within(form).getByLabelText(/access token/i);
+    expect(token).toHaveAttribute("type", "password");
+    fireEvent.change(token, { target: { value: "github_pat_secret" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith("family", {
+        url: "https://github.com/me/family.git",
+        branch: "main",
+        username: undefined,
+        token: "github_pat_secret",
+      }),
+    );
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+  });
+
+  it("keeps the stored token when the field is left empty", async () => {
+    vi.spyOn(api, "listBackupTargets").mockResolvedValue({ targets: [], schedule: null });
+    vi.spyOn(api, "listVaultRemotes").mockResolvedValue({ vaults: [PUSHED] });
+    const save = vi.spyOn(api, "saveVaultRemote").mockResolvedValue(PUSHED);
+
+    mount();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Change" }));
+    const form = screen.getByTestId("vault-remote-form-work");
+    expect(within(form).getByLabelText(/access token/i)).toHaveAttribute(
+      "placeholder",
+      expect.stringMatching(/stored/i),
+    );
+    fireEvent.click(within(form).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith("work", {
+        url: "https://github.com/me/notes.git",
+        branch: "main",
+        username: undefined,
+        token: undefined,
+      }),
+    );
+  });
+
+  it("pushes on request and shows the hub's reason when it fails", async () => {
+    vi.spyOn(api, "listBackupTargets").mockResolvedValue({ targets: [], schedule: null });
+    vi.spyOn(api, "listVaultRemotes").mockResolvedValue({ vaults: [PUSHED] });
+    const push = vi.spyOn(api, "pushVault").mockRejectedValue(
+      new ApiError("/api/backup/vault-remotes/work/push", 500, {
+        detail:
+          "the repository's branch has commits this vault does not have, so palaia " +
+          "did not overwrite it.",
+      }),
+    );
+
+    mount();
+
+    fireEvent.click(await screen.findByRole("button", { name: /push work now/i }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("work"));
+    expect(
+      await screen.findByText(/did not overwrite it/i),
+    ).toBeInTheDocument();
+  });
+
+  it("stops pushing a memory", async () => {
+    vi.spyOn(api, "listBackupTargets").mockResolvedValue({ targets: [], schedule: null });
+    vi.spyOn(api, "listVaultRemotes").mockResolvedValue({ vaults: [PUSHED] });
+    const remove = vi
+      .spyOn(api, "removeVaultRemote")
+      .mockResolvedValue({ removed: "work" });
+
+    mount();
+
+    fireEvent.click(await screen.findByRole("button", { name: /stop pushing work/i }));
+    await waitFor(() => expect(remove).toHaveBeenCalledWith("work"));
+  });
+
+  it("uses no in-house word", async () => {
+    vi.spyOn(api, "listBackupTargets").mockResolvedValue(SCHEDULED);
+    vi.spyOn(api, "listVaultRemotes").mockResolvedValue({
+      vaults: [PUSHED, NOT_PUSHED],
+    });
+
+    mount();
+
+    const card = await screen.findByTestId("vault-remotes");
+    await within(card).findByTestId("vault-remote-work");
+    const text = card.textContent ?? "";
     for (const pattern of BANNED) {
       expect(text).not.toMatch(pattern);
     }
