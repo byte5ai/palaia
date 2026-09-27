@@ -183,3 +183,50 @@ async def test_detail_encodes_the_server_id_into_the_path(tmp_path: Path) -> Non
         await client.detail("io.example/odd?id")
 
     assert seen == ["/v0/servers/io.example%2Fodd%3Fid"]
+
+
+def _version(version: str, *, latest: bool) -> dict[str, object]:
+    return {
+        "server": {"name": "io.example/weather", "description": "Weather.", "version": version},
+        "_meta": {"io.modelcontextprotocol.registry/official": {"isLatest": latest}},
+    }
+
+
+@pytest.mark.anyio
+async def test_search_asks_for_the_latest_version_of_each_server(tmp_path: Path) -> None:
+    seen: list[httpx.QueryParams] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.params)
+        return httpx.Response(200, json=_SERVERS_PAGE)
+
+    async with _client_for(httpx.MockTransport(handler)) as http:
+        client = RegistryClient(client=http, cache_dir=tmp_path)
+        await client.search("weather")
+
+    assert seen[0]["version"] == "latest"
+
+
+@pytest.mark.anyio
+async def test_every_version_of_one_server_is_listed_once_as_the_latest(
+    tmp_path: Path,
+) -> None:
+    """The registry lists each published version as its own item. The
+    marketplace showed four identical rows for one server until these were
+    folded into one."""
+    page = {
+        "servers": [
+            _version("1.0.0", latest=False),
+            _version("1.2.0", latest=True),
+            _version("1.1.0", latest=False),
+        ]
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=page)
+
+    async with _client_for(httpx.MockTransport(handler)) as http:
+        client = RegistryClient(client=http, cache_dir=tmp_path)
+        result = await client.search()
+
+    assert [(s.name, s.version) for s in result.servers] == [("io.example/weather", "1.2.0")]

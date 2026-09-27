@@ -24,6 +24,7 @@ Three properties this SPEC requires, all here:
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import time
 from pathlib import Path
@@ -63,6 +64,25 @@ def _server_from_raw(raw: dict[str, Any]) -> RegistryServer:
         version=server.get("version"),
         raw=raw,
     )
+
+
+def _is_latest(server: RegistryServer) -> bool:
+    meta = server.raw.get("_meta", {}) if isinstance(server.raw, dict) else {}
+    official = meta.get("io.modelcontextprotocol.registry/official", {})
+    return bool(isinstance(official, dict) and official.get("isLatest"))
+
+
+def _one_per_server(servers: tuple[RegistryServer, ...]) -> tuple[RegistryServer, ...]:
+    """Keep one entry per server id: the one the registry marks latest, else
+    the first seen. The registry lists every published version of a server
+    as its own item, and the marketplace showed each of them as a separate
+    add-on with the same name."""
+    chosen: dict[str, RegistryServer] = {}
+    for server in servers:
+        current = chosen.get(server.id)
+        if current is None or (_is_latest(server) and not _is_latest(current)):
+            chosen[server.id] = server
+    return tuple(chosen.values())
 
 
 class RegistryClient:
@@ -161,10 +181,14 @@ class RegistryClient:
         )
 
     async def search(self, query: str = "", *, limit: int = 30) -> RegistrySearchResult:
-        params: dict[str, Any] = {"limit": limit}
+        # `version=latest`: one item per server instead of one per published
+        # version. Deduplicated again below, for a cache written before this
+        # parameter or a registry that ignores it.
+        params: dict[str, Any] = {"limit": limit, "version": "latest"}
         if query:
             params["search"] = query
-        return await self._fetch("/v0/servers", params)
+        result = await self._fetch("/v0/servers", params)
+        return dataclasses.replace(result, servers=_one_per_server(result.servers))
 
     async def detail(self, server_id: str) -> RegistryServer | None:
         # Issue #397: an id containing `/` or `?` must not rewrite the path.
