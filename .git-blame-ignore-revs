@@ -1,0 +1,5 @@
+# Commits `git blame` should skip. Enable once per clone:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style(v3): ruff format the whole v3 tree (issue #407)
+1df49dd9cdfe353a6850bd413dc39daec06db4a6
