@@ -179,11 +179,17 @@ async def test_repo_size_stays_bounded_under_sustained_writes(
             f"\n250 writes: .git {before / 1e6:.2f} MB before gc, {after / 1e6:.2f} MB after, "
             f"content {content / 1e6:.2f} MB (ratio {after / content:.2f}x)"
         )
-    # gc never makes it worse, and the repository stays proportional to
-    # content. The bound is looser than the SPEC's ~2x because at 250 notes
+    # gc never makes it materially worse, and the repository stays
+    # proportional to content. "Materially": `git commit` runs `gc --auto`
+    # itself (gc.auto is 256 here), so when that pass has just packed nearly
+    # every loose object, the explicit full gc has little left to reclaim
+    # and adds its own files (commit-graph, one consolidated pack with .idx
+    # and .rev). CI measured 344,941 -> 348,022 bytes in that case. The
+    # slack covers that and still fails if gc bloats the repository.
+    # The content bound is looser than the SPEC's ~2x because at 250 notes
     # git's fixed overhead (index file, reflog) is still a large share of a
     # small repository; the SPEC's bound is asserted by the scale run below.
-    assert after <= before
+    assert after <= before * 1.05
     assert after <= 3 * content
 
 
