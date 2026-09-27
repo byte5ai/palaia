@@ -372,7 +372,7 @@ curator:
 # palaia's signed, curated list of add-ons from, and the Ed25519 public key
 # (raw 32 bytes, base64) the document must be signed with. null uses the
 # built-in defaults. Set both when you publish your own signed index (see
-# v3/tools/README.md); until then the hub serves its bundled starter index.
+# v3/tools/README.md); until then the marketplace lists registry and manual entries.
 # Changing index_url alone cannot make the hub trust a different signer —
 # public_key is the trust anchor, which is why it lives only in this
 # owner-only file and can never be set over the dashboard or REST.
@@ -886,8 +886,8 @@ class MarketSettings(BaseModel):
     ``config.yaml`` edit already implies control of the host.
 
     Both unset (the default) means **no curated index**: palaia publishes
-    none for 3.0.0, and the marketplace shows the add-ons bundled with the
-    release and says so (issue #409). Set both to follow a published index;
+    none for 3.0.0, and the marketplace lists the official MCP registry and
+    manually added entries and says so (issue #409). Set both to follow a published index;
     one without the other is a configuration error, since a URL without its
     key could never verify and a key without a URL does nothing. See
     ``v3/tools/README.md`` for publishing an index of your own (issue #321).
@@ -906,7 +906,7 @@ class MarketSettings(BaseModel):
             raise ValueError(
                 "market.index_url and market.public_key go together: a URL without the key "
                 "it is signed with could never verify, and a key without a URL does nothing. "
-                "Fix: set both (v3/tools/README.md), or neither for the bundled add-ons only."
+                "Fix: set both (v3/tools/README.md), or neither for no curated index."
             )
         if self.public_key is None:
             return self
