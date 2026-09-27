@@ -304,3 +304,25 @@ def test_the_image_can_create_a_vault(running_container: str) -> None:
     )
     assert head.returncode == 0, head.stdout + head.stderr
     assert "initialize vault smoke" in head.stdout, head.stdout
+
+
+def test_the_images_git_takes_config_from_the_environment(running_container: str) -> None:
+    """A vault push (issue #438) hands git its access token through
+    ``GIT_CONFIG_COUNT``/``GIT_CONFIG_KEY_n`` (git 2.31 and later), never on
+    the command line, and needs CA certificates to reach an HTTPS host."""
+    version = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        ["docker", "exec", running_container, "git", "--version"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert version.returncode == 0, version.stdout + version.stderr
+    numbers = version.stdout.split()[2].split(".")
+    assert (int(numbers[0]), int(numbers[1])) >= (2, 31), version.stdout
+    certs = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        ["docker", "exec", running_container, "ls", "/etc/ssl/certs"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert certs.returncode == 0 and certs.stdout.strip(), certs.stderr

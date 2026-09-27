@@ -126,6 +126,38 @@ started.
 <!-- screenshot: the Backups screen — the configured folders, each with its
      last backup and a "Back up now" action, and the schedule below -->
 
+## Push a memory to a git repository
+
+Every memory keeps its notes with their full history. palaia can push that
+into a git repository you own, for example a private repository on GitHub,
+so a copy of your notes lives somewhere else too. Only the notes go there:
+no keys, no passwords, none of palaia's own settings. That is why this may
+go to a hosted service when a full backup should not.
+
+1. Create an **empty** private repository, and an access token that may
+   write to it. On GitHub: a fine-grained token for that one repository
+   with **Contents: read and write**.
+2. On the dashboard, open **Backups**. Under **memories in git**, choose
+   **Push to a git repository** next to the memory.
+3. Enter the repository's HTTPS address (for example
+   `https://github.com/you/notes.git`), a branch (`main` is fine) and the
+   token. Leave the user name empty for GitHub; some other hosts want your
+   account name with the token.
+4. **Push now.**
+
+After that it is pushed whenever you press **Push now**, and with every
+scheduled backup if you have set one up (see above).
+
+- **The token is stored encrypted** in palaia's secret store and never shown
+  again. To replace it, type a new one; leave the field empty to keep it.
+- **HTTPS only.** An `http://` address, an SSH address (`git@…`) or an
+  address with a password in it is refused.
+- **Nothing is ever overwritten.** If the branch already has commits that
+  did not come from this memory, the push stops and says so. Use an empty
+  repository, or a branch only this memory writes to.
+- **Stop pushing** forgets the address and deletes the token. What was
+  already pushed stays in your repository.
+
 ## Restore
 
 Restoring is a few manual steps rather than a button, on purpose — bringing
@@ -188,15 +220,8 @@ restore steps against it before connecting anything.
 Restoring by uploading a file straight from the dashboard isn't available
 yet — the offline steps above are the only path back in this release.
 
-Backups don't run on a timer yet either: a folder you configure above is
-written when you ask for it, not on a schedule. Until that lands, a `cron`
-entry or a `systemd` timer around `palaia-hub backup --all-targets` does
-the job — it exits with an error if any folder failed, so your scheduler
-notices.
-
-Two other places to send a backup are planned and not built: a destination
-you define yourself, and pushing a memory to a remote copy of its own
-history (which would carry your notes only, never any of your keys).
+A full backup can only go to a folder (a local drive or a mounted share).
+Other kinds of destination, such as a cloud storage bucket, are not built.
 
 To restore from a folder palaia wrote to, use the newest
 `palaia-backup-*.tar.gz` file in it — it is byte-for-byte the same file the

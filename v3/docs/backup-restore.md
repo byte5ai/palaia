@@ -171,7 +171,7 @@ facts about what it moves and implements one method that moves it:
 |---|---|---|
 | `LocalDirectoryTarget` (built) | yes — the whole hub home | yes — a path on the operator's own filesystem, the same place `palaia-hub backup` already writes these bytes |
 | user-defined external target (not built) | yes | must be answered by whoever builds it |
-| per-vault git remote (not built) | **no** — notes only; no hub secret has ever lived in a vault | n/a |
+| per-vault git push (built, §5.7 — not a `BackupTarget`) | **no** — notes only; no hub secret has ever lived in a vault | n/a |
 
 `BackupTarget.run` refuses, before building a single byte, any target whose
 `carries_full_archive` is not matched by `secret_safe`. That is issue #297's
@@ -290,12 +290,57 @@ runs in its own process and takes none of the hub's locks, so a
 existed) should be removed once `interval_hours` is set — two schedulers
 writing into one directory in the same second would share a file name.
 
-### 5.6 Not built in this pass
+### 5.6 Not built
 
-The user-defined external target and the per-vault git remote push (issue
-#438). A `config.yaml` naming an unimplemented `type` is refused at load
-with a message saying it does not exist yet, rather than validating into a
-hub that would never produce that backup.
+A user-defined external target. Issue #297 names it without saying what it
+is, and nobody has asked for one since; a new issue can define it when
+someone does. A `config.yaml` naming an unimplemented `type` is refused at
+load with a message saying it does not exist yet, rather than validating
+into a hub that would never produce that backup.
+
+### 5.7 Pushing a vault to a git repository (issue #438)
+
+Every vault is already a git repository. The owner can have the hub push it
+to a repository they own, for example a private GitHub repository: a copy
+of the notes, with their history, off this machine.
+
+- **Set up on the dashboard, not in `config.yaml`**: Backups screen, "memories
+  in git", per vault: the repository's HTTPS address, a branch (default
+  `main`), an optional user name and an access token. The token goes into
+  the encrypted secret store as `vault-remote.<vault>` and is never shown
+  again. The rest (URL, branch, user name, the last push) is kept in
+  `vault-remotes.json` in the hub home, `0600`. Both are inside the full
+  archive like everything else there.
+- **Notes only.** Unlike a backup folder, this may go to a third-party host:
+  a vault holds no hub secret (§5.1).
+- **HTTPS only**, and no credentials in the URL. The image has no SSH
+  client, and `http://` would send the token in clear text; both are
+  refused when the push is saved.
+- **The token never reaches argv, a log or a response.** It is handed to
+  the one `git push` through `GIT_CONFIG_*` environment variables as an
+  `Authorization` header scoped to the repository's own host; the machine's
+  credential helper is switched off for that call; everything git prints is
+  scrubbed of the token before it is logged, published or shown.
+- **Never forced.** `git push <url> HEAD:refs/heads/<branch>`, no
+  `--force`. A branch with commits the vault does not have is left alone
+  and the push fails with that reason. Use an empty repository or a branch
+  only this vault writes.
+- **The vault repository is not reconfigured.** No `git remote` is added, so
+  nothing changes for someone who also opens the vault in Obsidian.
+- **When:** "Push now" on the Backups screen, and on every scheduled pass
+  (§5.5) after the folder targets. Scheduling needs at least one folder
+  target, because `interval_hours` without `targets` is refused at load.
+- **Surfaces:** `GET /api/backup/vault-remotes`,
+  `PUT`/`DELETE /api/backup/vault-remotes/{vault}`,
+  `POST /api/backup/vault-remotes/{vault}/push` (409 while that vault is
+  being pushed, 500 with the reason when the repository refused). Same
+  admin gate and 403-without-sign-in as the rest of `/api/backup`; mounted
+  only on a hub with a vault registry and a secret store.
+- **Events:** `backup.vault_remote.pushed` / `backup.vault_remote.failed`
+  ([`events.md` §3.9](events.md)).
+
+`server/src/palaia_hub/vault_remote.py`, `vault_remote_api.py`, tests in
+`server/tests/backup/test_vault_remote.py`.
 
 ## 6. Verifying this yourself
 
