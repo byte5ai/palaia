@@ -30,6 +30,11 @@ from pydantic import (
     model_validator,
 )
 
+# Issue #187: the similar-note threshold's measured default. The nudges
+# package imports only the stdlib — nothing from MCP, the gateway or the
+# vault — so it is as safe to import this early as the modules below.
+from .nudges.models import DEFAULT_SIMILAR_NOTE_THRESHOLD
+
 # SPEC-502: the hub's one on-disk posture rule, applied to `config.yaml`
 # below. Stdlib only, so it is safe to import this early.
 from .security.files import harden_directory, harden_file
@@ -164,6 +169,21 @@ recall:
   # Recency score for a note carrying no created/modified date at all.
   # Undated is not evidence of stale, so the default sits in the middle.
   unknown_recency: 0.5
+
+# Smart Nudges: short, deterministic guidance attached to a memory tool's
+# result. After `write`/`capture`, the hub checks whether the new note means
+# nearly the same as an existing one — a possible overlap or contradiction —
+# and names that note so the agent can update it instead of keeping two
+# versions (issue #187). The write itself is never blocked. The check costs
+# one query embedding per write and is skipped while no vectors are ready.
+nudges:
+  # Set to false to skip the similar-note check entirely.
+  similar_note_check: true
+  # Cosine similarity (0-1) at or above which a note counts as "similar".
+  # 0.70 was measured on the default embedding model: notes that update or
+  # contradict each other scored 0.68-0.85, notes on the same subject but
+  # different aspects 0.42-0.53. Raise it for fewer, surer warnings.
+  similar_note_threshold: 0.7
 
 # OAuth 2.1 authorization server (SPEC-203). Off by default: it needs an
 # `issuer` — the public https URL clients get redirected to — which cannot be
@@ -451,6 +471,28 @@ class RecallSettings(BaseModel):
     centrality_saturation: float = Field(default=12.0, gt=0.0)
     centrality_weight: float = Field(default=0.35, ge=0.0, le=1.0)
     unknown_recency: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+class NudgeSettings(BaseModel):
+    """Smart Nudge tuning (issue #301), today only the similar-note check.
+
+    The check (issue #187) warns after ``write``/``capture`` when the new note
+    means nearly the same as an existing one. The threshold is a true cosine
+    similarity; the lower bound stops a typo from turning every write into a
+    warning (unrelated notes score ~0.1 on the default model, ~0.5 on
+    bge-small), and the default is measured — see
+    :data:`palaia_hub.nudges.DEFAULT_SIMILAR_NOTE_THRESHOLD`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    similar_note_check: bool = True
+    similar_note_threshold: float = Field(default=DEFAULT_SIMILAR_NOTE_THRESHOLD, ge=0.5, le=1.0)
+
+    @property
+    def effective_similar_note_threshold(self) -> float | None:
+        """The threshold the vault service is built with; ``None`` = check off."""
+        return self.similar_note_threshold if self.similar_note_check else None
 
 
 class GitHubIdpSettings(BaseModel):
@@ -1033,6 +1075,8 @@ class HubConfig(BaseModel):
         "compose", "umbrel", "casaos", "runtipi", "truenas", "home_assistant", "unknown"
     ] = "unknown"
     recall: RecallSettings = Field(default_factory=RecallSettings)
+    #: Smart Nudge tuning — the similar-note check (issue #187).
+    nudges: NudgeSettings = Field(default_factory=NudgeSettings)
     oauth: OAuthSettings = Field(default_factory=OAuthSettings)
     curator: CuratorSettings = Field(default_factory=CuratorSettings)
     exposure: ExposureSettings = Field(default_factory=ExposureSettings)

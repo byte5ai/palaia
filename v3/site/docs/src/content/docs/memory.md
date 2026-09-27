@@ -78,6 +78,29 @@ instance of it.
 <!-- screenshot: a pending proposal in the dashboard, with its diff against
      the existing note and an approve/reject choice -->
 
+### When a new note looks like an old one
+
+Knowledge goes stale quietly: an AI tool saves "the health check returns
+404" while an older note still says "returns 200", and from then on both
+answers come back when anyone asks. To catch that moment, palaia compares
+every new note with what is already in your memory. When one means nearly
+the same thing, the AI tool gets a short heads-up along with the "saved"
+confirmation, naming the existing note — so it can update that note instead
+of keeping two versions side by side.
+
+The new note is saved either way; the heads-up is advice, not a gate. It
+only works once meaning-based search is running (see below), and it can't
+tell an update from a note that is merely written the same way, like two
+weekly meeting notes — which is why it says *possible* overlap. How close
+counts as "nearly the same", or switching the check off, is set in
+`config.yaml` on the machine palaia runs on:
+
+```yaml
+nudges:
+  similar_note_check: true
+  similar_note_threshold: 0.7   # 0.5-1.0; higher = fewer, surer warnings
+```
+
 ## Finding things again
 
 The search bar in the dashboard looks for both the words you type and notes
