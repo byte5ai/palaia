@@ -159,9 +159,7 @@ def _write_rejection(
     return _provenance_rejection(body_text, expected_captures, what="every note you write")
 
 
-def _edit_rejection(
-    arguments: Mapping[str, Any], expected_captures: Collection[str]
-) -> str | None:
+def _edit_rejection(arguments: Mapping[str, Any], expected_captures: Collection[str]) -> str | None:
     target = arguments.get("permalink")
     target_text = target if isinstance(target, str) else ""
     if _in_reserved_folder(target_text, INBOX_PREFIX):

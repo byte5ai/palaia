@@ -72,14 +72,10 @@ async def _run(
     set_owner_password(store, username, password, now=now_seconds())
 
     gateway_config = GatewayConfig(
-        vaults=[
-            VaultMountConfig(key=VAULT_KEY, name=VAULT_KEY, purpose="SPEC-209 e2e vault.")
-        ],
+        vaults=[VaultMountConfig(key=VAULT_KEY, name=VAULT_KEY, purpose="SPEC-209 e2e vault.")],
         profiles=[ProfileConfig(path=PROFILE, vaults=[VAULT_KEY])],
     )
-    providers = build_profile_auth(
-        [PROFILE], key=key, resources=server.resources, token_store=None
-    )
+    providers = build_profile_auth([PROFILE], key=key, resources=server.resources, token_store=None)
     gateway = build_gateway(
         gateway_config,
         {VAULT_KEY: EngineVaultService(engine, index)},

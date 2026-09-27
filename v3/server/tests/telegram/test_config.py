@@ -24,9 +24,7 @@ from palaia_hub.telegram.models import (
 
 MINIMAL = {
     "bots": [{"key": "support", "token_secret": "telegram_support"}],
-    "routes": [
-        {"bot": "support", "chat": "*", "destination": {"kind": "messenger", "to": "ops"}}
-    ],
+    "routes": [{"bot": "support", "chat": "*", "destination": {"kind": "messenger", "to": "ops"}}],
 }
 
 
@@ -78,9 +76,7 @@ def test_check_consistency_is_the_same_rule_on_its_own() -> None:
     settings = TelegramSettings.model_validate(
         {
             "bots": [{"key": "support", "token_secret": "s"}],
-            "routes": [
-                {"bot": "personal", "chat": "*", "destination": {"kind": "event"}}
-            ],
+            "routes": [{"bot": "personal", "chat": "*", "destination": {"kind": "event"}}],
         }
     )
     with pytest.raises(TelegramConfigError):
@@ -126,11 +122,7 @@ def test_a_bad_bot_key_is_a_loud_error(key: str) -> None:
 def test_a_webhook_bot_without_a_webhook_secret_is_refused() -> None:
     with pytest.raises(ValidationError) as exc:
         TelegramSettings.model_validate(
-            {
-                "bots": [
-                    {"key": "support", "token_secret": "s", "transport": "webhook"}
-                ]
-            }
+            {"bots": [{"key": "support", "token_secret": "s", "transport": "webhook"}]}
         )
     assert "setWebhook" in str(exc.value)
 
@@ -180,9 +172,7 @@ def test_an_automation_destination_kind_does_not_exist() -> None:
         TelegramSettings.model_validate(
             {
                 "bots": [{"key": "support", "token_secret": "s"}],
-                "routes": [
-                    {"bot": "support", "chat": "*", "destination": {"kind": "automation"}}
-                ],
+                "routes": [{"bot": "support", "chat": "*", "destination": {"kind": "automation"}}],
             }
         )
 

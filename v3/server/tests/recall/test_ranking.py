@@ -56,11 +56,10 @@ def iso(days_ago: float) -> str:
 # recency
 # --------------------------------------------------------------------------
 
+
 def test_recency_is_one_today_and_halves_each_half_life() -> None:
     assert recency_factor(iso(0), now=NOW, weights=DEFAULT_WEIGHTS) == pytest.approx(1.0)
-    assert recency_factor(iso(30), now=NOW, weights=DEFAULT_WEIGHTS) == pytest.approx(
-        0.5, abs=1e-6
-    )
+    assert recency_factor(iso(30), now=NOW, weights=DEFAULT_WEIGHTS) == pytest.approx(0.5, abs=1e-6)
     assert recency_factor(iso(60), now=NOW, weights=DEFAULT_WEIGHTS) == pytest.approx(
         0.25, abs=1e-6
     )
@@ -68,8 +67,7 @@ def test_recency_is_one_today_and_halves_each_half_life() -> None:
 
 def test_recency_is_monotone_decreasing_in_age() -> None:
     scores = [
-        recency_factor(iso(days), now=NOW, weights=DEFAULT_WEIGHTS)
-        for days in range(0, 400, 10)
+        recency_factor(iso(days), now=NOW, weights=DEFAULT_WEIGHTS) for days in range(0, 400, 10)
     ]
     assert scores == sorted(scores, reverse=True)
 
@@ -104,6 +102,7 @@ def test_timestamp_parsing_tolerates_the_forms_frontmatter_uses(
 # access
 # --------------------------------------------------------------------------
 
+
 def test_access_is_zero_until_first_use_and_saturates_at_one() -> None:
     assert access_factor(0, weights=DEFAULT_WEIGHTS) == 0.0
     assert access_factor(1, weights=DEFAULT_WEIGHTS) > 0.0
@@ -120,6 +119,7 @@ def test_access_growth_is_logarithmic_not_linear() -> None:
 # --------------------------------------------------------------------------
 # access fade (issue #196: retrieval reinforces, disuse fades)
 # --------------------------------------------------------------------------
+
 
 def test_access_fade_is_one_on_recall_and_halves_each_half_life() -> None:
     half_life = DEFAULT_WEIGHTS.access_half_life_days
@@ -197,6 +197,7 @@ def test_a_note_recalled_recently_outranks_one_that_was_hot_long_ago() -> None:
 # significance
 # --------------------------------------------------------------------------
 
+
 def test_entry_type_orders_significance_the_way_the_taxonomy_does() -> None:
     ordered = ["decision", "rule", "process", "project", "person", "note", "capture"]
     scores = [significance_factor(kind, 0, weights=DEFAULT_WEIGHTS) for kind in ordered]
@@ -225,6 +226,7 @@ def test_centrality_weight_zero_makes_significance_purely_type_based() -> None:
 # --------------------------------------------------------------------------
 # The composed score and its bound
 # --------------------------------------------------------------------------
+
 
 def test_boost_is_bounded_by_the_sum_of_the_weights() -> None:
     factors = decay_factors(
@@ -284,6 +286,7 @@ def test_decay_can_overturn_a_close_relevance_gap() -> None:
 # Determinism
 # --------------------------------------------------------------------------
 
+
 def _fixture_candidates() -> tuple[list[Candidate], dict[str, IndexedNote]]:
     candidates = [
         Candidate(
@@ -339,15 +342,14 @@ def test_a_candidate_whose_note_vanished_is_dropped_not_defaulted() -> None:
         Candidate(ref="gone", permalink="gone", kind="note", snippet="", relevance_score=1.0),
         Candidate(ref="here", permalink="here", kind="note", snippet="", relevance_score=0.5),
     ]
-    ranked = rank_candidates(
-        candidates, {"here": note("here")}, hits={}, inbound={}, now=NOW
-    )
+    ranked = rank_candidates(candidates, {"here": note("here")}, hits={}, inbound={}, now=NOW)
     assert [entry.permalink for entry in ranked] == ["here"]
 
 
 # --------------------------------------------------------------------------
 # Config plumbing
 # --------------------------------------------------------------------------
+
 
 def test_default_config_reproduces_the_default_weights() -> None:
     assert weights_from_settings(RecallSettings()) == RankingWeights()

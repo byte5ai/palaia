@@ -367,8 +367,7 @@ class TelegramService:
         """
         if not bot.webhook_secret:
             raise MissingSecretError(
-                f"Telegram bot {bot.key!r} is not in webhook mode, so it has no "
-                "webhook secret."
+                f"Telegram bot {bot.key!r} is not in webhook mode, so it has no webhook secret."
             )
         value = (self._secrets.get(bot.webhook_secret) or "").strip()
         if not value:
@@ -450,9 +449,7 @@ class TelegramService:
     async def _route_update(self, bot_key: str, update: dict[str, Any]) -> DispatchOutcome:
         message = normalise_update(bot_key, update)
         if message is None:
-            return DispatchOutcome(
-                bot=bot_key, detail="update carried no message payload; ignored"
-            )
+            return DispatchOutcome(bot=bot_key, detail="update carried no message payload; ignored")
 
         self._emit(EVENT_RECEIVED, message.metadata())
 
@@ -752,9 +749,7 @@ class TelegramService:
         )
         return _sent_from(bot, raw, chat_ref, None, len(body))
 
-    async def delete(
-        self, *, profile: str, bot: str, chat: str, message_id: int
-    ) -> DeletedMessage:
+    async def delete(self, *, profile: str, bot: str, chat: str, message_id: int) -> DeletedMessage:
         """Delete a message this profile sent."""
         config = self.require_bot(bot)
         chat_ref = normalise_chat_ref(chat)
@@ -762,9 +757,7 @@ class TelegramService:
         chat_id = self._chat_id(bot, chat_ref)
         self._require_ours(profile=profile, bot=bot, chat_id=chat_id, message_id=message_id)
         token = self._token(config)
-        deleted = await self._api.delete_message(
-            token, chat_id=chat_ref, message_id=message_id
-        )
+        deleted = await self._api.delete_message(token, chat_id=chat_ref, message_id=message_id)
         if deleted:
             self._ledger.forget(bot=bot, chat_id=chat_id, message_id=message_id)
         return DeletedMessage(

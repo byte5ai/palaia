@@ -49,9 +49,7 @@ async def test_capture_becomes_a_proposal_a_human_approves_and_applies(
     engine: VaultEngine, vault_mount: VaultMountConfig
 ) -> None:
     # An existing note the curator must not rewrite on its own.
-    await engine.write_note(
-        "projects/api-gateway.md", title="API Gateway", body="The gateway.\n"
-    )
+    await engine.write_note("projects/api-gateway.md", title="API Gateway", body="The gateway.\n")
     harness = build_harness(engine, vault_mount, proposal_session(vault_mount.namespace))
     await harness.capture(
         what_it_concerns="API Gateway",

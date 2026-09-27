@@ -32,6 +32,7 @@ async def recall(golden_work: tuple[VaultEngine, VaultIndex]) -> RecallService:
 # Starting points
 # --------------------------------------------------------------------------
 
+
 async def test_recall_needs_a_query_or_a_ref(recall: RecallService) -> None:
     with pytest.raises(RecallError) as excinfo:
         await recall.recall()
@@ -104,6 +105,7 @@ async def test_meta_notes_are_excluded_from_query_recall_but_not_by_ref(
 # --------------------------------------------------------------------------
 # Value references resolved live (deliverable #5)
 # --------------------------------------------------------------------------
+
 
 async def test_an_anchored_embed_resolves_to_the_current_source_line(
     recall: RecallService,
@@ -226,6 +228,7 @@ async def test_a_missing_anchor_inside_an_existing_note_is_a_missing_marker(
 # Per-model variants, live (deliverable #4)
 # --------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     ("model", "expected", "unexpected"),
     [
@@ -255,9 +258,9 @@ async def test_recall_serves_one_variant_per_caller(
 async def test_variant_filtering_leaves_a_single_line_per_group_in_the_body(
     recall: RecallService,
 ) -> None:
-    entry = (
-        await recall.recall(ref="rules/how-to-write-commit-messages", model="openai")
-    ).entries[0]
+    entry = (await recall.recall(ref="rules/how-to-write-commit-messages", model="openai")).entries[
+        0
+    ]
     how_to_apply_lines = [
         line for line in entry.body.split("\n") if line.startswith("- [how-to-apply")
     ]
@@ -308,6 +311,7 @@ async def test_an_unknown_model_never_gets_a_scoped_only_group(
 # Query recall
 # --------------------------------------------------------------------------
 
+
 async def test_query_recall_reports_the_degraded_retrieval_mode(
     recall: RecallService,
 ) -> None:
@@ -351,6 +355,7 @@ async def test_bodies_can_be_left_out_for_a_cheap_ranked_listing(
 # --------------------------------------------------------------------------
 # Access counters
 # --------------------------------------------------------------------------
+
 
 async def test_recall_records_access_after_ranking_not_before(
     golden_work: tuple[VaultEngine, VaultIndex],
@@ -478,6 +483,7 @@ async def test_access_survives_a_reindex(golden_work: tuple[VaultEngine, VaultIn
 # --------------------------------------------------------------------------
 # resolved_body (what `read` uses)
 # --------------------------------------------------------------------------
+
 
 async def test_resolved_body_resolves_references_for_the_read_tool(
     recall: RecallService,

@@ -271,9 +271,7 @@ class AdminSessionMiddleware:
         # store's lock is shared with the token endpoint, so running them
         # inline would serialize the event loop behind them — the same
         # discipline `palaia_hub.oauth.routes` states for its own handlers.
-        gate_open, username = await asyncio.to_thread(
-            self._resolve, cookies.get(SESSION_COOKIE)
-        )
+        gate_open, username = await asyncio.to_thread(self._resolve, cookies.get(SESSION_COOKIE))
         if gate_open:
             # No account and no provider yet: the first-run wizard has to be
             # reachable or the hub is a brick out of the box.

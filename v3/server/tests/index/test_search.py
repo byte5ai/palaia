@@ -23,9 +23,7 @@ async def test_build_indexes_notes_observations_and_relations(
     assert status.counts_by_type["project"] == 9
 
 
-async def test_title_match_outranks_body_match(
-    golden_work_vault: Path, open_index: Any
-) -> None:
+async def test_title_match_outranks_body_match(golden_work_vault: Path, open_index: Any) -> None:
     _, index = await open_index(golden_work_vault)
     results = await index.search("API Gateway", mode="fts", limit=5)
     assert results.hits
@@ -65,9 +63,7 @@ async def test_relation_hit_carries_its_synthetic_permalink(
     assert "projects/api-gateway/rel/owned-by/people/bob-chen" in refs
 
 
-async def test_no_match_query_returns_nothing(
-    golden_work_vault: Path, open_index: Any
-) -> None:
+async def test_no_match_query_returns_nothing(golden_work_vault: Path, open_index: Any) -> None:
     _, index = await open_index(golden_work_vault)
     results = await index.search("xyzzy-nonexistent-term-42", mode="fts", limit=10)
     assert list(results) == []
@@ -110,16 +106,12 @@ async def test_type_and_tag_filters(golden_work_vault: Path, open_index: Any) ->
     assert typed.hits
     assert {hit.type for hit in typed.hits} == {"decision"}
 
-    tagged = await index.search(
-        "vault", mode="fts", limit=50, filters=SearchFilters(tags=("adr",))
-    )
+    tagged = await index.search("vault", mode="fts", limit=50, filters=SearchFilters(tags=("adr",)))
     assert tagged.hits
     assert all("adr" in hit.tags for hit in tagged.hits)
 
 
-async def test_exclude_types_hides_meta_notes(
-    golden_work_vault: Path, open_index: Any
-) -> None:
+async def test_exclude_types_hides_meta_notes(golden_work_vault: Path, open_index: Any) -> None:
     _, index = await open_index(golden_work_vault)
     unfiltered = await index.search("vault", mode="fts", limit=50)
     filtered = await index.search(
@@ -129,9 +121,7 @@ async def test_exclude_types_hides_meta_notes(
     assert all(hit.type != "meta" for hit in filtered.hits)
 
 
-async def test_custom_frontmatter_key_is_a_filter(
-    golden_work_vault: Path, open_index: Any
-) -> None:
+async def test_custom_frontmatter_key_is_a_filter(golden_work_vault: Path, open_index: Any) -> None:
     """Format spec §2.1: unknown keys are indexed as searchable metadata."""
     engine, index = await open_index(golden_work_vault)
     await engine.write_note(

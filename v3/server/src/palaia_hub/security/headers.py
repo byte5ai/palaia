@@ -171,12 +171,8 @@ class SecurityHeadersMiddleware:
                     (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
                 ]
                 if secure:
-                    additions.append(
-                        (b"strict-transport-security", HSTS_VALUE.encode("latin-1"))
-                    )
-                headers.extend(
-                    (name, value) for name, value in additions if name not in present
-                )
+                    additions.append((b"strict-transport-security", HSTS_VALUE.encode("latin-1")))
+                headers.extend((name, value) for name, value in additions if name not in present)
                 message = {**message, "headers": headers}
             await send(message)
 

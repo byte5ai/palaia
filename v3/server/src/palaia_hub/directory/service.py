@@ -134,9 +134,7 @@ class DirectoryService:
         still reports any staleness the sweep noticed, same as every other
         method here.
         """
-        session, newly_stale = await asyncio.to_thread(
-            self._store.verify, handle, session_secret
-        )
+        session, newly_stale = await asyncio.to_thread(self._store.verify, handle, session_secret)
         self._emit_stale(newly_stale)
         return session
 
@@ -162,9 +160,7 @@ class DirectoryService:
         DirectoryStore.admin_deregister` for why this is safe: it has
         exactly one caller, already behind the owner's own sign-in gate.
         """
-        deregistered, newly_stale = await asyncio.to_thread(
-            self._store.admin_deregister, handle
-        )
+        deregistered, newly_stale = await asyncio.to_thread(self._store.admin_deregister, handle)
         if deregistered:
             self._emit("session.deregistered", {"handle": handle})
         self._emit_stale(newly_stale)

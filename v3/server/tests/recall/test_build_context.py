@@ -37,6 +37,7 @@ async def recall(golden_work: tuple[VaultEngine, VaultIndex]) -> RecallService:
 # Starting points
 # --------------------------------------------------------------------------
 
+
 async def test_build_context_needs_a_starting_point(recall: RecallService) -> None:
     with pytest.raises(RecallError) as excinfo:
         await recall.build_context()
@@ -86,6 +87,7 @@ async def test_a_query_that_matches_nothing_is_a_caller_facing_error(
 # Depth, dedup, cycles
 # --------------------------------------------------------------------------
 
+
 async def test_depth_zero_is_the_seed_alone(recall: RecallService) -> None:
     package = await recall.build_context(ref="projects/recall-engine", depth=0)
     assert [node.permalink for node in package.nodes] == ["projects/recall-engine"]
@@ -103,9 +105,7 @@ async def test_greater_depth_never_returns_fewer_notes(recall: RecallService) ->
 
 
 async def test_depth_is_clamped_and_reported(recall: RecallService) -> None:
-    package = await recall.build_context(
-        ref="projects/recall-engine", depth=99, max_tokens=200_000
-    )
+    package = await recall.build_context(ref="projects/recall-engine", depth=99, max_tokens=200_000)
     assert package.depth == MAX_DEPTH
 
 
@@ -120,9 +120,7 @@ async def test_the_package_is_deduplicated(recall: RecallService) -> None:
 async def test_a_cyclic_relation_graph_terminates(recall: RecallService) -> None:
     # embeds/cycle-a and cycle-b embed each other; the walk must not loop and
     # the resolver must render the cycle marker rather than recursing.
-    package = await recall.build_context(
-        ref="embeds/cycle-a", depth=MAX_DEPTH, max_tokens=200_000
-    )
+    package = await recall.build_context(ref="embeds/cycle-a", depth=MAX_DEPTH, max_tokens=200_000)
     assert package.nodes
     seed = package.nodes[0]
     assert seed.permalink == "embeds/cycle-a"
@@ -132,9 +130,7 @@ async def test_a_cyclic_relation_graph_terminates(recall: RecallService) -> None
 async def test_every_non_seed_node_reports_how_it_was_reached(
     recall: RecallService,
 ) -> None:
-    package = await recall.build_context(
-        ref="projects/recall-engine", depth=2, max_tokens=200_000
-    )
+    package = await recall.build_context(ref="projects/recall-engine", depth=2, max_tokens=200_000)
     for node in package.nodes:
         if node.depth == 0:
             assert node.via == "" and node.parent == ""
@@ -157,6 +153,7 @@ async def test_seeds_come_first_and_nearer_notes_before_farther_ones(
 # --------------------------------------------------------------------------
 # Timeframe
 # --------------------------------------------------------------------------
+
 
 async def test_a_timeframe_narrows_the_walk_and_reports_what_it_skipped(
     tmp_path: Path,
@@ -184,9 +181,7 @@ async def test_a_timeframe_narrows_the_walk_and_reports_what_it_skipped(
             frontmatter={"type": "note", "modified": "2020-01-01T00:00:00Z"},
         )
         await index.reindex()
-        service = RecallService(
-            index, vault="timeframe", track_access=False, clock=frozen_clock()
-        )
+        service = RecallService(index, vault="timeframe", track_access=False, clock=frozen_clock())
 
         wide = await service.build_context(ref="notes/hub", depth=1)
         assert {node.permalink for node in wide.nodes} == {
@@ -208,12 +203,11 @@ async def test_a_timeframe_narrows_the_walk_and_reports_what_it_skipped(
 # Budget behavior
 # --------------------------------------------------------------------------
 
+
 async def test_a_generous_budget_includes_every_note_in_full(
     recall: RecallService,
 ) -> None:
-    package = await recall.build_context(
-        ref="projects/recall-engine", depth=2, max_tokens=200_000
-    )
+    package = await recall.build_context(ref="projects/recall-engine", depth=2, max_tokens=200_000)
     assert all(node.tier == "full" for node in package.nodes)
     assert package.dropped == []
     assert not package.degraded
@@ -393,21 +387,15 @@ async def test_property_context_fits_the_budget_and_is_never_empty(
     try:
         notes = _random_vault_notes(rng, rng.randint(3, 18))
         for path, title, note_type, body in notes:
-            await engine.write_note(
-                path, body=body, title=title, frontmatter={"type": note_type}
-            )
+            await engine.write_note(path, body=body, title=title, frontmatter={"type": note_type})
         await index.reindex()
-        service = RecallService(
-            index, vault="random", track_access=False, clock=frozen_clock()
-        )
+        service = RecallService(index, vault="random", track_access=False, clock=frozen_clock())
 
         for _ in range(6):
             seed_note = rng.choice(notes)
             budget = rng.choice([0, 1, 17, MIN_CONTEXT_TOKENS, 200, 900, 5000, 50_000])
             depth = rng.randint(0, MAX_DEPTH + 2)
-            package = await service.build_context(
-                ref=seed_note[1], depth=depth, max_tokens=budget
-            )
+            package = await service.build_context(ref=seed_note[1], depth=depth, max_tokens=budget)
 
             # (1) never over budget — asserted on the rendered text, not just
             #     on the bookkeeping.

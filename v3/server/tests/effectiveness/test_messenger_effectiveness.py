@@ -60,8 +60,10 @@ def test_session_a_registers_and_hands_off_with_a_reference(tmp_path: Path) -> N
     )
     _report("register + handoff-with-ref", results)
     print(f"- registered: {hit_rate(results, registered)}")
-    print(f"- handoff carried a memory:// ref (not a pasted copy): "
-          f"{hit_rate(results, sent_handoff_with_ref)}")
+    print(
+        f"- handoff carried a memory:// ref (not a pasted copy): "
+        f"{hit_rate(results, sent_handoff_with_ref)}"
+    )
 
     assert any(registered(r) for r in results), (
         f"never registered in {len(results)} attempt(s). "

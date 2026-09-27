@@ -78,9 +78,7 @@ class LongPoller:
     ) -> None:
         self._service = service
         self.bot = bot
-        self._timeout = (
-            timeout if timeout is not None else service.settings.poll_timeout_seconds
-        )
+        self._timeout = timeout if timeout is not None else service.settings.poll_timeout_seconds
         self._sleep = sleep
         self._now = now
         #: ``None`` until the first batch: the first ``getUpdates`` of a

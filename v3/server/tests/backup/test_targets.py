@@ -178,9 +178,7 @@ def test_retention_keeps_the_newest_and_deletes_the_rest(home: Path, tmp_path: P
     assert remaining == sorted([old[3].name, run.artifact])
 
 
-def test_retention_never_touches_a_file_this_hub_did_not_write(
-    home: Path, tmp_path: Path
-) -> None:
+def test_retention_never_touches_a_file_this_hub_did_not_write(home: Path, tmp_path: Path) -> None:
     """An operator's directory is theirs. Only files matching the archive
     naming are ever candidates — a backup feature that deletes a stranger's
     file is a data-loss bug."""

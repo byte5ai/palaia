@@ -55,9 +55,7 @@ def _wait_for_health(port: int, timeout: float = _STARTUP_TIMEOUT) -> None:
     last_error: Exception | None = None
     while time.monotonic() < deadline:
         try:
-            with urllib.request.urlopen(
-                f"http://127.0.0.1:{port}/api/health", timeout=0.5
-            ) as resp:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=0.5) as resp:
                 if resp.status == 200:
                     return
         except (OSError, urllib.error.URLError) as exc:
@@ -216,9 +214,7 @@ async def test_a_read_only_scoped_client_gets_a_fix_naming_error(fresh_hub: int)
     async with SimulatedClient(
         f"{base}/mcp/default/", client_name="spec-504-scope-audit", token=token
     ) as client:
-        result = await client.call_tool(
-            "work_memory_write", {"title": "x", "body": "y"}
-        )
+        result = await client.call_tool("work_memory_write", {"title": "x", "body": "y"})
 
     assert result.is_error
     assert "Fix:" in result.text

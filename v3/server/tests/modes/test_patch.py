@@ -10,9 +10,7 @@ from palaia_hub.modes.patch import patch_config_values, replace_config_section
 
 def test_top_level_key_is_replaced_in_place(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
-    path.write_text(
-        "# a comment that must survive\nmode: locked\nport: 8420\n", encoding="utf-8"
-    )
+    path.write_text("# a comment that must survive\nmode: locked\nport: 8420\n", encoding="utf-8")
 
     patch_config_values(path, {"mode": "cloud"})
 

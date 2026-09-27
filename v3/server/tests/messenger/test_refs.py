@@ -65,9 +65,7 @@ async def test_a_permalink_that_exists_nowhere_is_unresolvable(
 ) -> None:
     validator = build_vault_ref_validator(two_vaults)
 
-    assert validator.unresolvable(["memory://does/not/exist"]) == [
-        "memory://does/not/exist"
-    ]
+    assert validator.unresolvable(["memory://does/not/exist"]) == ["memory://does/not/exist"]
 
 
 async def test_a_permalink_outside_the_readable_vaults_is_unresolvable(

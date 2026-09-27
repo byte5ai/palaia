@@ -58,9 +58,7 @@ class RoutingTable:
 
     def resolve(self, message: InboundMessage) -> TelegramRoute | None:
         """The route claiming ``message``, or ``None`` if nothing does."""
-        for key in self.candidates(
-            chat_id=message.chat_ref, chat_username=message.chat_username
-        ):
+        for key in self.candidates(chat_id=message.chat_ref, chat_username=message.chat_username):
             route = self._by_key.get((message.bot, key))
             if route is not None:
                 return route

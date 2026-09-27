@@ -56,7 +56,7 @@ def test_commits_survive_a_broken_global_signing_config(
         "[commit]\n\tgpgsign = true\n"
         "[gpg]\n\tformat = ssh\n"
         "\tprogram = /nonexistent/signer\n"
-        "[gpg \"ssh\"]\n\tprogram = /nonexistent/signer\n"
+        '[gpg "ssh"]\n\tprogram = /nonexistent/signer\n'
         "[user]\n\tsigningkey = /nonexistent/key.pub\n",
         encoding="utf-8",
     )
@@ -74,9 +74,7 @@ def test_adopted_repository_keeps_its_own_signing_config(tmp_path: Path) -> None
     root = tmp_path / "vault"
     root.mkdir(parents=True)
     subprocess.run(["git", "init", "--quiet", str(root)], check=True)
-    subprocess.run(
-        ["git", "-C", str(root), "config", "commit.gpgsign", "true"], check=True
-    )
+    subprocess.run(["git", "-C", str(root), "config", "commit.gpgsign", "true"], check=True)
     repository = GitRepo(root, TEST_POLICY)
     assert repository.init() is False
     assert git(root, "config", "commit.gpgsign").strip() == "true"

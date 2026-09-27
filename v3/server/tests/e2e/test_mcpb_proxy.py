@@ -59,9 +59,7 @@ def _wait_for_health(port: int, timeout: float = _STARTUP_TIMEOUT) -> None:
     last_error: Exception | None = None
     while time.monotonic() < deadline:
         try:
-            with urllib.request.urlopen(
-                f"http://127.0.0.1:{port}/api/health", timeout=0.5
-            ) as resp:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=0.5) as resp:
                 if resp.status == 200:
                     return
         except (OSError, urllib.error.URLError) as exc:
@@ -124,9 +122,11 @@ async def test_tools_listed_and_a_memory_tool_called_through_the_real_proxy(
     vault_dir = tmp_path / "vault"
     token_store_dir = tmp_path / "tokens"
     token_store_dir.mkdir()
-    token = TokenStore(home=token_store_dir).create(
-        "e2e proxy", "default", ["vault:work:read", "vault:work:write"]
-    ).token
+    token = (
+        TokenStore(home=token_store_dir)
+        .create("e2e proxy", "default", ["vault:work:read", "vault:work:write"])
+        .token
+    )
 
     process, log_file = _start_hub(
         port=port,
@@ -154,9 +154,7 @@ async def test_tools_listed_and_a_memory_tool_called_through_the_real_proxy(
             )
             assert write_result.is_error is not True
 
-            search_result = await client.call_tool(
-                "work_memory_search", {"query": "palaia-proxy"}
-            )
+            search_result = await client.call_tool("work_memory_search", {"query": "palaia-proxy"})
             assert search_result.is_error is not True
             assert "Proxy E2E" in str(search_result.content)
     finally:
@@ -175,9 +173,11 @@ async def test_proxy_survives_a_hub_restart(tmp_path: Path) -> None:
     vault_dir = tmp_path / "vault"
     token_store_dir = tmp_path / "tokens"
     token_store_dir.mkdir()
-    token = TokenStore(home=token_store_dir).create(
-        "e2e proxy restart", "default", ["vault:work:read", "vault:work:write"]
-    ).token
+    token = (
+        TokenStore(home=token_store_dir)
+        .create("e2e proxy restart", "default", ["vault:work:read", "vault:work:write"])
+        .token
+    )
 
     process, log_file = _start_hub(
         port=port,

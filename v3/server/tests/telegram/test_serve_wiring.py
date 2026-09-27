@@ -151,9 +151,7 @@ def _inbox_files(home: Path) -> list[Path]:
 
 
 def _http(production: ProductionApp) -> httpx.AsyncClient:
-    return httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=production.app), base_url=BASE_URL
-    )
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=production.app), base_url=BASE_URL)
 
 
 # ------------------------------------------------------------ the whole path
@@ -500,9 +498,7 @@ async def test_a_dashboard_token_for_a_telegram_profile_can_use_the_tools(
             async with Client(
                 mcp_client_transport(production.app, url, token=vault_only.token)
             ) as client:
-                refused = await client.call_tool(
-                    "telegram_list_chats", {}, raise_on_error=False
-                )
+                refused = await client.call_tool("telegram_list_chats", {}, raise_on_error=False)
     finally:
         await _close(production)
     assert not listed.is_error

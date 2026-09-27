@@ -180,9 +180,7 @@ async def _run(
         await watcher.start()
         indexes[vault_key] = index
         vault_services[vault_key] = EngineVaultService(engine, index)
-        profiles.append(
-            ProfileConfig(path="default", vaults=[vault_key])
-        )
+        profiles.append(ProfileConfig(path="default", vaults=[vault_key]))
 
     messenger_store = MessengerStore(":memory:")
     messenger_service = RecordingMessengerService(

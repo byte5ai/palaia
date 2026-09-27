@@ -50,9 +50,7 @@ async def test_externally_written_note_becomes_searchable_within_budget(
         deadline = asyncio.get_event_loop().time() + _POLL_BUDGET_SECONDS
         found = False
         while asyncio.get_event_loop().time() < deadline:
-            result = await client.call_tool_ok(
-                "work_memory_search", {"query": "external editor"}
-            )
+            result = await client.call_tool_ok("work_memory_search", {"query": "external editor"})
             if "Written By An External Editor" in result.text:
                 found = True
                 break

@@ -83,8 +83,7 @@ def build_telegram_webhook_router(service: TelegramService) -> APIRouter:
             return JSONResponse(
                 {
                     "detail": (
-                        f"bot {bot!r} is configured for long polling; it has no "
-                        "webhook endpoint"
+                        f"bot {bot!r} is configured for long polling; it has no webhook endpoint"
                     )
                 },
                 status_code=404,

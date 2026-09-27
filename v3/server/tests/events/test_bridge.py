@@ -61,9 +61,7 @@ def test_note_created_data_carries_path_and_checksum() -> None:
 
 
 def test_note_moved_data_carries_both_paths() -> None:
-    event = NoteMoved(
-        vault="work", path="b.md", previous_path="a.md", permalink="a", checksum="c1"
-    )
+    event = NoteMoved(vault="work", path="b.md", previous_path="a.md", permalink="a", checksum="c1")
 
     _, data = to_envelope_args(event)
 
@@ -79,9 +77,7 @@ async def test_bridge_vault_events_forwards_to_the_hub_bus() -> None:
     hub_bus.on(received.append)
 
     bridge_vault_events(vault_bus, hub_bus)
-    await vault_bus.publish(
-        NoteCreated(vault="work", path="a.md", permalink="a", checksum="c1")
-    )
+    await vault_bus.publish(NoteCreated(vault="work", path="a.md", permalink="a", checksum="c1"))
 
     assert len(received) == 1
     envelope = received[0]

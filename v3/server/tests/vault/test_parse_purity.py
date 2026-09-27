@@ -104,9 +104,5 @@ def test_allowed_sibling_modules_do_no_io_either() -> None:
     for module_name in ALLOWED_LOCAL_IMPORTS:
         source = _module_path(module_name).read_text(encoding="utf-8")
         imported = _imported_names(source)
-        forbidden_hits = {
-            name
-            for name in imported
-            if name.split(".")[0] in FORBIDDEN_MODULES
-        }
+        forbidden_hits = {name for name in imported if name.split(".")[0] in FORBIDDEN_MODULES}
         assert not forbidden_hits, f"{module_name} imports I/O-capable module(s): {forbidden_hits}"

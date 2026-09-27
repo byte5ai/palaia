@@ -72,12 +72,8 @@ def messenger_store(clock: _Clock) -> Iterator[MessengerStore]:
 
 
 @pytest.fixture
-def service(
-    messenger_store: MessengerStore, directory: DirectoryService
-) -> MessengerService:
-    return MessengerService(
-        messenger_store, directory, ref_validator=_StubRefValidator()
-    )
+def service(messenger_store: MessengerStore, directory: DirectoryService) -> MessengerService:
+    return MessengerService(messenger_store, directory, ref_validator=_StubRefValidator())
 
 
 @pytest.fixture
@@ -314,9 +310,7 @@ async def test_two_real_client_sessions_exchange_request_and_reply(hub) -> None:
         back = await a.call_tool(
             "messenger_check", {"handle": a_handle, "session_secret": a_secret}
         )
-        assert [envelope["id"] for envelope in back.structured_content["envelopes"]] == [
-            reply_id
-        ]
+        assert [envelope["id"] for envelope in back.structured_content["envelopes"]] == [reply_id]
 
         thread = await a.call_tool(
             "messenger_thread",
@@ -512,9 +506,7 @@ async def test_an_unchecked_envelope_past_expires_at_is_gone(
         clock.now += 121
         # Keep B's directory registration alive so the failure below can only
         # be the envelope's expiry, never a stale session.
-        await b.call_tool(
-            "directory_heartbeat", {"handle": b_handle, "session_secret": b_secret}
-        )
+        await b.call_tool("directory_heartbeat", {"handle": b_handle, "session_secret": b_secret})
         arrived = await b.call_tool(
             "messenger_check", {"handle": b_handle, "session_secret": b_secret}
         )
@@ -545,9 +537,7 @@ async def test_an_unknown_or_stale_recipient_is_refused_in_plain_language(
         assert "directory_query" in unknown.content[0].text
 
         clock.now += 601  # past the 600s TTL both sessions registered with
-        await a.call_tool(
-            "directory_heartbeat", {"handle": a_handle, "session_secret": a_secret}
-        )
+        await a.call_tool("directory_heartbeat", {"handle": a_handle, "session_secret": a_secret})
         stale = await a.call_tool(
             "messenger_send",
             {

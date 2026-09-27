@@ -388,9 +388,7 @@ async def test_signing_out_drops_both_cookies(harness: Harness) -> None:
 
     assert response.status_code == 204
     cleared = [
-        value
-        for name, value in response.headers.multi_items()
-        if name.lower() == "set-cookie"
+        value for name, value in response.headers.multi_items() if name.lower() == "set-cookie"
     ]
     assert any(value.startswith("palaia_oauth_session=") for value in cleared)
     assert any(value.startswith("palaia_oauth_csrf=") for value in cleared)
@@ -398,9 +396,7 @@ async def test_signing_out_drops_both_cookies(harness: Harness) -> None:
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("next_url", ["/explorer", "/clients?vault=work", "/"])
-async def test_a_dashboard_page_is_an_allowed_continuation(
-    harness: Harness, next_url: str
-) -> None:
+async def test_a_dashboard_page_is_an_allowed_continuation(harness: Harness, next_url: str) -> None:
     """SPEC-401 deliverable #2: the dashboard's sign-in redirect has to be
     able to come back to the screen the operator was on — which is a page on
     this server, and still never an off-site URL or a backend path."""

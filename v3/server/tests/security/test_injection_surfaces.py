@@ -72,8 +72,7 @@ def test_the_scan_actually_reaches_the_dashboard_source() -> None:
 
 def _app_scripts() -> dict[str, str]:
     return {
-        path.name: path.read_text(encoding="utf-8")
-        for path in sorted(APPS_DIR.glob("*_app.py"))
+        path.name: path.read_text(encoding="utf-8") for path in sorted(APPS_DIR.glob("*_app.py"))
     }
 
 

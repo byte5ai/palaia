@@ -89,7 +89,8 @@ def test_the_identity_line_says_this_family_reaches_people_not_agents() -> None:
 
 @pytest.mark.anyio
 async def test_a_send_returns_both_a_sentence_and_a_structured_result(
-    server, api: FakeBotApi  # noqa: ANN001
+    server,
+    api: FakeBotApi,  # noqa: ANN001
 ) -> None:
     async with Client(server) as client:
         result = await client.call_tool(
@@ -101,7 +102,8 @@ async def test_a_send_returns_both_a_sentence_and_a_structured_result(
 
 @pytest.mark.anyio
 async def test_a_reply_through_the_tool_is_threaded_in_the_originating_chat(
-    server, api: FakeBotApi  # noqa: ANN001
+    server,
+    api: FakeBotApi,  # noqa: ANN001
 ) -> None:
     """The issue's second acceptance criterion, through the real tool."""
     async with Client(server) as client:

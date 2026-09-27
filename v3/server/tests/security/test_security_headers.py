@@ -92,9 +92,7 @@ def test_the_dashboard_shell_gets_the_spa_policy(tmp_path: Path) -> None:
         with TestClient(built.app) as client:
             response = client.get("/explorer/some-note")
         assert response.status_code == 200
-        _assert_baseline(
-            {k.lower(): v for k, v in response.headers.items()}, "/explorer/some-note"
-        )
+        _assert_baseline({k.lower(): v for k, v in response.headers.items()}, "/explorer/some-note")
         assert response.headers["content-security-policy"] == DASHBOARD_CSP
     finally:
         built.server.store.close()

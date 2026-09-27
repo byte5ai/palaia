@@ -97,9 +97,7 @@ async def test_oauth_resources_follow_gateway_profiles_with_no_oauth_profiles_se
                 access_token = str(token_response.json()["access_token"])
 
                 # Verifies on the profile it was minted for.
-                transport = mcp_client_transport(
-                    app, f"{BASE_URL}/mcp/alpha/", token=access_token
-                )
+                transport = mcp_client_transport(app, f"{BASE_URL}/mcp/alpha/", token=access_token)
                 async with Client(transport) as client:
                     result = await client.call_tool_mcp(
                         "alpha_memory_search", {"query": "anything"}
@@ -238,9 +236,7 @@ async def test_precreated_vault_scopes_boot_before_the_wizard_creates_it(
                 production.app, f"{BASE_URL}/mcp/default/", token=access_token
             )
             async with Client(transport) as client:
-                result = await client.call_tool_mcp(
-                    "work_memory_search", {"query": "anything"}
-                )
+                result = await client.call_tool_mcp("work_memory_search", {"query": "anything"})
             assert result.isError is not True
     finally:
         await production.dynamic_gateway.aclose()

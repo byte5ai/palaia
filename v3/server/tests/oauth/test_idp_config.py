@@ -62,7 +62,9 @@ def test_oidc_discovery_url_must_be_https() -> None:
 def test_github_allow_list_must_not_be_empty() -> None:
     with pytest.raises(ValidationError):
         GitHubIdpSettings(
-            client_id="id", client_secret="secret", allowed_users=[]  # noqa: S106
+            client_id="id",
+            client_secret="secret",
+            allowed_users=[],  # noqa: S106
         )
 
 

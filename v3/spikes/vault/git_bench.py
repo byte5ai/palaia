@@ -19,6 +19,7 @@ architecture's default per MASTERPLAN §5.1) or once at the end ("batch").
 Prints total/mean/p50/p95 commit latency, final repo/.git size, and
 `git status` wall time in the resulting repo.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -103,15 +104,25 @@ def run_subprocess(repo_dir: str, n: int, seed: int, mode: str) -> dict:
             continue
 
         t0 = time.perf_counter()
-        subprocess.run(["git", "-C", repo_dir, "add", "-A"], check=True, env=env,
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            ["git", "-C", repo_dir, "add", "-A"],
+            check=True,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         msg = (
             f"chore(vault): batch write of {n} notes"
             if mode == "batch"
             else f"chore(vault): write {permalink} (agent=spike, client=git_bench)"
         )
-        subprocess.run(["git", "-C", repo_dir, "commit", "-q", "-m", msg], check=True, env=env,
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            ["git", "-C", repo_dir, "commit", "-q", "-m", msg],
+            check=True,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         commit_times.append(time.perf_counter() - t0)
 
     return {"commit_seconds": commit_times}
@@ -121,8 +132,12 @@ def git_status_seconds(repo_dir: str, runs: int = 5) -> float:
     times = []
     for _ in range(runs):
         t0 = time.perf_counter()
-        subprocess.run(["git", "-C", repo_dir, "status"], check=True,
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            ["git", "-C", repo_dir, "status"],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         times.append(time.perf_counter() - t0)
     return statistics.median(times)
 
@@ -159,7 +174,9 @@ def main() -> None:
 
     n_commits = subprocess.run(
         ["git", "-C", repo_dir, "rev-list", "--count", "HEAD"],
-        check=True, capture_output=True, text=True,
+        check=True,
+        capture_output=True,
+        text=True,
     ).stdout.strip()
 
     report = {

@@ -76,9 +76,7 @@ def run_until_killed(vault_dir: Path, progress: Path, delay: float) -> None:
 
 
 @pytest.mark.parametrize("trial", range(TRIALS))
-async def test_kill_mid_write_burst_never_corrupts_the_vault(
-    tmp_path: Path, trial: int
-) -> None:
+async def test_kill_mid_write_burst_never_corrupts_the_vault(tmp_path: Path, trial: int) -> None:
     vault_dir = tmp_path / f"vault-{trial}"
     progress_path = tmp_path / f"progress-{trial}.jsonl"
     progress_path.touch()
@@ -92,9 +90,7 @@ async def test_kill_mid_write_burst_never_corrupts_the_vault(
     assert acknowledged, f"worker produced no acknowledged writes in {delay}s"
 
     # 1. No corrupt files: every note parses and is non-empty.
-    note_files = sorted(
-        path for path in vault_dir.rglob("*.md") if ".git" not in path.parts
-    )
+    note_files = sorted(path for path in vault_dir.rglob("*.md") if ".git" not in path.parts)
     for path in note_files:
         data = path.read_bytes()
         assert data, f"{path} is zero-byte"

@@ -98,9 +98,7 @@ class HttpxIdpHttp:
         headers: Mapping[str, str] | None,
     ) -> dict[str, Any]:
         if not url.lower().startswith("https://"):
-            raise OAuthError(
-                "server_error", "the sign-in provider must be reached over https."
-            )
+            raise OAuthError("server_error", "the sign-in provider must be reached over https.")
         merged_headers = {"Accept": "application/json", **(headers or {})}
         try:
             async with httpx.AsyncClient(
@@ -169,7 +167,7 @@ class IdpProvider(Protocol):
 
 
 class GitHubIdpProvider:
-    """"Sign in with GitHub" — zero scopes, username via ``GET /user``."""
+    """ "Sign in with GitHub" — zero scopes, username via ``GET /user``."""
 
     def __init__(self, settings: GitHubIdpSettings, http: IdpHttp) -> None:
         self._settings = settings

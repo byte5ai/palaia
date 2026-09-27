@@ -72,9 +72,7 @@ def test_a_beta_channel_hub_checks_beta_a_stable_hub_checks_stable(
             deployment="unknown",
             guidance=UpdateGuidance(kind="manual", message="pull it yourself"),
         )
-        monkeypatch.setattr(
-            app_module, "check_for_update", _fake_check_for_update(seen, result)
-        )
+        monkeypatch.setattr(app_module, "check_for_update", _fake_check_for_update(seen, result))
 
         app = create_app(HubConfig(channel=channel))  # type: ignore[arg-type]
         response = TestClient(app).get("/api/update/check")

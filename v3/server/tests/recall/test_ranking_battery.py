@@ -53,9 +53,7 @@ def test_every_battery_row_states_its_intent() -> None:
 async def test_ranking_battery(query: str, tmp_path: Path) -> None:
     engine, index = await open_golden(tmp_path, "work")
     try:
-        service = RecallService(
-            index, vault=engine.name, track_access=False, clock=frozen_clock()
-        )
+        service = RecallService(index, vault=engine.name, track_access=False, clock=frozen_clock())
         result = await service.recall(query=query, limit=3, include_body=False)
         got = [entry.permalink for entry in result.entries]
         expected = list(BATTERY[query]["top"])
@@ -81,9 +79,7 @@ async def test_the_battery_is_stable_across_repeated_runs(tmp_path: Path) -> Non
     """
     engine, index = await open_golden(tmp_path, "work")
     try:
-        service = RecallService(
-            index, vault=engine.name, track_access=False, clock=frozen_clock()
-        )
+        service = RecallService(index, vault=engine.name, track_access=False, clock=frozen_clock())
         first: dict[str, list[tuple[str, float]]] = {}
         for query in sorted(BATTERY):
             result = await service.recall(query=query, limit=5, include_body=False)
@@ -91,9 +87,9 @@ async def test_the_battery_is_stable_across_repeated_runs(tmp_path: Path) -> Non
         for _ in range(3):
             for query in sorted(BATTERY):
                 result = await service.recall(query=query, limit=5, include_body=False)
-                assert [
-                    (entry.permalink, entry.score) for entry in result.entries
-                ] == first[query], f"{query!r} was not reproducible"
+                assert [(entry.permalink, entry.score) for entry in result.entries] == first[
+                    query
+                ], f"{query!r} was not reproducible"
     finally:
         await index.close()
         await engine.close()
@@ -103,9 +99,7 @@ async def test_a_reindex_reproduces_the_same_ranking(tmp_path: Path) -> None:
     """Format spec §10: the index is disposable, results come from files alone."""
     engine, index = await open_golden(tmp_path, "work")
     try:
-        service = RecallService(
-            index, vault=engine.name, track_access=False, clock=frozen_clock()
-        )
+        service = RecallService(index, vault=engine.name, track_access=False, clock=frozen_clock())
         before: dict[str, list[str]] = {}
         for query in sorted(BATTERY):
             result = await service.recall(query=query, limit=5, include_body=False)
@@ -125,9 +119,7 @@ async def test_scores_are_explainable(tmp_path: Path) -> None:
     """Every entry reports the factors that produced its score."""
     engine, index = await open_golden(tmp_path, "work")
     try:
-        service = RecallService(
-            index, vault=engine.name, track_access=False, clock=frozen_clock()
-        )
+        service = RecallService(index, vault=engine.name, track_access=False, clock=frozen_clock())
         result = await service.recall(query="api gateway", limit=5, include_body=False)
         assert result.entries
         for entry in result.entries:

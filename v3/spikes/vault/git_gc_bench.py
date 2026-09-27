@@ -9,6 +9,7 @@ one-commit-per-write leaves behind?
 
 Reports .git size before/after gc and how long gc took.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,14 +40,19 @@ def main() -> None:
     gc_seconds = time.perf_counter() - t0
     after = du_bytes(str(Path(args.repo) / ".git"))
 
-    print(json.dumps({
-        "repo": args.repo,
-        "aggressive": args.aggressive,
-        "git_dir_bytes_before": before,
-        "git_dir_bytes_after": after,
-        "gc_seconds": gc_seconds,
-        "shrink_ratio": before / after if after else None,
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "repo": args.repo,
+                "aggressive": args.aggressive,
+                "git_dir_bytes_before": before,
+                "git_dir_bytes_after": after,
+                "gc_seconds": gc_seconds,
+                "shrink_ratio": before / after if after else None,
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":

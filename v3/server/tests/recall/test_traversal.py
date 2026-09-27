@@ -68,6 +68,7 @@ def iso(days_ago: float) -> str:
 # timeframe parsing
 # --------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     ("raw", "expected_days"),
     [("1d", 1), ("30d", 30), ("2w", 14), ("24h", 1), ("3m", 90), ("1y", 365), ("30 d", 30)],
@@ -92,6 +93,7 @@ def test_an_unparseable_timeframe_widens_rather_than_empties(raw: str | None) ->
 # --------------------------------------------------------------------------
 # depth
 # --------------------------------------------------------------------------
+
 
 def test_depth_is_clamped_to_the_hard_ceiling() -> None:
     assert clamp_depth(-5) == 0
@@ -127,6 +129,7 @@ def test_every_node_records_the_hop_that_reached_it() -> None:
 # --------------------------------------------------------------------------
 # cycles and dedup — the acceptance criterion
 # --------------------------------------------------------------------------
+
 
 def test_a_two_node_cycle_terminates() -> None:
     graph = Graph({"a": ["b"], "b": ["a"]})
@@ -177,6 +180,7 @@ def test_max_nodes_stops_the_walk_and_says_so() -> None:
 # timeframe filtering
 # --------------------------------------------------------------------------
 
+
 def test_the_timeframe_excludes_stale_neighbors_and_counts_them() -> None:
     graph = Graph(
         {"a": ["fresh", "stale"], "fresh": [], "stale": []},
@@ -212,6 +216,7 @@ def test_the_timeframe_blocks_traversal_through_an_excluded_node() -> None:
 # --------------------------------------------------------------------------
 # Against the golden vault's real edges
 # --------------------------------------------------------------------------
+
 
 @pytest.mark.anyio
 async def test_the_walk_follows_both_directions_on_the_golden_vault(

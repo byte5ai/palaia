@@ -108,13 +108,9 @@ async def test_the_same_hand_off_is_reachable_by_reference_and_by_recall(
         permalink = written.structured["permalink"]
 
         # By reference: memory:// addressing over the wire.
-        by_ref = await session.call_tool_ok(
-            "work_memory_recall", {"ref": f"memory://{permalink}"}
-        )
+        by_ref = await session.call_tool_ok("work_memory_recall", {"ref": f"memory://{permalink}"})
         assert by_ref.structured["entries"][0]["permalink"] == permalink
-        categories = {
-            obs["category"] for obs in by_ref.structured["entries"][0]["observations"]
-        }
+        categories = {obs["category"] for obs in by_ref.structured["entries"][0]["observations"]}
         assert {"next-step", "open-question"} <= categories
 
         # By reference, one hop out: build_context from the note itself.
@@ -150,7 +146,5 @@ async def test_recall_over_the_wire_resolves_shared_values_and_model_variants(
                 "work_memory_recall",
                 {"ref": "rules/how-to-write-commit-messages", "model": model},
             )
-            served = [
-                obs["text"] for obs in result.structured["entries"][0]["observations"]
-            ]
+            served = [obs["text"] for obs in result.structured["entries"][0]["observations"]]
             assert served == [expected], f"model {model!r} was served {served}"

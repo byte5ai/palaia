@@ -295,9 +295,7 @@ async def test_start_logs_every_warning_once_and_never_a_secret(
 
     await runtime.start()
     try:
-        await _until(
-            lambda: any("telegram poll for bot" in r.getMessage() for r in records)
-        )
+        await _until(lambda: any("telegram poll for bot" in r.getMessage() for r in records))
         await runtime.start()  # a second start does not repeat the check
     finally:
         await runtime.aclose()
@@ -369,9 +367,7 @@ async def test_an_added_polling_bot_starts_polling_on_a_running_runtime(
 
 async def test_a_removed_or_switched_off_bot_stops_polling(secrets: FakeSecrets) -> None:
     api = FakeBotApi(park_when_empty=True)
-    runtime = TelegramRuntime(
-        TelegramService(_settings(SUPPORT, PERSONAL), api, secrets), api
-    )
+    runtime = TelegramRuntime(TelegramService(_settings(SUPPORT, PERSONAL), api, secrets), api)
     await runtime.start()
     try:
         await _until(lambda: api.parked_polls >= 2)

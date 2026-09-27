@@ -144,9 +144,7 @@ def effective_budget(max_tokens: int) -> int:
     return max(int(max_tokens), MIN_CONTEXT_TOKENS)
 
 
-def plan_budget(
-    items: Sequence[BudgetItem], *, max_tokens: int, overhead: str = ""
-) -> BudgetPlan:
+def plan_budget(items: Sequence[BudgetItem], *, max_tokens: int, overhead: str = "") -> BudgetPlan:
     """Fit ``items`` into ``max_tokens``, degrading tier by tier.
 
     ``items`` must arrive in priority order — the earlier an item, the more

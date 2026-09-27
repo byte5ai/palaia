@@ -87,9 +87,7 @@ class CuratorScopeMiddleware(Middleware):
 
     def allowed_tool_names(self) -> frozenset[str]:
         return frozenset(
-            name
-            for name, action in self._tool_actions.items()
-            if action in CURATOR_TOOL_ACTIONS
+            name for name, action in self._tool_actions.items() if action in CURATOR_TOOL_ACTIONS
         )
 
     async def on_list_tools(
@@ -119,9 +117,7 @@ class CuratorScopeMiddleware(Middleware):
             action, arguments, expected_captures=self._active_captures.current()
         )
         if message is not None:
-            logger.info(
-                "curator guard refused %s (%s)", name, message.split(".", 1)[0]
-            )
+            logger.info("curator guard refused %s (%s)", name, message.split(".", 1)[0])
             return _refusal(message)
         return await call_next(context)
 

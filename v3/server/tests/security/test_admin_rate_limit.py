@@ -99,9 +99,7 @@ def test_a_signed_in_operator_is_not_throttled_by_their_own_404s(tmp_path: Path)
     try:
         with TestClient(built.app) as client:
             client.cookies.set("palaia_oauth_session", built.session_cookie())
-            statuses = [
-                client.get("/api/vaults/nope/inbox_status").status_code for _ in range(14)
-            ]
+            statuses = [client.get("/api/vaults/nope/inbox_status").status_code for _ in range(14)]
     finally:
         built.server.store.close()
 

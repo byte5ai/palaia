@@ -11,6 +11,7 @@ other spike scripts, or standalone:
 
     uv run gen_vault.py --n 1000 --out /tmp/toy-vault --seed 42
 """
+
 from __future__ import annotations
 
 import argparse
@@ -22,11 +23,26 @@ from pathlib import Path
 CATEGORIES = ["fact", "decision", "preference", "technique", "issue", "idea"]
 REL_TYPES = ["relates_to", "depends_on", "part_of", "contradicts", "follows"]
 TOPICS = [
-    "authentication", "vault-format", "recall-scoring", "git-layer",
-    "dashboard-ux", "mcp-gateway", "curator-policy", "inbox-contract",
-    "embedding-model", "search-ranking", "schema-inference", "event-bus",
-    "oauth-flow", "session-scoping", "importer-basic-memory", "hub-config",
-    "watcher-debounce", "sqlite-index", "graph-traversal", "token-budget",
+    "authentication",
+    "vault-format",
+    "recall-scoring",
+    "git-layer",
+    "dashboard-ux",
+    "mcp-gateway",
+    "curator-policy",
+    "inbox-contract",
+    "embedding-model",
+    "search-ranking",
+    "schema-inference",
+    "event-bus",
+    "oauth-flow",
+    "session-scoping",
+    "importer-basic-memory",
+    "hub-config",
+    "watcher-debounce",
+    "sqlite-index",
+    "graph-traversal",
+    "token-budget",
 ]
 WORDS = (
     "the system should always prefer synchronous writes over eventual "
@@ -57,10 +73,7 @@ def make_note_text(n: int, total: int, rng: random.Random) -> tuple[str, str]:
     permalink = _permalink(n)
     title = _title(n, rng)
     tags = rng.sample(TOPICS, k=rng.randint(1, 3))
-    created = (
-        dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
-        + dt.timedelta(minutes=n)
-    ).isoformat()
+    created = (dt.datetime(2026, 1, 1, tzinfo=dt.UTC) + dt.timedelta(minutes=n)).isoformat()
 
     # ~15% of notes carry a forward reference to a note that does not exist
     # yet (higher permalink number), per research/basic-memory.md §1.

@@ -149,9 +149,7 @@ def test_a_sqlite_snapshot_includes_wal_resident_data_and_omits_the_wal_file(
     restored_path = tmp_path / "restored-secrets.sqlite3"
     restored_path.write_bytes(snapshot_bytes)
     restored = sqlite3.connect(str(restored_path))
-    value = restored.execute(
-        "SELECT value FROM secrets WHERE name = 'github-token'"
-    ).fetchone()
+    value = restored.execute("SELECT value FROM secrets WHERE name = 'github-token'").fetchone()
     assert value == ("ghp_super_secret",)
     restored.close()
 

@@ -55,11 +55,7 @@ class VaultRefValidator:
         self, refs: list[str], *, readable_vaults: frozenset[str] | None = None
     ) -> list[str]:
         """The subset of ``refs`` resolving in none of the readable vaults."""
-        keys = [
-            key
-            for key in self._resolvers
-            if readable_vaults is None or key in readable_vaults
-        ]
+        keys = [key for key in self._resolvers if readable_vaults is None or key in readable_vaults]
         return [ref for ref in refs if not self._resolves_anywhere(ref, keys)]
 
     def _resolves_anywhere(self, ref: str, keys: list[str]) -> bool:

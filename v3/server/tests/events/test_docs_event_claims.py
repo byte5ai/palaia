@@ -26,12 +26,8 @@ ADVERTISED_TRIGGERS = {
 
 def _event_bus_bullet() -> str:
     lines = HOW_IT_WORKS.read_text(encoding="utf-8").splitlines()
-    start = next(
-        i for i, line in enumerate(lines) if "An event bus with a rules editor" in line
-    )
-    end = next(
-        i for i in range(start + 1, len(lines)) if lines[i].lstrip().startswith("- **")
-    )
+    start = next(i for i, line in enumerate(lines) if "An event bus with a rules editor" in line)
+    end = next(i for i in range(start + 1, len(lines)) if lines[i].lstrip().startswith("- **"))
     # Normalized to one line: the bullet is hard-wrapped, so "an idle session"
     # is split across a line break in the source.
     return " ".join(" ".join(lines[start:end]).split())

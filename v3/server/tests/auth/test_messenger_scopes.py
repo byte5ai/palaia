@@ -22,9 +22,7 @@ def test_messenger_scope_format() -> None:
 
 def test_every_messenger_action_is_classified_exactly_once() -> None:
     assert MESSENGER_READ_ACTIONS & MESSENGER_SEND_ACTIONS == frozenset()
-    assert (
-        frozenset(MESSENGER_TOOL_ACTIONS) == MESSENGER_READ_ACTIONS | MESSENGER_SEND_ACTIONS
-    )
+    assert frozenset(MESSENGER_TOOL_ACTIONS) == MESSENGER_READ_ACTIONS | MESSENGER_SEND_ACTIONS
 
 
 def test_sending_requires_the_send_scope_the_spec_names() -> None:
@@ -58,9 +56,7 @@ def test_write_scope_alone_does_not_imply_read() -> None:
 
 
 def test_malformed_scopes_are_ignored_rather_than_guessed_at() -> None:
-    assert readable_vault_keys(["vault::read", "vault:read", "", "vault:a:b:read"]) == (
-        frozenset()
-    )
+    assert readable_vault_keys(["vault::read", "vault:read", "", "vault:a:b:read"]) == (frozenset())
 
 
 def test_no_scopes_is_no_readable_vaults() -> None:

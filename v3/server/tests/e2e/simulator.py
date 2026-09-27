@@ -77,9 +77,7 @@ class SimulatedClient:
         self._token = token
 
     async def __aenter__(self) -> SimulatedClient:
-        client: Client[Any] = Client(
-            self._url, client_info=self._client_info, auth=self._token
-        )
+        client: Client[Any] = Client(self._url, client_info=self._client_info, auth=self._token)
         await client.__aenter__()
         self._client = client
         return self
@@ -103,9 +101,7 @@ class SimulatedClient:
 
     async def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> ToolCallResult:
         """Call a tool, never raising on a tool-level (``isError``) failure."""
-        result = await self._require_client().call_tool(
-            name, arguments or {}, raise_on_error=False
-        )
+        result = await self._require_client().call_tool(name, arguments or {}, raise_on_error=False)
         text = "".join(getattr(block, "text", "") for block in result.content)
         return ToolCallResult(
             text=text,

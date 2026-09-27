@@ -24,6 +24,7 @@ pytestmark = pytest.mark.anyio
 # parse_memory_ref — pure
 # --------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     ("raw", "target", "anchor"),
     [
@@ -71,6 +72,7 @@ def test_address_round_trips_without_the_scheme() -> None:
 # --------------------------------------------------------------------------
 # Resolution over the golden vault
 # --------------------------------------------------------------------------
+
 
 @pytest.fixture
 def resolver(golden_work: tuple[VaultEngine, VaultIndex]) -> MemoryResolver:
@@ -199,6 +201,7 @@ async def test_a_synthetic_ref_wins_over_a_note_path_that_looks_like_it(
 # --------------------------------------------------------------------------
 # Ambiguity: two notes answering to one name
 # --------------------------------------------------------------------------
+
 
 async def test_two_notes_with_the_same_title_are_an_error_listing_both(
     tmp_path: Path,

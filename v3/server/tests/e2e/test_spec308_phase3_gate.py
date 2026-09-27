@@ -91,9 +91,7 @@ def _wait_for_health(port: int, timeout: float = _STARTUP_TIMEOUT) -> None:
     last_error: Exception | None = None
     while time.monotonic() < deadline:
         try:
-            with urllib.request.urlopen(
-                f"http://127.0.0.1:{port}/api/health", timeout=0.5
-            ) as resp:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=0.5) as resp:
                 if resp.status == 200:
                     return
         except (OSError, urllib.error.URLError) as exc:
@@ -407,9 +405,7 @@ def test_one_install_answers_on_two_differently_authenticated_clients(
     reachable by two differently-authenticated real clients on two
     different profiles, with zero client-side tool configuration on
     either one."""
-    install_body = _install_once(
-        market_hub.base_url, market_hub.entry_id, ["default", "mobile"]
-    )
+    install_body = _install_once(market_hub.base_url, market_hub.entry_id, ["default", "mobile"])
     tool_name = f"{_tool_namespace(install_body)}_echo"
 
     # --- client 1: a scripted fastmcp.Client with a real plt_ token,
@@ -485,9 +481,7 @@ def test_the_install_is_visible_through_the_mcpb_stdio_proxy_without_bundle_chan
     bundle rebuild in between. Proves the stdio path is not a separate,
     manually-curated tool list: it mirrors whatever the profile serves,
     live."""
-    install_body = _install_once(
-        market_hub.base_url, market_hub.entry_id, ["default", "mobile"]
-    )
+    install_body = _install_once(market_hub.base_url, market_hub.entry_id, ["default", "mobile"])
     tool_name = f"{_tool_namespace(install_body)}_echo"
     plt_token = _mint_plt_token(market_hub.base_url, name="proxy-client", profile="mobile")
 

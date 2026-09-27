@@ -80,9 +80,7 @@ async def test_an_approved_proposal_applies_and_preserves_pre_images(
     # The pre-image of the touched note is in the proposal, before the change.
     assert "## Pre-images" in proposal.body
     assert "The gateway." in proposal.body
-    assert "- [limit] 100 req/min" not in proposal.body.split("## Pre-images")[1].split(
-        "````"
-    )[1]
+    assert "- [limit] 100 req/min" not in proposal.body.split("## Pre-images")[1].split("````")[1]
     assert "curator.proposal.applied" in [name for name, _ in events]
     # A second pass finds nothing: the terminal status ends the loop.
     assert (await applier.run_once()).approved == 0
@@ -93,9 +91,7 @@ async def test_a_failing_operation_stamps_apply_failed(engine: VaultEngine) -> N
     path = await _proposal(
         engine,
         plan={
-            "operations": [
-                {"op": "append", "target": "projects/does-not-exist", "text": "- [x] y"}
-            ]
+            "operations": [{"op": "append", "target": "projects/does-not-exist", "text": "- [x] y"}]
         },
     )
     events: list[tuple[str, dict[str, Any]]] = []
@@ -138,9 +134,7 @@ async def test_a_malformed_plan_is_manual_not_a_crash(engine: VaultEngine) -> No
 
 @pytest.mark.anyio
 async def test_an_unknown_operation_is_manual(engine: VaultEngine) -> None:
-    await _proposal(
-        engine, plan={"operations": [{"op": "rm -rf", "target": "projects/x"}]}
-    )
+    await _proposal(engine, plan={"operations": [{"op": "rm -rf", "target": "projects/x"}]})
 
     [result] = (await ProposalApplier(engine).run_once()).results
 
@@ -210,11 +204,11 @@ async def test_retire_deletes_the_named_note(engine: VaultEngine) -> None:
 
 
 def test_parse_plan_accepts_a_lone_json_block_and_rejects_two() -> None:
-    single = "text\n\n```json\n{\"operations\": []}\n```\n"
+    single = 'text\n\n```json\n{"operations": []}\n```\n'
     plan = parse_plan(single)
     assert plan is not None
     assert plan.operations == []
-    two = single + "\n```json\n{\"operations\": []}\n```\n"
+    two = single + '\n```json\n{"operations": []}\n```\n'
     with pytest.raises(PlanError):
         parse_plan(two)
     assert parse_plan("no code block here") is None
@@ -222,8 +216,8 @@ def test_parse_plan_accepts_a_lone_json_block_and_rejects_two() -> None:
 
 def test_parse_plan_prefers_the_labelled_block() -> None:
     body = (
-        "```json\n{\"operations\": [{\"op\": \"retire\", \"target\": \"a\"}]}\n```\n"
-        "```json plan\n{\"operations\": [{\"op\": \"retire\", \"target\": \"b\"}]}\n```\n"
+        '```json\n{"operations": [{"op": "retire", "target": "a"}]}\n```\n'
+        '```json plan\n{"operations": [{"op": "retire", "target": "b"}]}\n```\n'
     )
     plan = parse_plan(body)
     assert plan is not None

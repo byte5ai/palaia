@@ -33,9 +33,7 @@ def _config(upstreams: list[UpstreamConfig]) -> GatewayConfig:
     return GatewayConfig(
         vaults=[VaultMountConfig(key="work", name="work", purpose="Work vault.")],
         profiles=[
-            ProfileConfig(
-                path="default", vaults=["work"], upstreams=[u.key for u in upstreams]
-            )
+            ProfileConfig(path="default", vaults=["work"], upstreams=[u.key for u in upstreams])
         ],
         upstreams=upstreams,
     )

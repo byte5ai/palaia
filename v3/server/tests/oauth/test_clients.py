@@ -142,9 +142,7 @@ async def test_a_reconnect_reuses_the_same_cimd_row(store: OAuthStore) -> None:
     )
 
     for offset in range(5):
-        await resolve_client(
-            store, fetcher, client_id, now=NOW + offset, allowed_scopes=SCOPES
-        )
+        await resolve_client(store, fetcher, client_id, now=NOW + offset, allowed_scopes=SCOPES)
 
     assert store.count_clients() == 1
     assert store.get_client(client_id).created_at == NOW  # type: ignore[union-attr]
@@ -215,13 +213,9 @@ def test_a_machine_client_is_confidential_and_pinned(store: OAuthStore) -> None:
 
 def test_a_machine_client_needs_a_name_and_a_scope(store: OAuthStore) -> None:
     with pytest.raises(OAuthError):
-        provision_machine_client(
-            store, client_name="", audience=AUDIENCE, scopes=SCOPES, now=NOW
-        )
+        provision_machine_client(store, client_name="", audience=AUDIENCE, scopes=SCOPES, now=NOW)
     with pytest.raises(OAuthError):
-        provision_machine_client(
-            store, client_name="job", audience=AUDIENCE, scopes=[], now=NOW
-        )
+        provision_machine_client(store, client_name="job", audience=AUDIENCE, scopes=[], now=NOW)
 
 
 # ------------------------------------------------------------------------- GC
@@ -230,9 +224,7 @@ def test_a_machine_client_needs_a_name_and_a_scope(store: OAuthStore) -> None:
 def test_an_orphaned_dcr_client_is_pruned(store: OAuthStore) -> None:
     client_id = _register(store, now=NOW)
 
-    report = store.prune_clients(
-        now=NOW + 31 * DAY, ttl_seconds=30 * DAY, throttle_seconds=3600
-    )
+    report = store.prune_clients(now=NOW + 31 * DAY, ttl_seconds=30 * DAY, throttle_seconds=3600)
 
     assert report.ran is True
     assert report.pruned == [client_id]
@@ -243,9 +235,7 @@ def test_a_recently_seen_client_is_kept(store: OAuthStore) -> None:
     client_id = _register(store, now=NOW)
     store.touch_client(client_id, NOW + 30 * DAY)
 
-    report = store.prune_clients(
-        now=NOW + 31 * DAY, ttl_seconds=30 * DAY, throttle_seconds=3600
-    )
+    report = store.prune_clients(now=NOW + 31 * DAY, ttl_seconds=30 * DAY, throttle_seconds=3600)
 
     assert report.pruned == []
     assert store.get_client(client_id) is not None
@@ -270,9 +260,7 @@ def test_a_client_holding_a_live_refresh_token_is_kept_however_old(
     # Age the client back out again: it is stale but not orphaned.
     store.touch_client(client_id, NOW)
 
-    report = store.prune_clients(
-        now=NOW + 31 * DAY, ttl_seconds=30 * DAY, throttle_seconds=3600
-    )
+    report = store.prune_clients(now=NOW + 31 * DAY, ttl_seconds=30 * DAY, throttle_seconds=3600)
 
     assert report.pruned == []
 
@@ -294,9 +282,7 @@ def test_a_client_whose_grant_was_revoked_becomes_prunable(store: OAuthStore) ->
     store.revoke_grant(grant.grant_id, NOW + 1)
     store.touch_client(client_id, NOW)
 
-    report = store.prune_clients(
-        now=NOW + 31 * DAY, ttl_seconds=30 * DAY, throttle_seconds=3600
-    )
+    report = store.prune_clients(now=NOW + 31 * DAY, ttl_seconds=30 * DAY, throttle_seconds=3600)
 
     assert report.pruned == [client_id]
 
@@ -333,9 +319,7 @@ def test_a_cimd_client_is_prunable_too(store: OAuthStore) -> None:
         )
     )
 
-    report = store.prune_clients(
-        now=NOW + 31 * DAY, ttl_seconds=30 * DAY, throttle_seconds=3600
-    )
+    report = store.prune_clients(now=NOW + 31 * DAY, ttl_seconds=30 * DAY, throttle_seconds=3600)
 
     assert report.pruned == ["https://client.test/app.json"]
 

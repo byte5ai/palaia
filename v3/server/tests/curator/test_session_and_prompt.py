@@ -103,8 +103,7 @@ def test_the_prompt_carries_the_spec_role_block_verbatim() -> None:
         capture_text="- [entity] API Gateway\n- [why] deliberate limit\n",
     )
     assert prompt.startswith(
-        'You are the palaia curator for the vault "work" — Team knowledge for '
-        "ACME engineering."
+        'You are the palaia curator for the vault "work" — Team knowledge for ACME engineering.'
     )
     for sentence in (
         "INGEST is yours",

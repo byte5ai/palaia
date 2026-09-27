@@ -87,9 +87,7 @@ def test_the_username_match_is_case_insensitive() -> None:
 def _message(*, chat_id: int, username: str | None, bot: str = "support"):  # noqa: ANN202
     from palaia_hub.telegram.updates import normalise_update
 
-    message = normalise_update(
-        bot, message_update(1, chat_id=chat_id, chat_username=username)
-    )
+    message = normalise_update(bot, message_update(1, chat_id=chat_id, chat_username=username))
     assert message is not None
     return message
 

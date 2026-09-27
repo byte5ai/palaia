@@ -70,9 +70,7 @@ def _profile_scopes(profiles: list[_ProfileConfig]) -> dict[str, list[str]]:
 
     def scopes_for(profile: _ProfileConfig) -> list[str]:
         scopes = [
-            scope
-            for key in profile.vaults
-            for scope in (f"vault:{key}:read", f"vault:{key}:write")
+            scope for key in profile.vaults for scope in (f"vault:{key}:read", f"vault:{key}:write")
         ]
         if profile.stash:
             scopes += ["stash:read", "stash:write"]

@@ -262,9 +262,7 @@ async def test_a_deleted_message_is_forgotten_so_a_second_delete_is_refused(
     service: TelegramService,
 ) -> None:
     sent = await service.send(profile="default", bot="support", chat="-1001", text="oops")
-    await service.delete(
-        profile="default", bot="support", chat="-1001", message_id=sent.message_id
-    )
+    await service.delete(profile="default", bot="support", chat="-1001", message_id=sent.message_id)
     with pytest.raises(NotOurMessageError):
         await service.delete(
             profile="default", bot="support", chat="-1001", message_id=sent.message_id

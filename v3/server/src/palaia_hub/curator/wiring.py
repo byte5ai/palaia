@@ -218,9 +218,7 @@ def build_curator(
         runners=runners,
         appliers=appliers,
         active_captures=active_captures,
-        profile_middleware=curator_profile_middleware(
-            mounts, active_captures=active_captures
-        ),
+        profile_middleware=curator_profile_middleware(mounts, active_captures=active_captures),
         stash_store=stash_store,
         _session_runner=runner,
         _audit=audit,

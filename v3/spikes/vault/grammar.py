@@ -26,6 +26,7 @@ described in v3/research/basic-memory.md §1:
 No external dependency beyond PyYAML, which every script in this spike that
 imports this module already declares in its own PEP 723 header.
 """
+
 from __future__ import annotations
 
 import re
@@ -38,9 +39,7 @@ OBS_HEADER_RE = re.compile(r"^##\s*Observations\s*$", re.MULTILINE)
 REL_HEADER_RE = re.compile(r"^##\s*Relations\s*$", re.MULTILINE)
 NEXT_HEADER_RE = re.compile(r"^##\s+\S", re.MULTILINE)
 
-OBS_LINE_RE = re.compile(
-    r"^-\s*\[(?P<category>[^\]]+)\]\s*(?P<rest>.*)$"
-)
+OBS_LINE_RE = re.compile(r"^-\s*\[(?P<category>[^\]]+)\]\s*(?P<rest>.*)$")
 REL_LINE_RE = re.compile(
     r"^-\s*(?P<rel_type>[a-zA-Z0-9_\-]+)\s+\[\[(?P<target>[^\]]+)\]\]\s*(?:\((?P<context>[^)]*)\))?\s*$"
 )

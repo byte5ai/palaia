@@ -96,9 +96,7 @@ async def test_apply_maps_observations_relations_and_permalinks(
     assert onboarding.frontmatter["type"] == "process"
     assert "- [ ] Send the welcome packet" in onboarding.body
     assert "- [x] Schedule the kickoff call" in onboarding.body
-    assert (
-        "- [note] Provision the shared workspace and confirm access." in onboarding.body
-    )
+    assert "- [note] Provision the shared workspace and confirm access." in onboarding.body
     _assert_no_parse_warnings(onboarding)
 
 

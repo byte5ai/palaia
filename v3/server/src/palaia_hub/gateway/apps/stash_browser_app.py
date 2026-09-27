@@ -119,8 +119,10 @@ def stash_browse_summary(result: StashBrowseResult) -> str:
         )
     if not result.entries:
         return f"namespace {result.namespace!r} has no entries."
-    lines = [f"{len(result.entries)} entr{'y' if len(result.entries) == 1 else 'ies'} "
-             f"in {result.namespace!r}:"]
+    lines = [
+        f"{len(result.entries)} entr{'y' if len(result.entries) == 1 else 'ies'} "
+        f"in {result.namespace!r}:"
+    ]
     for entry in result.entries:
         stale_note = " (stale)" if entry.stale else ""
         expiry = "no expiry" if entry.expires_at is None else f"expires {entry.expires_at:.0f}"

@@ -96,9 +96,7 @@ async def test_recall_pick_can_gather_more_than_one_when_the_user_multi_selects(
 ) -> None:
     server = build_vault_server(vault_config, service)
     async with Client(server) as client:
-        picked = await client.call_tool(
-            "recall_pick", {"refs": ["notes/topic-0", "notes/topic-2"]}
-        )
+        picked = await client.call_tool("recall_pick", {"refs": ["notes/topic-0", "notes/topic-2"]})
     permalinks = {n["permalink"] for n in picked.structured_content["notes"]}
     assert permalinks == {"notes/topic-0", "notes/topic-2"}
 
@@ -135,8 +133,7 @@ def test_build_context_update_shape_matches_the_apps_js() -> None:
     assert update["content"] == [
         {
             "type": "text",
-            "text": "## Topic 1\nmemory://notes/topic-1\n\n"
-            "Everything about topic 1, in full.\n",
+            "text": "## Topic 1\nmemory://notes/topic-1\n\nEverything about topic 1, in full.\n",
         }
     ]
     assert update["structuredContent"]["notes"][0]["permalink"] == "notes/topic-1"

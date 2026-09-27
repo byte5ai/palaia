@@ -79,8 +79,7 @@ class NotificationStore:
     def create(self, *, title: str, body: str = "", source: str = "") -> NotificationRecord:
         with self._lock:
             cursor = self._conn.execute(
-                "INSERT INTO notifications (title, body, source, created_at) "
-                "VALUES (?, ?, ?, ?)",
+                "INSERT INTO notifications (title, body, source, created_at) VALUES (?, ?, ?, ?)",
                 (title, body, source, _now_iso()),
             )
             self._conn.execute(
@@ -117,9 +116,7 @@ class NotificationStore:
 
     def mark_read(self, notification_id: int) -> NotificationRecord | None:
         with self._lock:
-            self._conn.execute(
-                "UPDATE notifications SET read = 1 WHERE id = ?", (notification_id,)
-            )
+            self._conn.execute("UPDATE notifications SET read = 1 WHERE id = ?", (notification_id,))
             self._conn.commit()
             row = self._conn.execute(
                 "SELECT * FROM notifications WHERE id = ?", (notification_id,)

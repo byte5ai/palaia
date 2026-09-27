@@ -17,6 +17,7 @@ checks:
   - can the SQLite index be rebuilt from files afterwards, and does the
     resulting entity count match the number of valid .md files on disk?
 """
+
 from __future__ import annotations
 
 import argparse
@@ -61,7 +62,8 @@ def main() -> None:
 
     status_before = subprocess.run(
         ["git", "-C", str(vault_dir), "status", "--porcelain"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     status_before_ok = status_before.returncode == 0
 
@@ -72,7 +74,8 @@ def main() -> None:
         index_lock.unlink()
         status_after = subprocess.run(
             ["git", "-C", str(vault_dir), "status", "--porcelain"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         recovery_sufficient = status_after.returncode == 0
 

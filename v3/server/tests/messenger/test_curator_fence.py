@@ -84,9 +84,7 @@ def test_the_builder_refuses_even_a_profile_built_around_the_schema(
         upstreams=[],
     )
     with pytest.raises(GatewayConfigError) as excinfo:
-        _build_profile_server(
-            sneaky, config, {}, None, (), None, None, None, messenger
-        )
+        _build_profile_server(sneaky, config, {}, None, (), None, None, None, messenger)
     assert "curator" in str(excinfo.value)
     assert "messenger" in str(excinfo.value)
 
@@ -104,9 +102,7 @@ async def test_the_live_curator_profile_carries_no_messenger_tools(
     gateway = build_gateway(
         config,
         {"work": FakeVaultService()},
-        profile_middleware=curator_profile_middleware(
-            [VAULT], active_captures=ActiveCaptures()
-        ),
+        profile_middleware=curator_profile_middleware([VAULT], active_captures=ActiveCaptures()),
         messenger_service=messenger,
     )
 

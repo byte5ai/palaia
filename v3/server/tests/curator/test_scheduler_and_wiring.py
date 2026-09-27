@@ -121,13 +121,9 @@ async def test_the_guard_survives_a_profile_rebuild(
     engine: VaultEngine, vault_mount: VaultMountConfig
 ) -> None:
     """A vault added at runtime rebuilds profiles — the policy must return."""
-    config = GatewayConfig(
-        vaults=[vault_mount], profiles=[curator_profile([vault_mount.key])]
-    )
+    config = GatewayConfig(vaults=[vault_mount], profiles=[curator_profile([vault_mount.key])])
     hub_config = HubConfig(curator={"enabled": True})
-    wiring = build_curator(
-        hub_config, {vault_mount.key: engine}, [vault_mount], with_stash=False
-    )
+    wiring = build_curator(hub_config, {vault_mount.key: engine}, [vault_mount], with_stash=False)
     gateway = DynamicGateway(
         config,
         {vault_mount.key: FakeVaultService()},
@@ -136,9 +132,7 @@ async def test_the_guard_survives_a_profile_rebuild(
     await gateway.start()
     try:
         second = VaultMountConfig(key="personal", name="personal")
-        await gateway.add_vault(
-            second, FakeVaultService(), profile_paths=[CURATOR_PROFILE_PATH]
-        )
+        await gateway.add_vault(second, FakeVaultService(), profile_paths=[CURATOR_PROFILE_PATH])
         profile = gateway.profile_servers[CURATOR_PROFILE_PATH]
         async with Client(profile) as client:
             names = {tool.name for tool in await client.list_tools()}
@@ -172,9 +166,7 @@ async def test_wiring_builds_runners_appliers_and_the_guard(
     engine: VaultEngine, vault_mount: VaultMountConfig
 ) -> None:
     config = HubConfig(curator={"enabled": True, "auto_apply": True, "max_attempts": 2})
-    wiring = build_curator(
-        config, {vault_mount.key: engine}, [vault_mount], with_stash=False
-    )
+    wiring = build_curator(config, {vault_mount.key: engine}, [vault_mount], with_stash=False)
     try:
         assert set(wiring.runners) == {vault_mount.key}
         assert isinstance(wiring.appliers[vault_mount.key], ProposalApplier)
@@ -192,9 +184,7 @@ async def test_auto_apply_off_means_no_scheduled_applier(
     engine: VaultEngine, vault_mount: VaultMountConfig
 ) -> None:
     config = HubConfig(curator={"enabled": True, "auto_apply": False})
-    wiring = build_curator(
-        config, {vault_mount.key: engine}, [vault_mount], with_stash=False
-    )
+    wiring = build_curator(config, {vault_mount.key: engine}, [vault_mount], with_stash=False)
     try:
         assert wiring.appliers == {}
     finally:

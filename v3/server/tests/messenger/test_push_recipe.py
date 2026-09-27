@@ -52,9 +52,7 @@ async def test_a_message_received_webhook_delivers_with_a_valid_signature(
     # instead of a webhook).
     bus = EventBus()
     bus.on(dispatcher.on_event)
-    service.publish = lambda name, data: publish_event(
-        bus, name, origin="messenger", data=data
-    )
+    service.publish = lambda name, data: publish_event(bus, name, origin="messenger", data=data)
 
     a = await directory.register(scope="build pipeline")
     b = await directory.register(scope="notify my other tooling")
@@ -105,9 +103,7 @@ async def test_a_hook_scoped_to_a_different_event_never_fires(
 
     bus = EventBus()
     bus.on(dispatcher.on_event)
-    service.publish = lambda name, data: publish_event(
-        bus, name, origin="messenger", data=data
-    )
+    service.publish = lambda name, data: publish_event(bus, name, origin="messenger", data=data)
 
     a = await directory.register(scope="a")
     b = await directory.register(scope="b")

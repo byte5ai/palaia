@@ -48,14 +48,8 @@ class StubRefValidator:
     def unresolvable(
         self, refs: list[str], *, readable_vaults: frozenset[str] | None = None
     ) -> list[str]:
-        keys = [
-            key
-            for key in self.resolvable
-            if readable_vaults is None or key in readable_vaults
-        ]
-        return [
-            ref for ref in refs if not any(ref in self.resolvable[key] for key in keys)
-        ]
+        keys = [key for key in self.resolvable if readable_vaults is None or key in readable_vaults]
+        return [ref for ref in refs if not any(ref in self.resolvable[key] for key in keys)]
 
 
 @pytest.fixture

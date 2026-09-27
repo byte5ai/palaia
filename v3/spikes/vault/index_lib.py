@@ -3,6 +3,7 @@
 Plain module (no PEP 723 header) — imported by round_trip.py and index.py,
 which declare its transitive dependency (PyYAML, via grammar.py) themselves.
 """
+
 from __future__ import annotations
 
 import os
@@ -48,9 +49,7 @@ CREATE VIRTUAL TABLE fts USING fts5(
 
 
 def list_vault_files(vault_dir: str) -> list[str]:
-    return sorted(
-        str(p) for p in Path(vault_dir).rglob("*.md")
-    )
+    return sorted(str(p) for p in Path(vault_dir).rglob("*.md"))
 
 
 def build_index(vault_dir: str, db_path: str) -> dict:

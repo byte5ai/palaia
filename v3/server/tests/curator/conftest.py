@@ -18,9 +18,7 @@ def anyio_backend() -> str:
 
 @pytest.fixture
 def vault_mount() -> VaultMountConfig:
-    return VaultMountConfig(
-        key="work", name="work", purpose="Team knowledge for ACME engineering."
-    )
+    return VaultMountConfig(key="work", name="work", purpose="Team knowledge for ACME engineering.")
 
 
 @pytest.fixture

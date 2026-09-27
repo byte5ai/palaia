@@ -65,7 +65,5 @@ async def test_fresh_install_creates_first_vault_and_takes_first_note(
         )
         assert "My First Note" in write_result.text
 
-        read_result = await client.call_tool_ok(
-            "work_memory_read", {"permalink": "my-first-note"}
-        )
+        read_result = await client.call_tool_ok("work_memory_read", {"permalink": "my-first-note"})
         assert "the fresh-install headline moment" in read_result.text

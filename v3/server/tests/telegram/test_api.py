@@ -112,9 +112,7 @@ async def test_an_api_level_failure_becomes_a_telegram_error_naming_the_method(
     anyio_backend: str,
 ) -> None:
     api = api_for(
-        lambda request: httpx.Response(
-            400, json={"ok": False, "description": "chat not found"}
-        )
+        lambda request: httpx.Response(400, json={"ok": False, "description": "chat not found"})
     )
     with pytest.raises(TelegramApiError) as exc:
         await api.send_message(BOT_A_TOKEN, chat_id="-1", text="hi")

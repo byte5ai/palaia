@@ -54,9 +54,7 @@ def test_cloud_mode_accepts_oauth_instead_of_per_client_tokens(tmp_path: Path) -
 def test_cloud_mode_with_neither_auth_method_still_fails_with_both_fixes(
     tmp_path: Path,
 ) -> None:
-    (tmp_path / "config.yaml").write_text(
-        "mode: cloud\nauth_enabled: false\n", encoding="utf-8"
-    )
+    (tmp_path / "config.yaml").write_text("mode: cloud\nauth_enabled: false\n", encoding="utf-8")
 
     with pytest.raises(ConfigError) as excinfo:
         load_config(home=tmp_path)
@@ -109,9 +107,7 @@ def test_the_summary_names_oauth_only_when_that_is_all_there_is(tmp_path: Path) 
     key = SigningKey.load_or_create(tmp_path)
     resources = ResourceRegistry("https://hub.test", ["alpha"])
 
-    lines = summarize_profile_auth(
-        build_profile_auth(["alpha"], key=key, resources=resources)
-    )
+    lines = summarize_profile_auth(build_profile_auth(["alpha"], key=key, resources=resources))
 
     assert lines == ["profile 'alpha' accepts: oauth2 (access JWT)"]
 
@@ -125,9 +121,7 @@ def test_key_and_resources_must_be_passed_together(tmp_path: Path) -> None:
         build_profile_auth(["alpha"], key=SigningKey.load_or_create(tmp_path))
 
 
-def test_the_summary_is_logged_at_startup(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
+def test_the_summary_is_logged_at_startup(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.INFO, logger="palaia_hub.oauth.verifier")
     key = SigningKey.load_or_create(tmp_path)
     resources = ResourceRegistry("https://hub.test", ["alpha"])

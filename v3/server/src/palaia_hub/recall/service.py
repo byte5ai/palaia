@@ -120,9 +120,7 @@ class _IndexNoteSource:
         if len(matches) == 1:
             note = self._graph.note(matches[0].permalink)
             if note is not None:
-                resolved = SourceNote(
-                    permalink=note.permalink, title=note.title, body=note.body
-                )
+                resolved = SourceNote(permalink=note.permalink, title=note.title, body=note.body)
         self._cache[key] = resolved
         return resolved
 
@@ -210,8 +208,7 @@ class RecallService:
         warnings: list[str] = []
         if ref.strip():
             seeds = [
-                resolved.permalink
-                for resolved in await asyncio.to_thread(self._resolve_seeds, ref)
+                resolved.permalink for resolved in await asyncio.to_thread(self._resolve_seeds, ref)
             ]
             if not seeds:
                 raise NoteNotFoundError(
@@ -222,9 +219,7 @@ class RecallService:
             candidates, degraded, reason = await self._candidates_from_query(
                 query, limit=max(1, int(seed_limit))
             )
-            ranked = await asyncio.to_thread(
-                self._rank, candidates, max(1, int(seed_limit))
-            )
+            ranked = await asyncio.to_thread(self._rank, candidates, max(1, int(seed_limit)))
             seeds = [entry.permalink for entry in ranked]
             if degraded and reason:
                 warnings.append(reason)
@@ -388,9 +383,7 @@ class RecallService:
             warnings=warnings,
         )
 
-    def _served_observations(
-        self, permalink: str, caller: ModelScope
-    ) -> list[RecallObservation]:
+    def _served_observations(self, permalink: str, caller: ModelScope) -> list[RecallObservation]:
         served = resolve_variants(self._graph.observations(permalink), caller)
         return [
             RecallObservation(
@@ -571,10 +564,7 @@ class RecallService:
         ordered = sorted(
             enumerate(observations), key=lambda pair: (pair[1].block_id is None, pair[0])
         )
-        return [
-            f"- [{obs.category}] {obs.text}"
-            for _, obs in ordered[: bg.SUMMARY_OBSERVATIONS]
-        ]
+        return [f"- [{obs.category}] {obs.text}" for _, obs in ordered[: bg.SUMMARY_OBSERVATIONS]]
 
     # ------------------------------------------------------- shared internals
 
@@ -621,17 +611,13 @@ class RecallService:
             return body
         drop_lines = {parsed.observations[index].line - 2 for index in dropped}
         lines = body.split("\n")
-        return "\n".join(
-            line for index, line in enumerate(lines) if index not in drop_lines
-        )
+        return "\n".join(line for index, line in enumerate(lines) if index not in drop_lines)
 
     def _record(self, permalinks: Sequence[str]) -> None:
         if not self._track_access or not permalinks:
             return
         try:
-            self._graph.record_access(
-                permalinks, at=self._clock().isoformat(timespec="seconds")
-            )
+            self._graph.record_access(permalinks, at=self._clock().isoformat(timespec="seconds"))
         except Exception:  # noqa: BLE001 - a counter must never break an answer
             logger.warning("could not record access counters", exc_info=True)
 

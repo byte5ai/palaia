@@ -125,9 +125,7 @@ async def test_capture_emits_inbox_captured_with_vault_and_capture_id(tmp_path: 
     calls: list[tuple[str, dict[str, object]]] = []
     engine = VaultEngine(tmp_path / "work", "work")
     await engine.open(purpose="test vault")
-    service = EngineVaultService(
-        engine, on_event=lambda name, data: calls.append((name, data))
-    )
+    service = EngineVaultService(engine, on_event=lambda name, data: calls.append((name, data)))
 
     result = await service.capture(
         what_it_concerns="API rate limit",
@@ -149,12 +147,8 @@ async def test_duplicate_capture_still_emits_inbox_captured_marked_duplicate(
     calls: list[tuple[str, dict[str, object]]] = []
     engine = VaultEngine(tmp_path / "work", "work")
     await engine.open(purpose="test vault")
-    service = EngineVaultService(
-        engine, on_event=lambda name, data: calls.append((name, data))
-    )
-    await service.capture(
-        what_it_concerns="X", why_keep="Y", content="Z"
-    )
+    service = EngineVaultService(engine, on_event=lambda name, data: calls.append((name, data)))
+    await service.capture(what_it_concerns="X", why_keep="Y", content="Z")
     calls.clear()
 
     await service.capture(what_it_concerns="X", why_keep="Y", content="Z")

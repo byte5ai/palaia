@@ -62,9 +62,7 @@ class CuratorHarness:
     def namespace(self) -> str:
         return self.mount.namespace
 
-    async def capture(
-        self, *, what_it_concerns: str, why_keep: str, content: str
-    ) -> str:
+    async def capture(self, *, what_it_concerns: str, why_keep: str, content: str) -> str:
         """Drop a real capture into ``inbox/`` and return its capture_id."""
         result = await self.service.capture(
             what_it_concerns=what_it_concerns, why_keep=why_keep, content=content
@@ -104,9 +102,7 @@ def build_harness(
     )
     events: list[tuple[str, dict[str, Any]]] = []
     stash = RecordingStash()
-    audit = CuratorAudit(
-        publish=lambda event, data: events.append((event, data)), stash=stash
-    )
+    audit = CuratorAudit(publish=lambda event, data: events.append((event, data)), stash=stash)
     runner = CuratorRunner(
         engine,
         session_runner=session_runner,

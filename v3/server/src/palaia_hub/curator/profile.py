@@ -109,9 +109,7 @@ def curator_profile_middleware(
     """The ``profile_middleware`` mapping to hand to the gateway builder."""
     return {
         CURATOR_PROFILE_PATH: [
-            CuratorScopeMiddleware(
-                curator_tool_actions(vaults), active_captures=active_captures
-            )
+            CuratorScopeMiddleware(curator_tool_actions(vaults), active_captures=active_captures)
         ]
     }
 

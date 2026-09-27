@@ -397,9 +397,7 @@ def test_a_real_oauth_token_lets_claude_code_round_trip_write_search_read(
         _run_claude(["mcp", "remove", server_name, "-s", "local"], cwd=work_dir)
 
 
-def test_claude_mcp_get_does_not_report_a_resource_mismatch(
-    oauth_hub: int, tmp_path: Path
-) -> None:
+def test_claude_mcp_get_does_not_report_a_resource_mismatch(oauth_hub: int, tmp_path: Path) -> None:
     """byte5ai/palaia#232, fixed: the advertised `resource` is the mount URL.
 
     Before the fix, ``claude mcp get`` on a freshly added OAuth profile (no

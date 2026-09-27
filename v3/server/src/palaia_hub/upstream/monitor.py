@@ -82,9 +82,7 @@ class UpstreamHealthMonitor:
     async def probe_once(self) -> list[str]:
         """One pass. Returns the keys whose ``up`` state changed."""
         before = {status.key: status.up for status in self._service.statuses()}
-        unchecked = {
-            status.key for status in self._service.statuses() if status.checked_at is None
-        }
+        unchecked = {status.key for status in self._service.statuses() if status.checked_at is None}
         await self._service.probe_all()
         after = {status.key: status.up for status in self._service.statuses()}
         changed = sorted(

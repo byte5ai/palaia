@@ -65,14 +65,13 @@ async def test_annotations_lint_every_tool_has_readonly_and_destructive_hints(
     for tool in tools:
         assert tool.annotations is not None, f"{tool.name} has no annotations"
         assert tool.annotations.readOnlyHint is not None, f"{tool.name} missing readOnlyHint"
-        assert (
-            tool.annotations.destructiveHint is not None
-        ), f"{tool.name} missing destructiveHint"
+        assert tool.annotations.destructiveHint is not None, f"{tool.name} missing destructiveHint"
 
 
 @pytest.mark.anyio
 async def test_annotations_lint_every_tool_description_leads_with_purpose(
-    server, vault_config: VaultMountConfig  # noqa: ANN001
+    server,
+    vault_config: VaultMountConfig,  # noqa: ANN001
 ) -> None:
     async with Client(server) as client:
         tools = await client.list_tools()
@@ -219,7 +218,8 @@ async def test_read_missing_permalink_is_a_tool_error_not_an_exception(server) -
 
 @pytest.mark.anyio
 async def test_server_instructions_carry_an_identity_line(
-    server, vault_config: VaultMountConfig  # noqa: ANN001
+    server,
+    vault_config: VaultMountConfig,  # noqa: ANN001
 ) -> None:
     async with Client(server) as client:
         init = client.initialize_result
@@ -231,7 +231,8 @@ async def test_server_instructions_carry_an_identity_line(
 
 @pytest.mark.anyio
 async def test_ai_assistant_guide_resource_is_served(
-    server, vault_config: VaultMountConfig  # noqa: ANN001
+    server,
+    vault_config: VaultMountConfig,  # noqa: ANN001
 ) -> None:
     async with Client(server) as client:
         resources = await client.list_resources()

@@ -49,9 +49,7 @@ def _rank(ranked: list[str], expected: str) -> str:
 
 
 def _recall_at_k(found: dict[str, list[str]], k: int = _TOP_K) -> float:
-    hits = sum(
-        1 for query, expected in RELEVANCE_BATTERY.items() if expected in found[query][:k]
-    )
+    hits = sum(1 for query, expected in RELEVANCE_BATTERY.items() if expected in found[query][:k])
     return hits / len(RELEVANCE_BATTERY)
 
 

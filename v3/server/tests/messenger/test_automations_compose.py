@@ -61,9 +61,7 @@ async def test_an_automation_on_message_received_fires_from_metadata(
     automations = AutomationStore(tmp_path / "automations")
     outbox = AutomationOutbox(tmp_path / "outbox.sqlite3")
     notifications = NotificationStore(tmp_path / "notifications.sqlite3")
-    dispatcher = AutomationDispatcher(
-        automations, outbox, notification_store=notifications
-    )
+    dispatcher = AutomationDispatcher(automations, outbox, notification_store=notifications)
     automations.create(
         name="tell me about urgent handoffs",
         trigger_event="message.received",
@@ -77,9 +75,7 @@ async def test_an_automation_on_message_received_fires_from_metadata(
     # The hub's real bus, wired exactly as `create_app` wires it.
     bus = EventBus()
     bus.on(dispatcher.on_event)
-    service.publish = lambda name, data: publish_event(
-        bus, name, origin="messenger", data=data
-    )
+    service.publish = lambda name, data: publish_event(bus, name, origin="messenger", data=data)
 
     await _conversation(service, directory)
     delivered = await dispatcher.deliver_due()
@@ -104,9 +100,7 @@ async def test_an_automation_cannot_template_a_body_that_never_travelled(
     automations = AutomationStore(tmp_path / "automations")
     outbox = AutomationOutbox(tmp_path / "outbox.sqlite3")
     notifications = NotificationStore(tmp_path / "notifications.sqlite3")
-    dispatcher = AutomationDispatcher(
-        automations, outbox, notification_store=notifications
-    )
+    dispatcher = AutomationDispatcher(automations, outbox, notification_store=notifications)
     automations.create(
         name="leak attempt",
         trigger_event="*",
@@ -118,9 +112,7 @@ async def test_an_automation_cannot_template_a_body_that_never_travelled(
 
     bus = EventBus()
     bus.on(dispatcher.on_event)
-    service.publish = lambda name, data: publish_event(
-        bus, name, origin="messenger", data=data
-    )
+    service.publish = lambda name, data: publish_event(bus, name, origin="messenger", data=data)
 
     await _conversation(service, directory)
     await dispatcher.deliver_due()
