@@ -87,8 +87,11 @@ FROM python:3.12-slim@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b
 # nginx: single public entry point (static dashboard + reverse proxy to the
 # hub's internal port). curl: used by the HEALTHCHECK below. gettext-base:
 # provides envsubst, used to render nginx.conf.template at container start.
+# git: every vault is a git repository, and the vault engine drives it
+# through the `git` binary (palaia_hub/vault/gitlayer.py). Without it,
+# creating a vault fails with "No such file or directory: 'git'".
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends nginx-light curl gettext-base \
+    && apt-get install -y --no-install-recommends nginx-light curl gettext-base git \
     && rm -rf /var/lib/apt/lists/*
 
 # A fixed uid/gid, never "whatever the base image hands out next" (issue
