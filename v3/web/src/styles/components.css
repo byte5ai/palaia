@@ -202,6 +202,7 @@ svg { display: block; }
    (system.md §1.2a). */
 .card__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3);
   padding: var(--space-4) var(--space-5) var(--space-3); border-bottom: 1px solid var(--border-subtle-btm); }
+.card__head-end { display: flex; align-items: baseline; gap: var(--space-3); flex-shrink: 0; }
 .card__title { font-size: var(--type-caption-size); line-height: 16px; font-weight: 500;
   letter-spacing: .02em; color: var(--text-secondary); }
 /* card__subject: the head names a SUBJECT rather than the container — a
