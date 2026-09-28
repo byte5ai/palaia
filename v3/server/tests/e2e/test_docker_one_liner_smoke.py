@@ -326,3 +326,17 @@ def test_the_images_git_takes_config_from_the_environment(running_container: str
         timeout=10,
     )
     assert certs.returncode == 0 and certs.stdout.strip(), certs.stderr
+
+
+def test_the_image_ships_the_embedding_backend(running_container: str) -> None:
+    """Semantic search needs fastembed in the image; only the model is left
+    to download on first use (``deploy/README.md``). The image once shipped
+    without it, so search stayed full-text only and the dashboard reported
+    embeddings as "catching up" forever."""
+    result = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        ["docker", "exec", running_container, "python", "-c", "import fastembed"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
