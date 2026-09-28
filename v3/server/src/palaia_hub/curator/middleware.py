@@ -76,8 +76,9 @@ class CuratorScopeMiddleware(Middleware):
         :mod:`palaia_hub.curator.profile`'s docstring), so mutating its map
         here is what makes the new vault's tools recognized without also
         having to re-attach a fresh middleware instance anywhere. Never
-        removes an entry — closing a vault's tools back off this profile
-        is not a case this SPEC needs (vaults are not deleted at runtime).
+        removes an entry: when an ephemeral vault is closed at runtime
+        (issue #168) its tools leave the profile, and a leftover map entry
+        for a tool that no longer exists grants nothing.
         """
         self._tool_actions.update(tool_actions)
 

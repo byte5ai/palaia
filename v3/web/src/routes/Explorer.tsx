@@ -19,9 +19,10 @@
  * resetting the previous vault's/note's state by hand (the
  * `react-hooks/set-state-in-effect` rule this file used to trip).
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { Skeleton } from "../components/Skeleton";
 import type {
@@ -38,6 +39,7 @@ import {
   useDebouncedValue,
 } from "../lib/useDebouncedValue";
 import { ExplorerIcon, SearchIcon, VaultsIcon } from "../shell/icons";
+import { NewTemporaryMemory, TemporaryMemoryBanner } from "./TemporaryMemory";
 
 interface FolderGroup {
   folder: string;
@@ -74,15 +76,27 @@ export function Explorer() {
   const [vaults, setVaults] = useState<VaultSummary[] | null>(null);
   const [vaultKey, setVaultKey] = useState<string | null>(null);
 
-  useEffect(() => {
+  // `select`: switch to this vault once the list is back (a temporary memory
+  // just created); `null` drops the current one (a temporary memory just
+  // closed) and falls back to the first vault left.
+  const loadVaults = useCallback((select?: string | null) => {
     api
       .listVaults()
       .then((list) => {
         setVaults(list);
-        setVaultKey((current) => current ?? list[0]?.key ?? null);
+        setVaultKey((current) => {
+          const wanted = select === undefined ? current : select;
+          return wanted && list.some((v) => v.key === wanted)
+            ? wanted
+            : (list[0]?.key ?? null);
+        });
       })
       .catch(() => setVaults([]));
   }, []);
+
+  useEffect(() => {
+    loadVaults();
+  }, [loadVaults]);
 
   if (vaults === null) {
     return (
@@ -112,6 +126,7 @@ export function Explorer() {
       vaultKey={vaultKey}
       vaults={vaults}
       onSwitchVault={setVaultKey}
+      onVaultsChanged={loadVaults}
     />
   );
 }
@@ -120,11 +135,14 @@ function VaultView({
   vaultKey,
   vaults,
   onSwitchVault,
+  onVaultsChanged,
 }: {
   vaultKey: string;
   vaults: VaultSummary[];
   onSwitchVault: (key: string) => void;
+  onVaultsChanged: (select?: string | null) => void;
 }) {
+  const [creatingTemporary, setCreatingTemporary] = useState(false);
   const [notes, setNotes] = useState<NoteSummary[] | null>(null);
   const [notesError, setNotesError] = useState<string | null>(null);
   const [inboxCount, setInboxCount] = useState<number | null>(null);
@@ -211,7 +229,34 @@ function VaultView({
             <span className="t-meta">{searchResults.length} results</span>
           ) : null}
         </label>
+        <Button
+          size="sm"
+          onClick={() => setCreatingTemporary((open) => !open)}
+          aria-expanded={creatingTemporary}
+        >
+          New temporary memory
+        </Button>
       </section>
+
+      {creatingTemporary ? (
+        <NewTemporaryMemory
+          onCreated={(key) => {
+            setCreatingTemporary(false);
+            onVaultsChanged(key);
+          }}
+          onCancel={() => setCreatingTemporary(false)}
+        />
+      ) : null}
+
+      {vault?.ephemeral ? (
+        <TemporaryMemoryBanner
+          vault={vault}
+          vaults={vaults}
+          notes={notes ?? []}
+          onClosed={() => onVaultsChanged(null)}
+          onPromoted={() => onVaultsChanged()}
+        />
+      ) : null}
 
       <section className="explorer">
         <div className="pane pane--tree">

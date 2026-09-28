@@ -124,6 +124,44 @@ and decide per AI tool, or per connection, which one it can see. They stay
 genuinely separate: nothing crosses from one into the other on its own.
 [Profiles & access](/access/) covers how that's set up.
 
+## A temporary memory for one task
+
+Some work needs a lot of reading that is only useful for a short while:
+research for one trip, the sources behind one report, the background for
+one migration. Putting all of that into your everyday memory would bury the
+things you actually want to keep. Instead, give the task a memory of its
+own — a temporary one:
+
+1. **Create it**, optionally with an end date. Your AI tools see it as a
+   separate memory with its own name, so their searches in it stay on the
+   task and never mix with your everyday notes.
+2. **Work in it.** Ask your AI tool to collect the sources and notes for
+   the task there, and to answer from it.
+3. **Keep what matters.** When the task is done, pick the few notes worth
+   keeping and copy them into your everyday memory. They arrive with their
+   titles, tags and links intact; if a note with the same name is already
+   there, nothing is copied and you're told which one clashes.
+4. **Close it.** Closing takes the temporary memory away from every AI
+   tool and moves its folder into an archive next to your hub's data.
+   Nothing is deleted — you can still open the archived folder, or delete
+   it yourself when you're sure.
+
+Nothing happens on its own when the end date passes: the memory keeps
+working, and the hub's health check lists it as overdue until you close it.
+Only a temporary memory can be closed this way; your everyday memories are
+never taken away by it.
+
+All of it happens on the dashboard's **Explorer**:
+
+- **Create one** with **New temporary memory** next to the memory picker:
+  a name (it becomes part of the tool names your AI tools see), what it is
+  for, and in how many days it is due.
+- **Pick it** in the memory picker. A banner above its notes says when it
+  is due, or that it is overdue.
+- **Keep notes…** lists its notes: tick the ones worth keeping, choose the
+  everyday memory to copy them into, and copy them.
+- **Close…** asks you to type the memory's name, then closes it.
+
 ## Starting from something, instead of nothing
 
 If you're moving from an existing setup rather than starting empty, an
