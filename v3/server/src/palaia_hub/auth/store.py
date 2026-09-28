@@ -147,7 +147,16 @@ class TokenStore:
         #: this module stays free of any dependency on it (see this file's
         #: own module docstring on why the auth package is self-contained).
         self.on_verified: Callable[[TokenRecord, bool], None] | None = None
-        self._load()
+        #: ``(inode, mtime_ns, size)`` of ``tokens.yaml`` as this store last
+        #: read or wrote it; ``None`` when there was no file. The CLI
+        #: (``palaia-hub token create|revoke``) writes the same file from
+        #: another process, so every read path compares this against the
+        #: file first and reloads on a change — otherwise a token revoked on
+        #: the host kept working in the running hub until its restart, and
+        #: the hub's next save silently dropped the CLI's change.
+        self._disk_state: tuple[int, int, int] | None = None
+        self._records = self._read()
+        self._disk_state = self._stat()
 
     @property
     def store_path(self) -> Path:
@@ -156,10 +165,36 @@ class TokenStore:
 
     # ------------------------------------------------------------- persistence
 
-    def _load(self) -> None:
+    def _stat(self) -> tuple[int, int, int] | None:
+        try:
+            st = self.store_path.stat()
+        except FileNotFoundError:
+            return None
+        return (st.st_ino, st.st_mtime_ns, st.st_size)
+
+    def _refresh(self) -> None:
+        """Reload ``tokens.yaml`` if another process changed it.
+
+        A file that no longer parses keeps the last good records rather than
+        failing every request; the next successful change reloads cleanly.
+        """
+        state = self._stat()
+        if state == self._disk_state:
+            return
+        try:
+            records = self._read()
+        except (TokenError, OSError, ValueError) as exc:
+            logger.warning("tokens.yaml changed but could not be reloaded: %s", exc)
+            return
+        self._records = records
+        self._disk_state = state
+        logger.info("reloaded tokens.yaml after an outside change (%d tokens)", len(records))
+
+    def _read(self) -> dict[str, TokenRecord]:
+        records: dict[str, TokenRecord] = {}
         path = self.store_path
         if not path.exists():
-            return
+            return records
         try:
             raw: Any = yaml.safe_load(path.read_text(encoding="utf-8"))
         except yaml.YAMLError as exc:
@@ -169,7 +204,7 @@ class TokenStore:
                 f"new one)."
             ) from exc
         if not raw:
-            return
+            return records
         if not isinstance(raw, Mapping) or not isinstance(raw.get("tokens"), list):
             raise TokenError(
                 f"{path}: expected a 'tokens:' list of records. Fix: correct the "
@@ -177,7 +212,8 @@ class TokenStore:
             )
         for item in raw["tokens"]:
             record = TokenRecord.model_validate(item)
-            self._records[record.id] = record
+            records[record.id] = record
+        return records
 
     def _save(self) -> None:
         self.home.mkdir(parents=True, exist_ok=True)
@@ -188,6 +224,7 @@ class TokenStore:
         # literal mode repeated per store.
         harden_file(self.store_path)
         harden_directory(self.home)
+        self._disk_state = self._stat()
 
     # ----------------------------------------------------------------- queries
 
@@ -200,12 +237,14 @@ class TokenStore:
         builtin for every subsequent ``list[...]`` annotation in this class
         body.
         """
+        self._refresh()
         return [
             TokenInfo.from_record(r, last_used_at=self._last_used.get(r.id))
             for r in self._records.values()
         ]
 
     def get(self, token_id: str) -> TokenInfo:
+        self._refresh()
         record = self._records.get(token_id)
         if record is None:
             raise TokenError(
@@ -227,6 +266,7 @@ class TokenStore:
         if not profile:
             raise TokenError("token profile must not be empty. Fix: pass --profile <path>.")
         validated_scopes = _validate_scopes(scopes)
+        self._refresh()
 
         token_id = _new_token_id()
         secret = secrets.token_urlsafe(32)
@@ -247,6 +287,7 @@ class TokenStore:
 
     def revoke(self, token_id: str) -> TokenInfo:
         """Revoke a token. Idempotent: revoking an already-revoked token is a no-op."""
+        self._refresh()
         record = self._records.get(token_id)
         if record is None:
             raise TokenError(
@@ -276,6 +317,7 @@ class TokenStore:
             spend_constant_time_miss()
             return None
         token_id, secret = parsed
+        self._refresh()
         record = self._records.get(token_id)
         if record is None:
             spend_constant_time_miss()

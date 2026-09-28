@@ -269,3 +269,48 @@ def test_token_ids_never_start_with_a_dash(monkeypatch: pytest.MonkeyPatch, tmp_
 
     assert created.info.id == "okay_id_1234"
     assert created.token.startswith("plt_okay_id_1234.")
+
+
+# ---------------------------------------------------------------------------
+# The CLI and the running hub share tokens.yaml. Two stores on one home
+# directory stand in for the two processes.
+
+
+def test_a_token_created_by_the_cli_verifies_in_the_running_hub(tmp_path: Path) -> None:
+    hub = TokenStore(home=tmp_path)
+    cli = TokenStore(home=tmp_path)
+
+    created = cli.create("Claude Code", "default", [])
+
+    assert hub.verify(created.token) is not None
+    assert [t.id for t in hub.list_tokens()] == [created.info.id]
+
+
+def test_a_token_revoked_by_the_cli_stops_working_in_the_running_hub(tmp_path: Path) -> None:
+    hub = TokenStore(home=tmp_path)
+    created = hub.create("Claude Code", "default", [])
+    assert hub.verify(created.token) is not None
+
+    TokenStore(home=tmp_path).revoke(created.info.id)
+
+    assert hub.verify(created.token) is None
+
+
+def test_the_hubs_next_save_keeps_what_the_cli_wrote(tmp_path: Path) -> None:
+    hub = TokenStore(home=tmp_path)
+    from_cli = TokenStore(home=tmp_path).create("from the CLI", "default", [])
+
+    hub.create("from the dashboard", "default", [])
+
+    names = {t.name for t in TokenStore(home=tmp_path).list_tokens()}
+    assert names == {"from the CLI", "from the dashboard"}
+    assert hub.verify(from_cli.token) is not None
+
+
+def test_a_damaged_file_keeps_the_last_good_tokens(tmp_path: Path) -> None:
+    hub = TokenStore(home=tmp_path)
+    created = hub.create("Claude Code", "default", [])
+
+    (tmp_path / "tokens.yaml").write_text("tokens: [unclosed\n", encoding="utf-8")
+
+    assert hub.verify(created.token) is not None
