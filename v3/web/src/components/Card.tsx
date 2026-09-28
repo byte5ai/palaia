@@ -35,11 +35,28 @@ export function CardHead({
   meta?: ReactNode;
   children?: ReactNode;
 }) {
+  const metaNode = meta !== undefined ? <span className="t-meta">{meta}</span> : null;
+  // With a title, `children` are the head's actions (a button, a badge):
+  // they sit at the right edge together with `meta`. Laid out as three
+  // flex items under `space-between`, a button landed in the middle of the
+  // head whenever `meta` was set too. Without a title, `children` are the
+  // head's left-hand content (e.g. a CardSubject) and stay where they are.
+  if (title !== undefined && children !== undefined) {
+    return (
+      <div className="card__head">
+        <span className="card__title">{title}</span>
+        <span className="card__head-end">
+          {metaNode}
+          {children}
+        </span>
+      </div>
+    );
+  }
   return (
     <div className="card__head">
       {title !== undefined ? <span className="card__title">{title}</span> : null}
       {children}
-      {meta !== undefined ? <span className="t-meta">{meta}</span> : null}
+      {metaNode}
     </div>
   );
 }
