@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1010" height="440" viewBox="0 0 1010 440" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-labelledby="title desc">
+<title id="title">How palaia fits together</title>
+<desc id="desc">AI tools such as Claude, ChatGPT, Codex and Gemini connect over MCP to one self-hosted palaia hub. The hub gives them a shared memory, shared tools and add-ons, and a way for agents to find and message each other. Memory is stored as plain Markdown files with git history on hardware you control, and everything is managed from a dashboard in the browser.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A8F9C"/></marker></defs>
+<rect width="1010" height="440" rx="16" fill="#1B1D24"/>
+<text x="40" y="48" font-size="13" font-weight="600" fill="#B6B9C3" letter-spacing="0.08em">YOUR AI TOOLS</text>
+<rect x="40" y="68" width="190" height="38" rx="19" fill="#2A2D38" stroke="#3A3E4A"/>
+<text x="135" y="92" font-size="15" text-anchor="middle" fill="#EEEFF3">Claude</text>
+<path d="M232 87.0 C 280 87.0, 285 220, 330 220" fill="none" stroke="#8A8F9C" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="40" y="120" width="190" height="38" rx="19" fill="#2A2D38" stroke="#3A3E4A"/>
+<text x="135" y="144" font-size="15" text-anchor="middle" fill="#EEEFF3">Claude Code</text>
+<path d="M232 139.0 C 280 139.0, 285 220, 330 220" fill="none" stroke="#8A8F9C" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="40" y="172" width="190" height="38" rx="19" fill="#2A2D38" stroke="#3A3E4A"/>
+<text x="135" y="196" font-size="15" text-anchor="middle" fill="#EEEFF3">ChatGPT</text>
+<path d="M232 191.0 C 280 191.0, 285 220, 330 220" fill="none" stroke="#8A8F9C" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="40" y="224" width="190" height="38" rx="19" fill="#2A2D38" stroke="#3A3E4A"/>
+<text x="135" y="248" font-size="15" text-anchor="middle" fill="#EEEFF3">Codex</text>
+<path d="M232 243.0 C 280 243.0, 285 220, 330 220" fill="none" stroke="#8A8F9C" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="40" y="276" width="190" height="38" rx="19" fill="#2A2D38" stroke="#3A3E4A"/>
+<text x="135" y="300" font-size="15" text-anchor="middle" fill="#EEEFF3">Gemini</text>
+<path d="M232 295.0 C 280 295.0, 285 220, 330 220" fill="none" stroke="#8A8F9C" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="40" y="328" width="190" height="38" rx="19" fill="#2A2D38" stroke="#3A3E4A"/>
+<text x="135" y="352" font-size="15" text-anchor="middle" fill="#EEEFF3">any MCP client</text>
+<path d="M232 347.0 C 280 347.0, 285 220, 330 220" fill="none" stroke="#8A8F9C" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="258" y="206" width="44" height="22" rx="11" fill="#1B1D24"/>
+<text x="280" y="222" font-size="13" font-weight="600" text-anchor="middle" fill="#E0A26B">MCP</text>
+<rect x="334" y="40" width="440" height="360" rx="14" fill="#2A2D38" stroke="#E0A26B" stroke-width="2"/>
+<text x="358" y="78" font-size="22" font-weight="700" fill="#EEEFF3">palaia hub</text>
+<text x="358" y="100" font-size="13" fill="#B6B9C3">one address for all your AI tools</text>
+<rect x="358" y="122" width="124" height="150" rx="10" fill="#3A2F27"/>
+<text x="372" y="152" font-size="16" font-weight="700" fill="#E0A26B">Memory</text>
+<text x="372" y="180" font-size="13" fill="#EEEFF3">one memory,</text>
+<text x="372" y="200" font-size="13" fill="#EEEFF3">shared by every</text>
+<text x="372" y="220" font-size="13" fill="#EEEFF3">tool, searchable</text>
+<rect x="492" y="122" width="124" height="150" rx="10" fill="#3A2F27"/>
+<text x="506" y="152" font-size="16" font-weight="700" fill="#E0A26B">Tools</text>
+<text x="506" y="180" font-size="13" fill="#EEEFF3">set up once,</text>
+<text x="506" y="200" font-size="13" fill="#EEEFF3">used by every</text>
+<text x="506" y="220" font-size="13" fill="#EEEFF3">tool; add-ons</text>
+<rect x="626" y="122" width="124" height="150" rx="10" fill="#3A2F27"/>
+<text x="640" y="152" font-size="16" font-weight="700" fill="#E0A26B">Agents</text>
+<text x="640" y="180" font-size="13" fill="#EEEFF3">find each other,</text>
+<text x="640" y="200" font-size="13" fill="#EEEFF3">send messages,</text>
+<text x="640" y="220" font-size="13" fill="#EEEFF3">automate work</text>
+<rect x="358" y="290" width="392" height="44" rx="10" fill="#23262F" stroke="#3A3E4A"/>
+<text x="374" y="318" font-size="14" fill="#EEEFF3"><tspan font-weight="700">Dashboard</tspan><tspan fill="#B6B9C3">  set up, connect and manage in the browser</tspan></text>
+<text x="358" y="380" font-size="12" fill="#B6B9C3">Runs on your server, in your cloud account or on a machine at home.</text>
+<path d="M480 122 C 458 92, 700 82, 740 170" fill="none" stroke="none"/>
+<path d="M776 205 L 822 205" fill="none" stroke="#8A8F9C" stroke-width="1.5" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+<text x="826" y="96" font-size="13" font-weight="600" fill="#B6B9C3" letter-spacing="0.08em">YOUR HARDWARE</text>
+<rect x="836" y="120" width="150" height="180" rx="10" fill="#2A2D38" stroke="#3A3E4A"/>
+<rect x="831" y="115" width="150" height="180" rx="10" fill="#2A2D38" stroke="#3A3E4A"/>
+<rect x="826" y="110" width="150" height="180" rx="10" fill="#2A2D38" stroke="#3A3E4A"/>
+<text x="842" y="146" font-size="15" font-weight="700" fill="#EEEFF3">Plain files</text>
+<text x="842" y="174" font-size="13" fill="#B6B9C3">Markdown notes</text>
+<text x="842" y="194" font-size="13" fill="#B6B9C3">you can open in</text>
+<text x="842" y="214" font-size="13" fill="#B6B9C3">any editor, with</text>
+<text x="842" y="234" font-size="13" fill="#B6B9C3">full git history</text>
+<text x="842" y="254" font-size="13" fill="#B6B9C3">and backups</text>
+</svg>
