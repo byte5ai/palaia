@@ -10,6 +10,85 @@ ADRs, phase-gate records, SPEC index docs, CI and release plumbing) are left
 out on purpose; they moved the project forward but nothing in them is a
 capability a user would notice.
 
+## 3.0.0-rc3 — 2026-09-28 (release candidate)
+
+The third release candidate, and the first meant for a live test end to
+end. Everything below is new relative to `rc2`. Still a pre-release — the
+`:beta` channel, same caveats as before.
+
+### Memory & search
+
+- **Temporary memories for one task**: create a memory for a trip, a report
+  or a migration from the Explorer, copy the notes worth keeping into an
+  everyday memory when you are done, then close it. Closing archives its
+  folder; nothing is deleted. The health check lists one that is overdue.
+- **`memory_status`** on every connection: an AI tool can check which
+  memories it may read and write, how many notes they hold and whether
+  search is hybrid or full-text only, instead of guessing that its memory
+  is unavailable.
+- **Is your AI tool actually using it?** The Clients page shows, per tool,
+  how often it looked something up and saved something over the last
+  seven days, and how many of its sessions saved before looking anything
+  up. Only counts are kept, and they survive a restart.
+- Saving a note that closely resembles an existing one now names that note,
+  so a tool can update it instead of keeping two versions.
+- Notes that get recalled often rank a little higher, and that boost fades
+  again when they stop being asked for.
+- Every memory tool now says what it returns and how it fails.
+- Home's activity list shows what changed before you opened the page, not
+  only what happens afterwards.
+
+### Backups
+
+- **Back up on a schedule**: set `interval_hours`, and the hub writes its
+  backup into every configured folder by itself. The new **Backups** screen
+  lists the folders, how each last backup went, and a "Back up now" button.
+- **Push a memory to a git repository** you own, for example a private
+  GitHub repository: set it up on the Backups screen with an access token,
+  which is stored encrypted. Only the notes go there, never keys, and the
+  hub never overwrites commits it did not make.
+
+### Telegram
+
+- The Telegram connector now runs in the hub, and a **Telegram** screen shows
+  each bot's status, where its messages go, and recent messages. Bots,
+  routing rules and send permissions are set up and changed from that
+  screen; changes apply without a restart.
+
+### Installing
+
+- A one-command installer for an existing server (`get-palaia.sh`), and a
+  guided setup an AI assistant can walk you through, grounded in what this
+  release actually ships.
+- The unattended cloud setup file pins the `:beta` image during the release
+  candidates, so pasting it no longer fails on a missing image.
+
+### Marketplace
+
+- Add-ons that could not be installed are no longer offered: the two
+  bundled entries pointed at images that were never published.
+- Servers from the official MCP registry are listed once, not once per
+  published version.
+
+### Fixes
+
+- The hub image now contains `git`. Creating a memory failed in the
+  published image without it.
+- The hub image now ships the embedding backend, so search in the image
+  combines keywords and meaning instead of keywords only.
+- Embeddings kept working when the default model's files changed upstream
+  on 2026-09-27; the vectors are unchanged.
+- The running hub picks up tokens created or revoked with `palaia-hub token`
+  on the command line; a revoked token used to keep working until a restart.
+- Behind the image's web server, redirects and the Claude Desktop bundle's
+  address keep the published port (8420).
+- A token id never starts with a dash, which broke `palaia-hub token revoke`.
+
+### Under the hood
+
+- The web toolchain moved to Node 26, Python formatting is enforced in CI,
+  and the checks `main` requires now always report.
+
 ## 3.0.0-rc2 — 2026-09-20 (release candidate)
 
 The second release candidate. Everything below is new relative to `rc1`;
