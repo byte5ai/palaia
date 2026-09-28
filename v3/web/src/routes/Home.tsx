@@ -12,6 +12,7 @@ import {
 import type {
   FunnelStatus,
   InfoResponse,
+  RecentChange,
   SignInInfo,
   TokenInfo,
   VaultSummary,
@@ -21,7 +22,8 @@ import { docsUrl } from "../lib/docs";
 import { saveBlob } from "../lib/download";
 import { describeApiError } from "../lib/errors";
 import { nextPollDelay, POLL_INITIAL_MS } from "../lib/polling";
-import type { EventStreamState, VaultChangeEntry } from "../lib/events";
+import { buildFeed } from "../lib/activityFeed";
+import type { EventStreamState } from "../lib/events";
 import {
   CheckIcon,
   ClientsIcon,
@@ -61,18 +63,6 @@ function formatAgo(ms: number): string {
   return `${Math.round(seconds / 86400)} d ago`;
 }
 
-const CHANGE_VERB: Record<string, string> = {
-  "memory.entry.created": "Created",
-  "memory.entry.updated": "Updated",
-  "memory.entry.deleted": "Deleted",
-  "memory.entry.moved": "Moved",
-};
-
-function describeChange(entry: VaultChangeEntry): string {
-  const verb = CHANGE_VERB[entry.event] ?? "Changed";
-  const target = entry.permalink ?? entry.data.path ?? "a note";
-  return `${verb} ${target}`;
-}
 
 function Tile({
   label,
@@ -124,6 +114,10 @@ export function Home() {
     null,
   );
   const [funnel, setFunnel] = useState<FunnelStatus | null>(null);
+  // What changed before this page was opened — the live feed alone started
+  // empty on every load, however much had just happened.
+  const [loadedChanges, setLoadedChanges] = useState<RecentChange[]>([]);
+  const feed = buildFeed(stream.recentChanges, loadedChanges);
   const [backingUp, setBackingUp] = useState(false);
   const [backupError, setBackupError] = useState<string | null>(null);
 
@@ -153,6 +147,14 @@ export function Home() {
       })
       .catch(() => {
         // health/mode already reaches the topbar via SSE; this is extra
+      });
+    api
+      .recentActivity()
+      .then((changes) => {
+        if (!cancelled) setLoadedChanges(changes);
+      })
+      .catch(() => {
+        // the live feed still works; the list just starts empty
       });
     api
       .listVaults()
@@ -437,7 +439,7 @@ export function Home() {
             </Badge>
           </CardHead>
           <div className="feed scrollpane" style={{ maxHeight: 320 }}>
-            {stream.recentChanges.length === 0 ? (
+            {feed.length === 0 ? (
               <div style={{ padding: "var(--space-6) var(--space-4)" }}>
                 <EmptyState
                   mark={<ExplorerIcon className="icon--lg" />}
@@ -448,23 +450,20 @@ export function Home() {
                 </EmptyState>
               </div>
             ) : (
-              stream.recentChanges.map((entry, index) => (
-                <div className="feed__item" key={`${entry.ts}-${index}`}>
+              feed.map((item) => (
+                <div className="feed__item" key={item.key}>
                   <span className="feed__mark">
                     <ExplorerIcon className="icon--sm" />
                   </span>
                   <div className="grow">
-                    <p className="feed__text">
-                      {describeChange(entry)}
-                      {entry.vault ? ` in ${entry.vault}` : ""}
-                    </p>
+                    <p className="feed__text">{item.text}</p>
                     <div className="feed__meta">
-                      {entry.data.path ? (
-                        <span className="chip chip--mono">
-                          {entry.data.path}
-                        </span>
+                      {item.path ? (
+                        <span className="chip chip--mono">{item.path}</span>
                       ) : null}
-                      <span className="t-meta">{formatAgo(entry.ts)}</span>
+                      {item.at !== null ? (
+                        <span className="t-meta">{formatAgo(item.at)}</span>
+                      ) : null}
                     </div>
                   </div>
                 </div>

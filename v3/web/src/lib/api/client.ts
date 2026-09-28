@@ -99,6 +99,17 @@ export interface SessionState {
  * `dashboard_api.py`/`auth/models.py` instead of generated; keep them in
  * sync by hand if those models change.
  */
+/** `GET /api/vaults/recent-activity` — `palaia_hub.dashboard_api.
+ * RecentChangeOut`: the most recently changed notes across every vault,
+ * newest first. Seeds Home's activity feed on load. */
+export interface RecentChange {
+  vault: string;
+  permalink: string;
+  title: string;
+  /** ISO 8601, or empty when the note carries no `modified`. */
+  modified: string;
+}
+
 export interface VaultSummary {
   key: string;
   purpose: string | null;
@@ -1144,6 +1155,8 @@ export const api = {
 
   // ---- SPEC-110: wizard + memory explorer ----
   listVaults: () => getJson<VaultSummary[]>("/api/vaults"),
+  recentActivity: (limit = 20) =>
+    getJson<RecentChange[]>(`/api/vaults/recent-activity?limit=${limit}`),
   createVault: (body: {
     key: string;
     purpose?: string;

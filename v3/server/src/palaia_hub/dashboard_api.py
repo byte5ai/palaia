@@ -42,7 +42,7 @@ import dataclasses
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
 from .curator.profile import CURATOR_PROFILE_PATH
@@ -109,6 +109,17 @@ class VaultOut(BaseModel):
     path: str
     writable: bool
     note_count: int
+
+
+class RecentChangeOut(BaseModel):
+    """One recently changed note, for Home's activity feed on first load."""
+
+    vault: str
+    permalink: str
+    title: str
+    #: The note's ``modified`` frontmatter (ISO 8601), or empty when the note
+    #: carries none (a file written outside the engine).
+    modified: str
 
 
 class CreateVaultRequest(BaseModel):
@@ -352,6 +363,32 @@ def build_dashboard_router(
             engine = await registry.get(record.name)
             out.append(_vault_out(record.name, engine.info()))
         return out
+
+    @router.get("/api/vaults/recent-activity", response_model=list[RecentChangeOut])
+    async def recent_activity(
+        limit: int = Query(default=20, ge=1, le=100),
+    ) -> list[RecentChangeOut]:
+        """The most recently changed notes across every vault, newest first.
+
+        Home's activity feed is live (the event stream), so a fresh page load
+        started empty however much had just happened. This fills it on load
+        with what the ``recent_activity`` memory tool already returns per
+        vault; live events keep arriving on top.
+        """
+        changes: list[RecentChangeOut] = []
+        for record in registry.records():
+            engine = await registry.get(record.name)
+            for summary in await EngineVaultService(engine).recent_activity(limit=limit):
+                changes.append(
+                    RecentChangeOut(
+                        vault=record.name,
+                        permalink=summary.permalink,
+                        title=summary.title,
+                        modified=summary.modified,
+                    )
+                )
+        changes.sort(key=lambda change: change.modified, reverse=True)
+        return changes[:limit]
 
     @router.get("/api/vaults/{vault_key}/notes", response_model=list[NoteSummary])
     async def list_notes(vault_key: str, folder: str = "") -> list[NoteSummary]:

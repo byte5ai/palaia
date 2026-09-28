@@ -194,3 +194,36 @@ def test_inbox_status_falls_back_to_registry_backed_vault(tmp_path: Path) -> Non
 
     assert response.status_code == 200
     assert response.json()["count"] == 0
+
+
+def test_recent_activity_lists_changed_notes_across_vaults_newest_first(
+    tmp_path: Path,
+) -> None:
+    """Home's activity feed is live-only; on a fresh load it was empty however
+    much had just happened. This route fills it on load."""
+    client = _client(tmp_path)
+    client.post("/api/vaults", json={"key": "work", "template": True})
+    client.post("/api/vaults", json={"key": "family", "template": True})
+
+    changes = client.get("/api/vaults/recent-activity").json()
+
+    assert {change["vault"] for change in changes} == {"work", "family"}
+    assert {change["title"] for change in changes} == {
+        "Welcome to this vault",
+        "Example project",
+    }
+    stamps = [change["modified"] for change in changes]
+    assert stamps == sorted(stamps, reverse=True)
+    assert all(change["permalink"] for change in changes)
+
+
+def test_recent_activity_honours_the_limit(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    client.post("/api/vaults", json={"key": "work", "template": True})
+
+    assert len(client.get("/api/vaults/recent-activity?limit=1").json()) == 1
+    assert client.get("/api/vaults/recent-activity?limit=0").status_code == 422
+
+
+def test_recent_activity_on_a_hub_without_vaults_is_empty(tmp_path: Path) -> None:
+    assert _client(tmp_path).get("/api/vaults/recent-activity").json() == []
