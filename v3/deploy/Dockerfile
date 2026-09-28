@@ -70,9 +70,9 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/palaia/venv
 COPY v3/pyproject.toml v3/uv.lock ./
 COPY v3/server/pyproject.toml ./server/pyproject.toml
 COPY v3/sdk/pyproject.toml ./sdk/pyproject.toml
-RUN uv sync --frozen --no-dev --no-editable --package palaia-hub --no-install-project
+RUN uv sync --frozen --no-dev --no-editable --package palaia-hub --extra embeddings --no-install-project
 COPY v3/server/ ./server/
-RUN uv sync --frozen --no-dev --no-editable --package palaia-hub
+RUN uv sync --frozen --no-dev --no-editable --package palaia-hub --extra embeddings
 # python-zeroconf for the mDNS announcer (see mdns_announce.py in the
 # runtime stage). Pure Python, no extra system deps — installed straight
 # into the hub's venv but kept out of `palaia-hub`'s own dependency set
