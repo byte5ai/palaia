@@ -244,6 +244,22 @@ export interface IndexStatus {
   embed_summary: string;
 }
 
+/** `GET /api/auth/tokens/usage` — `palaia_hub.auth.routes.ClientUsageOut`
+ * (issue 524): how much one client looked up and saved in its memory. */
+export interface ClientUsage {
+  client_id: string;
+  /** The token's name, or `null` for a connection signed in another way. */
+  name: string | null;
+  profile: string | null;
+  revoked: boolean;
+  lookups: number;
+  saves: number;
+  sessions: number;
+  /** Sessions whose first memory call was a save, not a lookup. */
+  sessions_saved_first: number;
+  days: { day: string; lookups: number; saves: number }[];
+}
+
 export interface TokenInfo {
   id: string;
   name: string;
@@ -385,9 +401,7 @@ export interface NotificationAction {
 }
 
 export type AutomationAction =
-  | MemoryWriteAction
-  | StashSetAction
-  | NotificationAction;
+  MemoryWriteAction | StashSetAction | NotificationAction;
 
 export interface AutomationInfo {
   id: string;
@@ -400,10 +414,7 @@ export interface AutomationInfo {
 }
 
 export type DeliveryStatus =
-  | "pending"
-  | "delivered"
-  | "dead"
-  | "condition_not_matched";
+  "pending" | "delivered" | "dead" | "condition_not_matched";
 
 export interface DeliveryLogEntry {
   id: number;
@@ -432,11 +443,7 @@ export interface NotificationRecord {
  * reason the other opt-in surfaces above are. Mirrors
  * `palaia_hub.market.models.MarketEntry`. */
 export type MarketEntryKind =
-  | "remote"
-  | "container"
-  | "mcpb"
-  | "skill"
-  | "plugin";
+  "remote" | "container" | "mcpb" | "skill" | "plugin";
 export type MarketProvenance = "registry" | "curated" | "manual";
 export type MarketSourceType = "registry_ref" | "image" | "url";
 
@@ -551,11 +558,7 @@ export interface DeregisterResult {
 }
 
 export type MessageType =
-  | "request"
-  | "inform"
-  | "question"
-  | "handoff"
-  | "broadcast";
+  "request" | "inform" | "question" | "handoff" | "broadcast";
 export type Urgency = "low" | "normal" | "high";
 export type DeliveryState = "pending" | "delivered" | "acked";
 
@@ -683,11 +686,7 @@ export interface TelegramBotStatus {
 export type TelegramDestinationKind = "messenger" | "inbox" | "event";
 
 export type TelegramMessageType =
-  | "request"
-  | "inform"
-  | "question"
-  | "handoff"
-  | "broadcast";
+  "request" | "inform" | "question" | "handoff" | "broadcast";
 
 export type TelegramUrgency = "low" | "normal" | "high";
 
@@ -1189,7 +1188,9 @@ export const api = {
     postJson<PromoteResult>(`/api/vaults/${seg(vaultKey)}/promote`, body),
   /** Close a temporary memory; `confirm` must repeat its name. */
   closeVault: (vaultKey: string, confirm: string) =>
-    postJson<CloseVaultResult>(`/api/vaults/${seg(vaultKey)}/close`, { confirm }),
+    postJson<CloseVaultResult>(`/api/vaults/${seg(vaultKey)}/close`, {
+      confirm,
+    }),
   listNotes: (vaultKey: string, folder = "") =>
     getJson<NoteSummary[]>(
       `/api/vaults/${seg(vaultKey)}/notes${queryString({ folder })}`,
@@ -1294,6 +1295,10 @@ export const api = {
 
   // ---- SPEC-108's token surface, consumed here for "connected clients" ----
   listTokens: () => getJson<TokenInfo[]>("/api/auth/tokens"),
+  /** Memory lookups and saves per client over the last `days` days; 404 on
+   * a hub that does not count them. */
+  tokenUsage: (days = 7) =>
+    getJson<ClientUsage[]>(`/api/auth/tokens/usage?days=${days}`),
   createToken: (body: { name: string; profile: string; scopes?: string[] }) =>
     postJson<CreatedToken>("/api/auth/tokens", { scopes: [], ...body }),
   revokeToken: (tokenId: string) =>
@@ -1506,8 +1511,10 @@ export const api = {
     ),
   deleteTelegramRoute: (bot: string, chat: string) =>
     deleteJson<TelegramStatus>(`/api/telegram/routes/${seg(bot)}/${seg(chat)}`),
-  putTelegramGrant: (profile: string, body: { bots: string[]; chats: string[] }) =>
-    putJson<TelegramStatus>(`/api/telegram/grants/${seg(profile)}`, body),
+  putTelegramGrant: (
+    profile: string,
+    body: { bots: string[]; chats: string[] },
+  ) => putJson<TelegramStatus>(`/api/telegram/grants/${seg(profile)}`, body),
   deleteTelegramGrant: (profile: string) =>
     deleteJson<TelegramStatus>(`/api/telegram/grants/${seg(profile)}`),
   /** The write-only secret store (SPEC-302): the one place a credential

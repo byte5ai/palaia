@@ -77,6 +77,7 @@ from .vault_protocol import (
     SimilarNoteHit,
     VaultService,
     VaultServiceError,
+    VaultStatus,
     matched_channels,
 )
 
@@ -239,6 +240,37 @@ class EngineVaultService:
         self._recall = (
             RecallService(index, vault=engine.name, weights=ranking) if index is not None else None
         )
+
+    async def status(self) -> VaultStatus:
+        """Note count from the engine's catalog; search mode from the index's
+        embed status (issue #524). Reads no note and runs no search."""
+        # The manifest and other meta notes live under `meta/`; they are not
+        # the vault's content and search never returns them either.
+        notes = sum(1 for path in self._engine.catalog if not path.startswith("meta/"))
+        if self._index is None:
+            return VaultStatus(
+                notes=notes,
+                search="fulltext",
+                search_note="no search index is open for this vault; keyword matching only",
+            )
+        embeds = await asyncio.to_thread(self._index.embed_status)
+        if not embeds.enabled:
+            return VaultStatus(
+                notes=notes, search="fulltext", search_note="embeddings are switched off"
+            )
+        if not embeds.available:
+            return VaultStatus(
+                notes=notes,
+                search="fulltext",
+                search_note=embeds.reason or "the embedding backend is unavailable",
+            )
+        note = (
+            f"{embeds.pending} passages still being embedded; meaning-based results "
+            "catch up as they finish"
+            if embeds.pending
+            else ""
+        )
+        return VaultStatus(notes=notes, search="hybrid", search_note=note)
 
     async def search(self, query: str, *, limit: int = 10) -> SearchResponse:
         if self._index is not None:

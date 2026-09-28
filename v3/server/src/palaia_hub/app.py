@@ -30,6 +30,7 @@ from .admin_session import (
 )
 from .auth import TokenRecord, TokenStore, build_auth_router, check_gateway_auth_policy
 from .auth.policy import check_hub_mount_auth_policy
+from .auth.usage import ClientUsageStore
 from .automations import (
     AutomationDispatcher,
     AutomationOutbox,
@@ -136,6 +137,7 @@ def create_app(
     automation_store: AutomationStore | None = None,
     automation_outbox: AutomationOutbox | None = None,
     notification_store: NotificationStore | None = None,
+    client_usage: ClientUsageStore | None = None,
     curator_wiring: CuratorWiring | None = None,
     upstream_service: UpstreamService | None = None,
     upstream_monitor: UpstreamHealthMonitor | None = None,
@@ -361,6 +363,10 @@ def create_app(
             :class:`~palaia_hub.automations.AutomationOutbox` at its
             standard path when ``automation_store`` is given and this is
             omitted.
+        client_usage: per-client counts of memory lookups and saves (issue
+            #524). Given, ``GET /api/auth/tokens/usage`` reports them and the
+            store is closed with the app; the counting itself happens in the
+            gateway the caller built with the same store.
         notification_store: the dashboard notification center (SPEC-307).
             Given, mounts ``/api/notifications`` and is what the
             ``notification`` automation action kind writes to. Independent
@@ -691,6 +697,8 @@ def create_app(
                 await upstream_service.aclose()
             if secret_store is not None:
                 secret_store.close()
+            if client_usage is not None:
+                client_usage.close()
             if dynamic_gateway is not None:
                 await dynamic_gateway.aclose()
             # Watchers before indexes: a batch landing during shutdown must
@@ -922,7 +930,9 @@ def create_app(
         )
 
     if token_store is not None:
-        app.include_router(build_auth_router(token_store, dynamic_gateway=dynamic_gateway))
+        app.include_router(
+            build_auth_router(token_store, dynamic_gateway=dynamic_gateway, usage=client_usage)
+        )
 
     # SPEC-203: the OAuth surface goes at the app root (RFC 8414/9728 fix the
     # `.well-known` paths there) and before the dashboard mount, which claims

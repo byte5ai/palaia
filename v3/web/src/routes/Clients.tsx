@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { Button } from "../components/Button";
 import { ConnectPanel } from "../components/ConnectPanel";
 import { SkillPanel } from "../components/SkillPanel";
+import { MemoryUseCard } from "./MemoryUse";
 import { useToast } from "../components/Toast";
 import type { GatewayProfile, TokenInfo } from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
@@ -256,63 +257,68 @@ export function Clients() {
 
   return (
     <section className="connect">
-      <div className="card">
-        <div className="card__head">
-          <h3 className="card__title">clients</h3>
-          <span className="t-meta">
-            {connectedCount === 0
-              ? "none connected"
-              : `${connectedCount} connected`}
-          </span>
-        </div>
-        <div className="clientlist">
-          {CLIENTS.map((client) => {
-            const token = tokenFor(client.name);
-            const Icon = client.icon;
-            return (
-              <button
-                key={client.id}
-                type="button"
-                className={[
-                  "clientrow",
-                  client.id === selectedId ? "clientrow--on" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                onClick={() => setSelectedId(client.id)}
-                aria-current={client.id === selectedId ? "true" : undefined}
-              >
-                <span className="clientrow__mark">
-                  <Icon className="icon--sm" />
-                </span>
-                <span className="grow">
-                  <span className="clientrow__name">{client.name}</span>
-                  <br />
-                  <span className="clientrow__meta">
-                    {token
-                      ? token.last_used_at
-                        ? `connected · ${formatAge(token.last_used_at)}`
-                        : "token issued · waiting for first call"
-                      : client.kind === "guided"
-                        ? "not connected"
-                        : client.kind === "download"
-                          ? "one-click bundle"
-                          : oauthIssuer && client.oauthConnect
-                            ? "ready to connect"
-                            : "not yet available"}
+      <div className="stack">
+        <div className="card">
+          <div className="card__head">
+            <h3 className="card__title">clients</h3>
+            <span className="t-meta">
+              {connectedCount === 0
+                ? "none connected"
+                : `${connectedCount} connected`}
+            </span>
+          </div>
+          <div className="clientlist">
+            {CLIENTS.map((client) => {
+              const token = tokenFor(client.name);
+              const Icon = client.icon;
+              return (
+                <button
+                  key={client.id}
+                  type="button"
+                  className={[
+                    "clientrow",
+                    client.id === selectedId ? "clientrow--on" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  onClick={() => setSelectedId(client.id)}
+                  aria-current={client.id === selectedId ? "true" : undefined}
+                >
+                  <span className="clientrow__mark">
+                    <Icon className="icon--sm" />
                   </span>
-                </span>
-                {token?.last_used_at ? <span className="dot dot--ok" /> : null}
-              </button>
-            );
-          })}
+                  <span className="grow">
+                    <span className="clientrow__name">{client.name}</span>
+                    <br />
+                    <span className="clientrow__meta">
+                      {token
+                        ? token.last_used_at
+                          ? `connected · ${formatAge(token.last_used_at)}`
+                          : "token issued · waiting for first call"
+                        : client.kind === "guided"
+                          ? "not connected"
+                          : client.kind === "download"
+                            ? "one-click bundle"
+                            : oauthIssuer && client.oauthConnect
+                              ? "ready to connect"
+                              : "not yet available"}
+                    </span>
+                  </span>
+                  {token?.last_used_at ? (
+                    <span className="dot dot--ok" />
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+          <div className="card__foot">
+            <span className="t-xs t-subtle">
+              Every client gets its own token and its own tool profile. Revoking
+              one never touches the others.
+            </span>
+          </div>
         </div>
-        <div className="card__foot">
-          <span className="t-xs t-subtle">
-            Every client gets its own token and its own tool profile. Revoking
-            one never touches the others.
-          </span>
-        </div>
+        <MemoryUseCard />
       </div>
       <div className="stack">
         {profiles.length > 1 ? (
