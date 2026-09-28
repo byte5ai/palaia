@@ -109,6 +109,7 @@ function mockApi(overrides: { funnel?: FunnelStatus; signInRequired?: boolean } 
   });
   vi.spyOn(api, "listTokens").mockResolvedValue([A_TOKEN]);
   vi.spyOn(api, "funnelStatus").mockResolvedValue(overrides.funnel ?? NO_FUNNEL);
+  vi.spyOn(api, "recentActivity").mockResolvedValue([]);
 }
 
 afterEach(() => {
@@ -352,5 +353,35 @@ describe("Home — SPEC-604 back up", () => {
     for (const pattern of BANNED) {
       expect(text).not.toMatch(pattern);
     }
+  });
+});
+
+describe("Home — the activity feed is not empty after a reload", () => {
+  it("shows what changed before the page was opened", async () => {
+    mockApi();
+    vi.spyOn(api, "recentActivity").mockResolvedValue([
+      {
+        vault: "work",
+        permalink: "decisions/use-postgres",
+        title: "Use Postgres",
+        modified: new Date(Date.now() - 5 * 60_000).toISOString(),
+      },
+    ]);
+
+    mount();
+
+    expect(
+      await screen.findByText("Changed decisions/use-postgres in work"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("5 min ago")).toBeInTheDocument();
+    expect(screen.queryByText("Nothing yet.")).toBeNull();
+  });
+
+  it("still shows the empty state when nothing has changed yet", async () => {
+    mockApi();
+
+    mount();
+
+    expect(await screen.findByText("Nothing yet.")).toBeInTheDocument();
   });
 });
