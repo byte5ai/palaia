@@ -95,3 +95,11 @@ def test_every_backend_prefix_is_proxied_to_the_hub(path: str) -> None:
 )
 def test_the_dashboard_stays_with_the_static_locations(path: str) -> None:
     assert not _proxied_prefix_pattern().search(path), path
+
+
+def test_the_proxy_forwards_the_host_header_with_its_port() -> None:
+    """``$host`` drops the port; the hub builds redirects and the Claude
+    Desktop bundle's address from this header."""
+    text = TEMPLATE.read_text(encoding="utf-8")
+    assert "proxy_set_header Host $http_host;" in text
+    assert "proxy_set_header Host $host;" not in text
