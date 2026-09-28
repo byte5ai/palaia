@@ -117,6 +117,19 @@ asked for in months slowly gives that place back. Nothing is deleted or
 moved for this: it only nudges the order of close matches, never whether a
 note can be found at all.
 
+## Is your AI tool actually using it?
+
+The dashboard's **Clients** page shows, for each AI tool, how often it
+looked something up and how often it saved something over the last seven
+days. It also says how many of its sessions saved before looking anything
+up, which is the sign of a tool that writes without reading what is
+already there. Only counts are kept, never what was searched for or saved,
+and they survive a restart of the hub.
+
+An AI tool that is unsure whether it can reach your memory can ask the hub
+directly: every connection has a status check that lists the memories it
+may read and write.
+
 ## More than one memory
 
 You can keep separate memories — work and personal is the common split —

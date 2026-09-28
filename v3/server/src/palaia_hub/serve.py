@@ -36,6 +36,7 @@ from fastapi import FastAPI
 
 from .app import create_app
 from .auth import TokenStore
+from .auth.usage import ClientUsageStore
 from .automations import AutomationOutbox, AutomationStore
 from .automations.outbox import OUTBOX_RELATIVE_PATH as AUTOMATIONS_OUTBOX_RELATIVE_PATH
 from .config import HubConfig, palaia_home
@@ -220,6 +221,9 @@ async def build_production_app(
     automation_store = AutomationStore(home)
     automation_outbox = AutomationOutbox((home or palaia_home()) / AUTOMATIONS_OUTBOX_RELATIVE_PATH)
     notification_store = NotificationStore((home or palaia_home()) / NOTIFICATIONS_RELATIVE_PATH)
+    # Issue #524: memory lookups/saves per client, counted by the gateway and
+    # reported on the dashboard's Clients page.
+    client_usage = ClientUsageStore(home or palaia_home())
     event_bus = EventBus()
 
     # SPEC-303: the marketplace — official registry + curated index +
@@ -447,6 +451,7 @@ async def build_production_app(
         directory_service=directory_service,
         messenger_service=messenger_service,
         telegram_service=telegram_runtime.service,
+        client_usage=client_usage,
     )
     upstream_monitor = UpstreamHealthMonitor(
         upstream_service, on_change=dynamic_gateway.refresh_upstreams
@@ -490,6 +495,7 @@ async def build_production_app(
         automation_store=automation_store,
         automation_outbox=automation_outbox,
         notification_store=notification_store,
+        client_usage=client_usage,
         curator_wiring=curator,
         upstream_service=upstream_service,
         upstream_monitor=upstream_monitor,

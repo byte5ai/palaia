@@ -89,6 +89,7 @@ from starlette.routing import Mount, Router
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ..auth.policy import AuthPolicyError, check_gateway_auth_policy
+from ..auth.usage import ClientUsageStore
 from ..directory.service import DirectoryService
 from ..messenger.service import MessengerService
 from ..stash.service import StashService
@@ -265,6 +266,7 @@ class DynamicGateway:
         directory_service: DirectoryService | None = None,
         messenger_service: MessengerService | None = None,
         telegram_service: TelegramService | None = None,
+        client_usage: ClientUsageStore | None = None,
     ) -> None:
         self._config = config
         self._upstream_service = upstream_service
@@ -278,6 +280,9 @@ class DynamicGateway:
         self._directory_service = directory_service
         self._messenger_service = messenger_service
         self._telegram_service = telegram_service
+        #: Issue #524: memory lookups/saves per client, counted on every
+        #: profile this gateway builds (and rebuilds).
+        self._client_usage = client_usage
         self.router = Router(routes=[])
         self._profile_servers: dict[str, FastMCP] = {}
         self._lock = asyncio.Lock()
@@ -775,6 +780,7 @@ class DynamicGateway:
             messenger_service=self._messenger_service,
             telegram_service=self._telegram_service,
             vault_services=self._vault_services,
+            client_usage=self._client_usage,
         )
         # Belt and braces for issue #315: whatever `_build_profile_server`
         # returned (a semantic-routing router included) is what gets served,

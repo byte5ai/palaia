@@ -35,7 +35,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from .models import CreatedToken, TokenInfo
@@ -47,6 +47,7 @@ from .scopes import (
     vault_scope,
 )
 from .store import TokenError, TokenStore
+from .usage import ClientUsageStore
 
 if TYPE_CHECKING:
     # Deferred: only needed for the type hint below, and importing it at
@@ -101,8 +102,41 @@ def _default_scopes_for_profile(dynamic_gateway: DynamicGateway, profile: str) -
     return []
 
 
+class UsageDayOut(BaseModel):
+    """One day of one client's memory use."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    day: str
+    lookups: int
+    saves: int
+
+
+class ClientUsageOut(BaseModel):
+    """One client's memory use over the requested window (issue #524)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    client_id: str
+    #: The token's name, when the id is one of this hub's tokens; ``None``
+    #: for a connection signed in some other way (OAuth) or with no token.
+    name: str | None
+    profile: str | None
+    revoked: bool
+    lookups: int
+    saves: int
+    sessions: int
+    #: Sessions whose first counted call was a save — the agent wrote before
+    #: looking anything up.
+    sessions_saved_first: int
+    days: list[UsageDayOut]
+
+
 def build_auth_router(
-    store: TokenStore, *, dynamic_gateway: DynamicGateway | None = None
+    store: TokenStore,
+    *,
+    dynamic_gateway: DynamicGateway | None = None,
+    usage: ClientUsageStore | None = None,
 ) -> APIRouter:
     """Build the ``/api/auth/tokens`` router, backed by ``store``.
 
@@ -129,6 +163,33 @@ def build_auth_router(
     @router.get("", response_model=list[TokenInfo])
     async def list_tokens() -> list[TokenInfo]:
         return store.list_tokens()
+
+    @router.get("/usage", response_model=list[ClientUsageOut])
+    async def token_usage(days: int = Query(default=7, ge=1, le=90)) -> list[ClientUsageOut]:
+        """How much each client looked up and saved in its memory (issue
+        #524). 404 on a hub that does not count."""
+        if usage is None:
+            raise HTTPException(status_code=404, detail="This hub does not count memory use.")
+        tokens = {info.id: info for info in store.list_tokens()}
+        out: list[ClientUsageOut] = []
+        for entry in usage.summary(days=days):
+            token = tokens.get(entry.client_id)
+            out.append(
+                ClientUsageOut(
+                    client_id=entry.client_id,
+                    name=None if token is None else token.name,
+                    profile=None if token is None else token.profile,
+                    revoked=bool(token is not None and token.revoked_at),
+                    lookups=entry.lookups,
+                    saves=entry.saves,
+                    sessions=entry.sessions,
+                    sessions_saved_first=entry.sessions_saved_first,
+                    days=[
+                        UsageDayOut(day=d.day, lookups=d.lookups, saves=d.saves) for d in entry.days
+                    ],
+                )
+            )
+        return out
 
     @router.delete("/{token_id}", response_model=TokenInfo)
     async def revoke_token(token_id: str) -> TokenInfo:

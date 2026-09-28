@@ -38,6 +38,7 @@ from fastmcp.server.middleware import Middleware
 from fastmcp.utilities.lifespan import combine_lifespans
 from starlette.types import ASGIApp
 
+from ..auth.usage import ClientUsageStore, UsageMiddleware, memory_tool_actions
 from ..directory.service import DirectoryService
 from ..messenger.service import MessengerService
 from ..stash.service import StashService
@@ -157,6 +158,7 @@ def _build_profile_server(
     messenger_service: MessengerService | None = None,
     telegram_service: TelegramService | None = None,
     vault_services: Mapping[str, VaultService] | None = None,
+    client_usage: ClientUsageStore | None = None,
 ) -> FastMCP:
     # SPEC-302 deliverable #6, second half of the fence: `ProfileConfig`
     # already refuses to *hold* upstreams on the curator path, so reaching
@@ -218,6 +220,15 @@ def _build_profile_server(
     # with. Empty (the default) leaves the server exactly as before.
     for item in middleware:
         server.add_middleware(item)
+    # Issue #524: count this profile's memory lookups and saves per client,
+    # so the owner can see whether agents use their memory at all.
+    if client_usage is not None and vault_configs and profile.path != CURATOR_PROFILE_PATH:
+        server.add_middleware(
+            UsageMiddleware(
+                client_usage,
+                memory_tool_actions([(v.namespace, v.tool_renames) for v in vault_configs]),
+            )
+        )
     for vault_config in vault_configs:
         tool_names = resolve_tool_names(vault_config.namespace, vault_config.tool_renames)
         server.mount(
@@ -333,6 +344,7 @@ def build_gateway(
     directory_service: DirectoryService | None = None,
     messenger_service: MessengerService | None = None,
     telegram_service: TelegramService | None = None,
+    client_usage: ClientUsageStore | None = None,
 ) -> GatewayASGI:
     """Build the full gateway from a validated config and its backing services.
 
@@ -401,6 +413,7 @@ def build_gateway(
             messenger_service,
             telegram_service,
             vault_services=vault_services,
+            client_usage=client_usage,
         )
         profile_servers[profile.path] = server
         asgi_app = server.http_app(path="/")
