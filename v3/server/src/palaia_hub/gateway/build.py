@@ -54,6 +54,7 @@ from .messenger_tools import build_messenger_server
 from .naming import resolve_tool_names
 from .semantic_routing import build_semantic_routing_server
 from .stash_tools import build_stash_server
+from .status_tool import register_memory_status
 from .telegram_tools import build_telegram_server
 from .vault_protocol import VaultService
 
@@ -155,6 +156,7 @@ def _build_profile_server(
     directory_service: DirectoryService | None = None,
     messenger_service: MessengerService | None = None,
     telegram_service: TelegramService | None = None,
+    vault_services: Mapping[str, VaultService] | None = None,
 ) -> FastMCP:
     # SPEC-302 deliverable #6, second half of the fence: `ProfileConfig`
     # already refuses to *hold* upstreams on the curator path, so reaching
@@ -222,6 +224,16 @@ def _build_profile_server(
             vault_servers[vault_config.key],
             namespace=vault_config.namespace,
             tool_names=tool_names or None,
+        )
+    # Issue #524: one un-namespaced `memory_status` per profile, so an agent
+    # can check which memories it may use instead of guessing. Not on the
+    # curator profile, whose middleware would refuse it anyway.
+    if vault_configs and profile.path != CURATOR_PROFILE_PATH:
+        register_memory_status(
+            server,
+            profile=profile.path,
+            vaults=vault_configs,
+            services=vault_services or {},
         )
     # `profile.stash` (SPEC-301): mount the stash tool family's five tools
     # (unnamespaced — see gateway/stash_tools.py's module docstring) into
@@ -388,6 +400,7 @@ def build_gateway(
             directory_service,
             messenger_service,
             telegram_service,
+            vault_services=vault_services,
         )
         profile_servers[profile.path] = server
         asgi_app = server.http_app(path="/")

@@ -35,6 +35,12 @@ belong to — `work_memory_recall`, `personal_memory_capture`, and so on. Use th
 names your client actually lists; if two memories are mounted, the prefix is how
 you tell them apart. Every tool description says what that memory is for.
 
+Never decide that the memory is unavailable because a start-up notice looked
+odd or a tool name was not where you expected it. Call `memory_status`: one
+cheap call that lists each memory you are connected to, whether you may read
+and write it, the prefix its tools carry, and how search works. If it answers,
+the memory is reachable. Only a call that actually fails means it is not.
+
 The ones that matter here:
 
 | Tool | Use it for |

@@ -47,7 +47,8 @@ def test_list_profiles_reports_the_live_shape(tmp_path: Path) -> None:
             "telegram": False,
             "hidden_tools": [],
             "semantic_routing": False,
-            "tool_count": 15,
+            # 15 memory-family tools plus the profile's `memory_status` (#524).
+            "tool_count": 16,
             # SPEC-302: external servers this profile mounts — empty until
             # one is connected, which is every hub until someone does.
             "upstreams": [],
@@ -285,7 +286,8 @@ def test_create_profile_with_hidden_tools_hides_them_live_and_persists(
         assert response.status_code == 200
         body = response.json()
         assert body["hidden_tools"] == ["work_memory_delete"]
-        assert body["tool_count"] == 14  # 15 memory-family tools, one hidden
+        # 15 memory-family tools plus `memory_status` (#524), one hidden.
+        assert body["tool_count"] == 15
 
         tools = client.get("/api/gateway/profiles/restricted/tools").json()
         hidden = {t["name"] for t in tools if t["hidden"]}

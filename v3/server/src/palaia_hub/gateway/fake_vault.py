@@ -64,6 +64,7 @@ from .vault_protocol import (
     SimilarNoteHit,
     VaultService,
     VaultServiceError,
+    VaultStatus,
 )
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
@@ -92,6 +93,13 @@ class FakeVaultService:
     def seed(self, note: NoteRecord) -> None:
         """Directly insert a note (fixture setup helper, bypasses write())."""
         self._notes[note.permalink] = note
+
+    async def status(self) -> VaultStatus:
+        return VaultStatus(
+            notes=len(self._notes),
+            search="fulltext",
+            search_note="test double: substring matching only",
+        )
 
     async def search(self, query: str, *, limit: int = 10) -> SearchResponse:
         needle = query.lower()

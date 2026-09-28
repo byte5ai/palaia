@@ -774,6 +774,7 @@ class DynamicGateway:
             directory_service=self._directory_service,
             messenger_service=self._messenger_service,
             telegram_service=self._telegram_service,
+            vault_services=self._vault_services,
         )
         # Belt and braces for issue #315: whatever `_build_profile_server`
         # returned (a semantic-routing router included) is what gets served,

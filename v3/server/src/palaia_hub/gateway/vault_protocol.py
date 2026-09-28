@@ -272,6 +272,19 @@ class ReviewDecideResult(BaseModel):
     status: str
 
 
+class VaultStatus(BaseModel):
+    """What ``memory_status`` reports about one vault (issue #524): enough for
+    an agent to know it can use the vault, without searching it."""
+
+    #: Notes the vault holds.
+    notes: int
+    #: ``hybrid`` (keywords plus meaning) or ``fulltext`` (keywords only).
+    search: Literal["hybrid", "fulltext"]
+    #: Why search is full-text only, or what is still catching up; empty
+    #: when there is nothing to say.
+    search_note: str = ""
+
+
 class VaultServiceError(RuntimeError):
     """Raised by a :class:`VaultService` implementation for a caller-facing failure.
 
@@ -291,6 +304,13 @@ class VaultService(Protocol):
     caller-facing failures (not found, ambiguous, invalid); anything else
     propagates as an unexpected error.
     """
+
+    async def status(self) -> VaultStatus:
+        """How many notes this vault holds and how it searches (issue #524).
+
+        Cheap by contract: no search, no note is read.
+        """
+        ...
 
     async def search(self, query: str, *, limit: int = 10) -> SearchResponse:
         """Return notes matching ``query``, best match first.
