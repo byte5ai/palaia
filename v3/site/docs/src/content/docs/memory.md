@@ -151,25 +151,16 @@ working, and the hub's health check lists it as overdue until you close it.
 Only a temporary memory can be closed this way; your everyday memories are
 never taken away by it.
 
-There is no dashboard screen for this yet. Until there is, these are three
-requests you send from the machine that hosts your hub — here creating a
-memory called `trip` that is due in 14 days, copying two of its notes into
-the memory called `work`, and closing it:
+All of it happens on the dashboard's **Explorer**:
 
-```bash
-curl -X POST http://localhost:8420/api/vaults -H 'Content-Type: application/json' \
-  -d '{"key": "trip", "purpose": "Research for the Lisbon trip", "ephemeral": true, "ttl_days": 14}'
-
-curl -X POST http://localhost:8420/api/vaults/trip/promote -H 'Content-Type: application/json' \
-  -d '{"target": "work", "notes": ["findings/hotels", "findings/transport"]}'
-
-# the name is repeated on purpose, as a confirmation
-curl -X POST http://localhost:8420/api/vaults/trip/close -H 'Content-Type: application/json' \
-  -d '{"confirm": "trip"}'
-```
-
-If your dashboard asks you to sign in, these requests need that signed-in
-session too, so on such a hub this has to wait for the dashboard screen.
+- **Create one** with **New temporary memory** next to the memory picker:
+  a name (it becomes part of the tool names your AI tools see), what it is
+  for, and in how many days it is due.
+- **Pick it** in the memory picker. A banner above its notes says when it
+  is due, or that it is overdue.
+- **Keep notes…** lists its notes: tick the ones worth keeping, choose the
+  everyday memory to copy them into, and copy them.
+- **Close…** asks you to type the memory's name, then closes it.
 
 ## Starting from something, instead of nothing
 

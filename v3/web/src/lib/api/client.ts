@@ -116,6 +116,24 @@ export interface VaultSummary {
   path: string;
   writable: boolean;
   note_count: number;
+  /** A temporary, task-bound memory (issue 168): keep what matters, then
+   * close it. */
+  ephemeral?: boolean;
+  /** When a temporary memory is due to be closed (ISO 8601 UTC), if set. */
+  expires?: string | null;
+}
+
+/** `POST /api/vaults/{key}/promote` — `palaia_hub.dashboard_api.PromoteOut`. */
+export interface PromoteResult {
+  source: string;
+  target: string;
+  promoted: { source: string; permalink: string; path: string }[];
+}
+
+/** `POST /api/vaults/{key}/close` — `palaia_hub.dashboard_api.CloseVaultOut`. */
+export interface CloseVaultResult {
+  key: string;
+  archived_to: string;
 }
 
 export interface NoteSummary {
@@ -1162,7 +1180,16 @@ export const api = {
     purpose?: string;
     path?: string;
     template?: boolean;
+    ephemeral?: boolean;
+    ttl_days?: number;
   }) => postJson<VaultSummary>("/api/vaults", body),
+  /** Copy chosen notes of a vault into another one. 409 names the note
+   * that already exists there; nothing is copied then. */
+  promoteNotes: (vaultKey: string, body: { target: string; notes: string[] }) =>
+    postJson<PromoteResult>(`/api/vaults/${seg(vaultKey)}/promote`, body),
+  /** Close a temporary memory; `confirm` must repeat its name. */
+  closeVault: (vaultKey: string, confirm: string) =>
+    postJson<CloseVaultResult>(`/api/vaults/${seg(vaultKey)}/close`, { confirm }),
   listNotes: (vaultKey: string, folder = "") =>
     getJson<NoteSummary[]>(
       `/api/vaults/${seg(vaultKey)}/notes${queryString({ folder })}`,
