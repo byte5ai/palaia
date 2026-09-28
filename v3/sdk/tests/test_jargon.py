@@ -13,5 +13,10 @@ def test_jargon_word_is_reported() -> None:
     assert find_jargon("The curator files it into the vault later.") == ["vault", "curator"]
 
 
+def test_mcp_is_not_jargon() -> None:
+    # The protocol's public name, shown by every AI tool that connects.
+    assert find_jargon("Any tool that speaks MCP can connect.") == []
+
+
 def test_no_jargon_in_plain_sentence() -> None:
     assert find_jargon("Fetch and convert web pages to text for an agent to read.") == []

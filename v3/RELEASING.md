@@ -107,6 +107,16 @@ not block the cut (issue #388).
       has no suffix. (The root README's `:beta` command and its "use
       `:stable` once final" line are the `rc-channel-note` the step above
       already covers.)
+- [ ] **README and docs describe exactly this release — a hard gate, for
+      every release including release candidates** (owner rule,
+      2026-09-29). For every PR merged since the previous release, check
+      that each user-visible change is covered: the root `README.md` and
+      `v3/README.md`, `v3/docs/how-it-works.md`'s feature list, and a docs
+      site page for every new feature (`v3/site/docs`). Grep both READMEs
+      and the docs for the previous version string. Nothing is cut until
+      this holds; `test_version_drift.py`'s
+      `test_readmes_and_docs_name_this_version` covers the version strings,
+      the rest is this check.
 - [ ] Run `v3/tools/release-dry-run.sh` once more against the bumped
       version — it re-runs the drift test, prints what the release
       workflow would tag/push, confirms the `CHANGELOG.md` section exists,

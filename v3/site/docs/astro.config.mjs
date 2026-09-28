@@ -109,6 +109,7 @@ export default defineConfig({
         { label: "Marketplace & tools", slug: "marketplace" },
         { label: "Profiles & access", slug: "access" },
         { label: "Agents & messages", slug: "agents-messages" },
+        { label: "Telegram", slug: "telegram" },
         { label: "Automations", slug: "automations" },
         { label: "Back up & restore", slug: "backup-restore" },
         { label: "Troubleshooting & FAQ", slug: "troubleshooting" },

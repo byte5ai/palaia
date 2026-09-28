@@ -236,11 +236,13 @@ def test_jargon_in_body_is_reported(tmp_path: Path) -> None:
 def test_jargon_in_description_is_reported(tmp_path: Path) -> None:
     text = GOOD_FRONTMATTER.replace(
         "Says plainly when",
-        "Says, in MCP terms, when",
+        "Says, in vault terms, when",
     )
     _write(tmp_path, "sample-skill", text)
     issues = lint_skills(tmp_path)
-    assert any("description uses in-house word 'mcp'" in issue.message for issue in issues), issues
+    assert any("description uses in-house word 'vault'" in issue.message for issue in issues), (
+        issues
+    )
 
 
 def test_tool_names_and_code_are_not_jargon() -> None:

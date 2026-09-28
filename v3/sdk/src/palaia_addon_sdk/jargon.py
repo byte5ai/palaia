@@ -17,8 +17,11 @@ import re
 #: reading an add-on's manifest or a skill in their own agent. Checked
 #: against user-facing prose only — never against code, tool names, or
 #: identifiers.
+#:
+#: "MCP" is deliberately not on this list (owner decision, 2026-09-28): it is
+#: the protocol's public name, printed by every AI tool that connects to
+#: palaia, not a word only this repository uses.
 JARGON: tuple[str, ...] = (
-    "mcp",
     "vault",
     "permalink",
     "frontmatter",
