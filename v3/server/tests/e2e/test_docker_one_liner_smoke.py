@@ -340,3 +340,19 @@ def test_the_image_ships_the_embedding_backend(running_container: str) -> None:
         timeout=60,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_a_redirect_from_the_hub_keeps_the_published_port(running_container: str) -> None:
+    """``/mcp/<profile>`` without the trailing slash redirects to the slash
+    form. nginx used to forward ``Host`` without its port, so the redirect
+    pointed at port 80 on a hub published on any other port, and an MCP
+    client configured without the slash could not connect."""
+    resp = httpx.post(
+        f"http://127.0.0.1:{HOST_PORT}/mcp/default",
+        json={},
+        follow_redirects=False,
+        timeout=10.0,
+    )
+    assert resp.status_code in (307, 308), resp.status_code
+    location = resp.headers["location"]
+    assert location.startswith(f"http://127.0.0.1:{HOST_PORT}/mcp/default/"), location
