@@ -8,7 +8,8 @@ to understand it before they trust it.
 ## What you get, in detail
 
 Grouped by what it does for you, not by what module it lives in. Every item below
-ships in `3.0.0-rc1`; the full list is in [`CHANGELOG.md`](../CHANGELOG.md).
+ships in `3.0.0-rc3` unless it says it is planned; the full list is in
+[`CHANGELOG.md`](../CHANGELOG.md).
 
 ### Memory that outlives the session
 
@@ -28,12 +29,24 @@ ships in `3.0.0-rc1`; the full list is in [`CHANGELOG.md`](../CHANGELOG.md).
   once the local embedding model is cached, it keeps working with the network off.
   (Filing what an agent learned is the other half, and that one *does* use a model:
   the curator, asynchronously, off the request path.)
+- **Temporary memories for one task.** Give a trip, a report or a migration its
+  own memory, copy the notes worth keeping into an everyday one when it is done,
+  then close it; closing archives the folder, nothing is deleted.
+- **A similar-note warning.** Saving a note that closely resembles an existing one
+  names that note, so an agent updates it instead of keeping two versions.
 - **An inbox and a curator.** Agents drop what they learn mid-work without deciding
   where it belongs; an asynchronous curator files, merges and de-duplicates it.
   Adding knowledge is autonomous; rewriting or retiring existing notes only ever
   becomes a proposal you approve.
 - **Skills that teach your tools to save and look things up on their own**, so you
   stop having to ask every time.
+- **A status check on every connection** (`memory_status`): an agent can see which
+  memories it may read and write, and how search works, instead of guessing that
+  its memory is unavailable.
+- **Know whether your tools actually use it.** The Clients page shows, per tool,
+  how often it looked something up and saved something over the last seven days,
+  and flags a tool that saves without looking anything up first. Only counts are
+  kept.
 
 ### Connect every AI tool, once
 
@@ -54,10 +67,13 @@ ships in `3.0.0-rc1`; the full list is in [`CHANGELOG.md`](../CHANGELOG.md).
 
 ### A marketplace, and automations
 
-- **Install a tool once; every connected AI has it.** A curated add-on index and a
-  one-click marketplace in the dashboard, plus support for any
-  [external MCP server](external-servers.md) with its credentials in an encrypted
-  store: entered once, never again in a client config file.
+- **Install a tool once; every connected AI has it.** A one-click marketplace in
+  the dashboard that lists the official MCP registry and add-ons you add by hand,
+  plus support for any [external MCP server](external-servers.md) with its
+  credentials in an encrypted store: entered once, never again in a client config
+  file. A curated add-on index from palaia is planned
+  ([#409](https://github.com/byte5ai/palaia/issues/409)), and so are palaia's own
+  add-ons ([#512](https://github.com/byte5ai/palaia/issues/512)).
 - **An event bus with a rules editor.** A new note, a capture, a message, an idle
   session: hook any of it to webhooks, notifications, tool runs or memory writes
   ([events](events.md)). Recall is not on the bus — retrieval happens when an agent
@@ -69,6 +85,10 @@ ships in `3.0.0-rc1`; the full list is in [`CHANGELOG.md`](../CHANGELOG.md).
 
 - **A session directory.** One AI session can discover another already working on
   something related, by what it's doing, never by a hardcoded name.
+- **Telegram, managed by the hub.** Messages to your bots are routed per bot and
+  chat to an agent session, a note in memory, or an event that can start an
+  automation; agents reply only where you allowed it. Bots, routing and send
+  permissions are set up on the dashboard ([Telegram](telegram.md)).
 - **Structured messages between sessions**, including a `handoff` type that carries a
   reference *into memory* instead of duplicating the text ([messenger](messenger.md)).
 - **Skills that make tools check their inbox and hand off work unprompted**, plus a
@@ -80,7 +100,14 @@ ships in `3.0.0-rc1`; the full list is in [`CHANGELOG.md`](../CHANGELOG.md).
   marketplace, profile editor, health. Three in-chat MCP Apps (hub status, recall
   explorer, review queue) cover the everyday checks without a browser tab.
 - **One-click backup** of the entire hub home, and a documented offline restore
-  ([backup & restore](backup-restore.md)).
+  ([backup & restore](backup-restore.md)). Backups can also run **on a schedule**
+  into folders you name, shown on the Backups screen, and a memory can be
+  **pushed to a git repository** you own (notes only, never keys).
+- **A health check for the whole hub.** `palaia-hub doctor` checks memories,
+  search, connected tools, configuration and storage, says what to do about each
+  finding, and with `--fix` performs the repairs that cannot lose anything.
+- **Smart Nudges.** Short, rule-based hints attached to a memory tool's answer when
+  something deserves attention, for example a search that ran on keywords only.
 - **Release channels** (`stable` / `beta` / `edge`) and an in-dashboard update check
   ([updates](../deploy/README.md#updates-spec-501)).
 - **A hardened container.** Non-root, all capabilities dropped, read-only filesystem,

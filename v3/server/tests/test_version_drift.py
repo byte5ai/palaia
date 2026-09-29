@@ -297,6 +297,35 @@ def test_release_candidate_wording_is_gone_once_version_is_final() -> None:
         )
 
 
+#: Places in the READMEs and docs that name the version this repository
+#: currently ships, as (path relative to v3/, regex whose group 1 is that
+#: version). README and docs must be current before any release (owner rule,
+#: 2026-09-29): 3.0.0-rc3 was cut with the root README still naming rc2 and
+#: how-it-works still naming rc1.
+_DOCS_NAMING_THE_CURRENT_VERSION: tuple[tuple[str, str], ...] = (
+    ("../README.md", r"release candidate \(`([^`]+)`\)"),
+    ("README.md", r"release candidate \(`([^`]+)`"),
+    ("docs/how-it-works.md", r"ships in `([^`]+)`"),
+)
+
+
+@pytest.mark.parametrize(("relative", "pattern"), _DOCS_NAMING_THE_CURRENT_VERSION)
+def test_readmes_and_docs_name_this_version(relative: str, pattern: str) -> None:
+    version = _read_version_file()
+    text = (V3_ROOT / relative).read_text(encoding="utf-8")
+    match = re.search(pattern, text)
+    if match is None:
+        if "-" not in version:
+            # A final release drops the "release candidate" wording entirely
+            # (test_release_candidate_wording_is_gone_once_version_is_final).
+            pytest.skip(f"{relative} names no release candidate for the final {version!r}")
+        raise AssertionError(f"{relative} no longer names the current version ({pattern!r})")
+    assert match.group(1) == version, (
+        f"{relative} names {match.group(1)!r}, but v3/VERSION is {version!r} — update it "
+        "before the release (RELEASING.md §3)"
+    )
+
+
 def test_dry_run_script_never_hardcodes_a_release_version() -> None:
     """`tools/release-dry-run.sh` reads `VERSION` and must never restate a
     version in its own output — its closing line used to name `3.0.0-rc1`
