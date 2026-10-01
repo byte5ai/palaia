@@ -607,7 +607,7 @@ use. Detailed specs + ADRs are written per phase, not upfront.
 | **2** | Remote & identity | OAuth 2.1 server (CIMD, resource metadata); GitHub/Google/OIDC sign-in; claude.ai + ChatGPT + mobile connectors; exposure wizard + tunnel add-ons; stash; event bus + hooks v1; auto-capture skills; first MCP Apps (review queue, recall explorer, hub status — §5.7) | **Phone Claude remembers what desktop Codex learned** |
 | **3** | The hub | Gateway aggregation (external servers + registry browse); per-client tool profiles; marketplace v1 (curated index, one-click install, config UIs) incl. marketplace MCP App; MCPB/one-click client bundles; automations editor | **Install a tool once, every AI has it** |
 | **4** | The team | Session directory + messenger; structured-messaging skills; message observability incl. session-monitor MCP App; add-on SDK + community submissions | **Two agents on different providers hand off work through palaia** |
-| **5** | 3.0 launch | App-store/appliance distribution; hardening + external security review; docs site + onboarding page; v2 sunset messaging | **A non-developer completes install → first shared memory unaided** |
+| **5** | 3.0 launch | App-store/appliance distribution; hardening; docs site + onboarding page; v2 sunset messaging | **A non-developer completes install → first shared memory unaided** |
 
 ## 13. Success Metrics
 
@@ -624,7 +624,7 @@ use. Detailed specs + ADRs are written per phase, not upfront.
 |---|---|
 | MCP spec churn (fast-moving standard) | Isolate protocol behind the gateway; track spec via conformance tests; FastMCP absorbs much of it |
 | Client policy shifts (connector rules, plan gating by Anthropic/OpenAI) | Multiple integration paths per client; research dossier kept current; never depend on one client's policy |
-| Public endpoint security | Secure-by-default posture (§10), tunnel-first remote story, external review before 3.0 |
+| Public endpoint security | Secure-by-default posture (§10), tunnel-first remote story |
 | Scope creep (this plan is big) | Phase exit criteria are binding; MVP = memory; everything else stacks on top |
 | AGPL contamination from basic-memory | ADR-002 hard rule; contributor guidance; importer instead of dependency |
 | Tool-context bloat (agents drowning in tools) | Per-client profiles by default; curated core set; measure tool-call success |

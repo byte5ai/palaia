@@ -23,11 +23,10 @@ product until then; v2 hotfixes happen on the `v2-maintenance` branch.
 | [docs/design/](docs/design/) | UX north star: design system, principles, and HTML mockups of the key screens |
 | [docs/external-servers.md](docs/external-servers.md) | Connecting other people's MCP servers, and where their credentials live |
 | [SECURITY.md](SECURITY.md) | **Supported versions, and how to report a vulnerability** |
-| [docs/security/](docs/security/) | Threat model (as built), the brief for an external review, and the dependency policy |
+| [docs/security/](docs/security/) | Threat model (as built) and the dependency policy |
 | [VERSION](VERSION) / [CHANGELOG.md](CHANGELOG.md) | The current release candidate's version, and what's in it, by capability |
 | [RELEASING.md](RELEASING.md) | The ordered checklist from "the gate is held" to a tagged, published `3.0.0` |
 | [docs/client-matrix-results.md](docs/client-matrix-results.md) | Real, run evidence for every phase gate, including the Phase-5 RC (§9) |
-| [docs/usability-test-protocol.md](docs/usability-test-protocol.md) | The owner's script for the one thing this repository's own tests cannot run: a real non-developer, unaided |
 
 ## Dev setup
 

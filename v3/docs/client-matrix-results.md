@@ -592,8 +592,8 @@ was not re-run because its paragraphs did not change.
 
 The Phase-5 exit criterion is **a non-developer completes install → first
 shared memory unaided**. The literal criterion needs a real person this
-sandbox does not have — `v3/docs/usability-test-protocol.md` is the
-owner's script for that session. This section is everything scriptable:
+sandbox does not have; the owner withdrew that human session on
+2026-10-02 (`v3/RELEASING.md` §1). This section is everything scriptable:
 the funnel's mechanical twin, timed, plus what could and could not be
 checked about the shipped Docker one-liner in this environment.
 

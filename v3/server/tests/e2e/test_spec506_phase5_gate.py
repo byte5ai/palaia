@@ -2,8 +2,8 @@
 "a non-developer completes install -> first shared memory unaided".
 
 The literal criterion needs a real non-developer this sandbox does not
-have (`v3/docs/usability-test-protocol.md` is the owner's script for that
-real session). This test is everything scriptable: one real hub subprocess
+have (that human session was withdrawn on 2026-10-02 — `v3/RELEASING.md`
+§1). This test is everything scriptable: one real hub subprocess
 against a genuinely empty home directory, walked through the *same* steps
 SPEC-504's own funnel test (`test_s7_spec504_first_run_funnel.py`) already
 proved are real — fresh home -> `GET /api/info` -> `POST /api/vaults` (the

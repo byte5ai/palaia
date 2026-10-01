@@ -5,7 +5,7 @@ repository. palaia v2 (the repository root) is on a maintenance branch with
 its own, narrower promise — see the note at the end.
 
 If you are reviewing the system rather than reporting a single issue, start
-from [docs/security/external-review-brief.md](docs/security/external-review-brief.md).
+from [docs/security/threat-model.md](docs/security/threat-model.md).
 
 ## Supported versions
 
