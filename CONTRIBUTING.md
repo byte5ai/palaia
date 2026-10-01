@@ -167,6 +167,12 @@ automatically (`pull_request_target` runs the base branch's workflow, and this o
 lives only on `main`): add `v2` by hand, or run `track-label.yml` manually to sweep
 everything still unlabelled.
 
+Every issue also carries exactly one type label: `bug`, `enhancement`,
+`documentation` or `chore`. The issue templates set it; set it by hand on an issue
+opened any other way. Labels such as `epic`, `security`, `ci`, `release-blocker`,
+`intel-review` and `priority:*` qualify the type, they never replace it. PRs need no
+type label — their title prefix (`feat:`, `fix:`, `docs:`, `chore:`, …) says it.
+
 ## Architecture
 
 How v3 works — components, data flows, and the evidence behind its claims — is in
