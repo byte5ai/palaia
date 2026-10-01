@@ -74,7 +74,7 @@ module.exports = async ({ github, context, core }) => {
     await label(github, core, owner, repo, item);
     return;
   }
-  // schedule / workflow_dispatch: sweep everything still missing a track,
+  // workflow_dispatch: sweep everything still missing a track,
   // which includes PRs into v2-maintenance (pull_request_target runs the
   // workflow from the base branch, and this file only lives on main).
   const items = await github.paginate(github.rest.issues.listForRepo, {
