@@ -11,11 +11,11 @@ on:
   # .github/scripts and never runs code from the PR.
   pull_request_target:
     types: [opened, reopened, ready_for_review]
-  # Catch-all: PRs into v2-maintenance never trigger pull_request_target from
-  # this file (it runs the workflow of the base branch), and anything opened
-  # while the workflow was down is picked up too.
-  schedule:
-    - cron: '17 4 * * *'
+  # Manual sweep over everything still missing a track: PRs into
+  # v2-maintenance never trigger pull_request_target from this file (it runs
+  # the workflow of the base branch), and anything opened while the workflow
+  # was down is picked up too. No scheduled runs in this repo — dispatch it by
+  # hand when needed.
   workflow_dispatch:
 
 permissions:
