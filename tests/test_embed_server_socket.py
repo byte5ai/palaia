@@ -26,6 +26,25 @@ from palaia.embed_server import (
 from palaia.store import Store
 
 
+def _wait_for_server(sock_path, timeout=5.0):
+    """Block until the server accepts connections on sock_path.
+
+    The socket file appears at bind(), before listen() — waiting for the file
+    alone races and can yield ECONNREFUSED (#536). Probe with a real connect().
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            probe.connect(str(sock_path))
+            return
+        except (FileNotFoundError, ConnectionRefusedError):
+            time.sleep(0.05)
+        finally:
+            probe.close()
+    raise RuntimeError("Server did not start in time")
+
+
 @pytest.fixture
 def palaia_root(tmp_path):
     """Create a minimal .palaia directory with BM25-only config."""
@@ -196,14 +215,8 @@ class TestSocketTransport:
             daemon=True,
         )
         t.start()
-        # Wait for socket to appear
-        sock_path = get_socket_path(palaia_root)
-        for _ in range(50):
-            if sock_path.exists():
-                time.sleep(0.05)  # extra settle time
-                return t
-            time.sleep(0.05)
-        raise RuntimeError("Server did not start in time")
+        _wait_for_server(get_socket_path(palaia_root))
+        return t
 
     def _send_recv(self, sock_path, request, timeout=2.0):
         """Send a request to the socket server and return response."""
@@ -269,8 +282,13 @@ class TestSocketTransport:
         pid_path = get_pid_path(palaia_root)
         self._start_server_thread(server, palaia_root)
         try:
-            assert pid_path.exists()
-            pid = int(pid_path.read_text().strip())
+            # run_socket writes the PID file after listen(), so it can lag
+            # behind the first accepted connection.
+            deadline = time.monotonic() + 5.0
+            pid = _read_pid_file(pid_path)
+            while pid is None and time.monotonic() < deadline:
+                time.sleep(0.01)
+                pid = _read_pid_file(pid_path)
             assert pid == os.getpid()
         finally:
             server._running = False
@@ -325,10 +343,7 @@ class TestEmbedServerClient:
             daemon=True,
         )
         t.start()
-        for _ in range(50):
-            if sock_path.exists():
-                break
-            time.sleep(0.05)
+        _wait_for_server(sock_path)
 
         try:
             client = EmbedServerClient(sock_path)
@@ -348,10 +363,7 @@ class TestEmbedServerClient:
             daemon=True,
         )
         t.start()
-        for _ in range(50):
-            if sock_path.exists():
-                break
-            time.sleep(0.05)
+        _wait_for_server(sock_path)
 
         try:
             with EmbedServerClient(sock_path) as client:
@@ -372,10 +384,7 @@ class TestEmbedServerClient:
             daemon=True,
         )
         t.start()
-        for _ in range(50):
-            if sock_path.exists():
-                break
-            time.sleep(0.05)
+        _wait_for_server(sock_path)
 
         try:
             with EmbedServerClient(sock_path) as client:
@@ -395,10 +404,7 @@ class TestEmbedServerClient:
             daemon=True,
         )
         t.start()
-        for _ in range(50):
-            if sock_path.exists():
-                break
-            time.sleep(0.05)
+        _wait_for_server(sock_path)
 
         try:
             with EmbedServerClient(sock_path) as client:
@@ -478,10 +484,7 @@ class TestIdleTimeout:
             daemon=True,
         )
         t.start()
-        for _ in range(50):
-            if sock_path.exists():
-                break
-            time.sleep(0.05)
+        _wait_for_server(sock_path)
 
         # Wait for idle timeout
         t.join(timeout=5)
@@ -497,10 +500,7 @@ class TestIdleTimeout:
             daemon=True,
         )
         t.start()
-        for _ in range(50):
-            if sock_path.exists():
-                break
-            time.sleep(0.05)
+        _wait_for_server(sock_path)
 
         try:
             # Send pings to keep alive
