@@ -55,6 +55,11 @@ It is not a field on the result itself — `NoteRecord` is also what
 `read`/`edit`/`move` return, and an always-present empty list there would be
 exactly the per-call cost this design avoids.
 
+`read` hands one more signal in the same way: what the vault doctor found
+about the note just read (§4.2), from `VaultService.note_findings`. That one
+*is* free at request time — an in-memory lookup — because the scan behind it
+ran once in the background at hub start.
+
 ## 3. The rate policy
 
 `NudgeEngine` (`palaia_hub.nudges.service`) enforces three things:
@@ -88,6 +93,7 @@ call. Each text says what happened, then names the fix.
 | `capture.duplicate` | a capture was deduplicated | edit the named note instead of recapturing |
 | `read.unresolved_values` | a note's value references did not resolve | what you read is missing current values |
 | `write.similar_note` / `capture.similar_note` | the note just stored closely resembles an existing one (§4.1) | possible overlap or contradiction with the named note(s); edit that note instead of keeping two versions |
+| `read.doctor_finding` | the vault doctor flagged the note just read (§4.2) | a link uses a renamed note's old name (with its line), another note claims the same permalink, or `edit` will refuse the note because it is not UTF-8 |
 
 ### 4.1 The similar-note check
 
@@ -143,18 +149,46 @@ words) score 0.8+ without contradicting anything — which is why the text
 says *possible* overlap or contradiction and leaves the judgment to the
 agent. If you change the embedding model, re-check the threshold.
 
+### 4.2 The doctor-finding check
+
+Issue #440. The vault doctor (`palaia_hub.vault.doctor`) finds problems no
+note's text shows: a link that uses a renamed note's old name reads like any
+other link, and a note that `edit` will refuse looks editable until the edit
+fails. Running `verify()` per call would walk the whole vault each time, so
+the signal is a cache:
+
+- **One scan, in the background, at hub start.** `serve.py` calls
+  `VaultIndex.start_findings_scan()` after opening each index. It runs the
+  doctor's file-side checks — not the index drift check, whose findings are
+  about the index rather than a note — keeps the findings that name a note,
+  by path, and raises no `doctor.finding` events: this is a cache for the
+  nudge layer, not a doctor run the owner asked for. A doctor, CLI or test
+  that opens an index does not scan.
+- **The table only ever loses findings.** Every change event drops the
+  findings of each path it touches (and, for a rename, every rewritten
+  path); a delete or rename also drops all `permalink-duplicate` findings,
+  because removing a claimant is how a duplicate gets resolved and the
+  finding sits on a path the event need not name. A note that changes
+  *while* the scan runs is left out of its result. So what `read` reports
+  was true of the note as it now is. The other direction is not covered: a
+  problem that appears after start-up is not reported until the hub
+  restarts — `palaia-hub doctor` remains the complete check.
+- **Only findings the agent can act on**, in the order one is picked when a
+  note has several: `not-utf8` (`edit` will refuse the note),
+  `permalink-duplicate` (reading or linking by it can reach either note; the
+  doctor files it under one claimant, the cache under each) and
+  `partial-rename` (fix the link, located by its line). A `dangling-link` is a legal forward reference
+  (format spec §5.2), and the rest — git locks, repository size, temp files
+  — belong to the owner and reach the owner through the guided doctor.
+
 ## 5. Not built yet
 
-Three detectors named in the issue need a signal that does not reach a tool
+Two detectors named in the issue need a signal that does not reach a tool
 result today, and are left out rather than faked:
 
 - **a write landed in a vault whose index rebuild is pending** — "just-saved
   notes may not be findable for a moment";
-- **token near expiry / profile changed since the token was minted**;
-- **vault doctor `verify` findings present** — `verify()` is an engine-side
-  call behind the dashboard and the reindex/repair path
-  (`palaia_hub.vault.doctor`); no memory tool returns its findings, so there
-  is no result for a nudge to ride along on yet.
+- **token near expiry / profile changed since the token was minted**.
 
 Each is one field on `VaultSignals` and one function in `detectors.py`, not
 a change to this mechanism.

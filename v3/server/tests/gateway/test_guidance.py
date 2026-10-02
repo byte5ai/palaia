@@ -27,6 +27,7 @@ from palaia_hub.gateway.memory_tools import DeleteResult, SearchResult, build_va
 from palaia_hub.gateway.vault_protocol import (
     CaptureResult,
     InboxStatusResult,
+    NoteFindingHit,
     NoteRecord,
     SearchHit,
     SimilarNoteHit,
@@ -102,6 +103,16 @@ def test_similar_notes_are_handed_in_not_read_off_the_result() -> None:
     assert [n.permalink for n in signals.similar_notes] == ["ops/health", "ops/status"]
     assert signals.similar_notes[0].title == "Health"
     assert signals_for("write", note).similar_notes == ()
+
+
+def test_note_findings_are_handed_in_not_read_off_the_result() -> None:
+    """Issue #440: same reasoning as similar notes — ``read`` passes the
+    doctor's findings in, so no empty field rides on every note payload."""
+    note = NoteRecord(permalink="ops/a", title="A")
+    found = [NoteFindingHit(code="partial-rename", line=4)]
+    signals = signals_for("read", note, note_findings=found)
+    assert [(f.code, f.line) for f in signals.note_findings] == [("partial-rename", 4)]
+    assert signals_for("read", note).note_findings == ()
 
 
 def test_a_search_result_is_matched_structurally_by_its_hit_list() -> None:
@@ -348,3 +359,60 @@ async def test_a_failing_similarity_check_never_fails_the_write(
     assert result.structured_content is not None
     assert "guidance" not in result.structured_content
     assert (await service.read("fresh")).body == "Something new."
+
+
+# --- issue #440: a read note the vault doctor flagged -------------------------
+
+
+@pytest.mark.anyio
+async def test_reading_a_note_with_a_renamed_link_says_where(
+    vault_config: VaultMountConfig,
+) -> None:
+    service = FakeVaultService()
+    service.seed(NoteRecord(permalink="ops/a", title="A", body="See [[Old Name]].\n"))
+    service.findings["ops/a"] = [NoteFindingHit(code="partial-rename", line=6)]
+    server = build_vault_server(vault_config, service)
+    async with Client(server) as client:
+        result = await client.call_tool("read", {"permalink": "ops/a"})
+    assert result.is_error is False
+    assert result.structured_content is not None
+    assert result.structured_content["body"] == "See [[Old Name]].\n"
+    (line,) = result.structured_content["guidance"]
+    assert "line 6" in line
+    # The payload stays the note: no findings field leaks into it.
+    assert "note_findings" not in result.structured_content
+
+
+@pytest.mark.anyio
+async def test_reading_a_note_without_findings_carries_no_guidance(
+    vault_config: VaultMountConfig,
+) -> None:
+    service = FakeVaultService()
+    service.seed(NoteRecord(permalink="ops/a", title="A", body="Fine.\n"))
+    server = build_vault_server(vault_config, service)
+    async with Client(server) as client:
+        result = await client.call_tool("read", {"permalink": "ops/a"})
+    assert result.structured_content is not None
+    assert "guidance" not in result.structured_content
+
+
+class _BrokenFindingsVault(FakeVaultService):
+    """A service that breaks the protocol's "never raise" promise."""
+
+    async def note_findings(self, permalink: str) -> list[NoteFindingHit]:
+        raise VaultServiceError("findings cache exploded")
+
+
+@pytest.mark.anyio
+async def test_a_failing_findings_lookup_never_fails_the_read(
+    vault_config: VaultMountConfig,
+) -> None:
+    service = _BrokenFindingsVault()
+    service.seed(NoteRecord(permalink="ops/a", title="A", body="Fine.\n"))
+    server = build_vault_server(vault_config, service)
+    async with Client(server) as client:
+        result = await client.call_tool("read", {"permalink": "ops/a"})
+    assert result.is_error is False
+    assert result.structured_content is not None
+    assert result.structured_content["body"] == "Fine.\n"
+    assert "guidance" not in result.structured_content

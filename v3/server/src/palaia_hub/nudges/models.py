@@ -111,6 +111,21 @@ class SimilarNote:
 
 
 @dataclass(frozen=True)
+class NoteFinding:
+    """A vault doctor finding about one note (issue #440).
+
+    A plain copy of the two fields a detector needs from
+    :class:`palaia_hub.vault.doctor.Finding` — that class is not imported
+    here, so this package stays free of vault imports. ``code`` is the
+    doctor's finding code (``"partial-rename"``); ``line`` is the line the
+    finding points at, when it points at one.
+    """
+
+    code: str
+    line: int | None = None
+
+
+@dataclass(frozen=True)
 class VaultSignals:
     """The deterministic facts about one completed vault operation.
 
@@ -165,6 +180,13 @@ class VaultSignals:
     #: when vectors are available — see ``docs/nudges.md`` §4.
     similar_notes: tuple[SimilarNote, ...] = field(default_factory=tuple)
 
+    #: What the hub's last vault doctor check found about the note this
+    #: result is about (issue #440). Free at request time: the index runs
+    #: ``verify()`` once in the background at hub start and keeps the
+    #: per-note findings, dropping a note's entries when it changes — see
+    #: ``docs/nudges.md`` §4.2.
+    note_findings: tuple[NoteFinding, ...] = field(default_factory=tuple)
+
 
 __all__ = [
     "DEFAULT_COOLDOWN_SECONDS",
@@ -172,6 +194,7 @@ __all__ = [
     "INBOX_BACKLOG_THRESHOLD",
     "MAX_NUDGES_PER_RESULT",
     "MAX_NUDGE_CHARS",
+    "NoteFinding",
     "Nudge",
     "SimilarNote",
     "VaultSignals",

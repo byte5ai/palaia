@@ -67,6 +67,7 @@ from . import inbox as inbox_shape
 from .vault_protocol import (
     CaptureResult,
     InboxStatusResult,
+    NoteFindingHit,
     NoteRecord,
     NoteSummary,
     ProposalSummary,
@@ -603,6 +604,22 @@ class EngineVaultService:
             )
             for note in found
             if note.similarity >= threshold
+        ]
+
+    async def note_findings(self, permalink: str) -> list[NoteFindingHit]:
+        """The index's cached doctor findings for one note (issue #440).
+
+        An in-memory lookup, never a scan: without an index nothing was
+        scanned, and the answer is ``[]``.
+        """
+        if self._index is None:
+            return []
+        path = self._engine.path_for_permalink(permalink)
+        if path is None:
+            return []
+        return [
+            NoteFindingHit(code=finding.code, line=finding.line)
+            for finding in self._index.note_findings(path)
         ]
 
     def _settle_background(self, check: asyncio.Future[Any]) -> None:
