@@ -8,7 +8,7 @@ to understand it before they trust it.
 ## What you get, in detail
 
 Grouped by what it does for you, not by what module it lives in. Every item below
-ships in `3.0.0-rc3` unless it says it is planned; the full list is in
+ships in `3.0.0-rc4` unless it says it is planned; the full list is in
 [`CHANGELOG.md`](../CHANGELOG.md).
 
 ### Memory that outlives the session
@@ -107,7 +107,10 @@ ships in `3.0.0-rc3` unless it says it is planned; the full list is in
   search, connected tools, configuration and storage, says what to do about each
   finding, and with `--fix` performs the repairs that cannot lose anything.
 - **Smart Nudges.** Short, rule-based hints attached to a memory tool's answer when
-  something deserves attention, for example a search that ran on keywords only.
+  something deserves attention, for example a search that ran on keywords only, a
+  new note that resembles an existing one, or a note the hub's start-up check found
+  a problem with (a link to a renamed note, a duplicate address, a file `edit` cannot
+  change).
 - **Release channels** (`stable` / `beta` / `edge`) and an in-dashboard update check
   ([updates](../deploy/README.md#updates-spec-501)).
 - **A hardened container.** Non-root, all capabilities dropped, read-only filesystem,

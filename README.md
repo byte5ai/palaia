@@ -41,10 +41,9 @@ Think Home Assistant, for your AI tools.
 </p>
 
 > [!NOTE]
-> **palaia v3 is a release candidate (`3.0.0-rc3`).** Everything below works and is
-> tested, but it has not had an outside security review yet. Try it, keep backups, and
-> [tell us what breaks](https://github.com/byte5ai/palaia/issues). If you are running
-> palaia v2 today, it stays [supported](#already-using-palaia-v2).
+> **palaia v3 is a release candidate (`3.0.0-rc4`).** Everything below works and is
+> tested. Try it, keep backups, and [tell us what breaks](https://github.com/byte5ai/palaia/issues).
+> palaia v2 is [retired](#already-using-palaia-v2) and gets critical fixes only.
 
 ## What it does for you
 
@@ -170,9 +169,10 @@ Everything is managed from a dashboard in your browser:
 
 ## Already using palaia v2?
 
-palaia v2 is the Python package at the root of this repository. It stays installable
-and supported with critical fixes; its [documentation](docs/getting-started.md) is
-unchanged. Nobody is being pushed off it. When you are ready, one command imports
+palaia v2 is the Python package at the root of this repository. It is retired: it
+gets no new features, v3 replaces it, and only a critical fix (security, data loss, a
+broken release) can still land. It stays installable, and its
+[documentation](docs/getting-started.md) is unchanged. When you are ready, one command imports
 your v2 knowledge into v3, and the [migration guide](v3/docs/migrate-from-v2.md)
 covers what changes and how to roll back.
 
