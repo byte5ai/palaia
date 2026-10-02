@@ -284,8 +284,8 @@ def read_note_has_findings(signals: VaultSignals) -> Nudge | None:
     Nothing in the note's text shows it: a link that uses a renamed note's old
     name reads like any other link, and a note that ``edit`` will refuse looks
     editable until the edit fails. The findings come from the check the index
-    runs once at hub start, and a note's findings are dropped as soon as it
-    changes, so what is said here was true of the note as it now is.
+    runs once at hub start and are checked against the vault as it is now
+    before they reach this record (see ``docs/nudges.md`` §4.2).
     """
     if signals.action != "read" or not signals.note_findings:
         return None
@@ -295,7 +295,9 @@ def read_note_has_findings(signals: VaultSignals) -> Nudge | None:
             return Nudge(
                 key="read.doctor_finding",
                 text=render(matching),
-                state=f"{code}:{matching[0].line}",
+                # Per note: two notes that are both not UTF-8 are two
+                # warnings, not one repeated within the cooldown.
+                state=f"{signals.note}|{code}:{matching[0].line}",
             )
     return None
 

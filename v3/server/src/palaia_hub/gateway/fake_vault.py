@@ -283,8 +283,8 @@ class FakeVaultService:
     ) -> list[SimilarNoteHit]:
         return [hit for hit in self.similar if hit.permalink != exclude]
 
-    async def note_findings(self, permalink: str) -> list[NoteFindingHit]:
-        return list(self.findings.get(permalink, []))
+    async def note_findings(self, reference: str) -> list[NoteFindingHit]:
+        return list(self.findings.get(reference, []))
 
     async def inbox_status(self) -> InboxStatusResult:
         captures = [note for note in self._inbox_notes() if note.status == "uncurated"]

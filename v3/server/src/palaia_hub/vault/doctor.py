@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Literal, Protocol, runtime_checkable
@@ -111,6 +112,36 @@ class VaultDoctor:
             findings.extend(self._check_index(index))
         logger.debug("doctor: %d finding(s) for vault %s", len(findings), engine.name)
         return findings
+
+    async def verify_notes(self, stop: threading.Event | None = None) -> list[Finding]:
+        """Only the checks that report on single notes: identity, encoding, links.
+
+        What the index's per-note cache needs (issue #440) — no git, manifest,
+        directory or temp-file checks. ``stop`` ends the file walks early when
+        set, since cancelling the awaiting task cannot stop the thread.
+        """
+        return await asyncio.to_thread(self._verify_notes_sync, stop)
+
+    def _verify_notes_sync(self, stop: threading.Event | None) -> list[Finding]:
+        findings = self._check_identity()
+        findings.extend(self._check_encoding(stop))
+        findings.extend(self._check_links(stop))
+        return findings
+
+    def note_link_findings(self, path: str) -> list[Finding]:
+        """Re-run the link check for the one note at ``path`` (issue #440)."""
+        if path not in self.engine.catalog:
+            return []
+        return self._check_links(paths=[path])
+
+    def permalink_claimants(self, path: str) -> tuple[str, ...]:
+        """Every path claiming the permalink of the note at ``path``, from the
+        engine's live catalog."""
+        catalog = self.engine.catalog
+        entry = catalog.get(path)
+        if entry is None or not entry.permalink:
+            return ()
+        return tuple(sorted(p for p, e in catalog.items() if e.permalink == entry.permalink))
 
     # -------------------------------------------------------------- individual
 
@@ -274,7 +305,7 @@ class VaultDoctor:
                 )
         return findings
 
-    def _check_encoding(self) -> list[Finding]:
+    def _check_encoding(self, stop: threading.Event | None = None) -> list[Finding]:
         """Report notes whose bytes are not valid UTF-8 (issue #355).
 
         The engine reads them with replacement characters and refuses to
@@ -283,6 +314,8 @@ class VaultDoctor:
         """
         findings: list[Finding] = []
         for path in sorted(self.engine.catalog):
+            if stop is not None and stop.is_set():
+                break
             try:
                 raw = (self.engine.root / path).read_bytes()
             except OSError:  # pragma: no cover - vanished under us
@@ -309,7 +342,9 @@ class VaultDoctor:
                 )
         return findings
 
-    def _check_links(self) -> list[Finding]:
+    def _check_links(
+        self, stop: threading.Event | None = None, paths: Iterable[str] | None = None
+    ) -> list[Finding]:
         """Report unresolvable wikilinks, flagging likely partial renames.
 
         A human renaming a note in Obsidian without rewriting backlinks (or
@@ -326,7 +361,9 @@ class VaultDoctor:
             if entry.permalink:
                 slug_index.setdefault(entry.permalink.rsplit("/", 1)[-1], []).append(entry.path)
 
-        for path in sorted(engine.catalog):
+        for path in sorted(engine.catalog) if paths is None else paths:
+            if stop is not None and stop.is_set():
+                break
             try:
                 raw = (engine.root / path).read_bytes()
             except OSError:  # pragma: no cover - vanished under us

@@ -111,9 +111,11 @@ an AI tool then reads one of those notes, it gets a one-line heads-up with
 what to do next: fix the link (and on which line), or put the change in a
 new note instead of editing.
 
-As soon as a note changes, palaia forgets what it knew about it, so the
-heads-up never describes an older version. Problems that come up after the
-hub started show up after its next restart. For the complete check, run
+Before the heads-up is shown, palaia checks it against your memory as it is
+now — a link someone repaired since, or a duplicate address that was
+resolved, is not mentioned — and as soon as a note changes, palaia forgets
+what it knew about it. Problems that come up after the hub started show up
+after its next restart. For the complete check, run
 `palaia-hub doctor` (see [Troubleshooting](/troubleshooting/)).
 
 ## Finding things again

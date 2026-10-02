@@ -59,6 +59,7 @@ from palaia_hub.vault import (
     PermalinkConflictError,
     UncommittedWriteError,
     VaultEngine,
+    VaultError,
     VolatileNameError,
 )
 from palaia_hub.vault import permalink as pl
@@ -606,20 +607,23 @@ class EngineVaultService:
             if note.similarity >= threshold
         ]
 
-    async def note_findings(self, permalink: str) -> list[NoteFindingHit]:
-        """The index's cached doctor findings for one note (issue #440).
+    async def note_findings(self, reference: str) -> list[NoteFindingHit]:
+        """The index's doctor findings for one note that are still true (issue #440).
 
-        An in-memory lookup, never a scan: without an index nothing was
-        scanned, and the answer is ``[]``.
+        ``reference`` is resolved exactly as :meth:`read` resolves it, so the
+        answer is about the note that was read — also for a note without a
+        permalink, or one sharing its permalink with another. Without an
+        index nothing was scanned, and the answer is ``[]``.
         """
         if self._index is None:
             return []
-        path = self._engine.path_for_permalink(permalink)
-        if path is None:
+        try:
+            path = self._engine.resolve(reference).path
+        except VaultError:
             return []
         return [
             NoteFindingHit(code=finding.code, line=finding.line)
-            for finding in self._index.note_findings(path)
+            for finding in await self._index.current_note_findings(path)
         ]
 
     def _settle_background(self, check: asyncio.Future[Any]) -> None:

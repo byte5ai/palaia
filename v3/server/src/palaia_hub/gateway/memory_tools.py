@@ -312,7 +312,7 @@ def build_vault_server(
             logger.warning("similar-note check raised; write result sent without it", exc_info=True)
             return []
 
-    async def _findings_of(permalink: str) -> list[NoteFindingHit]:
+    async def _findings_of(reference: str) -> list[NoteFindingHit]:
         """Issue #440: what the vault doctor found about the note just read.
 
         Guarded like :func:`_similar_to`: the read already succeeded, and an
@@ -320,7 +320,7 @@ def build_vault_server(
         turn it into an error.
         """
         try:
-            return await service.note_findings(permalink)
+            return await service.note_findings(reference)
         except Exception:  # noqa: BLE001 - advice must never fail a read
             logger.warning(
                 "note-findings lookup raised; read result sent without it", exc_info=True
@@ -423,7 +423,10 @@ def build_vault_server(
             "read",
             note.resolved_body or note.body,
             note,
-            note_findings=await _findings_of(note.permalink),
+            # The reference the agent read by, not `note.permalink`: a note
+            # without a permalink reports its path there, and a permalink two
+            # notes share would land on the wrong one (issue #440).
+            note_findings=await _findings_of(permalink),
         )
 
     @server.tool(

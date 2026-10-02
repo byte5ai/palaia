@@ -124,7 +124,11 @@ def signals_for(
     if isinstance(result, InboxStatusResult):
         return replace(signals, inbox_count=result.count)
     if isinstance(result, NoteRecord):
-        return replace(signals, unresolved_values=tuple(result.resolution_warnings))
+        return replace(
+            signals,
+            note=result.permalink,
+            unresolved_values=tuple(result.resolution_warnings),
+        )
     # `SearchResult` is defined in `memory_tools`, which imports this module,
     # so it cannot be imported here without a cycle. It is matched
     # structurally instead — which also covers any future result reporting a

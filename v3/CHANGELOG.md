@@ -22,8 +22,8 @@ documentation that matches decisions made since. Still a pre-release — the
   memory once each time it starts. When an AI tool then reads a note that
   links to a renamed note by its old name, shares its address with another
   note, or cannot be edited because of its text encoding, the answer says so
-  and names the next step. A note's entry is forgotten as soon as it
-  changes.
+  and names the next step. The hint is checked against the memory as it is
+  now before it is shown.
 
 ### Documentation
 

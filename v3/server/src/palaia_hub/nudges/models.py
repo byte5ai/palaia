@@ -147,6 +147,12 @@ class VaultSignals:
     #: limiting — see :class:`~palaia_hub.nudges.service.NudgeEngine`.
     vault_key: str = ""
 
+    #: The note the result is about, when it is about one (its permalink, or
+    #: its path when it has none). A detector puts it into a nudge's ``state``
+    #: when the same warning about two different notes must not share one
+    #: cooldown.
+    note: str = ""
+
     #: How many results the operation returned, when it returns results.
     hits: int | None = None
 
@@ -181,10 +187,10 @@ class VaultSignals:
     similar_notes: tuple[SimilarNote, ...] = field(default_factory=tuple)
 
     #: What the hub's last vault doctor check found about the note this
-    #: result is about (issue #440). Free at request time: the index runs
-    #: ``verify()`` once in the background at hub start and keeps the
-    #: per-note findings, dropping a note's entries when it changes — see
-    #: ``docs/nudges.md`` §4.2.
+    #: result is about (issue #440), still true as of this call. The index
+    #: runs the doctor's per-note checks once in the background at hub start
+    #: and re-checks a note's cached findings when it is read — free for a
+    #: note with none — see ``docs/nudges.md`` §4.2.
     note_findings: tuple[NoteFinding, ...] = field(default_factory=tuple)
 
 

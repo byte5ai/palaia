@@ -88,6 +88,7 @@ def test_a_note_record_carries_its_resolution_warnings() -> None:
     )
     signals = signals_for("read", note)
     assert signals.unresolved_values == ("embed-missing: ops/rate#value",)
+    assert signals.note == note.permalink, "the read note identifies its own nudges"
 
 
 def test_similar_notes_are_handed_in_not_read_off_the_result() -> None:
