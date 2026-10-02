@@ -321,15 +321,43 @@ class VaultIndex:
             identity_changed = self._findings_identity_changed
         finally:
             self._findings_touched = None
+        claimants = self._permalink_claimants(findings)
         by_path: dict[str, list[Finding]] = {}
         for finding in findings:
-            if finding.path is None or finding.path in touched:
+            if finding.path is None:
                 continue
             if identity_changed and finding.code == "permalink-duplicate":
                 continue
-            by_path.setdefault(finding.path, []).append(finding)
+            paths: tuple[str, ...] = (finding.path,)
+            if finding.code == "permalink-duplicate":
+                # The doctor files a duplicate under one claimant; a read by
+                # the permalink can land on any of them, so each gets it.
+                paths = claimants.get(finding.path, paths)
+            for path in paths:
+                if path not in touched:
+                    by_path.setdefault(path, []).append(finding)
         self._note_findings = {path: tuple(found) for path, found in by_path.items()}
         return len(self._note_findings)
+
+    def _permalink_claimants(self, findings: Sequence[Finding]) -> dict[str, tuple[str, ...]]:
+        """For each path a ``permalink-duplicate`` finding sits on, every path
+        that claims the same permalink."""
+        duplicated = {
+            f.path for f in findings if f.code == "permalink-duplicate" and f.path is not None
+        }
+        if not duplicated:
+            return {}
+        catalog = self._engine.catalog
+        by_permalink: dict[str, list[str]] = {}
+        for entry in catalog.values():
+            if entry.permalink:
+                by_permalink.setdefault(entry.permalink, []).append(entry.path)
+        claimants: dict[str, tuple[str, ...]] = {}
+        for path in duplicated:
+            found = catalog.get(path)
+            if found is not None and found.permalink:
+                claimants[path] = tuple(by_permalink[found.permalink])
+        return claimants
 
     def note_findings(self, path: str) -> tuple[Finding, ...]:
         """What the last scan found about the note at ``path``. In-memory only."""

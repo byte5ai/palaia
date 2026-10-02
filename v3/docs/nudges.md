@@ -175,7 +175,8 @@ the signal is a cache:
   restarts — `palaia-hub doctor` remains the complete check.
 - **Only findings the agent can act on**, in the order one is picked when a
   note has several: `not-utf8` (`edit` will refuse the note),
-  `permalink-duplicate` (reading or linking by it can reach either note) and
+  `permalink-duplicate` (reading or linking by it can reach either note; the
+  doctor files it under one claimant, the cache under each) and
   `partial-rename` (fix the link, located by its line). A `dangling-link` is a legal forward reference
   (format spec §5.2), and the rest — git locks, repository size, temp files
   — belong to the owner and reach the owner through the guided doctor.

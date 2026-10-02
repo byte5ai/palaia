@@ -184,7 +184,7 @@ class VaultSignals:
     #: result is about (issue #440). Free at request time: the index runs
     #: ``verify()`` once in the background at hub start and keeps the
     #: per-note findings, dropping a note's entries when it changes — see
-    #: ``docs/nudges.md`` §5.
+    #: ``docs/nudges.md`` §4.2.
     note_findings: tuple[NoteFinding, ...] = field(default_factory=tuple)
 
 

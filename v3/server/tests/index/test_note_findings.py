@@ -159,3 +159,32 @@ async def test_the_vault_service_answers_by_permalink(tmp_path: Path, open_index
     assert await EngineVaultService(engine).note_findings("notes/latin") == [], (
         "without an index nothing was scanned"
     )
+
+
+async def test_a_duplicate_permalink_is_reported_whichever_claimant_it_resolves_to(
+    tmp_path: Path, open_index: Any
+) -> None:
+    """The doctor files the finding under one claimant only; a read by the
+    permalink lands on whichever the catalog resolves it to."""
+    engine, index = await open_index(tmp_path / "vault")
+    _write(engine.root, "notes/one.md", "---\ntitle: One\npermalink: notes/same\n---\n\n1\n")
+    _write(engine.root, "notes/two.md", "---\ntitle: Two\npermalink: notes/same\n---\n\n2\n")
+    await engine.refresh()
+    await index.refresh_note_findings()
+
+    for path in ("notes/one.md", "notes/two.md"):
+        assert "permalink-duplicate" in _codes(index, path), path
+    service = EngineVaultService(engine, index)
+    assert "permalink-duplicate" in [hit.code for hit in await service.note_findings("notes/same")]
+
+
+async def test_only_the_duplicate_finding_is_shared_between_claimants(
+    tmp_path: Path, open_index: Any
+) -> None:
+    engine, index = await open_index(tmp_path / "vault")
+    _write(engine.root, "notes/one.md", b"---\ntitle: One\npermalink: notes/same\n---\n\ncaf\xe9\n")
+    _write(engine.root, "notes/two.md", "---\ntitle: Two\npermalink: notes/same\n---\n\n2\n")
+    await engine.refresh()
+    await index.refresh_note_findings()
+    assert "not-utf8" in _codes(index, "notes/one.md")
+    assert "not-utf8" not in _codes(index, "notes/two.md")
