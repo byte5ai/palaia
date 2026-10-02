@@ -88,6 +88,11 @@ _MAX_EMBED_ATTEMPTS = 3
 _EMBEDDER_RETRY_INITIAL_SECONDS = 1.0
 _EMBEDDER_RETRY_MAX_SECONDS = 60.0
 
+#: Issue #440: the cached doctor findings another note can make untrue, so
+#: :meth:`VaultIndex.current_note_findings` re-checks them before a read
+#: reports them.
+_RECHECKED_CODES = frozenset({"permalink-duplicate", "partial-rename"})
+
 
 @dataclass(frozen=True, slots=True)
 class _Claim:
@@ -345,31 +350,32 @@ class VaultIndex:
 
         Nothing is checked for a note with no cached finding, which is almost
         every note. For one that has some, the findings another note can make
-        untrue are checked against the vault as it is now: a duplicate
-        permalink against the engine's live catalog (in memory), a link to a
-        renamed note by re-reading this one note's links. The cache entry is
-        replaced with the answer, so a finding that stopped being true is not
-        checked again.
+        untrue are checked against the vault as it is now, in a thread: a
+        duplicate permalink against the engine's live catalog, a link to a
+        renamed note by re-reading this one note's links. The cache keeps the
+        candidates either way — a problem repaired on another note can come
+        back the same way — and an event that touches this note during the
+        check makes the answer ``()``.
         """
         cached = self._note_findings.get(path)
         if not cached:
             return ()
-        kept = [f for f in cached if f.code not in ("permalink-duplicate", "partial-rename")]
+        if not any(f.code in _RECHECKED_CODES for f in cached):
+            return cached
+        current = await asyncio.to_thread(self._recheck_findings, path, cached)
+        if self._note_findings.get(path) is not cached:
+            return ()
+        return current
+
+    def _recheck_findings(self, path: str, cached: tuple[Finding, ...]) -> tuple[Finding, ...]:
+        kept = [f for f in cached if f.code not in _RECHECKED_CODES]
         duplicates = [f for f in cached if f.code == "permalink-duplicate"]
         if duplicates and len(self._doctor.permalink_claimants(path)) > 1:
-            kept.extend(duplicates[:1])
+            kept.append(duplicates[0])
         if any(f.code == "partial-rename" for f in cached):
-            relinked = await asyncio.to_thread(self._doctor.note_link_findings, path)
+            relinked = self._doctor.note_link_findings(path)
             kept.extend(f for f in relinked if f.code == "partial-rename")
-        current = tuple(kept)
-        # Only if nothing replaced or dropped the entry meanwhile: an event
-        # that arrived during the re-read wins over this answer.
-        if self._note_findings.get(path) is cached:
-            if current:
-                self._note_findings[path] = current
-            else:
-                del self._note_findings[path]
-        return current
+        return tuple(kept)
 
     def _forget_findings(self, event: ChangeEvent) -> None:
         """Drop the findings of every note an event touched.

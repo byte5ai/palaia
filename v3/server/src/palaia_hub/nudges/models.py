@@ -123,6 +123,9 @@ class NoteFinding:
 
     code: str
     line: int | None = None
+    #: The note's path, when the caller knows it: what tells two notes apart
+    #: that share a permalink.
+    path: str = ""
 
 
 @dataclass(frozen=True)

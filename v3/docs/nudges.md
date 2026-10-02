@@ -173,16 +173,22 @@ the signal is a cache:
   out of its result. What another note can make untrue is checked when the
   note is read (`VaultIndex.current_note_findings`): a duplicate permalink
   against the engine's live catalog, in memory, and a link to a renamed note
-  by re-reading this one note's links. That costs nothing for a note with no
-  cached finding, which is almost every note. `read` looks the note up by
+  by re-reading this one note's links, both in a thread and capped at one
+  second (`NOTE_FINDINGS_TIMEOUT_SECONDS`), after which the read goes out
+  without the hint. That costs nothing for a note with no cached finding,
+  which is almost every note. The cache keeps a candidate that no longer
+  holds — repaired on another note, a problem can come back the same way —
+  and a note that an event touches during the check gets no hint. `read` looks the note up by
   the reference it was read by, resolved the way `read` resolves it, so a
-  note without a permalink, or one sharing it, gets its own findings. So
+  note without a permalink, or one sharing it, gets its own findings — and
+  if the reference names a different note by then, it gets none. So
   what `read` reports is true of the vault as it now is. The other
   direction is not covered: a problem that appears after start-up is not
   reported until the hub restarts — `palaia-hub doctor` remains the complete
   check.
-- **One cooldown per note.** The nudge's `state` carries the note, so two
-  notes with the same problem are two warnings.
+- **One cooldown per note.** The nudge's `state` carries the note's path,
+  so two notes with the same problem — including the two claimants of one
+  permalink — are two warnings.
 - **Only findings the agent can act on**, in the order one is picked when a
   note has several: `not-utf8` (`edit` will refuse the note),
   `permalink-duplicate` (reading or linking by it can reach either note; the

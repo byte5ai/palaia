@@ -153,9 +153,9 @@ class RecordingService:
         # count one agent action twice.
         return await self._inner.similar_notes(title, body, exclude=exclude)
 
-    async def note_findings(self, reference: str) -> list[NoteFindingHit]:
+    async def note_findings(self, reference: str, *, expected: str = "") -> list[NoteFindingHit]:
         # Not recorded either: the read tool's own follow-up (issue #440).
-        return await self._inner.note_findings(reference)
+        return await self._inner.note_findings(reference, expected=expected)
 
     async def recall(
         self, *, query: str = "", ref: str = "", limit: int = 5, model: str = ""

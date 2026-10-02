@@ -295,9 +295,10 @@ def read_note_has_findings(signals: VaultSignals) -> Nudge | None:
             return Nudge(
                 key="read.doctor_finding",
                 text=render(matching),
-                # Per note: two notes that are both not UTF-8 are two
-                # warnings, not one repeated within the cooldown.
-                state=f"{signals.note}|{code}:{matching[0].line}",
+                # Per note — by path, since two claimants of a duplicate
+                # share their permalink: two notes that are both not UTF-8
+                # are two warnings, not one repeated within the cooldown.
+                state=f"{matching[0].path or signals.note}|{code}:{matching[0].line}",
             )
     return None
 

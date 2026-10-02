@@ -283,7 +283,7 @@ class FakeVaultService:
     ) -> list[SimilarNoteHit]:
         return [hit for hit in self.similar if hit.permalink != exclude]
 
-    async def note_findings(self, reference: str) -> list[NoteFindingHit]:
+    async def note_findings(self, reference: str, *, expected: str = "") -> list[NoteFindingHit]:
         return list(self.findings.get(reference, []))
 
     async def inbox_status(self) -> InboxStatusResult:

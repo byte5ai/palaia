@@ -112,6 +112,11 @@ _ENGINE_CALLER_ERRORS: tuple[type[Exception], ...] = (
 #: but the write's result does not wait for it.
 SIMILAR_NOTES_TIMEOUT_SECONDS = 2.0
 
+#: Issue #440: how long a ``read`` waits for its note's doctor findings to be
+#: re-checked. Advice on a read that already succeeded — on a slow disk the
+#: read goes out without it.
+NOTE_FINDINGS_TIMEOUT_SECONDS = 1.0
+
 #: Note types a similar-note warning never points at: the vault manifest and
 #: other ``meta`` notes (format spec §6, excluded from normal recall), and the
 #: curator's review proposals (§8), which *describe* changes to notes rather
@@ -607,23 +612,39 @@ class EngineVaultService:
             if note.similarity >= threshold
         ]
 
-    async def note_findings(self, reference: str) -> list[NoteFindingHit]:
+    async def note_findings(self, reference: str, *, expected: str = "") -> list[NoteFindingHit]:
         """The index's doctor findings for one note that are still true (issue #440).
 
         ``reference`` is resolved exactly as :meth:`read` resolves it, so the
         answer is about the note that was read — also for a note without a
-        permalink, or one sharing its permalink with another. Without an
+        permalink, or one sharing its permalink with another. ``expected`` is
+        the read note's permalink: if the reference names a different note by
+        now, the answer is ``[]`` rather than that note's findings. Never
+        waits longer than :data:`NOTE_FINDINGS_TIMEOUT_SECONDS`. Without an
         index nothing was scanned, and the answer is ``[]``.
         """
         if self._index is None:
             return []
         try:
-            path = self._engine.resolve(reference).path
+            entry = self._engine.resolve(reference)
         except VaultError:
             return []
+        if expected and (entry.permalink or entry.path) != expected:
+            return []
+        try:
+            found = await asyncio.wait_for(
+                self._index.current_note_findings(entry.path),
+                timeout=NOTE_FINDINGS_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            logger.info(
+                "note-findings check took over %.1fs; read sent without it",
+                NOTE_FINDINGS_TIMEOUT_SECONDS,
+            )
+            return []
         return [
-            NoteFindingHit(code=finding.code, line=finding.line)
-            for finding in await self._index.current_note_findings(path)
+            NoteFindingHit(code=finding.code, line=finding.line, path=entry.path)
+            for finding in found
         ]
 
     def _settle_background(self, check: asyncio.Future[Any]) -> None:

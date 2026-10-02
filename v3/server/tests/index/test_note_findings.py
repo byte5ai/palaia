@@ -218,7 +218,9 @@ async def test_a_link_fixed_on_the_target_side_is_no_longer_reported(
     )
     await engine.refresh()
     assert "partial-rename" not in await _current(index, "notes/linker.md")
-    assert index.note_findings("notes/linker.md") == (), "the cache forgets it too"
+    # The candidate stays: removing the alias again would bring the problem
+    # back without touching this note.
+    assert "partial-rename" in _codes(index, "notes/linker.md")
 
 
 async def test_a_permalink_changed_in_an_editor_resolves_the_duplicate(
@@ -293,3 +295,52 @@ async def test_a_set_stop_ends_the_file_walk(tmp_path: Path, open_index: Any) ->
     stop.set()
     codes = [f.code for f in await index._doctor.verify_notes(stop)]
     assert "not-utf8" not in codes
+
+
+async def test_a_note_that_changes_during_its_recheck_reports_nothing(
+    tmp_path: Path, open_index: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    engine, index = await open_index(tmp_path / "vault")
+    _write(engine.root, "notes/old-name.md", RENAMED_TARGET)
+    _write(engine.root, "notes/linker.md", LINKING_NOTE)
+    await engine.refresh()
+    await index.refresh_note_findings()
+    real = index._recheck_findings
+
+    def recheck_while_the_note_changes(path: str, cached: Any) -> Any:
+        index._forget_findings(NoteModified(vault=engine.name, path=path))
+        return real(path, cached)
+
+    monkeypatch.setattr(index, "_recheck_findings", recheck_while_the_note_changes)
+    assert await index.current_note_findings("notes/linker.md") == ()
+
+
+async def test_a_reference_that_names_another_note_by_now_gets_nothing(
+    tmp_path: Path, open_index: Any
+) -> None:
+    engine, index = await open_index(tmp_path / "vault")
+    _write(engine.root, "notes/latin.md", LATIN1_NOTE)
+    await engine.refresh()
+    await index.refresh_note_findings()
+    service = EngineVaultService(engine, index)
+    assert await service.note_findings("notes/latin", expected="notes/latin")
+    assert await service.note_findings("notes/latin", expected="notes/other") == []
+
+
+async def test_a_slow_recheck_never_holds_the_read(
+    tmp_path: Path, open_index: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from palaia_hub.gateway import wiring
+
+    engine, index = await open_index(tmp_path / "vault")
+    _write(engine.root, "notes/latin.md", LATIN1_NOTE)
+    await engine.refresh()
+    await index.refresh_note_findings()
+
+    async def slow(path: str) -> tuple[Finding, ...]:
+        await asyncio.sleep(5)
+        return ()
+
+    monkeypatch.setattr(index, "current_note_findings", slow)
+    monkeypatch.setattr(wiring, "NOTE_FINDINGS_TIMEOUT_SECONDS", 0.05)
+    assert await EngineVaultService(engine, index).note_findings("notes/latin") == []

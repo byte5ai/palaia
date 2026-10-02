@@ -99,7 +99,9 @@ def signals_for(
         similar_notes=tuple(
             SimilarNote(permalink=n.permalink, title=n.title) for n in similar_notes
         ),
-        note_findings=tuple(NoteFinding(code=f.code, line=f.line) for f in note_findings),
+        note_findings=tuple(
+            NoteFinding(code=f.code, line=f.line, path=f.path) for f in note_findings
+        ),
     )
     if isinstance(result, RecallResult):
         return replace(
