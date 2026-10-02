@@ -68,3 +68,6 @@ cheap and effective, it does not replace it).
 ## Non-goals
 The external review itself (owner procures; brief is the deliverable);
 SBOM/compliance paperwork; penetration testing infrastructure.
+
+> **Superseded 2026-10-02:** the owner never set an external security review
+> and withdrew it; the brief was removed (`v3/RELEASING.md` §1).

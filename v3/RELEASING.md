@@ -8,56 +8,33 @@ in `server/tests/`.
 
 This file describes going from `3.0.0-rc1` (SPEC-506) to the final
 `3.0.0`. It is not itself the gate decision: `v3/IMPLEMENTATION.md` §6's
-Gate-P5 paragraph records the architect's verdict (held 2026-08-26,
-conditional on the two owner actions in §1 below). The Phase-4 paragraph
+Gate-P5 paragraph records the architect's verdict (held 2026-08-26; the
+two conditions it named were withdrawn by the owner on 2026-10-02, see
+§1, so nothing is pending). The Phase-4 paragraph
 above it still carries its "this paragraph is a draft" marker — that is
 the historical record of what SPEC-407 ran, not an open gate, and it does
 not block the cut (issue #388).
 
 ## 0. Prerequisite: the gate is held
 
-- [ ] **[OWNER]** Confirm `v3/IMPLEMENTATION.md` §6's Gate-P5 verdict
-      still stands — it is conditional on §1's two owner actions, so this
-      is a re-read, not a new decision.
 - [ ] `uv run pytest server/tests -q` green, `uv run ruff check server &&
       uv run mypy server/src` clean, `v3/web` and `v3/site/docs`'s own
       lint/typecheck/test/build all green — the state this SPEC's own PR
       already leaves the branch in; re-run once more here as the last
       check before anything below.
 
-## 1. Close the two things this sandbox could not do
+## 1. Withdrawn: external review and usability session
 
-- [ ] **[OWNER]** External security review. Send
-      `v3/docs/security/external-review-brief.md` to the reviewer;
-      address findings per `SECURITY.md`'s own severity/timeline table
-      before tagging. `docs/security/threat-model.md` §8's eight named
-      trade-offs are not new findings — a reviewer flagging one of those
-      still gets a real answer, just not a blocking one by default.
-- [ ] **[OWNER]** The real usability test session:
-      `v3/docs/usability-test-protocol.md`, run with an actual
-      non-developer. Record the result in
-      `v3/docs/client-matrix-results.md`'s usability section (the
-      protocol's own §5 says where). A "gave up" or "stuck" result on any
-      task is not automatically a blocker — judge it the way every other
-      gate in this project has: does it undermine the exit criterion, or
-      is it a polish item that becomes a filed issue?
-- [ ] **[OWNER]** Confirm `SECURITY.md`'s reporting channel (the GitHub
-      private-vulnerability-reporting button — the owner confirmed on
-      2026-08-26 that no security email address exists, so the button is
-      the only channel) actually notifies someone who reads it before a
-      wider audience sees this release. Adding a real, monitored security
-      email later means one edit to `SECURITY.md`.
+Nothing to do. This section used to require an external security review
+and a test session with a recruited non-developer before the final tag.
+The owner never set either requirement and withdrew both on 2026-10-02.
+The vulnerability-reporting channel `SECURITY.md` names (GitHub private
+vulnerability reporting) was switched on the same day.
 
-## 2. Owner decisions this repository left open on purpose
+## 2. Withdrawn: v2 sunset dates
 
-- [ ] **[OWNER]** `v3/docs/migrate-from-v2.md`'s "Support timeline" says
-      "not decided yet" in three places (feature-parity target date,
-      earliest v2-hotfix-stops date, advance-notice policy — issue #390).
-      Replace each with the real date/policy before this becomes the
-      message v2 users see; the page is already linked from the root
-      README and the release notes, so it is public now.
-- [ ] **[OWNER]** Decide whether `3.0.0` ships alongside, or after,
-      those v2-sunset dates going live on the docs site.
+Nothing to do. v2 is retired; `docs/migrate-from-v2.md` says so and needs
+no dates filled in before the release.
 
 ## 3. Cut the release
 
@@ -207,9 +184,6 @@ not block the cut (issue #388).
       (`palaia.local` is unrelated and needs no change here — that is the
       hub's own real mDNS self-advertisement, `deploy/README.md` §"Finding
       it on your network", not a placeholder.)
-- [ ] **[OWNER]** Turn on whatever v2-sunset messaging
-      `docs/migrate-from-v2.md`'s §2 dates call for, now that they are
-      real dates rather than placeholders.
 
 ## 5. What this file deliberately does not cover
 
@@ -217,4 +191,4 @@ Reverting a bad release (this repository's standing `git`/hotfix norms in
 `CONTRIBUTING.md` apply — a `v2-maintenance`-style hotfix branch for v3 is a
 judgment call for whoever holds the gate, not something pre-decided
 here), and any `3.0.x` patch release after this one (a lighter version of
-§3 above — bump `VERSION`, changelog, tag, no need to re-run §0–§2).
+§3 above — bump `VERSION`, changelog, tag, no need to re-run §0).

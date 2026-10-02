@@ -47,7 +47,6 @@ from .conftest import Hub
 
 REPO_V3 = Path(__file__).resolve().parents[3]
 THREAT_MODEL = REPO_V3 / "docs" / "security" / "threat-model.md"
-REVIEW_BRIEF = REPO_V3 / "docs" / "security" / "external-review-brief.md"
 SECURITY_POLICY = REPO_V3 / "SECURITY.md"
 
 
@@ -186,7 +185,7 @@ def test_the_threat_model_names_every_operating_mode(threat_model: str) -> None:
         assert f"`{mode}`" in threat_model, mode
 
 
-#: A repo-relative path the threat model or the brief cites as enforcing a
+#: A repo-relative path the threat model cites as enforcing a
 #: claim, optionally pinned to one test (``path::test_name``).
 _CITED_PATH_RE = re.compile(
     r"`((?:server|web|sdk)/[A-Za-z0-9_./-]+\.(?:py|tsx|ts|mjs)\b)(?:::([A-Za-z0-9_]+))?"
@@ -227,23 +226,6 @@ def test_every_path_the_threat_model_cites_exists(threat_model: str) -> None:
     cited = cited_paths(threat_model)
     assert len(cited) >= 60, "the citation scan found too little to be trusted"
     assert _dead_citations(threat_model) == []
-
-
-def test_every_path_the_review_brief_cites_exists() -> None:
-    """The brief inherits the threat model's claims; its links rot the same way."""
-    text = REVIEW_BRIEF.read_text(encoding="utf-8")
-    assert len(cited_paths(text)) >= 10
-    assert _dead_citations(text) == []
-
-
-def test_the_external_review_brief_exists_and_points_at_the_threat_model() -> None:
-    assert REVIEW_BRIEF.is_file(), f"{REVIEW_BRIEF} is missing"
-    text = REVIEW_BRIEF.read_text(encoding="utf-8")
-    assert "threat-model.md" in text
-    # The brief's whole job is to make a hired reviewer productive on day
-    # one: what to run, where to look, and what is already accepted.
-    for heading in ("## Scope", "## How to run everything locally", "## Accepted risks"):
-        assert heading in text, heading
 
 
 def test_the_security_policy_exists_and_says_how_to_report() -> None:

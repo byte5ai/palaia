@@ -111,23 +111,6 @@ it left off.
 
 ## Support timeline
 
-<!-- Owner decision pending (v3/RELEASING.md §2): the three dates/policies
-     below are not decided yet, and this page says so in plain words rather
-     than showing a placeholder (issue #390). Replace each "not decided yet"
-     sentence with the real value when the owner sets it. -->
-
-- v2 is in **maintenance mode now**: no new features, hotfixes only
-  (security, data loss, a broken release), landing on `v2-maintenance`.
-- **Feature-parity target date: not decided yet.** No date has been set by
-  which v3 covers the items marked Missing above that the owner considers
-  release-blocking. Until one appears here, none is promised.
-- **When v2 hotfixes stop: not decided yet.** Whatever the date turns out
-  to be, it will not come before the parity date above, and not without
-  advance notice in the v2 README and in this document.
-- **How much advance notice a support-ending change gets: not decided
-  yet.** It will be announced here and in the v2 README banner first; the
-  length of that notice is the owner's call and has not been fixed.
-
-No entry in this list is enforced by anything in this repository; it is
-prose the owner is expected to fill in and keep current, not a promise the
-software makes on its own.
+v2 is **retired**: it gets no new features, and v3 replaces it. Only a
+critical fix (security, data loss, a broken release) can still land on
+`v2-maintenance`.

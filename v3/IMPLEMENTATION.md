@@ -338,7 +338,7 @@ the in-flight issue-fix PRs to land first).
   SPEC-506's evidence (`v3/docs/client-matrix-results.md` §9), and the
   literal, real-person half, which this environment cannot supply and
   which SPEC-506 explicitly names as an owner action
-  (`v3/docs/usability-test-protocol.md`, ready to hand to a tester).
+  (a test protocol, since removed — see the 2026-10-02 note below).
   Release engineering: one version, `3.0.0-rc1`, in `v3/VERSION`, checked
   against every artifact that carries a literal version string (server,
   web, sdk) by `server/tests/test_version_drift.py`, plus a real
@@ -389,5 +389,8 @@ the in-flight issue-fix PRs to land first).
   and the external security review (brief shipped, owner procures it).
   Neither is waived — `3.0.0` final must not be tagged until both are
   done; RELEASING.md sequences this and no automation in this repository
-  can bypass it. Phase 5 is thereby complete as a development phase; what
+  can bypass it. **Withdrawn 2026-10-02:** the owner never set either
+  condition and withdrew both — no external security review and no
+  recruited usability session before `3.0.0`; nothing from this verdict
+  is pending (`v3/RELEASING.md` §1). Phase 5 is thereby complete as a development phase; what
   remains on the road to `3.0.0` is owner work, not engineering scope.

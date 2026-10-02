@@ -58,3 +58,7 @@ evening.
 The human usability session itself (owner runs it); the 3.0.0 final tag
 (after the external security review and the human test — RELEASING.md
 sequences it); store submissions (owner, per SPEC-501's SUBMIT.md).
+
+> **Superseded 2026-10-02:** the owner never set the external security review
+> or the human usability session and withdrew both; the usability protocol
+> was removed and the final tag waits on neither (`v3/RELEASING.md` §1).

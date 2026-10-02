@@ -1,8 +1,6 @@
 # palaia v3 — Threat model (as built)
 
-> Written for SPEC-502, the internal hardening pass before 3.0. Its companion
-> is [external-review-brief.md](external-review-brief.md), which is what a
-> hired reviewer starts from; this document is what they check.
+> Written for SPEC-502, the internal hardening pass before 3.0.
 >
 > **House rule for this file: every mitigation below describes what the code
 > does today, and names the module that does it and the test that proves it.**
@@ -514,6 +512,3 @@ uv run pytest server/tests/security -q      # this document's own suite
 uv run pytest server/tests -q               # everything
 cd web && npm ci && npm test                # the dashboard's half of the CSRF contract
 ```
-
-See [external-review-brief.md](external-review-brief.md) for the full
-walk-through a reviewer needs.
