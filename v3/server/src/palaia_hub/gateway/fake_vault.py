@@ -54,6 +54,7 @@ from . import inbox as inbox_shape
 from .vault_protocol import (
     CaptureResult,
     InboxStatusResult,
+    NoteFindingHit,
     NoteRecord,
     NoteSummary,
     ProposalSummary,
@@ -89,6 +90,9 @@ class FakeVaultService:
         #: real adapter without an index — it answers nothing unless a test
         #: says otherwise by setting this.
         self.similar: list[SimilarNoteHit] = []
+        #: What :meth:`note_findings` answers, by permalink (issue #440).
+        #: There is no doctor here, so it is empty unless a test fills it.
+        self.findings: dict[str, list[NoteFindingHit]] = {}
 
     def seed(self, note: NoteRecord) -> None:
         """Directly insert a note (fixture setup helper, bypasses write())."""
@@ -278,6 +282,9 @@ class FakeVaultService:
         self, title: str, body: str, *, exclude: str = ""
     ) -> list[SimilarNoteHit]:
         return [hit for hit in self.similar if hit.permalink != exclude]
+
+    async def note_findings(self, permalink: str) -> list[NoteFindingHit]:
+        return list(self.findings.get(permalink, []))
 
     async def inbox_status(self) -> InboxStatusResult:
         captures = [note for note in self._inbox_notes() if note.status == "uncurated"]

@@ -139,6 +139,14 @@ class SimilarNoteHit(BaseModel):
     similarity: float
 
 
+class NoteFindingHit(BaseModel):
+    """A vault doctor finding about one note (issue #440): its code and,
+    when it points at one, the line."""
+
+    code: str
+    line: int | None = None
+
+
 class InboxStatusResult(BaseModel):
     """Inbox health: how many uncurated captures, the oldest, the newest."""
 
@@ -407,6 +415,16 @@ class VaultService(Protocol):
         similarity (no index, no vectors yet) returns ``[]`` rather than
         guessing, and one that fails returns ``[]`` too: this is advice on a
         write that already succeeded, and must never turn it into an error.
+        """
+        ...
+
+    async def note_findings(self, permalink: str) -> list[NoteFindingHit]:
+        """What the last vault doctor check found about one note (issue #440).
+
+        Called by ``read`` after the note was read, for the nudge layer.
+        Cheap by contract: an in-memory lookup, never a scan — an
+        implementation with nothing cached returns ``[]``, and so does one
+        that fails, since a read must never fail over advice.
         """
         ...
 

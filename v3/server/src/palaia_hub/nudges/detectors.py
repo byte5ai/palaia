@@ -15,22 +15,28 @@ Every text follows the same two-part shape — what happened, then ``Fix:``
 plus the concrete next action — and is held under
 :data:`~palaia_hub.nudges.models.MAX_NUDGE_CHARS`.
 
-The set is deliberately small and covers seven actions. Three detectors named
+The set is deliberately small and covers seven actions. Two detectors named
 in issue #301 are *not* here yet, because the signal they need does not reach
 a tool result today: "a write landed in a vault whose index rebuild is
-pending", "token near expiry / profile changed since the token was minted",
-and vault doctor findings (``verify()`` is an engine-side call behind the
-dashboard and the repair path, not something a memory tool returns). Each is
-a detector on top of an existing signal, not a change to this mechanism —
-adding one means adding a field to ``VaultSignals`` and a function below,
-nothing else.
+pending" and "token near expiry / profile changed since the token was
+minted". Each is a detector on top of an existing signal, not a change to
+this mechanism — adding one means adding a field to ``VaultSignals`` and a
+function below, nothing else. The third, vault doctor findings, is
+:func:`read_note_has_findings` (issue #440).
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
-from .models import INBOX_BACKLOG_THRESHOLD, MAX_NUDGE_CHARS, Nudge, SimilarNote, VaultSignals
+from .models import (
+    INBOX_BACKLOG_THRESHOLD,
+    MAX_NUDGE_CHARS,
+    NoteFinding,
+    Nudge,
+    SimilarNote,
+    VaultSignals,
+)
 
 #: What every detector is. Returning ``None`` is the normal case by far.
 Detector = Callable[[VaultSignals], Nudge | None]
@@ -237,12 +243,70 @@ def unresolved_values_on_read(signals: VaultSignals) -> Nudge | None:
     )
 
 
+def _renamed_link_text(findings: list[NoteFinding]) -> str:
+    line = findings[0].line
+    if len(findings) == 1:
+        where = f"The link on line {line}" if line is not None else "A link here"
+        return (
+            f"{where} uses a name its target no longer has — that note was renamed. "
+            "Fix: recall the old name to find its current title, then edit the link."
+        )
+    first = f" (first on line {line})" if line is not None else ""
+    return (
+        f"{len(findings)} links here use names their targets no longer have{first}. "
+        "Fix: recall each old name to find the current title, then edit the links."
+    )
+
+
+#: The doctor finding codes :func:`read_note_has_findings` speaks to, in the
+#: order it prefers them when a note has several, each with the text it says.
+#: Only findings an agent reading the note can act on, or must know before it
+#: acts: the rest of the doctor's report (git locks, repository size, temp
+#: files, a forward link to a note that does not exist yet) is the owner's,
+#: and reaches the owner through the guided doctor.
+_NOTE_FINDING_TEXTS: dict[str, Callable[[list[NoteFinding]], str]] = {
+    "not-utf8": lambda _: (
+        "This note is not valid UTF-8, so edit will refuse to change it. Fix: put "
+        "the change in a new note, or ask the owner to convert the file to UTF-8."
+    ),
+    "permalink-duplicate": lambda _: (
+        "Another note claims this note's permalink, so reading or linking by it can "
+        "reach either one. Fix: ask the owner to rename one of them — `palaia-hub "
+        "doctor` names both."
+    ),
+    "partial-rename": _renamed_link_text,
+}
+
+
+def read_note_has_findings(signals: VaultSignals) -> Nudge | None:
+    """The note just read has a problem the vault doctor found (issue #440).
+
+    Nothing in the note's text shows it: a link that uses a renamed note's old
+    name reads like any other link, and a note that ``edit`` will refuse looks
+    editable until the edit fails. The findings come from the check the index
+    runs once at hub start, and a note's findings are dropped as soon as it
+    changes, so what is said here was true of the note as it now is.
+    """
+    if signals.action != "read" or not signals.note_findings:
+        return None
+    for code, render in _NOTE_FINDING_TEXTS.items():
+        matching = [f for f in signals.note_findings if f.code == code]
+        if matching:
+            return Nudge(
+                key="read.doctor_finding",
+                text=render(matching),
+                state=f"{code}:{matching[0].line}",
+            )
+    return None
+
+
 #: The seeded detector set, in the order they are offered to the rate limiter
 #: — a result that trips two of them keeps the earlier one.
 DETECTORS: tuple[Detector, ...] = (
     recall_degraded,
     context_budget_pressure,
     unresolved_values_on_read,
+    read_note_has_findings,
     capture_was_duplicate,
     write_resembles_existing,
     inbox_backlog,
@@ -270,6 +334,7 @@ __all__ = [
     "context_budget_pressure",
     "detect",
     "inbox_backlog",
+    "read_note_has_findings",
     "recall_degraded",
     "search_found_nothing",
     "unresolved_values_on_read",

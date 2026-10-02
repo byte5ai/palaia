@@ -39,6 +39,7 @@ from palaia_hub.gateway.config import GatewayConfig, ProfileConfig, VaultMountCo
 from palaia_hub.gateway.vault_protocol import (
     CaptureResult,
     InboxStatusResult,
+    NoteFindingHit,
     NoteRecord,
     NoteSummary,
     SearchResponse,
@@ -151,6 +152,10 @@ class RecordingService:
         # follow-up (issue #187), not a call the agent made — logging it would
         # count one agent action twice.
         return await self._inner.similar_notes(title, body, exclude=exclude)
+
+    async def note_findings(self, permalink: str) -> list[NoteFindingHit]:
+        # Not recorded either: the read tool's own follow-up (issue #440).
+        return await self._inner.note_findings(permalink)
 
     async def recall(
         self, *, query: str = "", ref: str = "", limit: int = 5, model: str = ""

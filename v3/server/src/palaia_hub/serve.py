@@ -255,6 +255,9 @@ async def build_production_app(
         # initial build reads from that catalog instead of walking it again
         # (issue #403).
         await index.open(refresh_catalog=False)
+        # Issue #440: one background doctor pass, so `read` can tell an agent
+        # about a note's known problems without scanning anything per call.
+        index.start_findings_scan()
         indexes[record.name] = index
         # Issue #316: the watcher publishes on the engine's own bus, which the
         # index just subscribed to in `open()` — so an external edit becomes

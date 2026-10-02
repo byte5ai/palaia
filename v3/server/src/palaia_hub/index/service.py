@@ -147,6 +147,19 @@ class VaultIndex:
         self._embedder_retry_at = 0.0
         self._unsubscribe: Callable[[], None] | None = None
         self._worker: asyncio.Task[None] | None = None
+        #: Issue #440: the doctor findings about single notes, by path, from
+        #: the last :meth:`refresh_note_findings`. A note's entries are
+        #: dropped when an event touches it (see :meth:`_forget_findings`),
+        #: so the table only ever loses findings between scans, never
+        #: invents one.
+        self._note_findings: dict[str, tuple[Finding, ...]] = {}
+        self._findings_task: asyncio.Task[None] | None = None
+        #: Paths an event touched while a scan ran: the scan read them before
+        #: or after the change, so its findings about them are not trusted.
+        self._findings_touched: set[str] | None = None
+        #: A delete or rename arrived while a scan ran, so the scan's
+        #: ``permalink-duplicate`` findings are not trusted either.
+        self._findings_identity_changed = False
         self._wake = asyncio.Event()
         self._closing = False
         self._last_indexed_at = 0.0
@@ -218,6 +231,11 @@ class VaultIndex:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._worker
             self._worker = None
+        if self._findings_task is not None:
+            self._findings_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._findings_task
+            self._findings_task = None
         await asyncio.to_thread(self.db.close)
 
     # -------------------------------------------------------- doctor plumbing
@@ -271,6 +289,79 @@ class VaultIndex:
             )
         return findings
 
+    def start_findings_scan(self) -> None:
+        """Run :meth:`refresh_note_findings` once in the background (issue #440).
+
+        Opt-in like :meth:`start_worker`: the hub calls it after opening the
+        index, so a doctor, CLI or test that opens one walks the vault no
+        more often than before. Idempotent while a scan is running.
+        """
+        if self._findings_task is None or self._findings_task.done():
+            self._findings_task = asyncio.create_task(self._scan_findings())
+
+    async def _scan_findings(self) -> None:
+        try:
+            await self.refresh_note_findings()
+        except Exception:  # noqa: BLE001 - advice must never take the index down
+            logger.warning("note findings scan failed", exc_info=True)
+
+    async def refresh_note_findings(self) -> int:
+        """Re-run the doctor's file-side checks and keep the per-note findings.
+
+        File-side only: the drift check needs the index caught up, and its
+        findings are about the index, not a note. Raises no ``doctor.finding``
+        events — this is a cache for the nudge layer, not a doctor run the
+        owner asked for. Returns how many notes have findings.
+        """
+        self._findings_touched = set()
+        self._findings_identity_changed = False
+        try:
+            findings = await self._doctor.verify()
+            touched = self._findings_touched
+            identity_changed = self._findings_identity_changed
+        finally:
+            self._findings_touched = None
+        by_path: dict[str, list[Finding]] = {}
+        for finding in findings:
+            if finding.path is None or finding.path in touched:
+                continue
+            if identity_changed and finding.code == "permalink-duplicate":
+                continue
+            by_path.setdefault(finding.path, []).append(finding)
+        self._note_findings = {path: tuple(found) for path, found in by_path.items()}
+        return len(self._note_findings)
+
+    def note_findings(self, path: str) -> tuple[Finding, ...]:
+        """What the last scan found about the note at ``path``. In-memory only."""
+        return self._note_findings.get(path, ())
+
+    def _forget_findings(self, event: ChangeEvent) -> None:
+        """Drop the findings an event may have made untrue.
+
+        Every path the event touched loses its findings. A delete or rename
+        also clears every ``permalink-duplicate`` finding — removing or
+        renaming one of the claimants is how a duplicate gets resolved, and
+        the finding sits on a path the event need not name.
+        """
+        paths = {event.path}
+        if isinstance(event, NoteMoved | EntityRenamed) and event.previous_path:
+            paths.add(event.previous_path)
+        if isinstance(event, EntityRenamed):
+            paths.update(event.rewritten_paths)
+        identity_changed = isinstance(event, NoteDeleted | EntityRenamed)
+        if self._findings_touched is not None:
+            self._findings_touched.update(paths)
+            self._findings_identity_changed |= identity_changed
+        for path in paths:
+            self._note_findings.pop(path, None)
+        if identity_changed:
+            for path, found in list(self._note_findings.items()):
+                kept = tuple(f for f in found if f.code != "permalink-duplicate")
+                if not kept:
+                    del self._note_findings[path]
+                elif len(kept) != len(found):
+                    self._note_findings[path] = kept
+
     # ------------------------------------------------------------ event intake
 
     async def _on_event(self, event: ChangeEvent) -> None:
@@ -282,6 +373,9 @@ class VaultIndex:
 
     async def apply_event(self, event: ChangeEvent) -> None:
         """Apply one change event (public so tests can drive it directly)."""
+        # Before the lock: a finding about a note that just changed must not
+        # be reported while the index is still catching up with the change.
+        self._forget_findings(event)
         async with self._apply_lock:
             if self._rebuilding:
                 self._deferred.append(event)

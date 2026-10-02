@@ -34,9 +34,15 @@ from fastmcp.server.dependencies import get_context
 from fastmcp.tools.base import ToolResult
 from pydantic import BaseModel
 
-from ..nudges import ANONYMOUS_SESSION, NudgeEngine, SimilarNote, VaultSignals
+from ..nudges import ANONYMOUS_SESSION, NoteFinding, NudgeEngine, SimilarNote, VaultSignals
 from ..recall.models import ContextResult, RecallResult
-from .vault_protocol import CaptureResult, InboxStatusResult, NoteRecord, SimilarNoteHit
+from .vault_protocol import (
+    CaptureResult,
+    InboxStatusResult,
+    NoteFindingHit,
+    NoteRecord,
+    SimilarNoteHit,
+)
 
 #: Heading for the guidance block appended to the human-readable half. Short
 #: and literal: a model scanning tool output should be able to tell in one
@@ -70,6 +76,7 @@ def signals_for(
     *,
     vault_key: str = "",
     similar_notes: Sequence[SimilarNoteHit] = (),
+    note_findings: Sequence[NoteFindingHit] = (),
 ) -> VaultSignals:
     """Read one completed call's deterministic facts off its result object.
 
@@ -83,7 +90,8 @@ def signals_for(
     (issue #187): ``write``/``capture`` ask the vault for it separately and
     hand it in, because putting it on :class:`NoteRecord` would add an empty
     field to every ``read``/``edit``/``move`` payload for a signal only a
-    write produces.
+    write produces. ``note_findings`` (issue #440) is handed in by ``read``
+    the same way, for the same reason.
     """
     signals = VaultSignals(
         action=action,
@@ -91,6 +99,7 @@ def signals_for(
         similar_notes=tuple(
             SimilarNote(permalink=n.permalink, title=n.title) for n in similar_notes
         ),
+        note_findings=tuple(NoteFinding(code=f.code, line=f.line) for f in note_findings),
     )
     if isinstance(result, RecallResult):
         return replace(
@@ -134,6 +143,7 @@ def nudged_result(
     payload: BaseModel,
     vault_key: str = "",
     similar_notes: Sequence[SimilarNoteHit] = (),
+    note_findings: Sequence[NoteFindingHit] = (),
 ) -> ToolResult:
     """A successful tool result, carrying whatever guidance applies.
 
@@ -142,7 +152,13 @@ def nudged_result(
     returned on its own.
     """
     nudges = engine.emit(
-        signals_for(action, payload, vault_key=vault_key, similar_notes=similar_notes)
+        signals_for(
+            action,
+            payload,
+            vault_key=vault_key,
+            similar_notes=similar_notes,
+            note_findings=note_findings,
+        )
     )
     if not nudges:
         return ToolResult(content=text, structured_content=payload)

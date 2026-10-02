@@ -17,6 +17,7 @@ import pytest
 from palaia_hub.nudges import (
     INBOX_BACKLOG_THRESHOLD,
     MAX_NUDGE_CHARS,
+    NoteFinding,
     Nudge,
     SimilarNote,
     VaultSignals,
@@ -27,6 +28,7 @@ from palaia_hub.nudges.detectors import (
     capture_was_duplicate,
     context_budget_pressure,
     inbox_backlog,
+    read_note_has_findings,
     recall_degraded,
     search_found_nothing,
     unresolved_values_on_read,
@@ -70,6 +72,11 @@ FIRING_SIGNALS: dict[str, VaultSignals] = {
     ),
     "write.similar_note": VaultSignals(action="write", similar_notes=LONG_SIMILAR_NOTES),
     "capture.similar_note": VaultSignals(action="capture", similar_notes=LONG_SIMILAR_NOTES),
+    # The longest doctor-finding text: several renamed links, a big line number.
+    "read.doctor_finding": VaultSignals(
+        action="read",
+        note_findings=tuple(NoteFinding("partial-rename", line=n) for n in (12345, 12350, 12399)),
+    ),
 }
 
 
@@ -181,6 +188,79 @@ def test_unresolved_values_are_counted_and_the_first_is_named() -> None:
 
 def test_a_clean_read_says_nothing() -> None:
     assert unresolved_values_on_read(VaultSignals(action="read")) is None
+    assert read_note_has_findings(VaultSignals(action="read")) is None
+
+
+# Every text the doctor-finding detector can say (issue #440). The registry
+# checks below see only the one in FIRING_SIGNALS, so the rest get the same
+# two house rules here.
+DOCTOR_FINDING_CASES = {
+    "not-utf8": (NoteFinding("not-utf8"),),
+    "permalink-duplicate": (NoteFinding("permalink-duplicate"),),
+    "one renamed link": (NoteFinding("partial-rename", line=7),),
+    "one renamed link, no line": (NoteFinding("partial-rename"),),
+    "several renamed links, no line": (
+        NoteFinding("partial-rename"),
+        NoteFinding("partial-rename"),
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(DOCTOR_FINDING_CASES))
+def test_every_doctor_finding_text_names_a_fix_and_fits(case: str) -> None:
+    nudge = read_note_has_findings(
+        VaultSignals(action="read", note_findings=DOCTOR_FINDING_CASES[case])
+    )
+    assert nudge is not None
+    assert nudge.key == "read.doctor_finding"
+    assert "Fix:" in nudge.text
+    assert len(nudge.text) <= MAX_NUDGE_CHARS, f"{case} is {len(nudge.text)} chars"
+
+
+def test_a_renamed_link_is_located_by_its_line() -> None:
+    nudge = read_note_has_findings(
+        VaultSignals(action="read", note_findings=(NoteFinding("partial-rename", line=7),))
+    )
+    assert nudge is not None
+    assert "line 7" in nudge.text
+
+
+def test_several_renamed_links_are_counted() -> None:
+    nudge = read_note_has_findings(FIRING_SIGNALS["read.doctor_finding"])
+    assert nudge is not None
+    assert nudge.text.startswith("3 links")
+    assert "line 12345" in nudge.text
+
+
+def test_a_note_edit_will_refuse_is_said_before_its_links() -> None:
+    nudge = read_note_has_findings(
+        VaultSignals(
+            action="read",
+            note_findings=(NoteFinding("partial-rename", line=3), NoteFinding("not-utf8")),
+        )
+    )
+    assert nudge is not None
+    assert "UTF-8" in nudge.text
+
+
+@pytest.mark.parametrize("code", ["dangling-link", "git-lock-stale", "repo-bloat"])
+def test_findings_that_are_the_owners_say_nothing_to_the_agent(code: str) -> None:
+    # A forward link to a note that does not exist yet is legal (format spec
+    # §5.2), and the rest are the hub's, not the note's.
+    signals = VaultSignals(action="read", note_findings=(NoteFinding(code, line=1),))
+    assert read_note_has_findings(signals) is None
+
+
+def test_doctor_finding_state_tells_findings_apart() -> None:
+    def state(*findings: NoteFinding) -> str:
+        nudge = read_note_has_findings(VaultSignals(action="read", note_findings=findings))
+        assert nudge is not None
+        return nudge.state
+
+    assert state(NoteFinding("partial-rename", line=3)) != state(
+        NoteFinding("partial-rename", line=9)
+    )
+    assert state(NoteFinding("not-utf8")) != state(NoteFinding("permalink-duplicate"))
 
 
 def test_a_similar_note_is_named_by_permalink_and_title() -> None:

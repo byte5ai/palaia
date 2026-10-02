@@ -78,6 +78,7 @@ from .vault_protocol import (
     CaptureResult,
     EffectiveSearchMode,
     InboxStatusResult,
+    NoteFindingHit,
     NoteRecord,
     NoteSummary,
     RequestedSearchMode,
@@ -285,6 +286,7 @@ def build_vault_server(
         payload: BaseModel,
         *,
         similar_notes: Sequence[SimilarNoteHit] = (),
+        note_findings: Sequence[NoteFindingHit] = (),
     ) -> ToolResult:
         """A successful result for ``action``, plus any guidance it earned."""
         return nudged_result(
@@ -294,6 +296,7 @@ def build_vault_server(
             payload=payload,
             vault_key=vault.key,
             similar_notes=similar_notes,
+            note_findings=note_findings,
         )
 
     async def _similar_to(title: str, body: str, *, exclude: str) -> list[SimilarNoteHit]:
@@ -307,6 +310,21 @@ def build_vault_server(
             return await service.similar_notes(title, body, exclude=exclude)
         except Exception:  # noqa: BLE001 - advice must never fail a write
             logger.warning("similar-note check raised; write result sent without it", exc_info=True)
+            return []
+
+    async def _findings_of(permalink: str) -> list[NoteFindingHit]:
+        """Issue #440: what the vault doctor found about the note just read.
+
+        Guarded like :func:`_similar_to`: the read already succeeded, and an
+        implementation that breaks its own "never raise" promise must not
+        turn it into an error.
+        """
+        try:
+            return await service.note_findings(permalink)
+        except Exception:  # noqa: BLE001 - advice must never fail a read
+            logger.warning(
+                "note-findings lookup raised; read result sent without it", exc_info=True
+            )
             return []
 
     def _note_ok(action: str, verb: str, note: NoteRecord) -> ToolResult:
@@ -401,7 +419,12 @@ def build_vault_server(
         # should see what the rate limit *is*, not that there is an embed
         # pointing at it. `structured_content.body` stays the note as
         # written, for anything about to edit it.
-        return _ok("read", note.resolved_body or note.body, note)
+        return _ok(
+            "read",
+            note.resolved_body or note.body,
+            note,
+            note_findings=await _findings_of(note.permalink),
+        )
 
     @server.tool(
         name="write",
