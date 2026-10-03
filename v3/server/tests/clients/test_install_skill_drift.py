@@ -13,10 +13,10 @@ about a file that can change underneath it, so this module checks every one:
 - every inline code span and fenced line in the skill is either found
   verbatim in ``v3/deploy``, a placeholder form (``<their-key>``) of
   something that is, a ``get.palaia.ai`` command that reduces to the exact
-  command ``get-palaia.sh``'s header documents, an existing repo path or raw
-  GitHub URL — or one of a short, reasoned list of literals that are not
-  palaia's to ship (a generic ``tail``, Tailscale's key prefixes), whose
-  palaia-specific parts are still checked;
+  command ``get-palaia.sh``'s header documents, an existing repo path or one
+  of the clean ``get.palaia.ai`` file addresses — or one of a short, reasoned
+  list of literals that are not palaia's to ship (a generic ``tail``,
+  Tailscale's key prefixes), whose palaia-specific parts are still checked;
 - the image tag is never hardcoded — the skill derives it from
   ``v3/VERSION`` the same way the onboarding page and
   ``test_version_drift.py`` do;
@@ -50,8 +50,15 @@ SKILL_DIR = CLIENTS_ROOT / "skills" / "palaia-install"
 #: assistant to read, plus ``install.sh`` (the flag list both of them mirror).
 _CORPUS_FILES = ("cloud-init.yaml", "get-palaia.sh", "README.md", "install.sh")
 
-#: The raw-GitHub prefix the skill sends an assistant without a checkout to.
-_RAW_PREFIX = "https://raw.githubusercontent.com/byte5ai/palaia/main/"
+#: The clean get.palaia.ai addresses the skill sends an assistant without a
+#: checkout to, and the repo file each one serves (palaia-homepage's
+#: middleware proxies them from ``main``; raw GitHub is never shown).
+_CLEAN_URLS: dict[str, str] = {
+    "https://get.palaia.ai/cloud-init": "v3/deploy/cloud-init.yaml",
+    "https://get.palaia.ai/install": "v3/deploy/get-palaia.sh",
+    "https://get.palaia.ai/deploy-notes": "v3/deploy/README.md",
+    "https://get.palaia.ai/version": "v3/VERSION",
+}
 
 #: Same header regex ``deploy-snippets.mjs``'s ``loadGetPalaiaCommand`` uses.
 _GET_PALAIA_HEADER_RE = re.compile(r"^#\s+(curl\s.*get\.palaia\.ai.*)$", re.MULTILINE)
@@ -154,6 +161,10 @@ def _check_literal(literal: str, corpus: str, header: str) -> str | None:
     """``None`` if ``literal`` is grounded in what ships, else why it is not."""
     if literal in corpus:
         return None
+    if literal in _CLEAN_URLS:
+        if not (REPO_ROOT / _CLEAN_URLS[literal]).exists():
+            return f"serves {_CLEAN_URLS[literal]!r}, which is not in the repository"
+        return None
     if "get.palaia.ai" in literal:
         match = _CURL_ASSIGNMENT_RE.search(literal)
         if match is None:
@@ -165,11 +176,6 @@ def _check_literal(literal: str, corpus: str, header: str) -> str | None:
             name = assignment.split("=", 1)[0]
             if f"${{{name}" not in corpus:
                 return f"sets {name}, which get-palaia.sh never reads"
-        return None
-    if literal.startswith(_RAW_PREFIX):
-        relative = literal[len(_RAW_PREFIX) :]
-        if not (REPO_ROOT / relative).exists():
-            return f"raw GitHub URL for {relative!r}, which is not in the repository"
         return None
     if literal.startswith("v3/"):
         if not (REPO_ROOT / literal).exists():
@@ -222,7 +228,14 @@ def test_skill_points_at_every_file_it_derives_from() -> None:
         "v3/VERSION",
     ):
         assert relative in literals, f"the skill no longer tells the assistant to read {relative}"
-    assert _RAW_PREFIX in literals
+    for url, relative in _CLEAN_URLS.items():
+        assert url in literals, f"the skill no longer gives the clean address for {relative}"
+
+
+def test_the_skill_never_points_at_raw_github() -> None:
+    """Clean URLs only: an assistant must never be sent to — or show the
+    person — a raw GitHub address."""
+    assert "raw.githubusercontent.com" not in _skill_body()
 
 
 def test_the_get_palaia_command_is_the_headers_own() -> None:

@@ -23,17 +23,16 @@ The setup file and the install command change between releases, so never
 write them from memory, and never from this page alone. Read them from the
 files palaia actually ships, every time:
 
-| What | File |
-|---|---|
-| The setup file pasted in when a server is created | `v3/deploy/cloud-init.yaml` |
-| The installer for a server that already exists | `v3/deploy/get-palaia.sh` |
-| Notes on reboots, updates and backups | `v3/deploy/README.md` |
-| Which release this is | `v3/VERSION` |
+| What | File | Address |
+|---|---|---|
+| The setup file pasted in when a server is created | `v3/deploy/cloud-init.yaml` | `https://get.palaia.ai/cloud-init` |
+| The installer for a server that already exists | `v3/deploy/get-palaia.sh` | `https://get.palaia.ai/install` |
+| Notes on reboots, updates and backups | `v3/deploy/README.md` | `https://get.palaia.ai/deploy-notes` |
+| Which release this is | `v3/VERSION` | `https://get.palaia.ai/version` |
 
-If you are working inside a copy of the palaia repository, read them there.
-Otherwise open each one under
-`https://raw.githubusercontent.com/byte5ai/palaia/main/` — for example
-`https://raw.githubusercontent.com/byte5ai/palaia/main/v3/deploy/cloud-init.yaml`.
+If you are working inside a copy of the palaia repository, read the files
+there. Otherwise open each address — those are the only addresses to use or
+show; never point the person at any other place to download from.
 Read all four from the same place, so they belong to the same release. If you
 cannot open files or web pages at all, say so plainly and do not make the
 commands up.
