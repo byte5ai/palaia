@@ -68,7 +68,7 @@ Or, a script that does the same one-liner with a couple of sanity checks
 the end:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/byte5ai/palaia/main/v3/deploy/install.sh | bash
+curl -fsSL https://get.palaia.ai/docker | bash
 ```
 
 None of these three paths is more "correct" than another — pick whichever

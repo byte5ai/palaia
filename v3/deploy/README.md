@@ -36,11 +36,11 @@ Or the convenience script (never required — see `install.sh`; it only
 wraps the `docker run` above). Piping a script from `main` into `bash` is
 the usual trade-off: to read it first, or to pin what you run, download it
 from a release tag instead —
-`curl -fsSLo install.sh https://raw.githubusercontent.com/byte5ai/palaia/v3.<version>/v3/deploy/install.sh`,
+`curl -fsSLo install.sh https://get.palaia.ai/v3.<version>/docker`,
 read it, then `bash install.sh` (issue #400):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/byte5ai/palaia/main/v3/deploy/install.sh | bash
+curl -fsSL https://get.palaia.ai/docker | bash
 ```
 
 ## Cloud-init (rented servers)
