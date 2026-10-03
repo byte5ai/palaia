@@ -1,7 +1,10 @@
 name: v3 hub image
 
 # SPEC-112: builds/pushes the palaia-hub image to GHCR.
-#   - `edge`                    on every push to main touching v3/**
+#   - `edge`                    on a manual dispatch on `main` (never on a
+#                               push: a merge must not start a multi-arch
+#                               build — runner minutes are spent per approved
+#                               run, not per merge)
 #   - `v3.<version>` + `<version>` + `stable` on a `v3.*` tag (release);
 #     the bare `<version>` tag exists for Home Assistant, whose add-on model
 #     pulls `image:<config.yaml version>` (issue #394)
@@ -21,14 +24,14 @@ name: v3 hub image
 # the note there).
 on:
   push:
-    branches: [main]
+    # Release tags only. A push to `main` used to build and push `edge` on
+    # every merge; that is now a manual dispatch on `main`. No `paths`
+    # filter: a tag push's diff against its predecessor is not a reliable
+    # predictor of "does this release contain v3 changes", and a tag is a
+    # release either way. (`v3-cut-release.yml` dispatches this workflow on
+    # the tag it creates — a tag pushed by the workflow token fires no
+    # `push` trigger.)
     tags: ['v3.*']
-    # No `paths` filter here on purpose: GitHub ANDs `paths` with
-    # `branches`/`tags` on a single `push` trigger, and a tag push's diff
-    # against its predecessor is not a reliable predictor of "does this
-    # release actually contain v3 changes" — filtering by path risks
-    # silently skipping a real release build. Layer caching (below) keeps
-    # the cost of a v3-free `main` push (e.g. a v2 hotfix) low.
   workflow_dispatch:
     inputs:
       channel:
@@ -51,39 +54,7 @@ env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/palaia-hub
 
 jobs:
-  changes:
-    # Issue #405: most pushes to `main` are docs-only, and each used to
-    # cost a full build + push + QEMU smoke (up to ten minutes cold). A
-    # `paths` filter cannot do this (it ANDs with the `tags` trigger — see
-    # the header), so the decision is made here: a branch push builds only
-    # when the diff since the previous head touches v3/ or this workflow;
-    # a tag push and a manual dispatch always build.
-    runs-on: ubuntu-latest
-    outputs:
-      build: ${{ steps.decide.outputs.build }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-      - id: decide
-        env:
-          BEFORE: ${{ github.event.before }}
-        run: |
-          build=true
-          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF}" == refs/heads/* ]]; then
-            # A zero `before` is a new branch or a force-push: build.
-            if [[ -n "${BEFORE}" && "${BEFORE}" != 0000000000000000000000000000000000000000 ]] \
-               && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null \
-               && git diff --quiet "${BEFORE}" HEAD -- v3 .github/workflows/v3-release.yml; then
-              build=false
-              echo "no change under v3/ or to this workflow since ${BEFORE}; skipping the image build"
-            fi
-          fi
-          echo "build=${build}" >> "$GITHUB_OUTPUT"
-
   build-and-push:
-    needs: changes
-    if: needs.changes.outputs.build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

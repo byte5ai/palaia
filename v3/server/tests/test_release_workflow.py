@@ -441,15 +441,15 @@ def test_every_uv_setup_in_ci_caches_its_environment() -> None:
         assert step["with"]["cache-dependency-glob"].endswith("uv.lock")
 
 
-def test_a_docs_only_push_to_main_skips_the_image_build() -> None:
-    workflow = _load_workflow()
-    changes = workflow["jobs"]["changes"]
-    decide = next(s for s in changes["steps"] if s.get("id") == "decide")
-    assert "git diff --quiet" in decide["run"]
-    assert "v3 .github/workflows/v3-release.yml" in decide["run"]
-    build = workflow["jobs"]["build-and-push"]
-    assert build["needs"] == "changes"
-    assert build["if"] == "needs.changes.outputs.build == 'true'"
+def test_a_merge_to_main_starts_no_image_build() -> None:
+    """A multi-arch build + push + QEMU smoke is the expensive kind of run;
+    it happens for a release tag or a deliberate dispatch, never per merge
+    (owner rule: no heavy CI on push). `edge` is built by a dispatch on
+    `main` — see `test_a_plain_manual_rebuild_on_main_still_works`."""
+    on = _load_workflow()[True]
+    assert set(on) == {"push", "workflow_dispatch"}
+    assert set(on["push"]) == {"tags"}, "push may trigger on release tags only"
+    assert on["push"]["tags"] == ["v3.*"]
 
 
 def test_the_dockerfile_installs_dependencies_before_the_project_sources() -> None:
