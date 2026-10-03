@@ -7,7 +7,7 @@
 // independent check that the extraction actually landed on the right
 // text, by re-reading the same source file a second, differently-shaped
 // way and asserting the two agree.
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -55,11 +55,13 @@ describe("onboarding page snippets", () => {
     expect(compose).toContain(composeSnippet.split("\n").at(-1));
   });
 
-  it("the curl install command points at the real install.sh path in this repository", () => {
+  it("the curl install command uses the clean get.palaia.ai/docker address, never raw GitHub", () => {
+    // get.palaia.ai/docker is proxied from v3/deploy/install.sh on main
+    // (palaia-homepage middleware); raw GitHub URLs are never shown.
     const { curlInstall } = loadDeploySnippets();
-    expect(curlInstall).toContain(
-      "https://raw.githubusercontent.com/byte5ai/palaia/main/v3/deploy/install.sh",
-    );
+    expect(curlInstall).toContain("https://get.palaia.ai/docker");
+    expect(curlInstall).not.toContain("raw.githubusercontent.com");
+    expect(existsSync(path.join(DEPLOY_ROOT, "install.sh"))).toBe(true);
   });
 
   it("has no horizontal scroll on phones: no fixed pixel width, snippets scroll in their own box", () => {
