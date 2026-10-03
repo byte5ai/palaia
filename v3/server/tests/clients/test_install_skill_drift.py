@@ -77,6 +77,28 @@ _NOT_FROM_DEPLOY: dict[str, str] = {
     "sudo docker logs --tail 50 palaia-hub": (
         "a generic way to read a container's log; the container name is anchored below"
     ),
+    # Step 3 — reaching an existing server over SSH. Plain OpenSSH, nothing
+    # palaia ships; the password path keeps the password out of the chat by
+    # saving it in a file only the user can read and handing it to ssh
+    # through SSH_ASKPASS (works without sshpass, OpenSSH 8.4+).
+    "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 "
+    "root@<address> true": "key login check that can never hang on a prompt",
+    "mkdir -p ~/.palaia-setup && chmod 700 ~/.palaia-setup && printf 'Server password: ' "
+    "&& read -rs PW && (umask 077 && printf '%s\\n' \"$PW\" > ~/.palaia-setup/pw) "
+    "&& unset PW && echo ' saved'": "the user's Run line that saves the password privately",
+    "printf '#!/bin/sh\\ncat \"$HOME/.palaia-setup/pw\"\\n' > ~/.palaia-setup/askpass "
+    "&& chmod 700 ~/.palaia-setup/askpass": "askpass helper; holds no secret itself",
+    'SSH_ASKPASS="$HOME/.palaia-setup/askpass" SSH_ASKPASS_REQUIRE=force ssh '
+    "-o StrictHostKeyChecking=accept-new "
+    "-o PreferredAuthentications=password,keyboard-interactive "
+    "-o NumberOfPasswordPrompts=1 -o ConnectTimeout=15 root@<address> true": (
+        "password login check through the askpass helper"
+    ),
+    "rm -rf ~/.palaia-setup": "deletes the saved password when setup is done",
+    "ssh-keygen -R <address>": "forgets a reset server's old host key",
+    "ssh -o StrictHostKeyChecking=accept-new root@<address>": (
+        "interactive first login, for a provider that forces a password change"
+    ),
 }
 
 #: Tokens inside a quote that name something palaia ships: absolute paths,
@@ -153,14 +175,14 @@ def _check_literal(literal: str, corpus: str, header: str) -> str | None:
         if not (REPO_ROOT / literal).exists():
             return f"names {literal!r}, which does not exist"
         return None
-    if _PLACEHOLDER_RE.search(literal):
-        if _placeholder_pattern(literal).search(corpus) is None:
-            return "a placeholder form that matches nothing in v3/deploy"
-        return None
     if literal in _NOT_FROM_DEPLOY:
         missing = [token for token in _anchor_tokens(literal) if token not in corpus]
         if missing:
             return f"its palaia-specific part(s) {missing} are not in v3/deploy"
+        return None
+    if _PLACEHOLDER_RE.search(literal):
+        if _placeholder_pattern(literal).search(corpus) is None:
+            return "a placeholder form that matches nothing in v3/deploy"
         return None
     return "not found in v3/deploy and not in this test's reasoned allow-list"
 

@@ -107,33 +107,73 @@ server, or are about to.
 
 ## Step 3 — An existing server: set it up remotely
 
-You need to reach the server. Ask for its address and whether they can give you
-a way in (an SSH login), or whether they would rather paste one line themselves.
+Ask in one go: the server's address, and how they log in — with a key already
+on this computer, with a password (the provider emailed or showed it), or they
+do not know (then ask whether the provider sent a password; if so, that is the
+password path). Never ask them to type a password into the chat: whatever is
+written there stays in the conversation.
 
-Build the one line from the installer itself: the top of
-`v3/deploy/get-palaia.sh` names the command to run, which today is
+The installer line comes from the top of `v3/deploy/get-palaia.sh`; today:
 
 ```
 curl -fsSL https://get.palaia.ai | sh
 ```
 
-Put their key (Step 4) between the `|` and `sh`, so the installer does not
-stop to ask for it:
+Put their key (Step 4) between the `|` and `sh`, so it does not stop to ask:
 
 ```
 curl -fsSL https://get.palaia.ai | PALAIA_TSKEY=<their-key> sh
 ```
 
-For a test release (see "Which image this release uses"), add the image name
-the same way, still one line:
+For a test release (see "Which image this release uses"), still one line:
 
 ```
 curl -fsSL https://get.palaia.ai | PALAIA_TSKEY=<their-key> PALAIA_CHANNEL=beta sh
 ```
 
-- **You can reach it** — run that line on the server yourself.
-- **You cannot** — give them the line to paste into their server's terminal,
-  and ask them to send back the last few lines it prints.
+The commands below log in as root, which most providers set up; if theirs
+gave a different user name, use that. "Run the installer line through it"
+means: put the line, in single quotes, in place of the final word true. It
+takes a few minutes, then go to Step 5. If a login prints an error, see "When
+the login fails" in Step 6.
+
+**3a — With a key.** Check you get in (these options never hang on a
+question); no output means you are in, then run the installer line through it:
+
+```
+ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 root@<address> true
+```
+
+**3b — With a password, and you can run commands on their computer** (the
+commands you show get a Run button, or there is a terminal next to the chat).
+The password goes into a private file on their computer and never through the
+chat. Show them this one line and say: "Click Run (or paste it into the
+terminal), type your server password when it asks, press Enter. Nothing
+appears while you type — that is normal." Wait until it printed "saved".
+
+```bash
+mkdir -p ~/.palaia-setup && chmod 700 ~/.palaia-setup && printf 'Server password: ' && read -rs PW && (umask 077 && printf '%s\n' "$PW" > ~/.palaia-setup/pw) && unset PW && echo ' saved'
+```
+
+Then create a helper that hands the saved password to the login (it holds no
+secret itself), check you get in, and run the installer line through the
+second command:
+
+```
+printf '#!/bin/sh\ncat "$HOME/.palaia-setup/pw"\n' > ~/.palaia-setup/askpass && chmod 700 ~/.palaia-setup/askpass
+SSH_ASKPASS="$HOME/.palaia-setup/askpass" SSH_ASKPASS_REQUIRE=force ssh -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password,keyboard-interactive -o NumberOfPasswordPrompts=1 -o ConnectTimeout=15 root@<address> true
+```
+
+When done — or if they stop halfway — delete the saved password:
+
+```
+rm -rf ~/.palaia-setup
+```
+
+**3c — You cannot run commands for them** (a chat with no Run button and no
+terminal). Give them the installer line to paste into their server's terminal
+— most providers have a "Console" button on their website that opens one in
+the browser — and ask them to send back the last few lines it prints.
 
 The installer puts everything in place — the container engine, the private
 network, the firewall, and palaia itself — and ends with a line starting
@@ -175,7 +215,8 @@ browser on the private network, on port `8420`.
   the one to open in a browser (`http://<address>:8420/`).
 
 If it answers: give them that address and tell them the next step is opening it
-and connecting their first AI tool. If it does not, go to Step 6.
+and connecting their first AI tool. If you used the password path (Step 3b),
+delete the saved password now, as that step says. If it does not, go to Step 6.
 
 ## Step 6 — When it does not come up
 
@@ -190,6 +231,30 @@ and saying what to do. Translate it:
   the line again.
 - It could not download palaia's image — check "Which image this release
   uses"; for a test release the line needs `PALAIA_CHANNEL=beta`.
+
+**When the login fails** (Step 3a or 3b), translate its error line:
+
+- **"REMOTE HOST IDENTIFICATION HAS CHANGED"** — a different machine answers
+  at that address than this computer met before; expected after they reset or
+  reinstalled the server. Only if they confirm they did, run the line below
+  and try again; otherwise stop and tell them plainly.
+
+```
+ssh-keygen -R <address>
+```
+
+- **"Permission denied"** — wrong password or user name: rerun the 3b line.
+- **"Password change required" / "Your password has expired"** — the provider
+  wants a new password at first login (Hetzner does this without a key). Have
+  them run the line below, type the password they were sent, choose a new one
+  twice, type exit — then rerun the 3b line with the new password.
+
+```bash
+ssh -o StrictHostKeyChecking=accept-new root@<address>
+```
+
+- **"Connection timed out" / "No route to host"** — wrong address or the
+  server is off; have them check both on the provider's website.
 
 **The setup-file path** writes everything it did to one log on the server:
 `/var/log/cloud-init-output.log`. Only the hub itself is kept off the public
