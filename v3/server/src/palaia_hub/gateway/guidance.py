@@ -99,7 +99,9 @@ def signals_for(
         similar_notes=tuple(
             SimilarNote(permalink=n.permalink, title=n.title) for n in similar_notes
         ),
-        note_findings=tuple(NoteFinding(code=f.code, line=f.line) for f in note_findings),
+        note_findings=tuple(
+            NoteFinding(code=f.code, line=f.line, path=f.path) for f in note_findings
+        ),
     )
     if isinstance(result, RecallResult):
         return replace(
@@ -124,7 +126,11 @@ def signals_for(
     if isinstance(result, InboxStatusResult):
         return replace(signals, inbox_count=result.count)
     if isinstance(result, NoteRecord):
-        return replace(signals, unresolved_values=tuple(result.resolution_warnings))
+        return replace(
+            signals,
+            note=result.permalink,
+            unresolved_values=tuple(result.resolution_warnings),
+        )
     # `SearchResult` is defined in `memory_tools`, which imports this module,
     # so it cannot be imported here without a cycle. It is matched
     # structurally instead — which also covers any future result reporting a

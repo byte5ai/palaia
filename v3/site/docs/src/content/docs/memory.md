@@ -101,6 +101,23 @@ nudges:
   similar_note_threshold: 0.7   # 0.5-1.0; higher = fewer, surer warnings
 ```
 
+### When a note has a known problem
+
+Some problems with a note don't show in its text. A link can still use the
+old name of a note that was renamed since, two notes can claim the same
+address, or a file saved in an old text encoding can't be edited through
+palaia. The hub checks your memory for these once each time it starts. When
+an AI tool then reads one of those notes, it gets a one-line heads-up with
+what to do next: fix the link (and on which line), or put the change in a
+new note instead of editing.
+
+Before the heads-up is shown, palaia checks it against your memory as it is
+now — a link someone repaired since, or a duplicate address that was
+resolved, is not mentioned — and as soon as a note changes, palaia forgets
+what it knew about it. Problems that come up after the hub started show up
+after its next restart. For the complete check, run
+`palaia-hub doctor` (see [Troubleshooting](/troubleshooting/)).
+
 ## Finding things again
 
 The search bar in the dashboard looks for both the words you type and notes

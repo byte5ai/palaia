@@ -1494,7 +1494,7 @@ wheels = [
 
 [[package]]
 name = "palaia-addon-sdk"
-version = "3.0.0rc3"
+version = "3.0.0rc4"
 source = { directory = "sdk" }
 dependencies = [
     { name = "pydantic" },

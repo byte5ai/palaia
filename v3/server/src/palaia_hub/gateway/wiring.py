@@ -59,6 +59,7 @@ from palaia_hub.vault import (
     PermalinkConflictError,
     UncommittedWriteError,
     VaultEngine,
+    VaultError,
     VolatileNameError,
 )
 from palaia_hub.vault import permalink as pl
@@ -110,6 +111,11 @@ _ENGINE_CALLER_ERRORS: tuple[type[Exception], ...] = (
 #: The check keeps running past it — so a loaded model is not thrown away —
 #: but the write's result does not wait for it.
 SIMILAR_NOTES_TIMEOUT_SECONDS = 2.0
+
+#: Issue #440: how long a ``read`` waits for its note's doctor findings to be
+#: re-checked. Advice on a read that already succeeded — on a slow disk the
+#: read goes out without it.
+NOTE_FINDINGS_TIMEOUT_SECONDS = 1.0
 
 #: Note types a similar-note warning never points at: the vault manifest and
 #: other ``meta`` notes (format spec §6, excluded from normal recall), and the
@@ -606,20 +612,39 @@ class EngineVaultService:
             if note.similarity >= threshold
         ]
 
-    async def note_findings(self, permalink: str) -> list[NoteFindingHit]:
-        """The index's cached doctor findings for one note (issue #440).
+    async def note_findings(self, reference: str, *, expected: str = "") -> list[NoteFindingHit]:
+        """The index's doctor findings for one note that are still true (issue #440).
 
-        An in-memory lookup, never a scan: without an index nothing was
-        scanned, and the answer is ``[]``.
+        ``reference`` is resolved exactly as :meth:`read` resolves it, so the
+        answer is about the note that was read — also for a note without a
+        permalink, or one sharing its permalink with another. ``expected`` is
+        the read note's permalink: if the reference names a different note by
+        now, the answer is ``[]`` rather than that note's findings. Never
+        waits longer than :data:`NOTE_FINDINGS_TIMEOUT_SECONDS`. Without an
+        index nothing was scanned, and the answer is ``[]``.
         """
         if self._index is None:
             return []
-        path = self._engine.path_for_permalink(permalink)
-        if path is None:
+        try:
+            entry = self._engine.resolve(reference)
+        except VaultError:
+            return []
+        if expected and (entry.permalink or entry.path) != expected:
+            return []
+        try:
+            found = await asyncio.wait_for(
+                self._index.current_note_findings(entry.path),
+                timeout=NOTE_FINDINGS_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            logger.info(
+                "note-findings check took over %.1fs; read sent without it",
+                NOTE_FINDINGS_TIMEOUT_SECONDS,
+            )
             return []
         return [
-            NoteFindingHit(code=finding.code, line=finding.line)
-            for finding in self._index.note_findings(path)
+            NoteFindingHit(code=finding.code, line=finding.line, path=entry.path)
+            for finding in found
         ]
 
     def _settle_background(self, check: asyncio.Future[Any]) -> None:

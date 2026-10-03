@@ -11,6 +11,7 @@ scan never reports a note that changed while it ran.
 from __future__ import annotations
 
 import asyncio
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +36,10 @@ def _write(root: Path, relative: str, data: bytes | str) -> None:
 
 def _codes(index: Any, path: str) -> list[str]:
     return [finding.code for finding in index.note_findings(path)]
+
+
+async def _current(index: Any, path: str) -> list[str]:
+    return [finding.code for finding in await index.current_note_findings(path)]
 
 
 async def test_a_scan_keeps_findings_by_note(tmp_path: Path, open_index: Any) -> None:
@@ -76,11 +81,11 @@ async def test_a_note_that_changed_during_a_scan_is_not_reported(
     )
     kept = Finding(code="not-utf8", severity="warning", detail="d", fix="f", path="notes/b.md")
 
-    async def verify_while_a_note_changes(index_view: object = None) -> list[Finding]:
+    async def verify_while_a_note_changes(stop: object = None) -> list[Finding]:
         await index.apply_event(NoteDeleted(vault=engine.name, path="notes/a.md"))
         return [stale, kept]
 
-    monkeypatch.setattr(index._doctor, "verify", verify_while_a_note_changes)
+    monkeypatch.setattr(index._doctor, "verify_notes", verify_while_a_note_changes)
     await index.refresh_note_findings()
     assert index.note_findings("notes/a.md") == ()
     assert _codes(index, "notes/b.md") == ["not-utf8"]
@@ -101,7 +106,7 @@ async def test_deleting_one_claimant_clears_a_duplicate_permalink_finding(
     (engine.root / "notes/two.md").unlink()
     await engine.refresh()
     await index.apply_event(NoteDeleted(vault=engine.name, path="notes/two.md"))
-    assert "permalink-duplicate" not in _codes(index, "notes/one.md")
+    assert "permalink-duplicate" not in await _current(index, "notes/one.md")
 
 
 async def test_the_background_scan_fills_the_table(tmp_path: Path, open_index: Any) -> None:
@@ -120,12 +125,12 @@ async def test_closing_the_index_stops_a_running_scan(
     _, index = await open_index(tmp_path / "vault")
     started = asyncio.Event()
 
-    async def never_finishes(index_view: object = None) -> list[Finding]:
+    async def never_finishes(stop: object = None) -> list[Finding]:
         started.set()
         await asyncio.Event().wait()
         return []
 
-    monkeypatch.setattr(index._doctor, "verify", never_finishes)
+    monkeypatch.setattr(index._doctor, "verify_notes", never_finishes)
     index.start_findings_scan()
     await started.wait()
     await index.close()
@@ -137,10 +142,10 @@ async def test_a_failing_scan_leaves_the_index_serving(
 ) -> None:
     _, index = await open_index(tmp_path / "vault")
 
-    async def explodes(index_view: object = None) -> list[Finding]:
+    async def explodes(stop: object = None) -> list[Finding]:
         raise RuntimeError("doctor exploded")
 
-    monkeypatch.setattr(index._doctor, "verify", explodes)
+    monkeypatch.setattr(index._doctor, "verify_notes", explodes)
     index.start_findings_scan()
     assert index._findings_task is not None
     await index._findings_task  # logged, not raised
@@ -188,3 +193,154 @@ async def test_only_the_duplicate_finding_is_shared_between_claimants(
     await index.refresh_note_findings()
     assert "not-utf8" in _codes(index, "notes/one.md")
     assert "not-utf8" not in _codes(index, "notes/two.md")
+
+
+RENAMED_TARGET = "---\ntitle: New Name\npermalink: notes/old-name\n---\n\nrenamed\n"
+LINKING_NOTE = "---\ntitle: Linker\npermalink: notes/linker\n---\n\nSee [[Old Name]].\n"
+
+
+async def test_a_link_fixed_on_the_target_side_is_no_longer_reported(
+    tmp_path: Path, open_index: Any
+) -> None:
+    """Adding the old name as an alias on the renamed note repairs the link
+    without touching the note that holds it — no event names that note."""
+    engine, index = await open_index(tmp_path / "vault")
+    _write(engine.root, "notes/old-name.md", RENAMED_TARGET)
+    _write(engine.root, "notes/linker.md", LINKING_NOTE)
+    await engine.refresh()
+    await index.refresh_note_findings()
+    assert "partial-rename" in await _current(index, "notes/linker.md")
+
+    _write(
+        engine.root,
+        "notes/old-name.md",
+        RENAMED_TARGET.replace("title: New Name\n", "title: New Name\naliases: [Old Name]\n"),
+    )
+    await engine.refresh()
+    assert "partial-rename" not in await _current(index, "notes/linker.md")
+    # The candidate stays: removing the alias again would bring the problem
+    # back without touching this note.
+    assert "partial-rename" in _codes(index, "notes/linker.md")
+
+
+async def test_a_permalink_changed_in_an_editor_resolves_the_duplicate(
+    tmp_path: Path, open_index: Any
+) -> None:
+    """The watcher reports an external frontmatter edit as a plain
+    modification of the *other* note."""
+    engine, index = await open_index(tmp_path / "vault")
+    _write(engine.root, "notes/one.md", "---\ntitle: One\npermalink: notes/same\n---\n\n1\n")
+    _write(engine.root, "notes/two.md", "---\ntitle: Two\npermalink: notes/same\n---\n\n2\n")
+    await engine.refresh()
+    await index.refresh_note_findings()
+
+    _write(engine.root, "notes/two.md", "---\ntitle: Two\npermalink: notes/two\n---\n\n2\n")
+    await engine.refresh()
+    await index.apply_event(NoteModified(vault=engine.name, path="notes/two.md"))
+    assert "permalink-duplicate" not in await _current(index, "notes/one.md")
+
+
+async def test_an_unrelated_delete_keeps_a_duplicate_reported(
+    tmp_path: Path, open_index: Any
+) -> None:
+    engine, index = await open_index(tmp_path / "vault")
+    _write(engine.root, "notes/one.md", "---\ntitle: One\npermalink: notes/same\n---\n\n1\n")
+    _write(engine.root, "notes/two.md", "---\ntitle: Two\npermalink: notes/same\n---\n\n2\n")
+    _write(engine.root, "notes/other.md", "---\ntitle: Other\npermalink: notes/other\n---\n\nx\n")
+    await engine.refresh()
+    await index.refresh_note_findings()
+
+    (engine.root / "notes/other.md").unlink()
+    await engine.refresh()
+    await index.apply_event(NoteDeleted(vault=engine.name, path="notes/other.md"))
+    assert "permalink-duplicate" in await _current(index, "notes/one.md")
+
+
+async def test_a_note_without_a_permalink_is_found_by_the_reference_it_was_read_by(
+    tmp_path: Path, open_index: Any
+) -> None:
+    engine, index = await open_index(tmp_path / "vault")
+    _write(engine.root, "notes/bare.md", b"---\ntitle: Bare\n---\n\ncaf\xe9\n")
+    await engine.refresh()
+    await index.refresh_note_findings()
+
+    service = EngineVaultService(engine, index)
+    note = await service.read("notes/bare.md")
+    codes = [hit.code for hit in await service.note_findings("notes/bare.md")]
+    assert "not-utf8" in codes, note.permalink
+
+
+async def test_each_claimant_reports_only_its_own_findings_when_read_by_title(
+    tmp_path: Path, open_index: Any
+) -> None:
+    engine, index = await open_index(tmp_path / "vault")
+    _write(engine.root, "notes/one.md", b"---\ntitle: One\npermalink: notes/same\n---\n\ncaf\xe9\n")
+    _write(engine.root, "notes/two.md", "---\ntitle: Two\npermalink: notes/same\n---\n\n2\n")
+    await engine.refresh()
+    await index.refresh_note_findings()
+
+    service = EngineVaultService(engine, index)
+    two = [hit.code for hit in await service.note_findings("Two")]
+    assert "permalink-duplicate" in two
+    assert "not-utf8" not in two, "notes/one.md's encoding problem is not notes/two.md's"
+
+
+async def test_a_set_stop_ends_the_file_walk(tmp_path: Path, open_index: Any) -> None:
+    """``close()`` sets the stop event, because cancelling the task cannot
+    stop the thread the doctor's walk runs in."""
+    engine, index = await open_index(tmp_path / "vault")
+    _write(engine.root, "notes/latin.md", LATIN1_NOTE)
+    await engine.refresh()
+    stop = threading.Event()
+    stop.set()
+    codes = [f.code for f in await index._doctor.verify_notes(stop)]
+    assert "not-utf8" not in codes
+
+
+async def test_a_note_that_changes_during_its_recheck_reports_nothing(
+    tmp_path: Path, open_index: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    engine, index = await open_index(tmp_path / "vault")
+    _write(engine.root, "notes/old-name.md", RENAMED_TARGET)
+    _write(engine.root, "notes/linker.md", LINKING_NOTE)
+    await engine.refresh()
+    await index.refresh_note_findings()
+    real = index._recheck_findings
+
+    def recheck_while_the_note_changes(path: str, cached: Any) -> Any:
+        index._forget_findings(NoteModified(vault=engine.name, path=path))
+        return real(path, cached)
+
+    monkeypatch.setattr(index, "_recheck_findings", recheck_while_the_note_changes)
+    assert await index.current_note_findings("notes/linker.md") == ()
+
+
+async def test_a_reference_that_names_another_note_by_now_gets_nothing(
+    tmp_path: Path, open_index: Any
+) -> None:
+    engine, index = await open_index(tmp_path / "vault")
+    _write(engine.root, "notes/latin.md", LATIN1_NOTE)
+    await engine.refresh()
+    await index.refresh_note_findings()
+    service = EngineVaultService(engine, index)
+    assert await service.note_findings("notes/latin", expected="notes/latin")
+    assert await service.note_findings("notes/latin", expected="notes/other") == []
+
+
+async def test_a_slow_recheck_never_holds_the_read(
+    tmp_path: Path, open_index: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from palaia_hub.gateway import wiring
+
+    engine, index = await open_index(tmp_path / "vault")
+    _write(engine.root, "notes/latin.md", LATIN1_NOTE)
+    await engine.refresh()
+    await index.refresh_note_findings()
+
+    async def slow(path: str) -> tuple[Finding, ...]:
+        await asyncio.sleep(5)
+        return ()
+
+    monkeypatch.setattr(index, "current_note_findings", slow)
+    monkeypatch.setattr(wiring, "NOTE_FINDINGS_TIMEOUT_SECONDS", 0.05)
+    assert await EngineVaultService(engine, index).note_findings("notes/latin") == []

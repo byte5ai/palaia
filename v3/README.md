@@ -1,14 +1,14 @@
 # palaia v3
 
-**Status: release candidate (`3.0.0-rc3`, see [VERSION](VERSION)).** This
+**Status: release candidate (`3.0.0-rc4`, see [VERSION](VERSION)).** This
 directory contains everything belonging to palaia v3 — a ground-up rewrite
 with a much larger scope than v2 ("Home Assistant for AI"). The Phase-5
-gate is held (`IMPLEMENTATION.md` §6, 2026-08-26, conditional on the two
-owner actions it names); `RELEASING.md` is the ordered path from here to a
-final, non-candidate `3.0.0`.
+gate is held (`IMPLEMENTATION.md` §6, 2026-08-26; the two owner actions it
+named were withdrawn on 2026-10-02); `RELEASING.md` is the ordered path from
+here to a final, non-candidate `3.0.0`.
 
-Not yet tagged `3.0.0`. palaia v2 (the repo root) remains the stable
-product until then; v2 hotfixes happen on the `v2-maintenance` branch.
+Not yet tagged `3.0.0`. palaia v2 (the repo root) is retired; only critical
+fixes land, on the `v2-maintenance` branch.
 
 ## Navigation
 

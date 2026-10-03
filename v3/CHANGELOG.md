@@ -10,6 +10,32 @@ ADRs, phase-gate records, SPEC index docs, CI and release plumbing) are left
 out on purpose; they moved the project forward but nothing in them is a
 capability a user would notice.
 
+## 3.0.0-rc4 — 2026-10-03 (release candidate)
+
+A small release candidate on top of `rc3`: one new hint for AI tools, and
+documentation that matches decisions made since. Still a pre-release — the
+`:beta` channel.
+
+### Memory & search
+
+- **A heads-up when a note has a known problem.** The hub checks your
+  memory once each time it starts. When an AI tool then reads a note that
+  links to a renamed note by its old name, shares its address with another
+  note, or cannot be edited because of its text encoding, the answer says so
+  and names the next step. The hint is checked against the memory as it is
+  now before it is shown.
+
+### Documentation
+
+- palaia v2 is described as retired everywhere: no new features, only
+  critical fixes, v3 replaces it.
+- The release checklist no longer lists an external security review or a
+  recruited usability session before 3.0.0; neither was ever planned.
+  Private vulnerability reporting, the channel `SECURITY.md` names, is now
+  switched on.
+- The Telegram connector has its own page on the docs site, and the feature
+  overview covers what `rc3` added.
+
 ## 3.0.0-rc3 — 2026-09-28 (release candidate)
 
 The third release candidate, and the first meant for a live test end to

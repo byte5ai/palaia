@@ -145,6 +145,9 @@ class NoteFindingHit(BaseModel):
 
     code: str
     line: int | None = None
+    #: The note's path in the vault, identifying it where its permalink is
+    #: shared or missing. Never part of a tool's payload.
+    path: str = ""
 
 
 class InboxStatusResult(BaseModel):
@@ -418,13 +421,16 @@ class VaultService(Protocol):
         """
         ...
 
-    async def note_findings(self, permalink: str) -> list[NoteFindingHit]:
-        """What the last vault doctor check found about one note (issue #440).
+    async def note_findings(self, reference: str, *, expected: str = "") -> list[NoteFindingHit]:
+        """What the vault doctor found about one note, if still true (issue #440).
 
-        Called by ``read`` after the note was read, for the nudge layer.
-        Cheap by contract: an in-memory lookup, never a scan — an
-        implementation with nothing cached returns ``[]``, and so does one
-        that fails, since a read must never fail over advice.
+        Called by ``read`` after the note was read, with the same
+        ``reference`` it was read by and, as ``expected``, the permalink of
+        the note that came back — so a reference that names another note by
+        now gets ``[]``, not that note's findings. Cheap by contract: never a vault scan.
+        An implementation may re-check a cached finding against that one
+        note, but returns ``[]`` with nothing cached, and ``[]`` when it
+        fails, since a read must never fail over advice.
         """
         ...
 

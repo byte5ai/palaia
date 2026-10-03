@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import threading
 import time
 from collections.abc import Callable, Collection, Iterator, Sequence
 from dataclasses import dataclass
@@ -86,6 +87,11 @@ _MAX_EMBED_ATTEMPTS = 3
 #: backoff instead of disabling vectors for the rest of the process.
 _EMBEDDER_RETRY_INITIAL_SECONDS = 1.0
 _EMBEDDER_RETRY_MAX_SECONDS = 60.0
+
+#: Issue #440: the cached doctor findings another note can make untrue, so
+#: :meth:`VaultIndex.current_note_findings` re-checks them before a read
+#: reports them.
+_RECHECKED_CODES = frozenset({"permalink-duplicate", "partial-rename"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,18 +154,18 @@ class VaultIndex:
         self._unsubscribe: Callable[[], None] | None = None
         self._worker: asyncio.Task[None] | None = None
         #: Issue #440: the doctor findings about single notes, by path, from
-        #: the last :meth:`refresh_note_findings`. A note's entries are
-        #: dropped when an event touches it (see :meth:`_forget_findings`),
-        #: so the table only ever loses findings between scans, never
-        #: invents one.
+        #: the last :meth:`refresh_note_findings`. They are *candidates*:
+        #: :meth:`current_note_findings` re-checks the ones another note can
+        #: make untrue (a link, a shared permalink) before they are reported,
+        #: and an event that touches a note drops its entries.
         self._note_findings: dict[str, tuple[Finding, ...]] = {}
         self._findings_task: asyncio.Task[None] | None = None
+        #: Set by :meth:`close` so a running scan's file walk stops — cancelling
+        #: the task cannot stop the thread it waits on.
+        self._findings_stop = threading.Event()
         #: Paths an event touched while a scan ran: the scan read them before
         #: or after the change, so its findings about them are not trusted.
         self._findings_touched: set[str] | None = None
-        #: A delete or rename arrived while a scan ran, so the scan's
-        #: ``permalink-duplicate`` findings are not trusted either.
-        self._findings_identity_changed = False
         self._wake = asyncio.Event()
         self._closing = False
         self._last_indexed_at = 0.0
@@ -232,6 +238,7 @@ class VaultIndex:
                 await self._worker
             self._worker = None
         if self._findings_task is not None:
+            self._findings_stop.set()
             self._findings_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._findings_task
@@ -306,89 +313,85 @@ class VaultIndex:
             logger.warning("note findings scan failed", exc_info=True)
 
     async def refresh_note_findings(self) -> int:
-        """Re-run the doctor's file-side checks and keep the per-note findings.
+        """Re-run the doctor's per-note checks and keep what they found.
 
-        File-side only: the drift check needs the index caught up, and its
-        findings are about the index, not a note. Raises no ``doctor.finding``
-        events — this is a cache for the nudge layer, not a doctor run the
+        Only identity, encoding and links (:meth:`VaultDoctor.verify_notes`)
+        — no git, manifest or index checks. Raises no ``doctor.finding``
+        events: this is a cache for the nudge layer, not a doctor run the
         owner asked for. Returns how many notes have findings.
         """
         self._findings_touched = set()
-        self._findings_identity_changed = False
         try:
-            findings = await self._doctor.verify()
+            findings = await self._doctor.verify_notes(self._findings_stop)
             touched = self._findings_touched
-            identity_changed = self._findings_identity_changed
         finally:
             self._findings_touched = None
-        claimants = self._permalink_claimants(findings)
         by_path: dict[str, list[Finding]] = {}
         for finding in findings:
             if finding.path is None:
                 continue
-            if identity_changed and finding.code == "permalink-duplicate":
-                continue
             paths: tuple[str, ...] = (finding.path,)
             if finding.code == "permalink-duplicate":
-                # The doctor files a duplicate under one claimant; a read by
-                # the permalink can land on any of them, so each gets it.
-                paths = claimants.get(finding.path, paths)
+                # The doctor files a duplicate under one claimant; a read can
+                # land on any of them, so each gets it.
+                paths = self._doctor.permalink_claimants(finding.path) or paths
             for path in paths:
                 if path not in touched:
                     by_path.setdefault(path, []).append(finding)
         self._note_findings = {path: tuple(found) for path, found in by_path.items()}
         return len(self._note_findings)
 
-    def _permalink_claimants(self, findings: Sequence[Finding]) -> dict[str, tuple[str, ...]]:
-        """For each path a ``permalink-duplicate`` finding sits on, every path
-        that claims the same permalink."""
-        duplicated = {
-            f.path for f in findings if f.code == "permalink-duplicate" and f.path is not None
-        }
-        if not duplicated:
-            return {}
-        catalog = self._engine.catalog
-        by_permalink: dict[str, list[str]] = {}
-        for entry in catalog.values():
-            if entry.permalink:
-                by_permalink.setdefault(entry.permalink, []).append(entry.path)
-        claimants: dict[str, tuple[str, ...]] = {}
-        for path in duplicated:
-            found = catalog.get(path)
-            if found is not None and found.permalink:
-                claimants[path] = tuple(by_permalink[found.permalink])
-        return claimants
-
     def note_findings(self, path: str) -> tuple[Finding, ...]:
-        """What the last scan found about the note at ``path``. In-memory only."""
+        """The cached candidates for the note at ``path``, unchecked."""
         return self._note_findings.get(path, ())
 
-    def _forget_findings(self, event: ChangeEvent) -> None:
-        """Drop the findings an event may have made untrue.
+    async def current_note_findings(self, path: str) -> tuple[Finding, ...]:
+        """What is still true of the note at ``path`` among its cached findings.
 
-        Every path the event touched loses its findings. A delete or rename
-        also clears every ``permalink-duplicate`` finding — removing or
-        renaming one of the claimants is how a duplicate gets resolved, and
-        the finding sits on a path the event need not name.
+        Nothing is checked for a note with no cached finding, which is almost
+        every note. For one that has some, the findings another note can make
+        untrue are checked against the vault as it is now, in a thread: a
+        duplicate permalink against the engine's live catalog, a link to a
+        renamed note by re-reading this one note's links. The cache keeps the
+        candidates either way — a problem repaired on another note can come
+        back the same way — and an event that touches this note during the
+        check makes the answer ``()``.
+        """
+        cached = self._note_findings.get(path)
+        if not cached:
+            return ()
+        if not any(f.code in _RECHECKED_CODES for f in cached):
+            return cached
+        current = await asyncio.to_thread(self._recheck_findings, path, cached)
+        if self._note_findings.get(path) is not cached:
+            return ()
+        return current
+
+    def _recheck_findings(self, path: str, cached: tuple[Finding, ...]) -> tuple[Finding, ...]:
+        kept = [f for f in cached if f.code not in _RECHECKED_CODES]
+        duplicates = [f for f in cached if f.code == "permalink-duplicate"]
+        if duplicates and len(self._doctor.permalink_claimants(path)) > 1:
+            kept.append(duplicates[0])
+        if any(f.code == "partial-rename" for f in cached):
+            relinked = self._doctor.note_link_findings(path)
+            kept.extend(f for f in relinked if f.code == "partial-rename")
+        return tuple(kept)
+
+    def _forget_findings(self, event: ChangeEvent) -> None:
+        """Drop the findings of every note an event touched.
+
+        What another note can make untrue is not tracked here —
+        :meth:`current_note_findings` re-checks it when the note is read.
         """
         paths = {event.path}
         if isinstance(event, NoteMoved | EntityRenamed) and event.previous_path:
             paths.add(event.previous_path)
         if isinstance(event, EntityRenamed):
             paths.update(event.rewritten_paths)
-        identity_changed = isinstance(event, NoteDeleted | EntityRenamed)
         if self._findings_touched is not None:
             self._findings_touched.update(paths)
-            self._findings_identity_changed |= identity_changed
         for path in paths:
             self._note_findings.pop(path, None)
-        if identity_changed:
-            for path, found in list(self._note_findings.items()):
-                kept = tuple(f for f in found if f.code != "permalink-duplicate")
-                if not kept:
-                    del self._note_findings[path]
-                elif len(kept) != len(found):
-                    self._note_findings[path] = kept
 
     # ------------------------------------------------------------ event intake
 

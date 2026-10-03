@@ -408,6 +408,9 @@ def build_dashboard_router(
         if indexes is not None:
             index = VaultIndex(engine)
             await index.open()
+            # Issue #440: the same background doctor pass a vault that
+            # existed at startup gets (`palaia_hub.serve`).
+            index.start_findings_scan()
             indexes[body.key] = index
         # Issue #316: a vault created through the wizard gets its external-
         # edit watcher right away, same as a vault that existed at startup

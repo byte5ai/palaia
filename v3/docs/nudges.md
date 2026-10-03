@@ -158,27 +158,43 @@ fails. Running `verify()` per call would walk the whole vault each time, so
 the signal is a cache:
 
 - **One scan, in the background, at hub start.** `serve.py` calls
-  `VaultIndex.start_findings_scan()` after opening each index. It runs the
-  doctor's file-side checks — not the index drift check, whose findings are
-  about the index rather than a note — keeps the findings that name a note,
-  by path, and raises no `doctor.finding` events: this is a cache for the
-  nudge layer, not a doctor run the owner asked for. A doctor, CLI or test
-  that opens an index does not scan.
-- **The table only ever loses findings.** Every change event drops the
-  findings of each path it touches (and, for a rename, every rewritten
-  path); a delete or rename also drops all `permalink-duplicate` findings,
-  because removing a claimant is how a duplicate gets resolved and the
-  finding sits on a path the event need not name. A note that changes
-  *while* the scan runs is left out of its result. So what `read` reports
-  was true of the note as it now is. The other direction is not covered: a
-  problem that appears after start-up is not reported until the hub
-  restarts — `palaia-hub doctor` remains the complete check.
+  `VaultIndex.start_findings_scan()` after opening each index, and the
+  dashboard does the same for a vault it creates. It runs only the doctor's
+  per-note checks (`VaultDoctor.verify_notes`: identity, encoding, links —
+  no git, manifest or index checks), keeps the findings that name a note, by
+  path, and raises no `doctor.finding` events: this is a cache for the nudge
+  layer, not a doctor run the owner asked for. `close()` stops a running
+  walk through a stop event, since cancelling the task cannot stop the
+  thread it waits on. A doctor, CLI or test that opens an index does not
+  scan.
+- **Cached findings are candidates, checked again on read.** Every change
+  event drops the findings of each path it touches (for a rename, every
+  rewritten path too), and a note that changes *while* the scan runs is left
+  out of its result. What another note can make untrue is checked when the
+  note is read (`VaultIndex.current_note_findings`): a duplicate permalink
+  against the engine's live catalog, in memory, and a link to a renamed note
+  by re-reading this one note's links, both in a thread and capped at one
+  second (`NOTE_FINDINGS_TIMEOUT_SECONDS`), after which the read goes out
+  without the hint. That costs nothing for a note with no cached finding,
+  which is almost every note. The cache keeps a candidate that no longer
+  holds — repaired on another note, a problem can come back the same way —
+  and a note that an event touches during the check gets no hint. `read` looks the note up by
+  the reference it was read by, resolved the way `read` resolves it, so a
+  note without a permalink, or one sharing it, gets its own findings — and
+  if the reference names a different note by then, it gets none. So
+  what `read` reports is true of the vault as it now is. The other
+  direction is not covered: a problem that appears after start-up is not
+  reported until the hub restarts — `palaia-hub doctor` remains the complete
+  check.
+- **One cooldown per note.** The nudge's `state` carries the note's path,
+  so two notes with the same problem — including the two claimants of one
+  permalink — are two warnings.
 - **Only findings the agent can act on**, in the order one is picked when a
   note has several: `not-utf8` (`edit` will refuse the note),
   `permalink-duplicate` (reading or linking by it can reach either note; the
   doctor files it under one claimant, the cache under each) and
-  `partial-rename` (fix the link, located by its line). A `dangling-link` is a legal forward reference
-  (format spec §5.2), and the rest — git locks, repository size, temp files
+  `partial-rename` (fix the link, located by its line). A `dangling-link`
+  is a legal forward reference (format spec §5.2), and the rest — git locks, repository size, temp files
   — belong to the owner and reach the owner through the guided doctor.
 
 ## 5. Not built yet

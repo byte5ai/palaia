@@ -386,3 +386,38 @@ def test_the_table_has_no_stale_entries() -> None:
         if (nudge := detector(signals)) is not None
     }
     assert produced == set(FIRING_SIGNALS)
+
+
+def test_the_same_finding_on_two_notes_is_two_warnings() -> None:
+    """Two notes that are both not UTF-8 must not share one cooldown — the
+    second read would otherwise stay silent for fifteen minutes."""
+    states = {
+        nudge.state
+        for note in ("ops/a", "ops/b")
+        if (
+            nudge := read_note_has_findings(
+                VaultSignals(action="read", note=note, note_findings=(NoteFinding("not-utf8"),))
+            )
+        )
+        is not None
+    }
+    assert len(states) == 2
+
+
+def test_two_claimants_of_one_permalink_are_two_warnings() -> None:
+    """Both report the same permalink as ``note``; their paths differ."""
+    states = {
+        nudge.state
+        for path in ("notes/one.md", "notes/two.md")
+        if (
+            nudge := read_note_has_findings(
+                VaultSignals(
+                    action="read",
+                    note="notes/same",
+                    note_findings=(NoteFinding("permalink-duplicate", path=path),),
+                )
+            )
+        )
+        is not None
+    }
+    assert len(states) == 2
