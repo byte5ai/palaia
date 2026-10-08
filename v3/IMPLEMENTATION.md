@@ -221,6 +221,7 @@ the in-flight issue-fix PRs to land first).
 | [602](specs/SPEC-602-synology-guide.md) | Synology walkthrough, no terminal | 503, 504 | Sonnet 5 | low | owner device pass |
 | [603](specs/SPEC-603-pi-appliance-image.md) | Pi appliance image pipeline (#280) | 501 | Sonnet 5 | high | owner boot test + measurements |
 | [604](specs/SPEC-604-backup-restore.md) | Backup & restore floor | 401, 501 | Sonnet 5 | high | **Fable 5 security review** (admin-gated secret-bearing endpoint) |
+| [605](specs/SPEC-605-setup-page.md) | Setup page: join the tailnet in the browser (#550) | 601 | Opus 5 | high | owner live onboarding test |
 
 ## 5. Phase 2 work packages (superseded by §4b — kept for provenance)
 

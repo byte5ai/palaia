@@ -13,10 +13,10 @@ criteria:
    onboarding page's snippets, and
    ``server/tests/e2e/test_docker_one_liner_smoke.py`` already applies to
    its own smoke-test invocation.
-3. The one placeholder the SPEC promises ("the Tailscale auth key is the
-   ONE placeholder... no other editing required") really is the only one,
-   and the hub port is bound so it is reachable over the tailnet only,
-   never the public internet.
+3. The only thing to fill in is the setup code (SPEC-605) or, instead, a
+   Tailscale auth key — the guard picks the right path for each — and the
+   hub port is bound so it is reachable over the tailnet only, never the
+   public internet.
 """
 
 from __future__ import annotations
@@ -83,24 +83,86 @@ def test_hardening_flags_match_install_sh_verbatim() -> None:
         )
 
 
-def test_tailscale_auth_key_is_the_only_placeholder() -> None:
+#: The two values a person may fill in (SPEC-605: the setup code is the
+#: default, the Tailscale key the alternative) — and the guard's own pattern.
+_PLACEHOLDERS = ("setup-code-REPLACE_ME", "tskey-REPLACE_ME", "*REPLACE_ME*")
+
+
+def test_the_setup_code_and_the_key_are_the_only_placeholders() -> None:
     cloud_init = CLOUD_INIT_PATH.read_text(encoding="utf-8")
 
-    assert "tskey-REPLACE_ME" in cloud_init, (
-        "the Tailscale auth key placeholder must be clearly marked as 'tskey-REPLACE_ME'"
-    )
-    # Every occurrence of the word "REPLACE_ME" is part of that one marker
-    # (the header comment names it, the script itself sets it and checks
-    # for it) — none stand alone as a second, different placeholder.
+    for marker in (
+        'PALAIA_SETUP_CODE="setup-code-REPLACE_ME"',
+        'TAILSCALE_AUTH_KEY="tskey-REPLACE_ME"',
+    ):
+        assert marker in cloud_init, f"the placeholder line {marker!r} is gone"
+    # Every "REPLACE_ME" belongs to one of those two values or to the guard
+    # that checks them — none stands alone as a third thing to edit.
     stray = [
         m.start()
         for m in re.finditer("REPLACE_ME", cloud_init)
-        if not cloud_init[: m.start()].endswith("tskey-")
+        if not any(
+            cloud_init[m.start() - marker.index("REPLACE_ME") :].startswith(marker)
+            for marker in _PLACEHOLDERS
+        )
     ]
-    assert not stray, f"a 'REPLACE_ME' not part of 'tskey-REPLACE_ME' at offset(s) {stray}"
+    assert not stray, f"a 'REPLACE_ME' outside the known placeholders at offset(s) {stray}"
     assert not re.search(r"CHANGE_?ME|YOUR_[A-Z_]+", cloud_init), (
-        "found a second placeholder-looking marker besides the Tailscale auth key"
+        "found another placeholder-looking marker"
     )
+
+
+def _guard(script: str) -> str:
+    """The setup script from its start up to the Docker step: variables + guard."""
+    return script[: script.index("# --- Docker")] + 'echo "USE_KEY=${USE_KEY}"\n'
+
+
+def _setup_script() -> str:
+    import yaml
+
+    document = yaml.safe_load(CLOUD_INIT_PATH.read_text(encoding="utf-8"))
+    files = {entry["path"]: entry["content"] for entry in document["write_files"]}
+    return str(files["/opt/palaia/cloud-init-setup.sh"])
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash not on PATH")
+@pytest.mark.parametrize(
+    ("edit", "exit_code", "use_key"),
+    [
+        ({}, 1, None),
+        # An emptied key line is "no key", not a key: it must not skip the page.
+        ({"tskey-REPLACE_ME": ""}, 1, None),
+        ({"tskey-REPLACE_ME": "", "setup-code-REPLACE_ME": "K7QM-R2XD-9FTP"}, 0, "0"),
+        ({"setup-code-REPLACE_ME": "K7QM-R2XD-9FTP"}, 0, "0"),
+        ({"tskey-REPLACE_ME": "tskey-auth-kEXAMPLE-0123"}, 0, "1"),
+        (
+            {
+                "setup-code-REPLACE_ME": "K7QM-R2XD-9FTP",
+                "tskey-REPLACE_ME": "tskey-auth-kEXAMPLE-0123",
+            },
+            0,
+            "1",
+        ),
+    ],
+)
+def test_the_guard_picks_the_setup_page_or_the_key(
+    tmp_path: Path, edit: dict[str, str], exit_code: int, use_key: str | None
+) -> None:
+    """SPEC-605: unedited stops with a clear error; a code alone means the
+    setup page; a key (with or without a code) means the key path."""
+    script = _setup_script()
+    for placeholder, value in edit.items():
+        script = script.replace(f'"{placeholder}"', f'"{value}"')
+    path = tmp_path / "guard.sh"
+    path.write_text(_guard(script), encoding="utf-8")
+    result = subprocess.run(
+        ["bash", str(path)], capture_output=True, text=True, timeout=30, check=False
+    )
+    assert result.returncode == exit_code, (result.stdout, result.stderr)
+    if use_key is not None:
+        assert f"USE_KEY={use_key}" in result.stdout
+    else:
+        assert "PALAIA_SETUP_CODE" in result.stdout
 
 
 def test_hub_port_is_bound_to_the_tailnet_address_only() -> None:
@@ -150,3 +212,9 @@ def test_cloud_init_schema_validates() -> None:
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Valid schema" in result.stdout, result.stdout + result.stderr
+
+
+def test_cloud_init_fits_the_user_data_limits() -> None:
+    """Hetzner Cloud takes 32 KiB of user data (DigitalOcean 64 KiB). The
+    embedded setup page (SPEC-605) made the file bigger — keep it inside."""
+    assert len(CLOUD_INIT_PATH.read_bytes()) <= 32 * 1024
