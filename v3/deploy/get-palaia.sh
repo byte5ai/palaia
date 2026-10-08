@@ -190,10 +190,12 @@ PAGE = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>palaia setup</title>
 <style>
-body{{font:17px/1.5 system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem;color:#1d1d1f}}
-h1{{font-size:1.5rem}} input{{font:inherit;padding:.5rem;width:100%;box-sizing:border-box;letter-spacing:.1em}}
-button,a.btn{{display:inline-block;font:inherit;margin-top:1rem;padding:.6rem 1.2rem;border:0;border-radius:.5rem;
-background:#2457d6;color:#fff;text-decoration:none;cursor:pointer}}
+body{{font:17px/1.5 system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem;
+color:#1d1d1f}}
+h1{{font-size:1.5rem}}
+input{{font:inherit;padding:.5rem;width:100%;box-sizing:border-box;letter-spacing:.1em}}
+button,a.btn{{display:inline-block;font:inherit;margin-top:1rem;padding:.6rem 1.2rem;border:0;
+border-radius:.5rem;background:#2457d6;color:#fff;text-decoration:none;cursor:pointer}}
 .err{{color:#b3261e}} .muted{{color:#666}}
 </style></head><body><h1>palaia setup</h1>{body}</body></html>"""
 
@@ -235,7 +237,7 @@ def done_body(state):
     url = f"http://{state.ip}:{state.port}/"
     return (
         "<p><strong>Done.</strong> This server is now on your private network.</p>"
-        f"<p>In a minute or two, palaia opens at <a href=\"{html.escape(url)}\">"
+        f'<p>In a minute or two, palaia opens at <a href="{html.escape(url)}">'
         f"{html.escape(url)}</a> — from any device where the Tailscale app is on.</p>"
         '<p class="muted">This setup page closes itself now.</p>'
     )
@@ -367,7 +369,9 @@ def main(argv=None):
             # Drop the pending login, so the link can no longer be used by
             # anyone to pull this server into their network.
             try:
-                subprocess.run(["tailscale", "logout"], capture_output=True, timeout=30, check=False)
+                subprocess.run(
+                    ["tailscale", "logout"], capture_output=True, timeout=30, check=False
+                )
             except (OSError, subprocess.TimeoutExpired):
                 log("could not reset the pending Tailscale login — run 'tailscale logout'.")
     log(f"ERROR: {state.failed or 'nobody completed the setup page in time'} — the page is closed.")
