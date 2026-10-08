@@ -98,6 +98,7 @@ import json
 import os
 import re
 import secrets
+import signal
 import socket
 import subprocess
 import sys
@@ -108,6 +109,8 @@ from urllib.parse import parse_qs, urlparse
 
 LOGIN_URL_RE = re.compile(r"https://\S+")
 WRONG_CODE_DELAY = 1.0
+MAX_CLIENTS = 32  # concurrent connections; more are dropped, not queued
+CLIENT_TIMEOUT = 10  # seconds a connection may take to send its request
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O, 1/I look-alikes
 
 
@@ -238,8 +241,36 @@ def done_body(state):
     )
 
 
+class BoundedServer(ThreadingHTTPServer):
+    """One thread per connection, but never more than MAX_CLIENTS at once."""
+
+    daemon_threads = True
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.slots = threading.BoundedSemaphore(MAX_CLIENTS)
+
+    def process_request(self, request, client_address):
+        if not self.slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except Exception:
+            self.slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.slots.release()
+
+
 def make_handler(state):
     class Handler(BaseHTTPRequestHandler):
+        timeout = CLIENT_TIMEOUT
+
         def log_message(self, *args):
             pass
 
@@ -292,7 +323,15 @@ def main(argv=None):
         log("this server is already on a tailnet — nothing to set up.")
         return 0
 
-    server = ThreadingHTTPServer((args.bind, args.port), make_handler(state))
+    # A plain `kill` (SIGTERM) or a closed terminal (SIGHUP) must still run the
+    # clean-up below, not leave the page or a pending login behind.
+    def stop(signum, _frame):
+        raise SystemExit(128 + signum)
+
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGHUP, stop)
+
+    server = BoundedServer((args.bind, args.port), make_handler(state))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     threading.Thread(target=run_tailscale, args=(state, args.hostname), daemon=True).start()
     print(
@@ -320,6 +359,17 @@ def main(argv=None):
         server.server_close()
         if state.proc and state.proc.poll() is None:
             state.proc.terminate()
+            try:
+                state.proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                state.proc.kill()
+        if not state.ip:
+            # Drop the pending login, so the link can no longer be used by
+            # anyone to pull this server into their network.
+            try:
+                subprocess.run(["tailscale", "logout"], capture_output=True, timeout=30, check=False)
+            except (OSError, subprocess.TimeoutExpired):
+                log("could not reset the pending Tailscale login — run 'tailscale logout'.")
     log(f"ERROR: {state.failed or 'nobody completed the setup page in time'} — the page is closed.")
     return 1
 
@@ -327,17 +377,35 @@ def main(argv=None):
 if __name__ == "__main__":
     sys.exit(main())
 PALAIA_SETUP_PAGE
+        # Open the port for the page only if ufw is on and does not allow it
+        # already — and remove only the rule this run added, also when the
+        # run is interrupted.
         UFW_OPENED=0
-        if command -v ufw >/dev/null 2>&1 && $SUDO ufw status 2>/dev/null | grep -q "Status: active"; then
+        if command -v ufw >/dev/null 2>&1 && $SUDO ufw status 2>/dev/null | grep -q "Status: active" \
+            && ! $SUDO ufw status 2>/dev/null | grep -q "^${PORT}/tcp .*ALLOW"; then
             $SUDO ufw allow "${PORT}/tcp" comment 'palaia setup page, temporary' >/dev/null && UFW_OPENED=1
         fi
+        close_setup_port() {
+            if [ "$UFW_OPENED" = "1" ]; then
+                $SUDO ufw delete allow "${PORT}/tcp" >/dev/null 2>&1 || true
+                UFW_OPENED=0
+            fi
+        }
+        trap 'close_setup_port' EXIT
+        trap 'close_setup_port; exit 130' INT TERM HUP
         log "starting the setup page (closes itself after 30 minutes) ..."
+        # The code travels in the environment, never as a command argument.
+        export PALAIA_SETUP_CODE="${PALAIA_SETUP_CODE:-}"
         SETUP_OK=1
-        $SUDO env PALAIA_SETUP_CODE="${PALAIA_SETUP_CODE:-}" python3 /opt/palaia/setup-page.py \
-            --port "$PORT" --hub-port "$PORT" --hostname "$HOSTNAME_TS" </dev/null || SETUP_OK=0
-        if [ "$UFW_OPENED" = "1" ]; then
-            $SUDO ufw delete allow "${PORT}/tcp" >/dev/null 2>&1 || true
+        if [ -n "$SUDO" ]; then
+            $SUDO --preserve-env=PALAIA_SETUP_CODE python3 /opt/palaia/setup-page.py \
+                --port "$PORT" --hub-port "$PORT" --hostname "$HOSTNAME_TS" </dev/null || SETUP_OK=0
+        else
+            python3 /opt/palaia/setup-page.py \
+                --port "$PORT" --hub-port "$PORT" --hostname "$HOSTNAME_TS" </dev/null || SETUP_OK=0
         fi
+        close_setup_port
+        trap - EXIT INT TERM HUP
         [ "$SETUP_OK" = "1" ] || die "the setup page closed without joining the tailnet. Re-run this command to get a new page and code."
     fi
     BIND_ADDR="$($SUDO tailscale ip -4 2>/dev/null | head -n1)"

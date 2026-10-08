@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import re
+import signal
 import socket
 import subprocess
 import sys
@@ -53,6 +54,9 @@ FAKE_TAILSCALE = textwrap.dedent(
       ip)
         [ -f "$marker" ] && echo 100.64.0.7 && exit 0
         exit 1 ;;
+      logout)
+        touch "$FAKE_TS_DIR/logged-out"
+        exit 0 ;;
     esac
     exit 0
     """
@@ -187,13 +191,63 @@ def test_after_login_it_reports_done_and_exits_zero(running, fake_ts: Path) -> N
     assert proc.wait(timeout=60) == 0
 
 
-def test_timeout_exits_one_and_closes_the_port(fake_ts: Path) -> None:
+def test_timeout_exits_one_closes_the_port_and_drops_the_pending_login(fake_ts: Path) -> None:
     port = _free_port()
     proc = _start(fake_ts, port, timeout=2)
     _wait_for_port(port, proc)
     assert proc.wait(timeout=30) == 1
     with socket.socket() as sock:
         assert sock.connect_ex(("127.0.0.1", port)) != 0
+    # The login link must not stay usable after the page is gone.
+    assert (fake_ts / "logged-out").exists()
+
+
+def test_a_plain_kill_still_cleans_up(fake_ts: Path) -> None:
+    port = _free_port()
+    proc = _start(fake_ts, port)
+    _wait_for_port(port, proc)
+    proc.send_signal(signal.SIGTERM)
+    assert proc.wait(timeout=30) != 0
+    with socket.socket() as sock:
+        assert sock.connect_ex(("127.0.0.1", port)) != 0
+    assert (fake_ts / "logged-out").exists()
+    # The fake `tailscale up` (waiting for a login) was stopped, not orphaned.
+    leftover = subprocess.run(
+        ["pgrep", "-f", f"{fake_ts}/bin/tailscale up"], capture_output=True, text=True, check=False
+    )
+    assert leftover.stdout.strip() == ""
+
+
+def test_a_joined_server_is_not_logged_out(running, fake_ts: Path) -> None:
+    proc, _ = running
+    (fake_ts / "logged-in").touch()
+    assert proc.wait(timeout=60) == 0
+    assert not (fake_ts / "logged-out").exists()
+
+
+def test_idle_connections_cannot_pile_up(running) -> None:
+    """Connections that never send a request are capped and time out, so a
+    flood of them cannot lock the owner out of the page."""
+    _, port = running
+    idle = [socket.create_connection(("127.0.0.1", port)) for _ in range(40)]
+    try:
+        time.sleep(0.5)
+        # Over the cap: some of those were closed by the server right away.
+        closed = 0
+        for sock in idle:
+            sock.settimeout(0.2)
+            try:
+                if sock.recv(1) == b"":
+                    closed += 1
+            except (TimeoutError, OSError):
+                pass
+        assert closed >= 1
+    finally:
+        for sock in idle:
+            sock.close()
+    # Once the idle ones are gone, the page answers again.
+    status, _ = _get(f"http://127.0.0.1:{port}/")
+    assert status == 200
 
 
 def test_refuses_a_code_that_is_too_short(fake_ts: Path) -> None:

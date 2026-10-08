@@ -130,6 +130,9 @@ def _setup_script() -> str:
     ("edit", "exit_code", "use_key"),
     [
         ({}, 1, None),
+        # An emptied key line is "no key", not a key: it must not skip the page.
+        ({"tskey-REPLACE_ME": ""}, 1, None),
+        ({"tskey-REPLACE_ME": "", "setup-code-REPLACE_ME": "K7QM-R2XD-9FTP"}, 0, "0"),
         ({"setup-code-REPLACE_ME": "K7QM-R2XD-9FTP"}, 0, "0"),
         ({"tskey-REPLACE_ME": "tskey-auth-kEXAMPLE-0123"}, 0, "1"),
         (
