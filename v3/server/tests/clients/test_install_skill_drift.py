@@ -20,11 +20,10 @@ about a file that can change underneath it, so this module checks every one:
 - the image tag is never hardcoded — the skill derives it from
   ``v3/VERSION`` the same way the onboarding page and
   ``test_version_drift.py`` do;
-- the key substitution the skill prescribes, applied to the real
-  ``cloud-init.yaml``, yields a cloud-config that still parses and whose
-  "forgot the key" guard lets the real key through — executed, not just
-  pattern-matched, because the naive replace-every-placeholder edit silently
-  produces a server that stops on first boot.
+- the setup-code substitution the skill prescribes (SPEC-605), applied to
+  the real ``cloud-init.yaml``, yields a cloud-config that still parses and
+  whose "forgot to fill it in" guard lets it through — executed, not just
+  pattern-matched.
 """
 
 from __future__ import annotations
@@ -63,13 +62,11 @@ _CLEAN_URLS: dict[str, str] = {
 #: Same header regex ``deploy-snippets.mjs``'s ``loadGetPalaiaCommand`` uses.
 _GET_PALAIA_HEADER_RE = re.compile(r"^#\s+(curl\s.*get\.palaia\.ai.*)$", re.MULTILINE)
 
-#: The one edit the skill prescribes to the cloud-init file, and its result.
-_KEY_LINE = 'TAILSCALE_AUTH_KEY="tskey-REPLACE_ME"'
-_KEY_LINE_FILLED = 'TAILSCALE_AUTH_KEY="<their-key>"'
+#: The one edit the skill prescribes to the cloud-init file, and its result
+#: (SPEC-605: a setup code the assistant makes up — no key to handle).
+_CODE_LINE = 'PALAIA_SETUP_CODE="setup-code-REPLACE_ME"'
+_CODE_LINE_FILLED = 'PALAIA_SETUP_CODE="<code>"'
 _SETUP_SCRIPT_PATH = "/opt/palaia/cloud-init-setup.sh"
-#: How the setup script's "forgot the key" guard opens (found by shape, not
-#: by the placeholder, so a wrongly edited copy is still located).
-_GUARD_OPENING = 'if [ "${TAILSCALE_AUTH_KEY}" = '
 
 #: Literals the skill quotes that are not palaia's own to ship, so they
 #: cannot be found in ``v3/deploy`` — each with the reason it may stand.
@@ -275,12 +272,12 @@ def test_the_image_tag_is_derived_from_version_not_hardcoded() -> None:
         assert line.endswith("PALAIA_CHANNEL=beta sh"), line
 
 
-# --- the key substitution, applied to the real file ----------------------
+# --- the setup-code substitution, applied to the real file ------------------
 
 
-def _substitute(cloud_init: str, key: str) -> str:
-    """The edit Step 2a prescribes: replace the key line's exact text."""
-    return cloud_init.replace(_KEY_LINE, _KEY_LINE_FILLED.replace("<their-key>", key))
+def _substitute(cloud_init: str, code: str) -> str:
+    """The edit Step 2a prescribes: replace the code line's exact text."""
+    return cloud_init.replace(_CODE_LINE, _CODE_LINE_FILLED.replace("<code>", code))
 
 
 def _setup_script(cloud_init: str) -> str:
@@ -292,61 +289,45 @@ def _setup_script(cloud_init: str) -> str:
     raise AssertionError(f"cloud-init.yaml no longer writes {_SETUP_SCRIPT_PATH}")
 
 
-def _guard_prefix(script: str) -> str:
-    """The script up to and including the "forgot the key" guard's ``fi``."""
-    lines = script.splitlines()
-    guard = next(
-        (i for i, line in enumerate(lines) if line.lstrip().startswith(_GUARD_OPENING)),
-        None,
-    )
-    assert guard is not None, "the setup script no longer checks for the unfilled key"
-    end = next(i for i in range(guard, len(lines)) if lines[i].strip() == "fi")
-    return "\n".join(lines[: end + 1]) + "\n"
-
-
 def test_the_skill_prescribes_exactly_this_edit() -> None:
     literals = _quoted_literals(_skill_body())
-    assert _KEY_LINE in literals
-    assert _KEY_LINE_FILLED in literals
+    assert _CODE_LINE in literals
+    assert _CODE_LINE_FILLED in literals
 
 
 def test_the_substituted_file_is_a_valid_cloud_config() -> None:
     template = CLOUD_INIT_PATH.read_text(encoding="utf-8")
-    filled = _substitute(template, "tskey-auth-kEXAMPLE1CNTRL-0123456789abcdef")
+    filled = _substitute(template, "K7QM-R2XD-9FTP")
 
     assert filled.startswith("#cloud-config")
     assert yaml.safe_load(filled) is not None
-    # Only the key changed: the documented line was actually present, and
-    # every other line is untouched.
+    # Only the code line changed: it was actually present, and every other
+    # line is untouched.
     changed = [
         (old, new)
         for old, new in zip(template.splitlines(), filled.splitlines(), strict=True)
         if old != new
     ]
-    assert changed, f"{_KEY_LINE!r} is not in cloud-init.yaml any more"
-    assert all(_KEY_LINE in old for old, _ in changed), changed
-
-    script = _setup_script(filled)
-    assert 'TAILSCALE_AUTH_KEY="tskey-auth-kEXAMPLE1CNTRL-0123456789abcdef"' in script
-    # The guard still compares against the placeholder, not the real key.
-    assert '= "tskey-REPLACE_ME" ]' in script
+    assert changed, f"{_CODE_LINE!r} is not in cloud-init.yaml any more"
+    assert all(_CODE_LINE in old for old, _ in changed), changed
+    assert 'PALAIA_SETUP_CODE="K7QM-R2XD-9FTP"' in _setup_script(filled)
 
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="bash not on PATH")
-def test_the_guard_passes_the_substituted_key_and_stops_the_rest(tmp_path: Path) -> None:
-    """Run the real guard: the skill's edit must pass it; the unedited file,
-    and the naive "replace every placeholder" edit, must both be stopped."""
+def test_the_guard_passes_the_substituted_code_and_stops_the_unedited_file(tmp_path: Path) -> None:
+    """Run the real guard: the skill's edit must pass it (setup-page path);
+    the unedited file must be stopped."""
     template = CLOUD_INIT_PATH.read_text(encoding="utf-8")
-    key = "tskey-auth-kEXAMPLE1CNTRL-0123456789abcdef"
     cases = {
-        "skill's edit": (_substitute(template, key), 0),
+        "skill's edit": (_substitute(template, "K7QM-R2XD-9FTP"), 0),
         "unedited": (template, 1),
-        "replace-every-placeholder": (template.replace("tskey-REPLACE_ME", key), 1),
     }
     for label, (text, expected) in cases.items():
-        script = tmp_path / f"{label.replace(' ', '_')}.sh"
-        script.write_text(_guard_prefix(_setup_script(text)), encoding="utf-8")
+        script = _setup_script(text)
+        guard = script[: script.index("# --- Docker")]
+        path = tmp_path / f"{label.replace(' ', '_').replace("'", '')}.sh"
+        path.write_text(guard, encoding="utf-8")
         result = subprocess.run(
-            ["bash", str(script)], capture_output=True, text=True, timeout=30, check=False
+            ["bash", str(path)], capture_output=True, text=True, timeout=30, check=False
         )
         assert result.returncode == expected, (label, result.stdout, result.stderr)
