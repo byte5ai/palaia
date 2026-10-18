@@ -54,7 +54,7 @@ RUN npm run build
 # ---------------------------------------------------------------------------
 # Stage 2: hub build (uv-managed venv, no dev dependencies)
 # ---------------------------------------------------------------------------
-FROM python:3.12-slim@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9 AS hub-build
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS hub-build
 COPY --from=ghcr.io/astral-sh/uv:0.8@sha256:1d31be550ff927957472b2a491dc3de1ea9b5c2d319a9cea5b6a48021e2990a6 /uv /uvx /usr/local/bin/
 WORKDIR /src
 # The venv's console-script shebangs and the python symlink embed the path
@@ -82,7 +82,7 @@ RUN uv pip install --python "${UV_PROJECT_ENVIRONMENT}" "zeroconf>=0.140,<1"
 # ---------------------------------------------------------------------------
 # Stage 3: runtime
 # ---------------------------------------------------------------------------
-FROM python:3.12-slim@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9 AS runtime
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS runtime
 
 # nginx: single public entry point (static dashboard + reverse proxy to the
 # hub's internal port). curl: used by the HEALTHCHECK below. gettext-base:
