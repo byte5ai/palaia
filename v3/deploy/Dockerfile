@@ -33,7 +33,7 @@
 # ---------------------------------------------------------------------------
 # Stage 1: web build
 # ---------------------------------------------------------------------------
-FROM node:26-slim@sha256:ec7758ee051e457b468b32bde57b0879010b325bb9862718e9615225ce4aaae1 AS web-build
+FROM node:26-slim@sha256:0d1e33586362bb9e608c4e751e7a9e7edb55c9ac11461ed5666af696cc461dd4 AS web-build
 WORKDIR /web
 # .npmrc must ride along: it carries legacy-peer-deps=true (see its own
 # comment), without which `npm ci` fails peer resolution inside this image
