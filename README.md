@@ -41,7 +41,7 @@ Think Home Assistant, for your AI tools.
 </p>
 
 > [!NOTE]
-> **palaia v3 is a release candidate (`3.0.0-rc4`).** Everything below works and is
+> **palaia v3 is a release candidate (`3.0.0-rc5`).** Everything below works and is
 > tested. Try it, keep backups, and [tell us what breaks](https://github.com/byte5ai/palaia/issues).
 > palaia v2 is [retired](#already-using-palaia-v2) and gets critical fixes only.
 
