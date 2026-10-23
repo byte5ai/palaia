@@ -151,6 +151,28 @@ describe("Overview — the verdict comes first (issue 570)", () => {
     expect(await screen.findByText("Waiting for first use")).toBeInTheDocument();
   });
 
+  it("counts an AI app that signs in, with no access key at all, as connected", async () => {
+    // ChatGPT or Claude over cloud access: no key, but the hub saw its
+    // first request while its sign-in runs.
+    mockApi({ tokens: [], setup: { client_connected: true, sign_in_active: true } });
+    mount();
+
+    expect(await screen.findByText("AI app connected")).toBeInTheDocument();
+    expect(screen.queryByText("No AI app connected yet")).toBeNull();
+    expect(screen.queryByText("No AI app connected yet.")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Connect an AI app" })).toBeNull();
+    expect(screen.getByText("Apps that sign in")).toBeInTheDocument();
+  });
+
+  it("without sign-in running, a past first request alone is no connection", async () => {
+    // The record is kept once ever: a key used then and revoked since.
+    mockApi({ tokens: [], setup: { client_connected: true, sign_in_active: false } });
+    mount();
+
+    expect(await screen.findByRole("link", { name: "Connect an AI app" })).toBeInTheDocument();
+    expect(screen.getByText("No AI app connected yet")).toBeInTheDocument();
+  });
+
   it("does not claim anything while the memories are still loading (issue 378)", () => {
     vi.spyOn(api, "listVaults").mockReturnValue(new Promise(() => {}));
     vi.spyOn(api, "listTokens").mockReturnValue(new Promise(() => {}));
