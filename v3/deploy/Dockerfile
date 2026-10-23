@@ -9,7 +9,10 @@
 # Stage 2 (hub-build): installs the `palaia-hub` Python package (uv, from
 # the v3 workspace) into a virtualenv, without dev dependencies.
 #
-# Stage 3 (runtime): slim Debian base with the hub's venv, the built
+# Stage 3 (mcpb-build): the `mcpb` CLI and template the hub builds each
+# Claude Desktop extension download with (v3/tools/build-mcpb, SPEC-306).
+#
+# Stage 4 (runtime): slim Debian base with the hub's venv, the built
 # dashboard, and nginx as the single public entry point — nginx serves the
 # static dashboard and reverse-proxies `/api/*` (and, from SPEC-105 onward,
 # the MCP mount point) to the hub process on a loopback-only internal port.
@@ -80,7 +83,23 @@ RUN uv sync --frozen --no-dev --no-editable --package palaia-hub --extra embeddi
 RUN uv pip install --python "${UV_PROJECT_ENVIRONMENT}" "zeroconf>=0.140,<1"
 
 # ---------------------------------------------------------------------------
-# Stage 3: runtime
+# Stage 3: Claude Desktop extension tooling
+# ---------------------------------------------------------------------------
+# `GET /api/connect/mcpb` personalizes, packs and signs a fresh extension per
+# download with the `mcpb` CLI, from the same template CI validates
+# (palaia_hub/mcpb/template.py). The CLI is a Node program, so the runtime
+# stage takes this stage's `node` binary along with the template (issue #594:
+# the image once shipped neither, and every download answered 501). Same
+# pinned base as the web build, so one digest bump covers both.
+FROM node:26-slim@sha256:ec7758ee051e457b468b32bde57b0879010b325bb9862718e9615225ce4aaae1 AS mcpb-build
+WORKDIR /mcpb
+COPY v3/tools/build-mcpb/package.json v3/tools/build-mcpb/package-lock.json ./
+RUN npm ci
+COPY v3/tools/build-mcpb/manifest.template.json v3/tools/build-mcpb/icon.png ./
+COPY v3/tools/build-mcpb/proxy/ ./proxy/
+
+# ---------------------------------------------------------------------------
+# Stage 4: runtime
 # ---------------------------------------------------------------------------
 FROM python:3.12-slim@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9 AS runtime
 
@@ -90,8 +109,10 @@ FROM python:3.12-slim@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b
 # git: every vault is a git repository, and the vault engine drives it
 # through the `git` binary (palaia_hub/vault/gitlayer.py). Without it,
 # creating a vault fails with "No such file or directory: 'git'".
+# libatomic1: the `node` binary from stage 3 links against it, and the Python
+# base does not carry it.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends nginx-light curl gettext-base git \
+    && apt-get install -y --no-install-recommends nginx-light curl gettext-base git libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # A fixed uid/gid, never "whatever the base image hands out next" (issue
@@ -112,6 +133,12 @@ ENV PATH="/opt/palaia/venv/bin:${PATH}"
 
 # Built dashboard, served by nginx.
 COPY --from=web-build /web/dist /opt/palaia/dashboard
+
+# Claude Desktop extension tooling from stage 3: the template with its `mcpb`
+# CLI, and the `node` that runs it. PALAIA_MCPB_TEMPLATE_DIR (set below) is
+# where palaia_hub/mcpb/template.py looks in an image with no checkout.
+COPY --from=mcpb-build /usr/local/bin/node /usr/local/bin/node
+COPY --from=mcpb-build /mcpb /opt/palaia/mcpb
 
 COPY v3/deploy/nginx.conf.template /opt/palaia/nginx.conf.template
 COPY v3/deploy/entrypoint.sh /opt/palaia/entrypoint.sh
@@ -143,6 +170,7 @@ ENV PALAIA_HOME=/data \
     PUBLIC_PORT=8420 \
     CLOUD_PORT=8422 \
     PALAIA_MDNS_ENABLED=1 \
+    PALAIA_MCPB_TEMPLATE_DIR=/opt/palaia/mcpb \
     PALAIA_CHANNEL=${PALAIA_CHANNEL}
 
 # Documented Watchtower-compatible opt-in label (SPEC-501 deliverable #4):

@@ -34,3 +34,17 @@ def test_the_runtime_stage_installs_git() -> None:
     assert "git" in _apt_packages(_runtime_stage()), (
         "the runtime image does not install git; every vault operation needs it"
     )
+
+
+def test_the_runtime_stage_can_build_the_claude_desktop_extension() -> None:
+    """Issue #594: every extension download is built with the `mcpb` CLI, a
+    Node program, from the template. The image once shipped neither, so the
+    download answered 501 while the checkout's tests passed."""
+    stage = _runtime_stage()
+    assert "COPY --from=mcpb-build /usr/local/bin/node /usr/local/bin/node" in stage
+    assert "libatomic1" in _apt_packages(stage), "the copied node binary links against it"
+    copied = re.search(r"COPY --from=mcpb-build /mcpb (\S+)", stage)
+    assert copied, "the runtime stage does not copy the extension template"
+    assert f"PALAIA_MCPB_TEMPLATE_DIR={copied.group(1)}" in stage, (
+        "PALAIA_MCPB_TEMPLATE_DIR must name where the template was copied to"
+    )

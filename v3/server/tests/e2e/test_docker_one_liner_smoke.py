@@ -342,6 +342,30 @@ def test_the_image_ships_the_embedding_backend(running_container: str) -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_the_image_builds_the_claude_desktop_extension(running_container: str) -> None:
+    """Issue #594: each extension download is personalized, packed and signed
+    inside the image with the `mcpb` CLI. The image once shipped without the
+    CLI, its template and Node, so every download answered 501."""
+    script = (
+        "import io, json, pathlib, tempfile, zipfile\n"
+        "from palaia_hub.mcpb.builder import BundleRequest, build_bundle\n"
+        "request = BundleRequest(hub_url='http://palaia.test:8420/mcp/default',"
+        " profile='default', variant='oauth', version='0', issuer='http://palaia.test:8420')\n"
+        "bundle = build_bundle(request, home=pathlib.Path(tempfile.mkdtemp()))\n"
+        "manifest = json.loads(zipfile.ZipFile(io.BytesIO(bundle)).read('manifest.json'))\n"
+        "print(manifest['user_config']['hub_url']['default'])\n"
+        "print(b'MCPB_SIG_V1' in bundle)\n"
+    )
+    result = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        ["docker", "exec", running_container, "python", "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.split() == ["http://palaia.test:8420/mcp/default", "True"], result.stdout
+
+
 def test_a_redirect_from_the_hub_keeps_the_published_port(running_container: str) -> None:
     """``/mcp/<profile>`` without the trailing slash redirects to the slash
     form. nginx used to forward ``Host`` without its port, so the redirect
