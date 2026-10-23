@@ -371,11 +371,58 @@ describe("tunnel guidance requests (issue 384)", () => {
 
     await waitFor(() =>
       expect(guidance).toHaveBeenLastCalledWith(
-        { kind: "tailscale", hostname: "hub" },
+        { kind: "tailscale", mode: "cloud", hostname: "hub" },
         expect.any(AbortSignal),
       ),
     );
     const hostnames = guidance.mock.calls.map((call) => call[0].hostname);
     expect(hostnames).toEqual([undefined, "hub"]);
+  });
+});
+
+describe("tunnel guidance for the mode being set up", () => {
+  /** The hub's answer: for the mode asked for, else the configured one
+   * (`post_tunnel_guidance`) — Cloud's entry is 8422, the whole hub 8420. */
+  function hubGuidance(configured: "cloud" | "open") {
+    return vi.spyOn(api, "tunnelGuidance").mockImplementation(async (body) => {
+      const port = (body.mode ?? configured) === "cloud" ? 8422 : 8420;
+      return {
+        label: "Tailscale Funnel",
+        config: "",
+        commands: [`sudo tailscale funnel --bg http://127.0.0.1:${port}`],
+        note: "",
+      };
+    });
+  }
+
+  it("switching from Public to Cloud shows the cloud entry's command, never the dashboard's", async () => {
+    vi.spyOn(api, "mode").mockResolvedValue(OPEN);
+    hubGuidance("open");
+    mount();
+
+    const modes = await screen.findByRole("radiogroup", { name: /access mode/i });
+    fireEvent.click(within(modes).getByRole("radio", { name: /^cloud/i }));
+
+    const setup = await screen.findByTestId("setup-cloud");
+    expect(
+      await within(setup).findByText("sudo tailscale funnel --bg http://127.0.0.1:8422"),
+    ).toBeInTheDocument();
+    expect(within(setup).queryByText(/127\.0\.0\.1:8420/)).not.toBeInTheDocument();
+  });
+
+  it("drops Public's commands when Cloud is picked, even if the new answer never comes", async () => {
+    vi.spyOn(api, "mode").mockResolvedValue(OPEN);
+    const guidance = hubGuidance("open");
+    mount();
+    expect(
+      await screen.findByText("sudo tailscale funnel --bg http://127.0.0.1:8420"),
+    ).toBeInTheDocument();
+
+    guidance.mockRejectedValue(new Error("no answer in this test"));
+    const modes = screen.getByRole("radiogroup", { name: /access mode/i });
+    fireEvent.click(within(modes).getByRole("radio", { name: /^cloud/i }));
+
+    await waitFor(() => expect(guidance).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(/127\.0\.0\.1:8420/)).not.toBeInTheDocument();
   });
 });

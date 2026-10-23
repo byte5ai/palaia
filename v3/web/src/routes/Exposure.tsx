@@ -461,22 +461,28 @@ function TunnelGuide({
   hostname: string;
 }) {
   const toast = useToast();
-  const [guidance, setGuidance] = useState<TunnelGuidance | null>(null);
+  // The guidance is for the mode being set up, which is not the configured
+  // one until it is saved: asked for by name, and shown only for the mode
+  // and provider it was asked for. Public's commands point at the whole hub;
+  // run while switching to Cloud, they would put the dashboard on the
+  // internet.
+  const [answer, setAnswer] = useState<{ for: string; guidance: TunnelGuidance } | null>(null);
   // Issue 384: one request per pause in typing, the previous one aborted.
   const debouncedHostname = useDebouncedValue(hostname, SEARCH_DEBOUNCE_MS);
   useEffect(() => {
     if (kind === "reverse_proxy") return;
     const controller = new AbortController();
     api
-      .tunnelGuidance({ kind, hostname: debouncedHostname || undefined }, controller.signal)
+      .tunnelGuidance({ kind, mode, hostname: debouncedHostname || undefined }, controller.signal)
       .then((body) => {
-        if (!controller.signal.aborted) setGuidance(body);
+        if (!controller.signal.aborted) setAnswer({ for: `${mode} ${kind}`, guidance: body });
       })
       .catch(() => {
         // No answer: no commands rather than stale or made-up ones.
       });
     return () => controller.abort();
   }, [kind, debouncedHostname, mode]);
+  const guidance = answer?.for === `${mode} ${kind}` ? answer.guidance : null;
 
   return (
     <div className="stack stack--3">

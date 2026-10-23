@@ -232,6 +232,32 @@ def test_cloud_tunnel_guidance_targets_the_published_cloud_entry(
     assert tailscale["commands"] == ["sudo tailscale funnel --bg http://127.0.0.1:8422"]
 
 
+def test_tunnel_guidance_is_for_the_mode_being_set_up(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Settings › Access & sign-in asks for the mode it is switching to, which
+    is not the configured one until it is saved: the guidance follows the
+    request. Guidance for the configured mode sent a new Cloud tunnel to the
+    whole hub — dashboard and admin API included — while Public was still
+    configured, and a new Public tunnel to the cloud entry."""
+    monkeypatch.delenv("PALAIA_CLOUD_HOST_PORT", raising=False)
+    monkeypatch.delenv("PALAIA_HUB_HOST_PORT", raising=False)
+    client = _client(HubConfig(mode="cloud", auth_enabled=True), tmp_path)
+
+    public = client.post("/api/exposure/tunnel", json={"kind": "tailscale", "mode": "open"})
+    assert public.status_code == 200, public.text
+    assert public.json()["commands"] == ["sudo tailscale funnel --bg http://127.0.0.1:8420"]
+    assert "including the dashboard" in public.json()["note"]
+
+    cloud = client.post("/api/exposure/tunnel", json={"kind": "cloudflared", "mode": "cloud"})
+    assert "service: http://127.0.0.1:8422" in cloud.json()["config"]
+    assert "only palaia's AI connection" in cloud.json()["note"]
+
+    # Without a mode, the configured one decides, as before.
+    configured = client.post("/api/exposure/tunnel", json={"kind": "tailscale"}).json()
+    assert configured["commands"] == ["sudo tailscale funnel --bg http://127.0.0.1:8422"]
+
+
 def test_tunnel_guidance_forwards_everything_in_open_mode() -> None:
     # Unit-level rather than through a persisted hub: `open` mode is refused
     # at the operator entry points until the dashboard sign-in exists

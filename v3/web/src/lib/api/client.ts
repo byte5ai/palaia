@@ -1384,6 +1384,8 @@ export const api = {
       kind: "tailscale" | "cloudflared";
       local_port?: number;
       hostname?: string;
+      /** The mode being set up; the hub otherwise answers for the configured one. */
+      mode?: "cloud" | "open";
     },
     signal?: AbortSignal,
   ) => postJson<TunnelGuidance>("/api/exposure/tunnel", body, signal),
