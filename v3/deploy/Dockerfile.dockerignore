@@ -18,6 +18,9 @@
 # source; uv resolves the lockfile's sources even with --no-dev, so the
 # (small) SDK tree rides along. Its own venv does not.
 !v3/sdk
+# The Claude Desktop extension template (stage 3 installs its own
+# node_modules).
+!v3/tools/build-mcpb
 
 v3/server/.venv
 v3/server/tests
@@ -28,6 +31,7 @@ v3/server/.pytest_cache
 v3/server/.mypy_cache
 v3/server/.ruff_cache
 v3/web/node_modules
+v3/tools/build-mcpb/node_modules
 v3/web/dist
 v3/web/.vite
 v3/deploy/pi-image/out
