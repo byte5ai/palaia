@@ -47,7 +47,8 @@ at a working AI connection, and a new, simpler look. Still a pre-release — the
   turn cloud access on.
 - **An honest self-test.** palaia checks its own public address the way ChatGPT
   and Claude do and reports each result; a wrong tunnel, an unrelated page or
-  an open dashboard fails with the fix named.
+  an open dashboard fails with the fix named. A new address that does not
+  answer yet is checked again by itself for a few minutes.
 - **Sign-in from an empty hub works.** Turning on sign-in before your first
   memory is refused with a reason instead of stopping the hub; signing in to
   the private dashboard in Cloud mode no longer loops.
