@@ -112,9 +112,8 @@ export function Stepper({
               ) : (
                 <span>
                   {step.label}
-                  {step.state === "done" ? <span className="sr-only"> (done)</span> : null}
-                  {step.state === "attention" ? (
-                    <span className="sr-only"> (needs attention)</span>
+                  {STATE_SUFFIX[step.state] ? (
+                    <span className="sr-only">{STATE_SUFFIX[step.state]}</span>
                   ) : null}
                 </span>
               )}
