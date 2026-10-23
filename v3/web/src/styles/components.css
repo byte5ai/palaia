@@ -402,6 +402,10 @@ select.input { padding-right: var(--space-2); }
 .stepper__step--current { color: var(--text); }
 .stepper__step--current .stepper__marker { border: 2px solid var(--action); color: var(--action); }
 .stepper__step--done .stepper__marker { border-color: var(--ok); background: var(--ok); color: var(--surface); }
+.stepper__step--skipped .stepper__marker { border-style: dashed; color: var(--text-3); }
+.stepper__link { all: unset; cursor: pointer; border-radius: var(--radius-sm); }
+.stepper__link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.stepper__link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .stepper__step--attention .stepper__marker { border-color: var(--warn); background: var(--warn-bg); color: var(--warn); }
 .stepper__panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
   box-shadow: var(--shadow-card); padding: var(--space-8); display: flex; flex-direction: column; gap: var(--space-6); min-width: 0; }
@@ -507,6 +511,8 @@ span.brand__mark, .brand__ver { display: none; }
   .stepper__layout { grid-template-columns: minmax(0, 1fr); padding: var(--space-5) var(--space-4); }
   .stepper__steps { display: none; }
   .stepper__panel { padding: var(--space-5); }
+  .stepper__foot { flex-direction: column-reverse; align-items: stretch; }
+  .stepper__foot > .btn, .stepper__foot .btn--primary { width: 100%; margin-left: 0; justify-content: center; }
 }
 @media (min-width: 768px) and (max-width: 1023px) {
   .stepper__layout { grid-template-columns: minmax(0, var(--wizard-width)); }
@@ -530,13 +536,14 @@ span.brand__mark, .brand__ver { display: none; }
 .wiz__foot .grow { text-align: right; }
 .radiocards { display: flex; flex-direction: column; gap: var(--space-3); }
 .radiocard { display: flex; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--border);
-  border-radius: var(--radius-md); background: var(--surface); cursor: pointer; position: relative; }
+  border-radius: var(--radius-md); background: var(--surface); cursor: pointer; position: relative;
+  width: 100%; text-align: left; font: inherit; color: inherit; }
 .radiocard:hover { border-color: var(--text-3); }
 .radiocard--on, .radiocard--on:hover { border-color: var(--action); box-shadow: 0 0 0 1px var(--action); }
 .radiocard__pick { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--text-3); flex: none; margin-top: 2px; background: var(--surface); }
 .radiocard--on .radiocard__pick { border-color: var(--action); border-width: 6px; }
 .radiocard__name { font-size: var(--type-body-strong-size); line-height: var(--type-body-strong-lh); font-weight: var(--type-body-strong-weight); }
-.radiocard__when { font-size: var(--type-secondary-size); line-height: var(--type-secondary-lh); color: var(--text-2); margin-top: 2px; }
+.radiocard__when { display: block; font-size: var(--type-secondary-size); line-height: var(--type-secondary-lh); color: var(--text-2); margin-top: 2px; }
 .clientgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
 .clientcard { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); cursor: pointer; text-align: left; }

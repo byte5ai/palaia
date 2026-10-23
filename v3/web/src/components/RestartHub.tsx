@@ -20,13 +20,17 @@ type Phase = "idle" | "confirm" | "restarting" | "failed";
  * Restart palaia from the browser (`POST /api/hub/restart`), then wait for
  * it to answer again and reload the page. Only offered where the hub says
  * something brings it back (`restart_supported` in `/api/setup`).
+ * `confirm={false}` skips the dialog where the page around the button
+ * already says what the restart does (a setup step titled "Restart …").
  */
 export function RestartButton({
   variant = "secondary",
   label = "Restart palaia",
+  confirm = true,
 }: {
   variant?: ButtonVariant;
   label?: string;
+  confirm?: boolean;
 }) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +79,7 @@ export function RestartButton({
     <>
       <Button
         variant={variant}
-        onClick={() => setPhase("confirm")}
+        onClick={() => (confirm ? setPhase("confirm") : void restart())}
         loading={phase === "restarting"}
       >
         {phase === "restarting" ? (
