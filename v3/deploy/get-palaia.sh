@@ -432,7 +432,8 @@ MARK = (
 )
 
 PAGE = (
-    """<!doctype html>
+    (
+        """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>palaia setup</title>
@@ -471,10 +472,13 @@ code{{font:13px ui-monospace,"SF Mono",Menlo,Consolas,monospace;background:var(-
 padding:1px 6px;border-radius:6px;overflow-wrap:anywhere}}
 @media (max-width: 480px){{.card{{padding:20px}} .row>*,.row form button{{width:100%}}}}
 </style></head><body><main><div class="brand">"""
-    + MARK
-    + """palaia</div>
+        + MARK
+        + """palaia</div>
 <div class="card">{body}</div></main></body></html>"""
-).replace("@LIGHT@", LIGHT).replace("@DARK@", DARK)
+    )
+    .replace("@LIGHT@", LIGHT)
+    .replace("@DARK@", DARK)
+)
 
 
 def steps(active):
