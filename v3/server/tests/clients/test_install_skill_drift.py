@@ -97,10 +97,12 @@ _NOT_FROM_DEPLOY: dict[str, str] = {
     'mkdir -p ~/.palaia-setup && chmod 700 ~/.palaia-setup && bash -c \'del=$(printf "\\177"); '
     's=; printf "Tailscale auth key: "; while IFS= read -rsn1 c; do if [ -z "$c" ]; then '
     'break; elif [ "$c" = "$del" ]; then [ -n "$s" ] && s=${s%?} && printf "\\b \\b"; '
-    'else s=$s$c; printf "*"; fi; done; echo; (umask 077; printf "%s" "$s" > '
-    '~/.palaia-setup/tskey); case $s in tskey-auth-*) echo "Saved (${#s} characters).";; *) '
-    'echo "That is not an auth key (it starts with tskey-auth-). Run this line again.";; '
-    "esac'": "the key fallback's Run line: a private file, a star per character (#558)",
+    'else s=$s$c; printf "*"; fi; done; echo; case $s in tskey-auth-*) (umask 077; '
+    'printf "%s" "$s" > ~/.palaia-setup/tskey); echo "Saved (${#s} characters).";; *) '
+    'echo "That is not an auth key (it starts with tskey-auth-). Nothing was saved; run this '
+    "line again.\";; esac'": (
+        "the key fallback's Run line: a private file, a star per character (#558)"
+    ),
     "ssh root@<address> 'umask 077; cat > /root/.palaia-tskey' < ~/.palaia-setup/tskey": (
         "copies the key file over the login's stdin — never a command-line argument (#564)"
     ),

@@ -177,7 +177,7 @@ through the chat or into a command line. With a terminal on their computer, have
 them run this line; it shows a star per character and checks the start:
 
 ```bash
-mkdir -p ~/.palaia-setup && chmod 700 ~/.palaia-setup && bash -c 'del=$(printf "\177"); s=; printf "Tailscale auth key: "; while IFS= read -rsn1 c; do if [ -z "$c" ]; then break; elif [ "$c" = "$del" ]; then [ -n "$s" ] && s=${s%?} && printf "\b \b"; else s=$s$c; printf "*"; fi; done; echo; (umask 077; printf "%s" "$s" > ~/.palaia-setup/tskey); case $s in tskey-auth-*) echo "Saved (${#s} characters).";; *) echo "That is not an auth key (it starts with tskey-auth-). Run this line again.";; esac'
+mkdir -p ~/.palaia-setup && chmod 700 ~/.palaia-setup && bash -c 'del=$(printf "\177"); s=; printf "Tailscale auth key: "; while IFS= read -rsn1 c; do if [ -z "$c" ]; then break; elif [ "$c" = "$del" ]; then [ -n "$s" ] && s=${s%?} && printf "\b \b"; else s=$s$c; printf "*"; fi; done; echo; case $s in tskey-auth-*) (umask 077; printf "%s" "$s" > ~/.palaia-setup/tskey); echo "Saved (${#s} characters).";; *) echo "That is not an auth key (it starts with tskey-auth-). Nothing was saved; run this line again.";; esac'
 ```
 
 Copy it to the server through the login you checked (prefix it as in 3b for a
@@ -190,7 +190,8 @@ curl -fsSL https://get.palaia.ai | PALAIA_TSKEY_FILE=/root/.palaia-tskey sh
 rm -rf ~/.palaia-setup
 ```
 
-No terminal on their computer: use the setup page instead. Never ask them to
+The installer deletes that file whether it finishes or stops; to retry, copy
+it again. No terminal on their computer: use the setup page instead. Never ask them to
 paste a key into the chat. With the setup file, the key goes into its
 `TAILSCALE_AUTH_KEY="tskey-REPLACE_ME"` line instead of the code.
 
