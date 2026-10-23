@@ -201,8 +201,10 @@ def test_restart_refuses_what_another_sites_page_can_send(
     headers: dict[str, str],
     status: int,
 ) -> None:
-    """A locked-mode hub has no admin session gate, so the route itself must
-    refuse a cross-site request that a browser sends without asking."""
+    """A locked-mode hub has no admin session gate, so the hub must refuse a
+    cross-site request that a browser sends without asking — since issue
+    #587 by the rule every change under `/api/*` passes (the walk in
+    `tests/security/test_cross_site_requests.py`)."""
     monkeypatch.setenv("PALAIA_SELF_RESTART", "1")
     sent: list[tuple[int, int]] = []
     monkeypatch.setattr(os, "kill", lambda pid, sig: sent.append((pid, sig)))

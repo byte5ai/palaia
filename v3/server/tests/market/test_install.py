@@ -78,7 +78,7 @@ async def _create_manual_remote(
 
 
 async def _consent(http: httpx.AsyncClient, entry_id: str) -> str:
-    response = await http.post(f"/api/market/entry/{entry_id}/consent")
+    response = await http.post(f"/api/market/entry/{entry_id}/consent", json={})
     assert response.status_code == 200, response.text
     return str(response.json()["token"])
 
@@ -87,7 +87,7 @@ async def _consent_refused(http: httpx.AsyncClient, entry_id: str) -> str:
     """Issue #349: what cannot be shown cannot be consented to — an entry
     that would be refused at install time is refused at the consent step,
     with the same plain reason, and no token is issued."""
-    response = await http.post(f"/api/market/entry/{entry_id}/consent")
+    response = await http.post(f"/api/market/entry/{entry_id}/consent", json={})
     assert response.status_code == 400, response.text
     return str(response.json()["detail"])
 
@@ -500,7 +500,7 @@ async def test_the_consent_screen_can_show_the_exact_command_a_listing_would_run
         assert shown["url"] is None and shown["image"] is None
         assert len(shown["plan_hash"]) == 32
 
-        consent = await http.post(f"/api/market/entry/{entry_id}/consent")
+        consent = await http.post(f"/api/market/entry/{entry_id}/consent", json={})
         assert consent.status_code == 200, consent.text
         assert consent.json()["preview"] == shown
 
@@ -584,7 +584,7 @@ async def test_a_package_name_that_is_really_a_runner_flag_is_refused(
         plan = await http.get(f"/api/market/entry/{entry_id}/plan")
         assert plan.status_code == 400, plan.text
         assert "not a package name" in plan.json()["detail"]
-        consent = await http.post(f"/api/market/entry/{entry_id}/consent")
+        consent = await http.post(f"/api/market/entry/{entry_id}/consent", json={})
         assert consent.status_code == 400
         assert production.dynamic_gateway.config.upstreams == []
 

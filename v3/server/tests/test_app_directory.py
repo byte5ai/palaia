@@ -35,7 +35,10 @@ def test_directory_rest_mirror_is_read_only() -> None:
     client = TestClient(app)
 
     for method in ("post", "put", "delete", "patch"):
-        response = getattr(client, method)("/api/directory/")
+        # Sent as the dashboard sends a write (JSON), so the route answers
+        # rather than the cross-site rule (issue #587).
+        body = {} if method == "delete" else {"json": {}}
+        response = getattr(client, method)("/api/directory/", **body)
         # 405 from FastAPI's router; 404 when a dashboard build is present
         # (the SPA catch-all mount answers unmatched backend methods before
         # the router's method-not-allowed logic — see static.py). Either
@@ -88,7 +91,7 @@ def test_admin_deregister_route_needs_no_secret() -> None:
     result = asyncio.run(service.register(scope="a stale session"))
     handle = result.session.handle
 
-    response = client.post(f"/api/directory/{handle}/deregister")
+    response = client.post(f"/api/directory/{handle}/deregister", json={})
     assert response.status_code == 200
     assert response.json() == {"handle": handle, "deregistered": True}
     assert client.get("/api/directory/").json()["sessions"] == []
@@ -99,6 +102,6 @@ def test_admin_deregister_route_is_idempotent_for_an_already_gone_handle() -> No
     app = create_app(HubConfig(), directory_service=service)
     client = TestClient(app)
 
-    response = client.post("/api/directory/no-such-handle/deregister")
+    response = client.post("/api/directory/no-such-handle/deregister", json={})
     assert response.status_code == 200
     assert response.json() == {"handle": "no-such-handle", "deregistered": False}

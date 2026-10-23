@@ -31,7 +31,7 @@ def test_mark_read(tmp_path: Path) -> None:
     client, store = _client(tmp_path)
     record = store.create(title="x")
 
-    response = client.post(f"/api/notifications/{record.id}/read")
+    response = client.post(f"/api/notifications/{record.id}/read", json={})
     assert response.status_code == 200
     assert response.json()["read"] is True
     assert client.get("/api/notifications/unread_count").json() == {"count": 0}
@@ -39,7 +39,7 @@ def test_mark_read(tmp_path: Path) -> None:
 
 def test_mark_read_unknown_id_404(tmp_path: Path) -> None:
     client, _ = _client(tmp_path)
-    assert client.post("/api/notifications/9999/read").status_code == 404
+    assert client.post("/api/notifications/9999/read", json={}).status_code == 404
 
 
 def test_mark_all_read(tmp_path: Path) -> None:
@@ -47,7 +47,7 @@ def test_mark_all_read(tmp_path: Path) -> None:
     store.create(title="a")
     store.create(title="b")
 
-    response = client.post("/api/notifications/read_all")
+    response = client.post("/api/notifications/read_all", json={})
     assert response.status_code == 200
     assert client.get("/api/notifications/unread_count").json() == {"count": 0}
 

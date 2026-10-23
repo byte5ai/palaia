@@ -82,7 +82,10 @@ def test_messenger_rest_mirror_is_read_only() -> None:
     client = TestClient(app)
 
     for method in ("post", "put", "delete", "patch"):
-        response = getattr(client, method)("/api/messenger/")
+        # Sent as the dashboard sends a write (JSON), so the route answers
+        # rather than the cross-site rule (issue #587).
+        body = {} if method == "delete" else {"json": {}}
+        response = getattr(client, method)("/api/messenger/", **body)
         # 405 from FastAPI's router; 404 when a dashboard build is present
         # (see test_app_directory.py for the same note). Either way: refused.
         assert response.status_code in (404, 405)
@@ -279,7 +282,7 @@ def test_end_conversation_route_expires_the_undelivered_copy() -> None:
 
     ids = asyncio.run(_thread_with_one_undelivered_followup())
 
-    response = client.post(f"/api/messenger/threads/{ids['request_id']}/end")
+    response = client.post(f"/api/messenger/threads/{ids['request_id']}/end", json={})
     assert response.status_code == 200
     payload = response.json()
     assert payload["root_id"] == ids["request_id"]
@@ -295,5 +298,5 @@ def test_end_conversation_route_on_an_unknown_id_is_404() -> None:
     app = create_app(HubConfig(), messenger_service=service, directory_service=directory)
     client = TestClient(app)
 
-    response = client.post("/api/messenger/threads/no-such-id/end")
+    response = client.post("/api/messenger/threads/no-such-id/end", json={})
     assert response.status_code == 404

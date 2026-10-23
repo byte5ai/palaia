@@ -233,7 +233,7 @@ def _install_once(base_url: str, entry_id: str, profiles: list[str]) -> dict[str
     assert search.json()["stale"] is False, search.json()
     assert any(e["id"] == entry_id for e in search.json()["entries"]), search.json()
 
-    consent = client.post(f"/api/market/entry/{entry_id}/consent")
+    consent = client.post(f"/api/market/entry/{entry_id}/consent", json={})
     assert consent.status_code == 200, consent.text
     token = consent.json()["token"]
 
