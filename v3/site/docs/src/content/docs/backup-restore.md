@@ -173,6 +173,26 @@ deliberately than to trigger by accident from a web page.
 The idea in three steps: **stop palaia, replace its saved data with what's
 in your download, start it again.**
 
+If you installed on a server with `curl -fsSL https://get.palaia.ai | sh`:
+
+```bash
+docker rm -f palaia-hub
+
+docker run --rm \
+  -v palaia_home:/data \
+  -v "$PWD":/backup \
+  alpine sh -c "rm -rf /data/* /data/.[!.]* /data/..?* 2>/dev/null; \
+                tar xzf /backup/palaia-backup-YOUR-FILE.tar.gz -C /data && \
+                chown -R 1000:1000 /data"
+
+curl -fsSL https://get.palaia.ai | sh
+```
+
+The last line is the installer again: it starts palaia with the same
+settings as before and keeps the restored data. If you kept palaia private
+during the first install, run it the same way again
+(`curl -fsSL https://get.palaia.ai | PALAIA_CLOUD=0 sh`).
+
 If you installed with the one-line command from [Install it](/install/):
 
 ```bash
@@ -182,7 +202,8 @@ docker run --rm \
   -v palaia_home:/data \
   -v "$PWD":/backup \
   alpine sh -c "rm -rf /data/* /data/.[!.]* /data/..?* 2>/dev/null; \
-                tar xzf /backup/palaia-backup-YOUR-FILE.tar.gz -C /data"
+                tar xzf /backup/palaia-backup-YOUR-FILE.tar.gz -C /data && \
+                chown -R 1000:1000 /data"
 
 docker run -d --name palaia-hub \
   -p 8420:8420 -v palaia_home:/data --restart unless-stopped \
@@ -206,13 +227,16 @@ docker run --rm \
   -v palaia_home:/data \
   -v "$PWD":/backup \
   alpine sh -c "rm -rf /data/* /data/.[!.]* /data/..?* 2>/dev/null; \
-                tar xzf /backup/palaia-backup-YOUR-FILE.tar.gz -C /data"
+                tar xzf /backup/palaia-backup-YOUR-FILE.tar.gz -C /data && \
+                chown -R 1000:1000 /data"
 
 docker compose up -d
 ```
 
 Replace `palaia-backup-YOUR-FILE.tar.gz` with the actual name of the file
-you downloaded, and run these from the folder you saved it in.
+you downloaded, and run these from the folder you saved it in. The `chown`
+hands the files back to the user palaia runs as (`1000`); without it,
+palaia cannot open its databases after a restore from an older backup.
 
 Open the dashboard once it's back up — everything should look exactly the
 way it did when you took the backup, including your connected tools.

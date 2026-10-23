@@ -190,3 +190,25 @@ def test_a_symlink_is_never_followed_or_stored(tmp_path: Path) -> None:
         names = tar.getnames()
         assert "real.md" in names
         assert "link.md" not in names
+
+
+def test_a_sqlite_snapshot_keeps_the_owner_of_the_live_file(tmp_path: Path) -> None:
+    """A restore unpacks the archive as root and keeps each member's owner.
+    A snapshot written as root-owned (uid 0, mode 600) left the hub, which
+    runs as its own user, unable to open its databases after a restore."""
+    db_path = tmp_path / "secrets.sqlite3"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("CREATE TABLE t(x)")
+    conn.commit()
+    conn.close()
+    plain = tmp_path / "config.yaml"
+    plain.write_text("port: 8421\n", encoding="utf-8")
+    owner = db_path.stat()
+
+    with build_archive(tmp_path) as tar:
+        snapshot = tar.getmember("secrets.sqlite3")
+        config = tar.getmember("config.yaml")
+
+    assert (snapshot.uid, snapshot.gid) == (owner.st_uid, owner.st_gid)
+    assert (snapshot.uname, snapshot.gname) == (config.uname, config.gname)
+    assert snapshot.mode == 0o600

@@ -211,9 +211,11 @@ def _add_tree(tar: tarfile.TarFile, home: Path) -> None:
             continue
         if _looks_like_sqlite(path):
             data = _snapshot_sqlite(path)
-            info = tarfile.TarInfo(rel_posix)
+            # The live file's owner, like every other member: a restore that
+            # keeps ownership (tar run as root, the documented way) must hand
+            # the database back to the user palaia runs as, not to root.
+            info = tar.gettarinfo(str(path), arcname=rel_posix)
             info.size = len(data)
-            info.mtime = int(path.stat().st_mtime)
             info.mode = 0o600
             tar.addfile(info, _BytesReader(data))
             sqlite_bases.add(path)
