@@ -39,6 +39,7 @@ import type {
   SetupStatus,
   UpdateCheckResponse,
   VaultPushRecord,
+  VaultSummary,
   VaultRemoteInfo,
   VaultRemotesResponse,
 } from "../lib/api/client";
@@ -57,11 +58,13 @@ const KIND_LABEL: Record<string, string> = {
 };
 
 /** What a backup holds — palaia_hub.backup: the whole hub home except each
- * memory's search index. */
+ * memory's search index. A memory created in a folder of its own, outside
+ * the hub home, is not in it (`archive_holds`); the card names those. */
 const WHATS_INCLUDED =
-  "All memories with their history, palaia's settings, your owner account, every AI app's " +
-  "access key, keys saved for add-ons and connected tools, and your automations and webhooks. " +
-  "The search index is left out; palaia rebuilds it from your notes after a restore.";
+  "Every memory in palaia's data folder with its history, palaia's settings, your owner " +
+  "account, every AI app's access key, keys saved for add-ons and connected tools, and your " +
+  "automations and webhooks. A memory you created in another folder is not included. The " +
+  "search index is left out; palaia rebuilds it from your notes after a restore.";
 
 /** One archive from inside palaia's container, streamed to the machine you
  * type this on. `docker cp` cannot read the container's /tmp (a tmpfs), so
@@ -250,9 +253,40 @@ function NeedsSignIn({
   );
 }
 
+/** Memories kept outside palaia's data folder: a backup leaves them out, so
+ * the card names each one and its folder instead of promising all of them. */
+function NotInBackup({ memories }: { memories: VaultSummary[] }) {
+  if (memories.length === 0) return null;
+  return (
+    <div data-testid="backup-not-included">
+      <Callout
+        tone="warn"
+        title={
+          memories.length === 1
+            ? `“${memories[0]!.key}” is not in the backup`
+            : `${memories.length} memories are not in the backup`
+        }
+      >
+        <p>
+          {memories.length === 1 ? "It is" : "They are"} kept in a folder outside palaia&rsquo;s
+          data folder. Back up {memories.length === 1 ? "that folder" : "these folders"} yourself:
+        </p>
+        <ul>
+          {memories.map((memory) => (
+            <li key={memory.key}>
+              {memory.key}: <code>{memory.path}</code>
+            </li>
+          ))}
+        </ul>
+      </Callout>
+    </div>
+  );
+}
+
 function BackupCard({
   data,
   blocked,
+  outside,
   mode,
   setup,
   owner,
@@ -261,6 +295,7 @@ function BackupCard({
 }: {
   data: BackupTargetsResponse | null;
   blocked: boolean;
+  outside: VaultSummary[];
   mode: ModeStatus | null;
   setup: SetupStatus | null;
   owner: boolean | null;
@@ -333,6 +368,7 @@ function BackupCard({
           <strong>Includes private data and access keys.</strong> Anyone with the file can use them,
           so store it like a password.
         </p>
+        <NotInBackup memories={outside} />
         <Disclosure summary="What's included?">
           <p>{WHATS_INCLUDED}</p>
           <p>
@@ -794,6 +830,22 @@ export function Backups() {
   const [setup, setSetup] = useState<SetupStatus | null>(null);
   const [owner, setOwner] = useState<boolean | null>(null);
   const [update, setUpdate] = useState<UpdateCheckResponse | null>(null);
+  const [outside, setOutside] = useState<VaultSummary[]>([]);
+
+  // Which memories a backup leaves out. Without an answer the card still
+  // says, in "What's included?", that only palaia's data folder is in it.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .listVaults()
+      .then((list) => {
+        if (!cancelled) setOutside(list.filter((memory) => memory.in_backup === false));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -913,6 +965,7 @@ export function Backups() {
       <BackupCard
         data={data}
         blocked={blocked}
+        outside={outside}
         mode={mode}
         setup={setup}
         owner={owner}

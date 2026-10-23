@@ -15,7 +15,12 @@ from pathlib import Path
 
 import pytest
 
-from palaia_hub.backup import ARCHIVE_MEDIA_TYPE, archive_filename, iter_archive_bytes
+from palaia_hub.backup import (
+    ARCHIVE_MEDIA_TYPE,
+    archive_filename,
+    archive_holds,
+    iter_archive_bytes,
+)
 from palaia_hub.index.db import INDEX_RELATIVE_PATH
 
 
@@ -190,6 +195,33 @@ def test_a_symlink_is_never_followed_or_stored(tmp_path: Path) -> None:
         names = tar.getnames()
         assert "real.md" in names
         assert "link.md" not in names
+
+
+def test_archive_holds_names_exactly_the_memories_the_archive_contains(
+    tmp_path: Path,
+) -> None:
+    """The Backups page names memories a backup leaves out from this
+    predicate, so it must agree with what the archive really holds: a memory
+    in the hub home is in it; one in a folder elsewhere, or linked into the
+    home from there, is not."""
+    home = tmp_path / "home"
+    inside = home / "vaults" / "work"
+    inside.mkdir(parents=True)
+    (inside / "note.md").write_text("in\n", encoding="utf-8")
+    elsewhere = tmp_path / "elsewhere" / "notes"
+    elsewhere.mkdir(parents=True)
+    (elsewhere / "note.md").write_text("out\n", encoding="utf-8")
+    linked = home / "vaults" / "linked"
+    linked.symlink_to(elsewhere, target_is_directory=True)
+
+    with build_archive(home) as tar:
+        names = set(tar.getnames())
+    assert "vaults/work/note.md" in names
+    assert not any(name.startswith("vaults/linked/") for name in names), names
+
+    assert archive_holds(home, inside) is True
+    assert archive_holds(home, elsewhere) is False
+    assert archive_holds(home, linked) is False
 
 
 def test_a_sqlite_snapshot_keeps_the_owner_of_the_live_file(tmp_path: Path) -> None:

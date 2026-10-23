@@ -104,6 +104,8 @@ const BANNED = [
 ];
 
 beforeEach(() => {
+  // Every memory in palaia's data folder unless a test says otherwise.
+  vi.spyOn(api, "listVaults").mockResolvedValue([]);
   // A hub without a secret store: the git card hides itself (404).
   vi.spyOn(api, "listVaultRemotes").mockRejectedValue(
     new ApiError("/api/backup/vault-remotes", 404, { detail: "Not Found" }),
@@ -246,6 +248,24 @@ describe("Backups (issue 438)", () => {
     await waitFor(() =>
       expect(saveBlob).toHaveBeenCalledWith(expect.any(Blob), "palaia-backup-1.tar.gz"),
     );
+  });
+
+  it("names each memory a backup leaves out, with its folder, instead of promising all", async () => {
+    vi.spyOn(api, "listBackupTargets").mockResolvedValue({ targets: [], schedule: null });
+    vi.spyOn(api, "listVaults").mockResolvedValue([
+      { key: "work", purpose: null, path: "/data/vaults/work", writable: true, note_count: 3, in_backup: true },
+      { key: "notes", purpose: null, path: "/srv/notes", writable: true, note_count: 9, in_backup: false },
+    ]);
+
+    mount();
+
+    const missing = await screen.findByTestId("backup-not-included");
+    expect(missing).toHaveTextContent("“notes” is not in the backup");
+    expect(missing).toHaveTextContent("/srv/notes");
+    expect(missing).not.toHaveTextContent("work");
+    const card = screen.getByTestId("backup-card");
+    expect(card).not.toHaveTextContent(/all memories/i);
+    expect(card).toHaveTextContent(/a memory you created in another folder is not included/i);
   });
 
   it("without dashboard sign-in: says why, offers the switch that fixes it, and the server way second", async () => {

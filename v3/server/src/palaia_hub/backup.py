@@ -308,6 +308,23 @@ class _QueueWriter:
             self._buffer.clear()
 
 
+def archive_holds(home: Path, path: Path) -> bool:
+    """Whether a backup of ``home`` holds the directory at ``path``.
+
+    The archive is ``home``'s own tree, with symlinks never followed
+    (:func:`_sorted_walk`). A memory created in a folder elsewhere — the
+    setup's and the dashboard's "Folder" option — is therefore not in it,
+    and neither is one linked into ``home`` from outside; the dashboard's
+    Backups page names those instead of promising every memory.
+    """
+    try:
+        inside = home.expanduser().resolve()
+        target = path.expanduser().resolve()
+    except (OSError, RuntimeError):
+        return False
+    return target.is_relative_to(inside)
+
+
 def _build_in_thread(
     home: Path, sink: queue.Queue[bytes | BaseException | None], cancelled: threading.Event
 ) -> None:
@@ -374,5 +391,6 @@ __all__ = [
     "ARCHIVE_MEDIA_TYPE",
     "BackupError",
     "archive_filename",
+    "archive_holds",
     "iter_archive_bytes",
 ]
