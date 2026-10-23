@@ -5,6 +5,7 @@ is it left out, which would leave the admin API without its sign-in."""
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
 from pathlib import Path
 
 import httpx
@@ -19,6 +20,15 @@ from palaia_hub.oauth import OAuthStore, set_owner_password
 from palaia_hub.serve import build_production_app
 from palaia_hub.startup import PROBLEMS
 from palaia_hub.vault import VaultRegistry
+
+
+@pytest.fixture(autouse=True)
+def _no_leftover_problems() -> Iterator[None]:
+    """Start-up problems are process-wide; a hub started here must not leave
+    its own behind for the next test to read."""
+    PROBLEMS.clear()
+    yield
+    PROBLEMS.clear()
 
 
 def _client(home: Path) -> TestClient:
@@ -90,15 +100,11 @@ def test_a_sign_in_server_with_nothing_to_grant_still_starts(
     (tmp_path / "config.yaml").write_text(
         "oauth:\n  enabled: true\n  issuer: https://hub.example.test\n", encoding="utf-8"
     )
-    PROBLEMS.clear()
-    try:
-        server = _maybe_oauth_server(load_config(home=tmp_path))
-        assert server is not None
-        assert server.grantable_scopes() == {}
-        server.store.close()
-        assert PROBLEMS and "has no memory yet" in PROBLEMS[0]
-    finally:
-        PROBLEMS.clear()
+    server = _maybe_oauth_server(load_config(home=tmp_path))
+    assert server is not None
+    assert server.grantable_scopes() == {}
+    server.store.close()
+    assert PROBLEMS and "has no memory yet" in PROBLEMS[0]
 
 
 def test_open_mode_with_no_memory_still_requires_the_owner_to_sign_in(
