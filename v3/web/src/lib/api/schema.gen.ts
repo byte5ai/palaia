@@ -532,6 +532,8 @@ export interface components {
             restart_supported: boolean;
             /** Cloud Ready */
             cloud_ready: boolean;
+            /** Cloud Verified */
+            cloud_verified: boolean;
             /** Client Connected */
             client_connected: boolean;
             /** First Memory Saved */

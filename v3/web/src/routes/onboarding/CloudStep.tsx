@@ -50,6 +50,7 @@ export function CloudStep({
   }
 
   if (active && !status.restart_required) {
+    // Cloud mode is on; the step completes once the self-test passes.
     return <CloudCheck status={status} refresh={refresh} onDone={onDone} />;
   }
   if (turnedOn) return <CloudRestart status={status} />;

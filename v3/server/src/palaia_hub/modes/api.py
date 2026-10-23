@@ -462,6 +462,11 @@ def build_modes_router(
             profile=body.profile or "default",
             mode=config.mode,
         )
+        # The setup wizard ticks cloud access on this result, not on
+        # configuration alone (issue #561).
+        from ..setup_api import record_cloud_check  # lazy: setup_api imports this module
+
+        record_cloud_check(home, body.public_url, result.reachable)
         return SelfTestOut(
             checked_url=result.checked_url,
             reachable=result.reachable,

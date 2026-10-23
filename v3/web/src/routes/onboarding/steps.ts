@@ -51,7 +51,9 @@ export function stepViews(status: SetupStatus): StepView[] {
     views.push({
       id: "cloud",
       name: "Cloud access",
-      state: status.cloud_ready
+      // Done only once the hub reached its own public address and every
+      // check passed — configuration alone does not prove the tunnel.
+      state: status.cloud_ready && status.cloud_verified
         ? "done"
         : skipped.has("cloud")
           ? "skipped"

@@ -56,12 +56,16 @@ const VAULT_KEY_RE = /^[a-z0-9][a-z0-9-]*$/;
 export function Onboarding() {
   const navigate = useNavigate();
   const { status, error, refresh } = useSetupStatus(3000);
-  const [viewing, setViewing] = useState<StepId | "done" | null>(null);
+  // The step on screen. It starts at the first open one and moves only when
+  // the person moves (Continue, the rail): a status poll that finds a step
+  // done must not pull the page away from the result they are reading.
+  const [pinned, setPinned] = useState<StepId | "done" | null>(null);
   const panel = useRef<HTMLDivElement>(null);
 
   const views = useMemo(() => (status ? stepViews(status) : []), [status]);
   const open = status ? firstOpenStep(views) : null;
-  const current: StepId | "done" = viewing ?? open ?? "done";
+  if (status && pinned === null) setPinned(open ?? "done");
+  const current: StepId | "done" = pinned ?? open ?? "done";
 
   // A new step starts at its top, on a phone too.
   useEffect(() => {
@@ -76,8 +80,7 @@ export function Onboarding() {
 
   async function next() {
     const latest = await refresh();
-    setViewing(null);
-    if (latest && firstOpenStep(stepViews(latest)) === null) setViewing("done");
+    if (latest) setPinned(firstOpenStep(stepViews(latest)) ?? "done");
   }
 
   if (!status) {
@@ -129,7 +132,7 @@ export function Onboarding() {
                   aria-current={isCurrent ? "step" : undefined}
                   aria-label={`${view.name}${STATE_LABEL[view.state]}`}
                   disabled={!reachable}
-                  onClick={() => setViewing(view.id === open ? null : view.id)}
+                  onClick={() => setPinned(view.id)}
                 >
                   <span className="ob__num" aria-hidden="true">
                     {view.state === "done" ? (
@@ -215,7 +218,7 @@ export function Onboarding() {
               onWantCloud={async () => {
                 await api.updateSetup({ goal: "cloud" });
                 await refresh();
-                setViewing("cloud");
+                setPinned("cloud");
               }}
             />
           ) : null}

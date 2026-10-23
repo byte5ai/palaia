@@ -39,6 +39,7 @@ function freshStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
     restart_required: false,
     restart_supported: true,
     cloud_ready: false,
+    cloud_verified: false,
     client_connected: false,
     first_memory_saved: false,
     problems: [],
@@ -95,6 +96,7 @@ function fakeHub(initial: SetupStatus) {
       case "POST /api/hub/restart":
         return json({ restarting: true }, 202);
       case "POST /api/exposure/selftest":
+        state.status = { ...s, cloud_verified: true };
         return json({
           checked_url: body.public_url,
           reachable: true,
@@ -309,7 +311,7 @@ describe("first-run setup", () => {
         issuer: PUBLIC,
         configured_issuer: PUBLIC,
         public_url: PUBLIC,
-        cloud_ready: false,
+        cloud_ready: true,
       }),
     );
     renderWizard();
@@ -335,6 +337,7 @@ describe("first-run setup", () => {
         configured_issuer: PUBLIC,
         public_url: PUBLIC,
         cloud_ready: true,
+        cloud_verified: true,
       }),
     );
     renderWizard();

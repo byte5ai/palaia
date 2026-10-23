@@ -28,14 +28,15 @@ def test_admin_routes_and_the_dashboard_are_404_through_the_cloud_entry(
 
 
 def test_the_ai_connection_passes_in_cloud_mode(tmp_path: Path) -> None:
-    """No sign-in server in this test hub, so the route itself is absent — the
-    answer comes from the hub's routing (FastAPI's ``detail``), not from the
-    cloud-entry lock (``error: not_found``)."""
+    """No sign-in server in this test hub, so what answers is the hub's own
+    routing (a 404, or the dashboard fallback when a built dashboard is
+    present) — never the cloud-entry lock."""
     response = _client(tmp_path, "cloud").get(
         "/.well-known/oauth-authorization-server", headers=CLOUD
     )
-    assert response.status_code == 404
-    assert "error" not in response.json()
+    assert response.status_code != 403
+    assert "cloud_access_off" not in response.text
+    assert '"error": "not_found"' not in response.text
 
 
 def test_everything_is_closed_while_cloud_access_is_off(tmp_path: Path) -> None:

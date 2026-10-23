@@ -1222,6 +1222,10 @@
             "type": "boolean",
             "title": "Cloud Ready"
           },
+          "cloud_verified": {
+            "type": "boolean",
+            "title": "Cloud Verified"
+          },
           "client_connected": {
             "type": "boolean",
             "title": "Client Connected"
@@ -1258,6 +1262,7 @@
           "restart_required",
           "restart_supported",
           "cloud_ready",
+          "cloud_verified",
           "client_connected",
           "first_memory_saved",
           "problems"
