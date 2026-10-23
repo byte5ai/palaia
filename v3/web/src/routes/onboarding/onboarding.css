@@ -1,0 +1,295 @@
+/* The first-run setup (issues 559, 561, 563, 565): a full page without the
+   app's navigation, a step list on the left (above on phones), one centred
+   panel. Colours and spacing come from the shared tokens only. */
+
+.ob {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  min-height: 100vh;
+  background: var(--canvas);
+  color: var(--text);
+}
+
+.ob__rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-8) var(--space-5);
+  border-right: 1px solid var(--border);
+}
+
+.ob__brand {
+  font-family: "Days One", var(--font-sans);
+  font-size: 22px;
+  letter-spacing: 0.01em;
+}
+
+.ob__steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ob__step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+.ob__step:disabled {
+  cursor: default;
+}
+.ob__step:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}
+.ob__step--current {
+  background: var(--info-bg);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.ob__num {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text-3);
+  font-size: 13px;
+  font-weight: 700;
+}
+.ob__step--current .ob__num {
+  border-color: var(--action);
+  color: var(--action);
+}
+.ob__step--done .ob__num {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+.ob__step--skipped .ob__step-name {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+.ob__step--attention .ob__num {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.ob__rail-note {
+  margin-top: auto;
+}
+
+.ob__panel {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-8) var(--space-6) var(--space-12);
+  min-width: 0;
+}
+.ob__inner {
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.ob__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.ob__progress {
+  height: 4px;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+}
+.ob__progress > span {
+  display: block;
+  height: 100%;
+  background: var(--action);
+  transition: width var(--duration-smooth) var(--easing-standard);
+}
+
+.ob__step-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.ob__title {
+  margin: var(--space-2) 0 0;
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 700;
+  text-wrap: balance;
+}
+
+.ob__foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  justify-content: flex-end;
+  padding-top: var(--space-2);
+}
+
+.ob__more > summary {
+  cursor: pointer;
+  color: var(--text-2);
+  font-size: 14px;
+}
+.ob__more[open] > summary {
+  margin-bottom: var(--space-3);
+}
+
+.ob__check {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  font-size: 14px;
+}
+
+.field__optional {
+  margin-left: 6px;
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.ob__checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ob__checks li {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+.ob__check--ok svg {
+  color: var(--ok);
+  margin-top: 3px;
+}
+.ob__check--fail svg {
+  color: var(--warn);
+  margin-top: 3px;
+}
+
+.ob__howto {
+  margin: 0;
+  padding-left: 1.3em;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: 14px;
+}
+
+.ob__connected {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 14px;
+  color: var(--text-2);
+}
+.ob__connected--ok {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.ob__summary {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.ob__summary li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  min-height: 52px;
+}
+.ob__summary li + li {
+  border-top: 1px solid var(--border);
+}
+.ob__summary-label {
+  font-weight: 600;
+  min-width: 7.5em;
+}
+.ob__summary-value {
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.ob__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+.ob__dot--ok {
+  background: var(--ok);
+}
+
+@media (max-width: 860px) {
+  .ob {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ob__rail {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    padding: var(--space-4) max(16px, env(safe-area-inset-left, 0px));
+    gap: var(--space-3);
+  }
+  .ob__steps {
+    flex-direction: row;
+    overflow-x: auto;
+    gap: var(--space-2);
+  }
+  .ob__step {
+    width: auto;
+    white-space: nowrap;
+  }
+  .ob__step:not(.ob__step--current) .ob__step-name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .ob__rail-note {
+    display: none;
+  }
+  .ob__panel {
+    padding: var(--space-5) max(16px, env(safe-area-inset-left, 0px))
+      calc(var(--space-5) * 2);
+  }
+  .ob__foot {
+    justify-content: stretch;
+  }
+  .ob__foot .btn--primary {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+}

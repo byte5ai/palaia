@@ -195,13 +195,36 @@ it again. No terminal on their computer: use the setup page instead. Never ask t
 paste a key into the chat. With the setup file, the key goes into its
 `TAILSCALE_AUTH_KEY="tskey-REPLACE_ME"` line instead of the code.
 
-## Step 5 — Confirm it worked, then finish setup
+## Step 5 — Finish setup in the browser
 
-palaia answers on the private network at the address the setup page and the
-installer's last line show (port `8420`). The device needs the Tailscale app on.
-A running server is not a finished setup: say "palaia is running", not "done".
-Tell them to open that address; palaia's own setup opens there by itself. If you
-used 3b, delete the saved password now. If it does not answer, Step 6.
+A running server is not a finished setup: say "palaia is running", never "done",
+until an AI app has saved and found a note. They open palaia's address (the
+installer's last line, port `8420`, Tailscale app on); its setup opens by itself
+and resumes where it stands after a reload or restart. If you used 3b, delete the
+saved password now. If you cannot see the page, ask what it shows; never read
+palaia's code to guess. One step at a time, in this order:
+
+1. **How you'll use palaia** — their choice from Step 2 ("With ChatGPT and
+   Claude" is cloud access).
+2. **Your first memory** — *Name* is required (lowercase, e.g. `work`). *What
+   it's for* is optional: AI apps read it to pick the right memory, so ask them;
+   never invent it, empty is fine. *More options* can stay as they are.
+3. **Your account** — a username and a password of 12+ characters, typed by them
+   in the page, never in the chat. Needed for cloud access; optional on a private
+   hub (Skip).
+4. **Cloud access** — filled in when the setup page turned on Funnel; otherwise
+   run `sudo tailscale funnel --bg http://127.0.0.1:8422` on the server for them
+   and use the `https://` address it shows. Before **Turn on cloud access** and
+   **Restart palaia**, say that palaia restarts once and then asks them to sign
+   in with the new account — expected, not a step back. All four checks must pass.
+5. **Connect an AI app** — the app they chose. The Claude app, claude.ai and
+   ChatGPT get the address and three clicks; Claude Desktop on a private hub the
+   extension download; Claude Code and the others a command. "Connected" appears
+   once palaia saw the first request.
+
+Then have them ask the app to save one note and find it again. Only then say it
+works, and say what you checked. A warning box on the page comes first: read it
+in plain words and do what it says. If it does not answer at all, Step 6.
 
 ## Step 6 — When it does not come up
 
@@ -265,11 +288,9 @@ with `sudo tail -n 50 /var/log/cloud-init-output.log`:
 
 ## What not to do
 
-- Do not open with Docker, compose files or app-store jargon.
-- Do not invent where their palaia runs or which provider they use — ask.
-- Do not write the setup file or the install line from memory.
-- Do not depend on helper tools of your own environment; everything above uses
-  what a Mac or Linux computer has.
+- No Docker, compose or app-store jargon; never invent their provider or setup.
+- Never write the setup file or the install line from memory.
+- Use only what a Mac or Linux computer has, no helper tools of your own.
 
 ## Per-model notes
 

@@ -1,20 +1,20 @@
 ---
 # Generated from v3/web/src/lib/clients.ts and skills.ts by v3/site/docs/scripts/generate-connect-pages.mjs. Do not hand-edit —
 # change the source and run `npm run gen:connect` from v3/site/docs.
-title: "claude.ai"
-description: "Connect claude.ai to your shared memory."
+title: "Claude"
+description: "Connect Claude to your shared memory."
 ---
 
-Web, desktop, mobile and Cowork — custom connector on every plan
+The Claude app on Mac, Windows and phones, and claude.ai — a custom connector
 
 ## What has to be true first
 
-- **Locked mode.** claude.ai connects from its own cloud, not from this device — Locked mode only answers inside your network, so it would time out whatever you paste into it. Switch to Cloud or Open mode to expose an endpoint it can reach.
-- **Cloud mode or Open mode.** claude.ai needs sign-in turned on for this hub, and it is not yet — turn it on from the Access mode page (Cloud and Open both support it), then come back here. Every plan (including Free) can add palaia as a custom connector.
+- **Locked mode.** Claude connects from the internet, so it needs cloud access. Turn it on in setup or under Access; your dashboard stays on your private network.
+- **Cloud mode or Open mode.** Claude signs in to palaia with your account, and sign-in is not on yet. Finish turning on cloud access, then come back here. Every plan (including Free) can add palaia as a custom connector.
 
 ## Once sign-in is on
 
-Paste this address into claude.ai's custom connector settings, then sign in with your palaia account when it asks.
+In Claude, add a custom connector with this address. When it asks, sign in with your palaia account and allow access.
 
 ```text
 https://palaia.example.com/mcp/default

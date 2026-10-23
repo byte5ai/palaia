@@ -32,30 +32,11 @@ export type TunnelGuidance =
 export type SelfTestResult =
   paths["/api/exposure/selftest"]["post"]["responses"][200]["content"]["application/json"];
 
-/** `GET`/`PUT /api/setup` (issues 559 and 561) — mirrors `SetupStatus` in
- * `palaia_hub.setup_api`: where first-run setup stands, read from the hub. */
-export interface SetupStatus {
-  completed: boolean;
-  goal: "cloud" | "private" | null;
-  owner_configured: boolean;
-  vaults: string[];
-  profiles: string[];
-  mode: "locked" | "cloud" | "open";
-  sign_in_active: boolean;
-  issuer: string | null;
-  configured_mode: "locked" | "cloud" | "open";
-  configured_sign_in: boolean;
-  configured_issuer: string | null;
-  public_url: string | null;
-  cloud_url_hint: string | null;
-  restart_required: boolean;
-  restart_supported: boolean;
-  cloud_ready: boolean;
-  client_connected: boolean;
-  first_memory_saved: boolean;
-  problems: string[];
-  skipped: string[];
-}
+/** issues 559/561: where first-run setup stands, read from the hub. */
+export type SetupStatus =
+  paths["/api/setup"]["get"]["responses"][200]["content"]["application/json"];
+export type SetupUpdate =
+  paths["/api/setup"]["put"]["requestBody"]["content"]["application/json"];
 
 /**
  * `/api/info`'s `sign_in` field (SPEC-204 deliverable #4). Hand-written for
@@ -1410,9 +1391,9 @@ export const api = {
     postJson<SelfTestResult>("/api/exposure/selftest", {
       public_url: publicUrl,
     }),
-  setupStatus: () => getJson<SetupStatus>("/api/setup"),
-  updateSetup: (body: { goal?: "cloud" | "private"; completed?: boolean; skipped?: string[] }) =>
-    putJson<SetupStatus>("/api/setup", body),
+  setupStatus: (signal?: AbortSignal) =>
+    getJson<SetupStatus>("/api/setup", signal),
+  updateSetup: (body: SetupUpdate) => putJson<SetupStatus>("/api/setup", body),
   restartHub: () => postJson<{ restarting: boolean }>("/api/hub/restart", {}),
 
   // ---- SPEC-303/304: the marketplace ----

@@ -1110,6 +1110,18 @@
             ],
             "title": "Goal"
           },
+          "skipped": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "account",
+                "cloud",
+                "client"
+              ]
+            },
+            "type": "array",
+            "title": "Skipped"
+          },
           "owner_configured": {
             "type": "boolean",
             "title": "Owner Configured"
@@ -1210,6 +1222,10 @@
             "type": "boolean",
             "title": "Cloud Ready"
           },
+          "cloud_verified": {
+            "type": "boolean",
+            "title": "Cloud Verified"
+          },
           "client_connected": {
             "type": "boolean",
             "title": "Client Connected"
@@ -1231,6 +1247,7 @@
         "required": [
           "completed",
           "goal",
+          "skipped",
           "owner_configured",
           "vaults",
           "profiles",
@@ -1245,6 +1262,7 @@
           "restart_required",
           "restart_supported",
           "cloud_ready",
+          "cloud_verified",
           "client_connected",
           "first_memory_saved",
           "problems"
@@ -1278,6 +1296,25 @@
               }
             ],
             "title": "Completed"
+          },
+          "skipped": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "account",
+                    "cloud",
+                    "client"
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skipped"
           }
         },
         "additionalProperties": false,

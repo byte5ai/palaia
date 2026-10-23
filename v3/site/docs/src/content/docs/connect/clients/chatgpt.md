@@ -5,16 +5,16 @@ title: "ChatGPT"
 description: "Connect ChatGPT to your shared memory."
 ---
 
-Developer mode / custom connectors
+A custom connector in developer mode
 
 ## What has to be true first
 
-- **Locked mode.** ChatGPT connects from its own cloud, not from this device — Locked mode only answers inside your network, so it would time out whatever you paste into it. Switch to Cloud or Open mode to expose an endpoint it can reach.
-- **Cloud mode or Open mode.** ChatGPT needs sign-in turned on for this hub, and it is not yet — turn it on from the Access mode page (Cloud and Open both support it), then come back here. Write access needs a Business, Enterprise or Edu workspace — Plus/Pro get a read-only profile so recall still works.
+- **Locked mode.** ChatGPT connects from the internet, so it needs cloud access. Turn it on in setup or under Access; your dashboard stays on your private network.
+- **Cloud mode or Open mode.** ChatGPT signs in to palaia with your account, and sign-in is not on yet. Finish turning on cloud access, then come back here. Write access needs a Business, Enterprise or Edu workspace — Plus/Pro get a read-only profile so recall still works.
 
 ## Once sign-in is on
 
-Paste this address into ChatGPT's custom connector settings, then sign in with your palaia account when it asks.
+In ChatGPT, add a custom connector with this address. When it asks, sign in with your palaia account and allow access.
 
 ```text
 https://palaia.example.com/mcp/default
