@@ -1,0 +1,24 @@
+/* Add-ons (Installed and Browse). Tokens only — see styles/tokens.css. */
+
+.addons-filters { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.addons-filters .searchbox { flex: 1 1 260px; max-width: 420px; }
+
+.addons-needs { display: flex; flex-direction: column; gap: var(--space-1); padding-left: var(--space-4);
+  list-style: disc; font-size: var(--type-secondary-size); line-height: var(--type-secondary-lh); color: var(--text-2); }
+.addons-needs code { overflow-wrap: anywhere; }
+
+.addons-installed .listrow { flex-wrap: wrap; row-gap: var(--space-2); }
+.addons-installed .listrow__main { flex: 1 1 220px; }
+.addons-installed .listrow__trail { margin-left: auto; }
+
+.addons-row__actions { display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  justify-content: flex-end; }
+
+@media (max-width: 767px) {
+  .addons-filters .searchbox { max-width: none; }
+  .addons-installed .listrow { flex-wrap: wrap; row-gap: var(--space-2); }
+.addons-installed .listrow__main { flex: 1 1 220px; }
+.addons-installed .listrow__trail { margin-left: auto; }
+
+.addons-row__actions { justify-content: flex-start; }
+}

@@ -1,0 +1,23 @@
+/* Automations and webhooks. Tokens only — see styles/tokens.css. */
+
+.automations-row { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border); }
+.automations-row:last-child { border-bottom: 0; }
+.automations-row__head { display: flex; align-items: flex-start; gap: var(--space-3); flex-wrap: wrap; }
+.automations-row__main { display: flex; flex-direction: column; flex: 1 1 240px; min-width: 0; }
+.automations-row__actions { display: flex; align-items: center; gap: var(--space-2); flex: none; margin-left: auto; }
+.automations-row__tools { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.automations-hook__url { overflow-wrap: anywhere; word-break: break-all; }
+
+.automations-log { display: flex; flex-direction: column; gap: var(--space-2); font-size: var(--type-secondary-size); }
+.automations-log li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+
+.automations-condition { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.automations-condition .input { width: auto; flex: 1 1 140px; }
+
+.automations-placeholders { display: flex; flex-direction: column; gap: var(--space-1); }
+.automations-secret { margin-top: var(--space-2); background: var(--surface); }
+
+@media (max-width: 767px) {
+  .automations-row { padding: var(--space-4); }
+}

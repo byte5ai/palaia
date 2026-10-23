@@ -36,6 +36,7 @@ describe("MemoryUseCard (issue 524)", () => {
     expect(row).toHaveTextContent("Claude Code CLI");
     expect(row).toHaveTextContent("12 lookups · 5 saves");
     expect(row).toHaveTextContent("1 of 4 sessions saved before looking anything up.");
+    expect(screen.queryByText("Saves without looking")).not.toBeInTheDocument();
   });
 
   it("flags a client that saves without ever looking anything up", async () => {
@@ -46,11 +47,12 @@ describe("MemoryUseCard (issue 524)", () => {
     render(<MemoryUseCard />);
 
     expect(
-      await screen.findByText("It saves without ever looking anything up first."),
+      await screen.findByText("Saves without looking anything up first — install the palaia skill."),
     ).toBeInTheDocument();
+    expect(screen.getByText("Saves without looking", { selector: ".pill" })).toBeInTheDocument();
   });
 
-  it("names a connection without a palaia token as such", async () => {
+  it("names a connection that signed in with the palaia account as such", async () => {
     vi.spyOn(api, "tokenUsage").mockResolvedValue([
       usage({ client_id: "oauth", name: null, lookups: 1 }),
     ]);
@@ -58,7 +60,7 @@ describe("MemoryUseCard (issue 524)", () => {
     render(<MemoryUseCard />);
 
     expect(await screen.findByTestId("memory-use-oauth")).toHaveTextContent(
-      "Connection without a palaia token",
+      "An app signed in with your palaia account",
     );
   });
 
@@ -67,7 +69,7 @@ describe("MemoryUseCard (issue 524)", () => {
 
     render(<MemoryUseCard />);
 
-    expect(await screen.findByText(/No AI tool has looked anything up/)).toBeInTheDocument();
+    expect(await screen.findByText(/No AI app looked anything up/)).toBeInTheDocument();
   });
 
   it("hides itself on a hub that does not count", async () => {

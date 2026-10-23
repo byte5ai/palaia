@@ -9,7 +9,7 @@ The Claude app on Mac, Windows and phones, and claude.ai — a custom connector
 
 ## What has to be true first
 
-- **Locked mode.** Claude connects from the internet, so it needs cloud access. Turn it on in setup or under Access; your dashboard stays on your private network.
+- **Locked mode.** Claude connects from the internet, so it needs cloud access. Turn it on in setup or in Settings › Access & sign-in; your dashboard stays on your private network.
 - **Cloud mode or Open mode.** Claude signs in to palaia with your account, and sign-in is not on yet. Finish turning on cloud access, then come back here. Every plan (including Free) can add palaia as a custom connector.
 
 ## Once sign-in is on

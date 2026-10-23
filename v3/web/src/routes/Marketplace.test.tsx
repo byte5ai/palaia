@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -99,7 +99,9 @@ const INSTALLED_FETCH: InstalledAddon = {
   installed_at: 1_700_000_000,
 };
 
-function mount(initialPath = "/marketplace") {
+const BROWSE = "/add-ons?view=browse";
+
+function mount(initialPath = BROWSE) {
   return render(
     <ToastProvider>
       <MemoryRouter initialEntries={[initialPath]}>
@@ -113,8 +115,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("Marketplace screen (SPEC-304)", () => {
-  it("lists search results as cards", async () => {
+describe("Add-ons (SPEC-304, issue 570)", () => {
+  it("opens on Installed and lists search results under Browse", async () => {
     vi.spyOn(api, "searchMarket").mockResolvedValue({
       entries: [FETCH_ENTRY],
       stale: false,
@@ -123,12 +125,18 @@ describe("Marketplace screen (SPEC-304)", () => {
     vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([DEFAULT_PROFILE]);
     vi.spyOn(api, "listInstalledAddons").mockResolvedValue([]);
 
-    mount();
+    mount("/add-ons");
+
+    expect(await screen.findByRole("tab", { name: "Installed" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(await screen.findByText("No add-ons installed")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Browse add-ons" }));
 
     expect(await screen.findByText("Fetch")).toBeInTheDocument();
-    expect(
-      screen.getByText(/fetch and convert web pages/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/fetch and convert web pages/i)).toBeInTheDocument();
+    expect(screen.getByText("Reviewed by palaia")).toBeInTheDocument();
   });
 
   it("shows an empty state when nothing matches", async () => {
@@ -142,7 +150,18 @@ describe("Marketplace screen (SPEC-304)", () => {
 
     mount();
 
-    expect(await screen.findByText(/nothing matched/i)).toBeInTheDocument();
+    expect(await screen.findByText("No add-ons match")).toBeInTheDocument();
+  });
+
+  it("shows an error, not an empty list, when the add-ons cannot be loaded", async () => {
+    vi.spyOn(api, "searchMarket").mockRejectedValue(new Error("offline"));
+    vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([]);
+    vi.spyOn(api, "listInstalledAddons").mockResolvedValue([]);
+
+    mount();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load add-ons");
+    expect(screen.queryByText("No add-ons match")).not.toBeInTheDocument();
   });
 
   it("shows permissions and a stronger warning for an unverified entry, gated behind consent", async () => {
@@ -157,14 +176,12 @@ describe("Marketplace screen (SPEC-304)", () => {
     mount();
     fireEvent.click(await screen.findByRole("button", { name: /details/i }));
 
-    expect(
-      await screen.findByText(/you added this one yourself/i),
-    ).toBeInTheDocument();
-    // The install button exists but does nothing until a secret is filled
-    // in and consent is actually issued — proven by the next test.
-    expect(
-      screen.getByRole("button", { name: /install and connect/i }),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/you added this one yourself/i)).toBeInTheDocument();
+    expect(screen.getByText("Not reviewed by palaia")).toBeInTheDocument();
+    expect(screen.getAllByText("Unreviewed").length).toBeGreaterThan(0);
+    // The install button exists but stays off until the required secret is
+    // filled in — and consent is issued only on install (the next test).
+    expect(screen.getByRole("button", { name: /install add-on/i })).toBeDisabled();
   });
 
   it("issues consent before installing, then installs with the collected config", async () => {
@@ -208,7 +225,7 @@ describe("Marketplace screen (SPEC-304)", () => {
       target: { value: "sk-secret" },
     });
     fireEvent.click(
-      screen.getByRole("button", { name: /install and connect/i }),
+      screen.getByRole("button", { name: /install add-on/i }),
     );
 
     await waitFor(() =>
@@ -246,7 +263,7 @@ describe("Marketplace screen (SPEC-304)", () => {
     // Until the hub has said what would run, there is nothing to consent to.
     await waitFor(() => expect(planSpy).toHaveBeenCalledWith("acme.npm-tool"));
     expect(
-      screen.getByRole("button", { name: /install and connect/i }),
+      screen.getByRole("button", { name: /install add-on/i }),
     ).toBeDisabled();
 
     resolvePlan({
@@ -261,11 +278,11 @@ describe("Marketplace screen (SPEC-304)", () => {
     const shown = await screen.findByTestId("install-plan");
     expect(shown).toHaveTextContent("npx -y @acme/npm-tool@1.2.0");
     expect(
-      screen.getByRole("button", { name: /install and connect/i }),
+      screen.getByRole("button", { name: /install add-on/i }),
     ).toBeEnabled();
   });
 
-  it("hands off a skill entry to the Clients page instead of installing it", async () => {
+  it("hands off a skill entry to the AI apps page instead of installing it", async () => {
     vi.spyOn(api, "searchMarket").mockResolvedValue({
       entries: [SKILL_ENTRY],
       stale: false,
@@ -279,15 +296,15 @@ describe("Marketplace screen (SPEC-304)", () => {
     fireEvent.click(await screen.findByRole("button", { name: /details/i }));
 
     expect(
-      await screen.findByRole("link", { name: /go to clients/i }),
+      await screen.findByRole("link", { name: /go to ai apps/i }),
     ).toHaveAttribute("href", "/apps");
     expect(
-      screen.queryByRole("button", { name: /install and connect/i }),
+      screen.queryByRole("button", { name: /install add-on/i }),
     ).not.toBeInTheDocument();
     expect(installSpy).not.toHaveBeenCalled();
   });
 
-  it("opens the deep-linked entry's consent panel from ?install=", async () => {
+  it("opens the deep-linked entry's install panel from ?install=, on Browse", async () => {
     vi.spyOn(api, "searchMarket").mockResolvedValue({
       entries: [],
       stale: false,
@@ -297,15 +314,16 @@ describe("Marketplace screen (SPEC-304)", () => {
     vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([DEFAULT_PROFILE]);
     vi.spyOn(api, "listInstalledAddons").mockResolvedValue([]);
 
-    mount("/marketplace?install=palaia.fetch");
+    mount("/add-ons?install=palaia.fetch");
 
     expect(await screen.findByText("Fetch")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Browse" })).toHaveAttribute("aria-selected", "true");
     expect(
-      await screen.findByRole("button", { name: /install and connect/i }),
+      await screen.findByRole("button", { name: /install add-on/i }),
     ).toBeInTheDocument();
   });
 
-  it("lists an installed add-on with an update badge and lets it be updated", async () => {
+  it("lists an installed add-on with its state and update, and lets it be updated", async () => {
     vi.spyOn(api, "searchMarket").mockResolvedValue({
       entries: [],
       stale: false,
@@ -318,8 +336,10 @@ describe("Marketplace screen (SPEC-304)", () => {
       update_available: false,
     });
 
-    mount();
+    mount("/add-ons");
 
+    expect(await screen.findByText("Running")).toBeInTheDocument();
+    expect(screen.getByText(/1 update available/)).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: /^update$/i }));
 
     await waitFor(() => expect(updateSpy).toHaveBeenCalledWith("palaia-fetch"));
@@ -337,12 +357,11 @@ describe("Marketplace screen (SPEC-304)", () => {
       .spyOn(api, "uninstallAddon")
       .mockResolvedValue(undefined);
 
-    mount();
+    mount("/add-ons");
 
     fireEvent.click(await screen.findByRole("button", { name: /^remove$/i }));
-    fireEvent.click(
-      await screen.findByRole("button", { name: /yes, remove it/i }),
-    );
+    const dialog = await screen.findByRole("dialog", { name: "Remove Fetch?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove add-on" }));
 
     await waitFor(() =>
       expect(uninstallSpy).toHaveBeenCalledWith("palaia-fetch"),
@@ -357,7 +376,7 @@ describe("Marketplace screen (SPEC-304)", () => {
  * carry this codebase's internal names for the thing a person just reads
  * as "a connected tool"/"an add-on".
  */
-describe("Marketplace screen copy — no jargon in the surface (system.md §3 rule 0)", () => {
+describe("Add-ons copy — no jargon in the surface (system.md §3 rule 0)", () => {
   const BANNED = [
     /\bjson\b/i,
     /\basgi\b/i,
@@ -388,7 +407,7 @@ describe("Marketplace screen copy — no jargon in the surface (system.md §3 ru
     for (const button of screen.getAllByRole("button", { name: /details/i })) {
       fireEvent.click(button);
     }
-    await screen.findByRole("button", { name: /install and connect/i });
+    await screen.findByRole("button", { name: /install add-on/i });
 
     const controls = [
       ...screen.queryAllByRole("heading"),
@@ -420,7 +439,7 @@ describe("search requests (issue 384)", () => {
     vi.spyOn(api, "listInstalledAddons").mockResolvedValue([]);
 
     mount();
-    await screen.findByText(/nothing matched/i);
+    await screen.findByText("No add-ons match");
     expect(search).toHaveBeenCalledTimes(1);
     const mountSignal = search.mock.calls[0]![2] as AbortSignal;
 
@@ -442,12 +461,15 @@ describe("search requests (issue 384)", () => {
   });
 });
 
-describe("what the marketplace says it is showing (issue 409)", () => {
-  it("shows the hub's own note when no curated index is configured", async () => {
+describe("what Add-ons says it is showing (issue 409)", () => {
+  it("says the list is not reviewed when no reviewed index is configured, and keeps the hub's note", async () => {
     vi.spyOn(api, "searchMarket").mockResolvedValue({
       entries: [FETCH_ENTRY],
       stale: false,
-      notes: { curated: "No curated add-on index is configured for this hub." },
+      notes: {
+        curated:
+          "No curated add-on index is configured for this hub. An operator can set `market.index_url`.",
+      },
     });
     vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([]);
     vi.spyOn(api, "listInstalledAddons").mockResolvedValue([]);
@@ -455,10 +477,14 @@ describe("what the marketplace says it is showing (issue 409)", () => {
     mount();
 
     expect(
-      await screen.findByText(/no curated add-on index is configured/i),
+      await screen.findByText("These add-ons are not reviewed by palaia"),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByText(/could not reach every source/i),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Learn more" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("/marketplace/"),
+    );
+    const note = screen.getByText(/no curated add-on index is configured/i);
+    expect(note.textContent).not.toContain("`");
+    expect(screen.queryByText(/couldn't reach every source/i)).not.toBeInTheDocument();
   });
 });

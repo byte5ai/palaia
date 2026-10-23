@@ -40,12 +40,12 @@ class TokenInfo(BaseModel):
     scopes: list[str]
     created_at: str
     revoked_at: str | None = None
-    #: When this token last verified successfully — the connect-a-client
-    #: page's "seen a connection from this client yet?" check (SPEC-110).
-    #: Tracked in memory only (:class:`~palaia_hub.auth.store.TokenStore`,
-    #: never persisted to ``tokens.yaml``): it resets on hub restart, which
-    #: is an honest trade rather than writing to disk on every verified MCP
-    #: call. ``None`` means this token has never verified successfully.
+    #: When this token last verified successfully — the connect page's
+    #: "seen a connection from this app yet?" check (SPEC-110). Never part of
+    #: ``tokens.yaml``; :class:`~palaia_hub.auth.store.TokenStore` keeps it in
+    #: ``tokens_last_used.json``, written at most every few minutes per token,
+    #: so it survives a restart (issue #570). ``None`` means this token has
+    #: never verified successfully.
     last_used_at: str | None = None
 
     @classmethod

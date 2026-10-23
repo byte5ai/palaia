@@ -119,6 +119,17 @@ describe('useEventStream', () => {
     await waitFor(() => expect(result.current.connection).toBe('reconnecting'))
   })
 
+  it("says palaia can't be reached when the very first attempt fails, not 'connecting' forever", async () => {
+    const { result } = renderHook(() => useEventStream(FakeEventSource as unknown as typeof EventSource))
+    const source = FakeEventSource.instances.at(-1)!
+    expect(result.current.connection).toBe('connecting')
+
+    act(() => {
+      source.emit('error')
+    })
+    await waitFor(() => expect(result.current.connection).toBe('reconnecting'))
+  })
+
   it('closes the underlying source on unmount', () => {
     const { unmount } = renderHook(() =>
       useEventStream(FakeEventSource as unknown as typeof EventSource),

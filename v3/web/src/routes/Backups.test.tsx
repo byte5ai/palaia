@@ -6,11 +6,15 @@ import { ToastProvider } from "../components/Toast";
 import type {
   BackupTargetInfo,
   BackupTargetsResponse,
+  ModeStatus,
   VaultRemoteInfo,
 } from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
+import { saveBlob } from "../lib/download";
 import { formatRelative } from "../lib/format";
 import { Backups } from "./Backups";
+
+vi.mock("../lib/download", () => ({ saveBlob: vi.fn() }));
 
 function mount() {
   return render(
@@ -62,6 +66,19 @@ const USB: BackupTargetInfo = {
     duration_seconds: null,
     reason: "backup target 'usb' could not write into /media/usb/backups: not mounted",
   },
+};
+
+const LOCKED_MODE: ModeStatus = {
+  active_mode: "locked",
+  configured_mode: "locked",
+  restart_required: false,
+  host: "127.0.0.1",
+  auth_enabled: true,
+  oauth_enabled: false,
+  oauth_issuer: null,
+  dashboard_require_sign_in: null,
+  public_url: null,
+  tunnel: null,
 };
 
 const SCHEDULED: BackupTargetsResponse = {
@@ -118,6 +135,9 @@ describe("Backups (issue 438)", () => {
     const schedule = screen.getByTestId("backup-schedule");
     expect(schedule).toHaveTextContent(/every day/i);
     expect(schedule).toHaveTextContent(/next: in 5 h/i);
+
+    // The newest run sets the status at the top: the usb folder failed last.
+    expect(within(screen.getByTestId("backup-card")).getByText("Last backup failed")).toBeInTheDocument();
   });
 
   it("runs one folder now, says so, and shows the fresh outcome", async () => {
@@ -190,6 +210,7 @@ describe("Backups (issue 438)", () => {
 
     const schedule = await screen.findByTestId("backup-schedule");
     expect(schedule).toHaveTextContent(/only when you ask/i);
+    expect(within(schedule).getByText("Off")).toBeInTheDocument();
     expect(schedule).toHaveTextContent("interval_hours: 24");
   });
 
@@ -199,23 +220,116 @@ describe("Backups (issue 438)", () => {
     mount();
 
     expect(await screen.findByText(/no backup folders yet/i)).toBeInTheDocument();
-    expect(screen.queryByTestId("backup-schedule")).toBeNull();
-    expect(screen.getByRole("link", { name: /how to add one/i })).toBeInTheDocument();
+    expect(screen.getByText("How to add a folder")).toBeInTheDocument();
+    expect(screen.getByTestId("backup-schedule")).toHaveTextContent("path: /mnt/nas/palaia-backups");
   });
 
-  it("on a hub that refuses (no sign-in), shows the hub's own way out", async () => {
+  it("downloads the backup, with the security note always in view", async () => {
+    vi.spyOn(api, "listBackupTargets").mockResolvedValue({ targets: [], schedule: null });
+    const download = vi
+      .spyOn(api, "downloadBackup")
+      .mockResolvedValue({ blob: new Blob(["x"]), filename: "palaia-backup-1.tar.gz" });
+
+    mount();
+
+    const card = await screen.findByTestId("backup-card");
+    expect(within(card).getByRole("heading", { name: "Backup" })).toBeInTheDocument();
+    expect(card).toHaveTextContent("Download a copy of your memories and settings.");
+    expect(within(card).getByTestId("backup-security-note")).toHaveTextContent(
+      "Includes private data and access keys. Anyone with the file can use them, so store it like a password.",
+    );
+    expect(within(card).getByText("What's included?")).toBeInTheDocument();
+    expect(card).toHaveTextContent(/every AI app's access key/);
+
+    fireEvent.click(within(card).getByRole("button", { name: /download backup/i }));
+    await waitFor(() => expect(download).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(saveBlob).toHaveBeenCalledWith(expect.any(Blob), "palaia-backup-1.tar.gz"),
+    );
+  });
+
+  it("without dashboard sign-in: says why, offers the switch that fixes it, and the server way second", async () => {
     vi.spyOn(api, "listBackupTargets").mockRejectedValue(
-      new ApiError("/api/backup/targets", 403, {
-        detail:
-          "Backup targets are only reachable by a signed-in owner. Fix: run " +
-          "`palaia-hub backup --target <name>` on the machine the hub runs on.",
+      new ApiError("/api/backup/targets", 403, { detail: "only for a signed-in owner" }),
+    );
+    vi.spyOn(api, "mode").mockResolvedValue(LOCKED_MODE);
+    vi.spyOn(api, "setupStatus").mockRejectedValue(new Error("not needed"));
+    vi.spyOn(api, "ownerAccount").mockResolvedValue({ configured: true });
+    vi.spyOn(api, "updateCheck").mockRejectedValue(new Error("offline"));
+    const change = vi.spyOn(api, "changeMode").mockResolvedValue({
+      ...LOCKED_MODE,
+      oauth_enabled: true,
+      oauth_issuer: window.location.origin,
+      dashboard_require_sign_in: true,
+      restart_required: true,
+    });
+
+    mount();
+
+    const blocked = await screen.findByTestId("backup-needs-sign-in");
+    expect(within(blocked).getByText("Backups need dashboard sign-in")).toBeInTheDocument();
+    expect(blocked).toHaveTextContent(/contain your access keys/i);
+    // The security note is still there; the page is never an error.
+    expect(screen.getByTestId("backup-security-note")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+    // The server way, second: the Docker command streams the file out.
+    expect(within(blocked).getByText("Back up from the server instead")).toBeInTheDocument();
+    expect(blocked).toHaveTextContent("docker exec palaia-hub sh -c");
+    expect(blocked).toHaveTextContent("palaia-hub backup");
+
+    fireEvent.click(await within(blocked).findByRole("button", { name: "Turn on dashboard sign-in" }));
+    await waitFor(() =>
+      expect(change).toHaveBeenCalledWith({
+        dashboard_require_sign_in: true,
+        oauth_enabled: true,
+        oauth_issuer: window.location.origin,
       }),
+    );
+    expect(await screen.findByText("Restart palaia to apply your changes")).toBeInTheDocument();
+  });
+
+  it("without an owner account, points at creating one first", async () => {
+    vi.spyOn(api, "listBackupTargets").mockRejectedValue(
+      new ApiError("/api/backup/targets", 403, { detail: "only for a signed-in owner" }),
+    );
+    vi.spyOn(api, "mode").mockResolvedValue(LOCKED_MODE);
+    vi.spyOn(api, "setupStatus").mockRejectedValue(new Error("not needed"));
+    vi.spyOn(api, "ownerAccount").mockResolvedValue({ configured: false });
+    vi.spyOn(api, "updateCheck").mockRejectedValue(new Error("offline"));
+
+    mount();
+
+    expect(await screen.findByRole("link", { name: "Create the owner account" })).toHaveAttribute(
+      "href",
+      "/onboarding",
+    );
+  });
+
+  it("names the store's own way out on an app-store install", async () => {
+    vi.spyOn(api, "listBackupTargets").mockRejectedValue(
+      new ApiError("/api/backup/targets", 403, { detail: "only for a signed-in owner" }),
+    );
+    vi.spyOn(api, "mode").mockResolvedValue(LOCKED_MODE);
+    vi.spyOn(api, "setupStatus").mockRejectedValue(new Error("not needed"));
+    vi.spyOn(api, "ownerAccount").mockResolvedValue({ configured: true });
+    vi.spyOn(api, "updateCheck").mockResolvedValue({ deployment: "umbrel" } as never);
+
+    mount();
+
+    const blocked = await screen.findByTestId("backup-needs-sign-in");
+    await waitFor(() => expect(blocked).toHaveTextContent("umbrelOS runs palaia in its own container"));
+    expect(blocked).not.toHaveTextContent("docker exec");
+  });
+
+  it("an error loading backups is an error, with Try again — never an empty page", async () => {
+    vi.spyOn(api, "listBackupTargets").mockRejectedValue(
+      new ApiError("/api/backup/targets", 500, { detail: "the ledger could not be read" }),
     );
 
     mount();
 
-    const card = await screen.findByTestId("backups-error");
-    expect(card).toHaveTextContent(/palaia-hub backup --target/);
+    expect(await screen.findByText("Couldn't load your backups")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 
   it("uses no in-house word", async () => {
@@ -224,7 +338,11 @@ describe("Backups (issue 438)", () => {
     const { container } = mount();
     await screen.findByTestId("backup-target-nas");
 
-    const text = container.textContent ?? "";
+    // A configuration example is text people type, where the config's own
+    // words belong (system.md §3); everything else is read.
+    const readable = container.cloneNode(true) as HTMLElement;
+    readable.querySelectorAll("pre").forEach((example) => example.remove());
+    const text = readable.textContent ?? "";
     for (const pattern of BANNED) {
       expect(text).not.toMatch(pattern);
     }
@@ -278,16 +396,13 @@ describe("Backups: memories in git (issue 438)", () => {
     mount();
 
     const card = await screen.findByTestId("vault-remotes");
-    expect(card).toHaveTextContent(/every scheduled backup pushes them too/i);
+    expect(card).toHaveTextContent(/every scheduled backup copies them too/i);
     const work = await screen.findByTestId("vault-remote-work");
     expect(work).toHaveTextContent("https://github.com/me/notes.git");
-    expect(work).toHaveTextContent(/pushed/);
-    expect(work).toHaveTextContent("0123456");
+    expect(work).toHaveTextContent(/copied/i);
     const family = screen.getByTestId("vault-remote-family");
-    expect(family).toHaveTextContent(/not pushed anywhere/i);
-    expect(
-      within(family).getByRole("button", { name: /push to a git repository/i }),
-    ).toBeInTheDocument();
+    expect(family).toHaveTextContent(/not copied anywhere/i);
+    expect(within(family).getByRole("button", { name: "Set up" })).toBeInTheDocument();
   });
 
   it("sets up a push with a write-only token", async () => {
@@ -308,10 +423,8 @@ describe("Backups: memories in git (issue 438)", () => {
     mount();
 
     const card = await screen.findByTestId("vault-remotes");
-    expect(card).toHaveTextContent(/pushed when you ask/i);
-    fireEvent.click(
-      await screen.findByRole("button", { name: /push to a git repository/i }),
-    );
+    expect(card).toHaveTextContent(/copied when you ask/i);
+    fireEvent.click(await screen.findByRole("button", { name: "Set up" }));
     const form = screen.getByTestId("vault-remote-form-family");
     fireEvent.change(within(form).getByLabelText(/repository address/i), {
       target: { value: "https://github.com/me/family.git" },
@@ -370,7 +483,7 @@ describe("Backups: memories in git (issue 438)", () => {
 
     mount();
 
-    fireEvent.click(await screen.findByRole("button", { name: /push work now/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /copy work now/i }));
 
     await waitFor(() => expect(push).toHaveBeenCalledWith("work"));
     expect(
@@ -387,7 +500,7 @@ describe("Backups: memories in git (issue 438)", () => {
 
     mount();
 
-    fireEvent.click(await screen.findByRole("button", { name: /stop pushing work/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /stop copying work/i }));
     await waitFor(() => expect(remove).toHaveBeenCalledWith("work"));
   });
 

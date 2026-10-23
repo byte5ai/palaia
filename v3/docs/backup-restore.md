@@ -145,8 +145,10 @@ grew there naturally.
 - `palaia-hub backup [--out PATH]` writes the identical archive on the
   machine the hub runs on (mode `0600`, via a `.part` file renamed into
   place) — the way to back up a hub whose dashboard has no sign-in. In the
-  container: `docker exec palaia-hub palaia-hub backup --out /tmp/hub.tar.gz`
-  then `docker cp palaia-hub:/tmp/hub.tar.gz .`.
+  container, stream it out (its `/tmp` is a tmpfs, which `docker cp` cannot
+  read): `docker exec palaia-hub sh -c 'palaia-hub backup --out
+  /tmp/palaia-backup.tar.gz >&2 && cat /tmp/palaia-backup.tar.gz && rm
+  /tmp/palaia-backup.tar.gz' > palaia-backup.tar.gz`.
 - The archive is built and streamed straight into the HTTP response body;
   `server/src/palaia_hub/backup.py` never writes it to a temp file, so
   there is no window where a full copy of a hub's secrets sits in a

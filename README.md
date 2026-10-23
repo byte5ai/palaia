@@ -117,21 +117,21 @@ Everything is managed from a dashboard in your browser:
 <td width="50%">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="v3/docs/assets/readme/dashboard-home-dark.png">
-  <img src="v3/docs/assets/readme/dashboard-home-light.png" alt="Home: the hub's state, connected clients and live activity">
+  <source media="(prefers-color-scheme: dark)" srcset="v3/docs/assets/readme/dashboard-overview-dark.png">
+  <img src="v3/docs/assets/readme/dashboard-overview-light.png" alt="Overview: palaia is running, with its memories, connected AI apps, backups and live activity">
 </picture>
 
-<p align="center"><b>Home</b></p>
+<p align="center"><b>Overview</b></p>
 
 </td>
 <td width="50%">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="v3/docs/assets/readme/dashboard-explorer-dark.png">
-  <img src="v3/docs/assets/readme/dashboard-explorer-light.png" alt="Explorer: a note with its fields, links and history">
+  <source media="(prefers-color-scheme: dark)" srcset="v3/docs/assets/readme/dashboard-memories-dark.png">
+  <img src="v3/docs/assets/readme/dashboard-memories-light.png" alt="Memories: a note with its fields, links and history">
 </picture>
 
-<p align="center"><b>Explorer</b></p>
+<p align="center"><b>Memories</b></p>
 
 </td>
 </tr>
@@ -139,21 +139,21 @@ Everything is managed from a dashboard in your browser:
 <td width="50%">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="v3/docs/assets/readme/dashboard-clients-dark.png">
-  <img src="v3/docs/assets/readme/dashboard-clients-light.png" alt="Clients: connect Claude Code, Codex, ChatGPT and others">
+  <source media="(prefers-color-scheme: dark)" srcset="v3/docs/assets/readme/dashboard-apps-dark.png">
+  <img src="v3/docs/assets/readme/dashboard-apps-light.png" alt="AI apps: connect Claude Code, Codex, ChatGPT and others, each with its own access key">
 </picture>
 
-<p align="center"><b>Clients</b></p>
+<p align="center"><b>AI apps</b></p>
 
 </td>
 <td width="50%">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="v3/docs/assets/readme/dashboard-marketplace-dark.png">
-  <img src="v3/docs/assets/readme/dashboard-marketplace-light.png" alt="Marketplace: add-ons from the official MCP registry">
+  <source media="(prefers-color-scheme: dark)" srcset="v3/docs/assets/readme/dashboard-add-ons-dark.png">
+  <img src="v3/docs/assets/readme/dashboard-add-ons-light.png" alt="Add-ons: tools from the public MCP registry, installed once for every AI app">
 </picture>
 
-<p align="center"><b>Marketplace</b></p>
+<p align="center"><b>Add-ons</b></p>
 
 </td>
 </tr>

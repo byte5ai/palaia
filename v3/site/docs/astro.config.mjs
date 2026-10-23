@@ -109,7 +109,7 @@ export default defineConfig({
         },
         { label: "Your memory", slug: "memory" },
         { label: "Edit in Obsidian", slug: "edit-in-obsidian" },
-        { label: "Marketplace & tools", slug: "marketplace" },
+        { label: "Add-ons", slug: "marketplace" },
         { label: "Profiles & access", slug: "access" },
         { label: "Agents & messages", slug: "agents-messages" },
         { label: "Telegram", slug: "telegram" },

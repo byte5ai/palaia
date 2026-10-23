@@ -1,138 +1,160 @@
 /**
- * One guided client's connect flow (SPEC-110): issue a real per-client
- * token (SPEC-108's already-built `/api/auth/tokens`), show the
- * copy-command / paste-prompt pair, and detect the client's first
- * successful tool call without a page reload — this SPEC's acceptance
- * criterion "connect page detects and shows a client's first successful
- * tool call".
+ * Connecting one AI app that talks to this palaia directly (SPEC-110): choose
+ * what it may use, create its access key, paste one thing into the app, and
+ * watch for its first request — no reload. Used by AI apps › Apps and by
+ * the first-run setup.
  *
- * If a live, non-revoked token already exists for this client (matched by
- * name), this panel finds it itself on mount and starts from step 2: no
- * second token is minted just because the page was revisited. That lookup
- * deliberately happens here rather than depending on a parent-supplied
- * prop that might resolve later than this panel's own mount — see the
- * `useEffect` below.
+ * If a live access key for this app already exists (matched by name), the
+ * panel finds it on mount and starts at "paste": no second key is created
+ * because the page was opened again. The key's plaintext lives only in this
+ * component's state, for as long as it is mounted; a panel that only *found*
+ * a key cannot know it, so its snippets show the placeholder and the copy
+ * says how to get a new key (issue 318).
  *
- * As of SPEC-210, the `default` profile this panel suggests really is
- * mounted live once any vault exists (see
- * `palaia_hub.gateway.dynamic.DynamicGateway` / `palaia_hub.serve` on the
- * server side, and `Onboarding.tsx`'s step 3, which creates that vault) —
- * issuing a token here and reaching the endpoint it names both work with
- * no hub restart in between. A caller can still name a different,
- * unmounted profile path by hand; step 3 below tells the truth about
- * whichever path is actually in play by polling for a real first call
- * rather than faking one.
+ * What the app may use (issue 270): every memory of the chosen tool set, Read
+ * and Save, all checked. Untouched, no `scopes` are sent and the server's own
+ * default decides — the same request as before the picker existed. Unchecking
+ * a box sends an explicit, narrower list; unchecking everything is blocked,
+ * because an empty list is the server's "use the default" and would grant
+ * more, not less. The tool set itself is under Advanced and only offers tool
+ * sets that exist — a free-text name used to create keys for a tool set
+ * nobody had made (report §3.4).
  *
- * Issue 270: step 1 also offers a per-vault read/save picker (checkboxes
- * next to each vault the target tool profile mounts), all checked by
- * default — the same "every vault, read and save" shape `palaia_hub.auth.
- * routes`'s empty-`scopes` default already grants, so a caller who never
- * touches the picker sends exactly what it always has: no `scopes` field
- * at all, letting that server-side default do the work. Only unchecking a
- * box switches this panel to sending an explicit, narrower list — see
- * `explicitScopes` below. The picker never sends an empty explicit list on
- * purpose: an empty `scopes` array is the server's "use the default"
- * sentinel (that module's docstring), so "everything unchecked" would
- * silently grant full access instead of none — `wouldGrantNothing` below
- * blocks Issue token in that one case rather than let it widen access.
- *
- * Issue 318: the hub turns away any call to a mounted profile that does
- * not carry the client's token, so every snippet this panel shows has the
- * freshly minted plaintext embedded (each client's own mechanism — see
- * `clients.ts`). The plaintext lives in this component's state only, for
- * as long as the panel is mounted: it is never persisted, and a panel that
- * finds an *existing* token on mount cannot know it, so the snippets then
- * show `TOKEN_PLACEHOLDER` and the copy says so instead of pretending a
- * tokenless command would work.
+ * Revoke access and Replace access key (report §5.5) use the existing token
+ * routes: revoking takes back every live key of this app; replacing creates
+ * a new key with the same tool set and permissions, then revokes the old one.
  */
 import { useEffect, useMemo, useState } from "react";
 
-import type {
-  CreatedToken,
-  GatewayProfile,
-  TokenInfo,
-} from "../lib/api/client";
+import "../routes/apps.css";
+
+import type { CreatedToken, GatewayProfile, TokenInfo } from "../lib/api/client";
 import { api } from "../lib/api/client";
 import type { GuidedClient } from "../lib/clients";
-import { TOKEN_PLACEHOLDER } from "../lib/clients";
 import { describeApiError } from "../lib/errors";
-import { formatAge } from "../lib/format";
+import { exactTime, timeAgo } from "../lib/format";
 import { nextPollDelay, POLL_INITIAL_MS } from "../lib/polling";
 import { CheckIcon, CopyIcon } from "../shell/icons";
-import { Badge } from "./Badge";
 import { Button } from "./Button";
-import { Card, CardBody, CardFoot, CardHead, CardSubject } from "./Card";
-import { Input } from "./Field";
+import { Card, CardFoot, CardHeader } from "./Card";
+import { ConfirmDialog } from "./Dialog";
+import { Disclosure } from "./Disclosure";
 import { Waiting } from "./Skeleton";
+import { StatusPill } from "./StatusPill";
+import { Tabs } from "./Tabs";
 import { useToast } from "./Toast";
+
+type SnippetTab = "command" | "prompt" | "file";
+
+/**
+ * Choose a tool set — only ones that exist. Shown under "Advanced"
+ * wherever an app's address is built (the connect panel, the Claude Desktop
+ * download, the address for a cloud app).
+ */
+export function ToolSetPicker({
+  id,
+  profiles,
+  value,
+  onChange,
+  appName,
+}: {
+  id: string;
+  profiles: GatewayProfile[];
+  value: string;
+  onChange: (path: string) => void;
+  appName: string;
+}) {
+  return (
+    <div className="field">
+      <label className="field__label" htmlFor={id}>
+        Tool set
+      </label>
+      <select
+        id={id}
+        className="input"
+        style={{ maxWidth: 320 }}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {profiles.map((p) => (
+          <option key={p.path} value={p.path}>
+            {p.label ?? p.path} · {p.tool_count} tools
+          </option>
+        ))}
+      </select>
+      <span className="field__hint">
+        Tool sets limit which memories and tools {appName} sees. Fewer tools help an AI pick the
+        right one. Change them under Settings › Advanced.
+      </span>
+    </div>
+  );
+}
+
+function StepNumber({ n, done }: { n: number; done: boolean }) {
+  return (
+    <span className={["numstep__num", done ? "numstep__num--done" : "numstep__num--on"].join(" ")}>
+      {done ? <CheckIcon className="icon--sm" /> : n}
+    </span>
+  );
+}
 
 export function ConnectPanel({
   client,
   defaultProfile = "default",
   onTokenIssued,
+  onTokenRevoked,
 }: {
   client: GuidedClient;
   defaultProfile?: string;
-  /** Called once a token for this client is known — freshly minted, or
-   * found already existing on mount — so a parent showing its own token
-   * list (the sidebar's connection dots) can pick it up without a
-   * separate fetch of its own. */
+  /** Called once an access key for this app is known — freshly created, or
+   * found already existing on mount — so a parent showing its own list of
+   * apps can update its status without a separate fetch. */
   onTokenIssued?: (info: TokenInfo) => void;
+  /** Called with the ids of the keys this panel revoked (Revoke access, or
+   * the old key after Replace access key). */
+  onTokenRevoked?: (ids: string[]) => void;
 }) {
   const toast = useToast();
-  const [profileDraft, setProfileDraft] = useState(defaultProfile);
+  const [profileChoice, setProfileChoice] = useState(defaultProfile);
   const [issuing, setIssuing] = useState(false);
   const [plaintext, setPlaintext] = useState<string | null>(null);
   const [token, setToken] = useState<TokenInfo | null>(null);
-  const [tab, setTab] = useState<"command" | "prompt" | "file">("command");
+  const [tab, setTab] = useState<SnippetTab>("command");
   const [error, setError] = useState<string | null>(null);
   const [profiles, setProfiles] = useState<GatewayProfile[] | null>(null);
-  // Every entry a caller has explicitly *un*checked, as `vault-key:read` /
-  // `vault-key:write`. Absence means checked — so a vault this panel has
-  // never rendered a checkbox for (the profile isn't known yet, or has no
-  // vaults) never ends up narrower by accident.
+  const [confirm, setConfirm] = useState<"revoke" | "replace" | null>(null);
+  const [busy, setBusy] = useState(false);
+  // Every box a person explicitly *un*checked, as `memory:read` /
+  // `memory:write`. Absence means checked — so a memory this panel never
+  // rendered a box for never ends up narrower by accident.
   const [unchecked, setUnchecked] = useState<Set<string>>(new Set());
 
-  // Look for an already-issued, non-revoked token for this client on
-  // mount — inside the effect's own promise callback, never synchronously
-  // in the effect body (react-hooks/set-state-in-effect), and scoped to
-  // `client.name` so switching which client this panel is for (a fresh
-  // mount — Clients.tsx/Onboarding.tsx both key it by client id) looks
-  // again rather than keeping the previous client's token.
+  // Look for a live key for this app on mount, scoped to `client.name`, so a
+  // panel opened again starts at "paste" instead of creating a second key.
   useEffect(() => {
     let cancelled = false;
     api
       .listTokens()
       .then((tokens) => {
         if (cancelled) return;
-        const mine = tokens.find(
-          (t) => t.name === client.name && !t.revoked_at,
-        );
+        const mine = tokens.find((t) => t.name === client.name && !t.revoked_at);
         if (mine) {
           setToken(mine);
           onTokenIssued?.(mine);
         }
       })
       .catch(() => {
-        // no token store mounted, or a transient fetch failure — either
-        // way this panel just starts from step 1, same as a client that
-        // genuinely has never been issued a token
+        // No key store, or a passing failure: start at step 1.
       });
     return () => {
       cancelled = true;
     };
-    // Intentionally scoped to `client.name` only: this must re-run when
-    // the client this panel is for changes, not on every render where the
-    // parent happens to pass a new `onTokenIssued` closure identity.
+    // Intentionally scoped to `client.name`: re-run when the app changes, not
+    // when the parent passes a new `onTokenIssued` closure.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client.name]);
 
-  // Which vaults the target tool profile mounts, for the read/save picker
-  // below — the same `/api/gateway/profiles` listing the tool-profile
-  // editor already reads (ToolProfiles.tsx), not a new endpoint. Fetched
-  // once on mount: this panel only needs to look a profile name up in an
-  // already-fetched list, not refetch on every keystroke in the profile
-  // field.
+  // The tool sets and the memories each one includes, for the picker.
   useEffect(() => {
     let cancelled = false;
     api
@@ -141,93 +163,68 @@ export function ConnectPanel({
         if (!cancelled) setProfiles(list);
       })
       .catch(() => {
-        // no gateway attached, or a transient failure — the picker simply
-        // stays hidden and issuing a token behaves exactly as it did
-        // before this panel could show one (no explicit scopes, ever).
+        // No gateway attached: no picker; creating a key works as before.
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // A caller can retype the profile name before issuing; whatever was
-  // unchecked for the previous name shouldn't silently narrow a different
-  // profile's vaults once it resolves. Adjusted during render rather than
-  // in an effect — the pattern React's own docs recommend for "reset some
-  // state when a prop changes" (react.dev/learn/you-might-not-need-an-
-  // effect#adjusting-some-state-when-a-prop-changes) — since a `useEffect`
-  // that calls `setState` unconditionally on every commit is exactly the
-  // cascading-render shape `react-hooks/set-state-in-effect` flags.
-  const [previousProfileDraft, setPreviousProfileDraft] =
-    useState(profileDraft);
-  if (profileDraft !== previousProfileDraft) {
-    setPreviousProfileDraft(profileDraft);
+  // A different tool set has different memories: what was unchecked for the
+  // previous one must not narrow the next (reset during render, as React's
+  // docs recommend for "reset state when a value changes").
+  const [previousChoice, setPreviousChoice] = useState(profileChoice);
+  if (profileChoice !== previousChoice) {
+    setPreviousChoice(profileChoice);
     setUnchecked(new Set());
   }
 
-  // Issue 399: the field used to snap to "default" the moment it was
-  // emptied, so the last character could never be deleted to retype. The
-  // draft is what was typed; an empty draft *means* default when it is read.
-  const effectiveProfile = profileDraft.trim() || "default";
-  const targetProfile =
-    profiles?.find((candidate) => candidate.path === effectiveProfile) ?? null;
-  const mountedVaults = targetProfile?.vaults ?? [];
+  // Only a tool set that exists: when the suggested one is not among them,
+  // the first one that is.
+  const toolSet =
+    profiles && profiles.length > 0 && !profiles.some((p) => p.path === profileChoice)
+      ? profiles[0]!.path
+      : profileChoice;
+  const targetProfile = profiles?.find((candidate) => candidate.path === toolSet) ?? null;
+  const memories = targetProfile?.vaults ?? [];
+  const canPickToolSet = (profiles?.length ?? 0) > 1 && targetProfile !== null;
 
-  function isChecked(vaultKey: string, permission: "read" | "write"): boolean {
-    return !unchecked.has(`${vaultKey}:${permission}`);
+  function isChecked(memory: string, permission: "read" | "write"): boolean {
+    return !unchecked.has(`${memory}:${permission}`);
   }
 
-  function togglePermission(
-    vaultKey: string,
-    permission: "read" | "write",
-    checked: boolean,
-  ) {
+  function toggle(memory: string, permission: "read" | "write", checked: boolean) {
     setUnchecked((prev) => {
       const next = new Set(prev);
-      const id = `${vaultKey}:${permission}`;
+      const id = `${memory}:${permission}`;
       if (checked) next.delete(id);
       else next.add(id);
       return next;
     });
   }
 
-  // Nothing has been unchecked: this is today's behavior, so no explicit
-  // list is built at all (see `issueToken` below).
   const pickerTouched = unchecked.size > 0;
   const explicitScopes = pickerTouched
-    ? mountedVaults.flatMap((key) => {
+    ? memories.flatMap((key) => {
         const scopes: string[] = [];
         if (isChecked(key, "read")) scopes.push(`vault:${key}:read`);
         if (isChecked(key, "write")) scopes.push(`vault:${key}:write`);
         return scopes;
       })
     : [];
-  // Every box unchecked would resolve to an empty list — which the server
-  // reads as "no explicit scopes were sent, use the default" (see this
-  // file's header comment), the opposite of what an operator unchecking
-  // everything means. Block issuing rather than silently grant more than
-  // shown.
   const wouldGrantNothing = pickerTouched && explicitScopes.length === 0;
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const profile = token?.profile ?? effectiveProfile;
+  const profile = token?.profile ?? toolSet;
   const connected = Boolean(token?.last_used_at);
-  // The one-time plaintext, or nothing — `clients.ts` renders its
-  // placeholder in that case (issue 318; see this file's header comment).
   const snippetToken = plaintext ?? undefined;
   const command = client.command(origin, profile, snippetToken);
   const prompt = client.prompt(origin, profile, snippetToken);
-
-  // SPEC-306 deliverable #3: a one-click "download config file" tab, for
-  // the clients whose real install path is "put this file there" rather
-  // than "run this command" (their real formats — SPEC-209-corrected).
   const configFile = client.configFile?.(origin, profile, snippetToken);
   const configFileHref = useMemo(
     () =>
       configFile
-        ? URL.createObjectURL(
-            new Blob([configFile.content], { type: configFile.mimeType }),
-          )
+        ? URL.createObjectURL(new Blob([configFile.content], { type: configFile.mimeType }))
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [configFile?.content, configFile?.mimeType],
@@ -238,23 +235,16 @@ export function ConnectPanel({
     };
   }, [configFileHref]);
 
-  async function issueToken() {
+  async function createKey() {
     setIssuing(true);
     setError(null);
     try {
-      // No `scopes` field at all unless the picker was actually touched —
-      // this is what keeps the one-click flow byte-for-byte what it always
-      // sent, so the server's own "empty scopes = everything this profile
-      // mounts" default (still the no-touch path) is the one deciding
-      // what a caller who never opens the picker gets.
+      // No `scopes` unless the picker was touched: the server's default
+      // ("everything this tool set includes") decides the untouched case.
       const body =
         pickerTouched && explicitScopes.length > 0
-          ? {
-              name: client.name,
-              profile: effectiveProfile,
-              scopes: explicitScopes,
-            }
-          : { name: client.name, profile: effectiveProfile };
+          ? { name: client.name, profile: toolSet, scopes: explicitScopes }
+          : { name: client.name, profile: toolSet };
       const result: CreatedToken = await api.createToken(body);
       setToken(result.info);
       setPlaintext(result.token);
@@ -266,11 +256,61 @@ export function ConnectPanel({
     }
   }
 
-  // Poll for the first successful call once a token exists — the same
-  // "no refresh button anywhere" rule the SSE-backed shell follows
-  // (system.md §0); this endpoint just isn't event-stream-backed yet.
-  // Issue 384: the interval backs off (3 s → … → 30 s) instead of asking
-  // every 3 s for as long as the tab stays open.
+  /** Every live key of this app except `keep`. */
+  async function liveKeysOfThisApp(keep?: string): Promise<string[]> {
+    const all = await api.listTokens();
+    return all
+      .filter((t) => t.name === client.name && !t.revoked_at && t.id !== keep)
+      .map((t) => t.id);
+  }
+
+  async function revokeAccess() {
+    setBusy(true);
+    setError(null);
+    try {
+      const ids = await liveKeysOfThisApp();
+      if (token && !ids.includes(token.id)) ids.push(token.id);
+      for (const id of ids) await api.revokeToken(id);
+      setToken(null);
+      setPlaintext(null);
+      onTokenRevoked?.(ids);
+      toast.show(`${client.name} can no longer use palaia.`);
+    } catch (err) {
+      setError(describeApiError(err));
+    } finally {
+      setBusy(false);
+      setConfirm(null);
+    }
+  }
+
+  async function replaceKey() {
+    if (!token) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result: CreatedToken = await api.createToken(
+        token.scopes.length > 0
+          ? { name: client.name, profile: token.profile, scopes: token.scopes }
+          : { name: client.name, profile: token.profile },
+      );
+      const old = await liveKeysOfThisApp(result.info.id);
+      for (const id of old) await api.revokeToken(id);
+      setToken(result.info);
+      setPlaintext(result.token);
+      setTab("command");
+      onTokenIssued?.(result.info);
+      if (old.length > 0) onTokenRevoked?.(old);
+      toast.show("New access key created. Paste the new command into the app.");
+    } catch (err) {
+      setError(describeApiError(err));
+    } finally {
+      setBusy(false);
+      setConfirm(null);
+    }
+  }
+
+  // Watch for the first request once a key exists (no reload). Backs off
+  // 3 s → … → 30 s (issue 384).
   const tokenId = token?.id ?? null;
   const tokenUsedAt = token?.last_used_at ?? null;
   useEffect(() => {
@@ -286,7 +326,7 @@ export function ConnectPanel({
           if (!cancelled && mine?.last_used_at) setToken(mine);
         })
         .catch(() => {
-          // a transient fetch failure just means the next tick tries again
+          // a passing failure: the next tick tries again
         })
         .finally(() => {
           if (cancelled) return;
@@ -304,313 +344,276 @@ export function ConnectPanel({
   function copy(text: string, what: string) {
     navigator.clipboard.writeText(text).then(
       () => toast.show(`${what} copied.`),
-      () => toast.show("Could not copy — select and copy manually."),
+      () => toast.show("Couldn't copy. Select the text and copy it yourself."),
     );
   }
 
-  const Icon = client.icon;
+  const status = connected
+    ? { tone: "ok" as const, label: "Connected" }
+    : token
+      ? { tone: "info" as const, label: "Waiting for first use" }
+      : { tone: "neutral" as const, label: "Ready to connect" };
+  const description =
+    connected && token?.last_used_at
+      ? `Connected — last request ${timeAgo(token.last_used_at)}.`
+      : token
+        ? "Access key created. Paste it into the app, then test the connection."
+        : `Create an access key for ${client.name}, then paste one command.`;
+  const tabs: { id: SnippetTab; label: string }[] = [
+    { id: "command", label: "Command" },
+    { id: "prompt", label: "Prompt" },
+    ...(configFile ? [{ id: "file" as const, label: "Config file" }] : []),
+  ];
+  const idPrefix = `connect-${client.id}`;
 
   return (
     <Card>
-      <CardHead>
-        <div className="row" style={{ gap: 10 }}>
-          {connected ? (
-            <span
-              className="empty__mark"
-              style={{ width: 34, height: 34, borderRadius: 10 }}
-            >
-              <CheckIcon className="icon--sm" />
-            </span>
-          ) : null}
-          <div>
-            <CardSubject>
-              {connected ? `${client.name} is connected` : client.name}
-            </CardSubject>
-            <p className="t-xs t-muted" style={{ marginTop: 2 }}>
-              {connected && token?.last_used_at
-                ? `Last seen ${formatAge(token.last_used_at)}`
-                : token
-                  ? "Token issued — palaia is watching for its first call."
-                  : "Issue this client its own token, then paste one thing."}
-            </p>
+      <CardHeader
+        title={`Connect ${client.name}`}
+        description={description}
+        actions={<StatusPill tone={status.tone}>{status.label}</StatusPill>}
+      />
+
+      {!token ? (
+        <div className="connect-step">
+          <StepNumber n={1} done={false} />
+          <div className="connect-step__body">
+            <p className="connect-step__title">Choose what {client.name} can use</p>
+            {memories.length > 0 ? (
+              <>
+                <div className="permgrid" role="group" aria-label={`What ${client.name} can use`}>
+                  <span className="permgrid__head">Memory</span>
+                  <span className="permgrid__head">Read</span>
+                  <span className="permgrid__head">Save</span>
+                  {memories.map((memory) => (
+                    <PermissionRow
+                      key={memory}
+                      memory={memory}
+                      read={isChecked(memory, "read")}
+                      save={isChecked(memory, "write")}
+                      onToggle={toggle}
+                    />
+                  ))}
+                </div>
+                <p className="field__hint">Uncheck Save for read-only access.</p>
+                {wouldGrantNothing ? (
+                  <p className="field__error" role="alert">
+                    Select at least one memory.
+                  </p>
+                ) : null}
+              </>
+            ) : profiles !== null && targetProfile ? (
+              <p className="t-sm t-muted">
+                This tool set has no memory yet. The key works as soon as you create one.
+              </p>
+            ) : (
+              <p className="t-sm t-muted">Every memory, read and save.</p>
+            )}
+            {canPickToolSet && profiles ? (
+              <Disclosure summary="Advanced">
+                <ToolSetPicker
+                  id={`${idPrefix}-toolset`}
+                  profiles={profiles}
+                  value={toolSet}
+                  onChange={setProfileChoice}
+                  appName={client.name}
+                />
+              </Disclosure>
+            ) : null}
+            <div className="row row--wrap">
+              <Button
+                variant="primary"
+                onClick={createKey}
+                loading={issuing}
+                disabled={wouldGrantNothing}
+              >
+                {issuing ? "Creating access key…" : "Create access key"}
+              </Button>
+            </div>
+            {error ? (
+              <p className="field__error" role="alert">
+                {error}
+              </p>
+            ) : null}
           </div>
         </div>
-        {connected ? (
-          <Badge variant="ok" live>
-            live
-          </Badge>
-        ) : (
-          <span className="badge">
-            <Icon className="icon--sm" style={{ marginRight: 4 }} />
-            {client.estimate}
-          </span>
-        )}
-      </CardHead>
-      <CardBody className="stack">
-        {!token ? (
-          <div className="numstep">
-            <span className="numstep__num numstep__num--on">1</span>
-            <div className="grow stack stack--3">
-              <div>
-                <p className="numstep__title">
-                  Name the tool profile it should see
-                </p>
-                <p className="t-sm t-muted">
-                  A hundred tools in one conversation ruins an agent. This
-                  becomes part of the address, so this client cannot see
-                  anything else.
-                </p>
-              </div>
-              <div className="row row--wrap">
-                <Input
-                  value={profileDraft}
-                  onChange={(event) => setProfileDraft(event.target.value)}
-                  onBlur={() => {
-                    if (!profileDraft.trim()) setProfileDraft("default");
-                  }}
-                  style={{ maxWidth: 220 }}
-                  aria-label="Tool profile name"
-                />
-              </div>
-              {mountedVaults.length > 0 ? (
-                <div className="stack stack--2">
-                  <span className="field__label">
-                    What {client.name} can read or save
-                  </span>
-                  <p className="t-xs t-muted">
-                    Every vault below is included, both ways, by default — the
-                    same as today. Uncheck a box to leave a vault out, or to
-                    give read-only access to it.
-                  </p>
-                  <div className="stack stack--2">
-                    {mountedVaults.map((vaultKey) => (
-                      <div
-                        key={vaultKey}
-                        className="row row--wrap"
-                        style={{ gap: 14 }}
-                      >
-                        <span className="t-sm t-mono">{vaultKey}</span>
-                        <label className="row" style={{ gap: 4 }}>
-                          <input
-                            type="checkbox"
-                            checked={isChecked(vaultKey, "read")}
-                            onChange={(event) =>
-                              togglePermission(
-                                vaultKey,
-                                "read",
-                                event.target.checked,
-                              )
-                            }
-                          />
-                          <span className="t-xs">Read</span>
-                        </label>
-                        <label className="row" style={{ gap: 4 }}>
-                          <input
-                            type="checkbox"
-                            checked={isChecked(vaultKey, "write")}
-                            onChange={(event) =>
-                              togglePermission(
-                                vaultKey,
-                                "write",
-                                event.target.checked,
-                              )
-                            }
-                          />
-                          <span className="t-xs">Save</span>
-                        </label>
-                      </div>
-                    ))}
+      ) : (
+        <>
+          <div className="connect-step">
+            <StepNumber n={2} done={connected} />
+            <div className="connect-step__body">
+              <p className="connect-step__title">Paste into {client.name}</p>
+              <Tabs
+                label={`How to connect ${client.name}`}
+                items={tabs}
+                value={tab}
+                onChange={setTab}
+                idPrefix={idPrefix}
+              />
+              <div
+                role="tabpanel"
+                id={`${idPrefix}-${tab}-panel`}
+                aria-labelledby={`${idPrefix}-${tab}`}
+                className="stack stack--3"
+              >
+                {tab === "command" ? (
+                  <div className="snippet snippet--wrap">
+                    <code>{command}</code>
+                    <Button size="sm" onClick={() => copy(command, "Command")}>
+                      <CopyIcon className="icon--sm" />
+                      Copy
+                    </Button>
                   </div>
-                  {wouldGrantNothing ? (
-                    <p className="field__error">
-                      Check at least one box — leaving every vault unchecked
-                      would give this client full access instead of none.
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-              <div className="row row--wrap">
-                <Button
-                  variant="primary"
-                  onClick={issueToken}
-                  disabled={issuing || wouldGrantNothing}
-                >
-                  {issuing ? "Issuing…" : "Issue token"}
-                </Button>
-              </div>
-              {error ? <p className="field__error">{error}</p> : null}
-            </div>
-          </div>
-        ) : (
-          <div className="numstep">
-            <span className="numstep__num numstep__num--done">
-              <CheckIcon className="icon--sm" />
-            </span>
-            <div className="grow">
-              <p className="numstep__title">Paste one thing</p>
-              <Card variant="flat" style={{ marginTop: 8 }}>
-                <div
-                  className="card__head"
-                  style={{ borderBottom: 0, padding: "0 16px" }}
-                >
-                  <div className="tabbar" role="tablist">
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={tab === "command"}
-                      onClick={() => setTab("command")}
-                    >
-                      Copy the command
-                    </button>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={tab === "prompt"}
-                      onClick={() => setTab("prompt")}
-                    >
-                      Or paste a prompt
-                    </button>
-                    {configFile ? (
-                      <button
-                        type="button"
-                        role="tab"
-                        aria-selected={tab === "file"}
-                        onClick={() => setTab("file")}
-                      >
-                        Or download the file
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-                <CardBody className="stack stack--3">
-                  {tab === "command" ? (
-                    <div className="snippet snippet--wrap">
-                      <code>{command}</code>
-                      <Button
-                        size="sm"
-                        onClick={() => copy(command, "Command")}
-                      >
-                        <CopyIcon className="icon--sm" />
-                        Copy
-                      </Button>
-                    </div>
-                  ) : tab === "file" && configFile ? (
+                ) : tab === "file" && configFile ? (
+                  <>
                     <div className="snippet snippet--block">
                       <code>{configFile.content}</code>
                     </div>
-                  ) : (
+                    {configFileHref ? (
+                      <div className="row row--wrap">
+                        <a className="btn btn--sm" href={configFileHref} download={configFile.filename}>
+                          Download {configFile.filename}
+                        </a>
+                        <span className="t-sm t-muted">
+                          Save it where {client.name} reads its settings.
+                        </span>
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
                     <div className="snippet snippet--block">
                       <code>{prompt}</code>
                     </div>
-                  )}
-                  {tab === "prompt" ? (
                     <div className="row row--wrap">
                       <Button size="sm" onClick={() => copy(prompt, "Prompt")}>
                         <CopyIcon className="icon--sm" />
                         Copy prompt
                       </Button>
-                      <span className="t-xs t-muted">
-                        The agent configures itself and reports back.
-                      </span>
+                      <span className="t-sm t-muted">The app sets itself up and reports back.</span>
                     </div>
-                  ) : null}
-                  {tab === "file" && configFile && configFileHref ? (
-                    <div className="row row--wrap">
-                      <a
-                        className="btn btn--sm"
-                        href={configFileHref}
-                        download={configFile.filename}
-                      >
-                        Download {configFile.filename}
-                      </a>
-                      <span className="t-xs t-muted">
-                        Save it where {client.name} reads its MCP config from.
-                      </span>
-                    </div>
-                  ) : null}
-                  {plaintext ? (
-                    <>
-                      <div className="row row--wrap" style={{ gap: 6 }}>
-                        <span className="t-xs t-muted">
-                          Its token (shown once):
-                        </span>
-                        <span className="chip chip--mono">{plaintext}</span>
-                        <Button
-                          size="sm"
-                          variant="quiet"
-                          onClick={() => copy(plaintext, "Token")}
-                        >
-                          <CopyIcon className="icon--sm" />
-                        </Button>
-                      </div>
-                      <p className="t-xs t-muted">
-                        The token is already filled in above — every request
-                        needs it. Copy now: once you leave this page it is not
-                        shown again.
-                      </p>
-                    </>
-                  ) : (
-                    <p className="t-xs t-muted">
-                      Replace{" "}
-                      <span className="t-mono">{TOKEN_PLACEHOLDER}</span> with
-                      the token {client.name} was given when it was issued — it
-                      was shown once and is not stored here. Without it, every
-                      request is turned away.
-                    </p>
-                  )}
-                </CardBody>
-              </Card>
+                  </>
+                )}
+              </div>
+              {plaintext ? (
+                <div className="stack stack--2">
+                  <div className="keyline">
+                    <span className="t-sm t-muted">Access key (shown once)</span>
+                    <code>{plaintext}</code>
+                    <Button size="sm" variant="plain" onClick={() => copy(plaintext, "Access key")}>
+                      <CopyIcon className="icon--sm" />
+                      Copy
+                    </Button>
+                  </div>
+                  <p className="t-sm t-muted">
+                    It&rsquo;s already in the command above. Copy it now — palaia can&rsquo;t show it
+                    again.
+                  </p>
+                </div>
+              ) : (
+                <p className="t-sm t-muted">
+                  This command needs the access key shown when it was created. Lost it? Replace the
+                  access key below — the old one stops working.
+                </p>
+              )}
             </div>
           </div>
-        )}
-
-        {token ? (
-          <div className="numstep">
-            <span
-              className={[
-                "numstep__num",
-                connected ? "numstep__num--done" : "",
-              ].join(" ")}
-            >
-              {connected ? <CheckIcon className="icon--sm" /> : "3"}
-            </span>
-            <div className="grow">
-              <p className="numstep__title">
-                palaia watches for the first call
-              </p>
-              {connected ? (
-                <p className="t-sm t-muted">
-                  Connected. This line updated on its own — no refresh needed.
+          <div className="connect-step">
+            <StepNumber n={3} done={connected} />
+            <div className="connect-step__body">
+              <p className="connect-step__title">Test the connection</p>
+              {connected && token?.last_used_at ? (
+                <p className="t-sm" title={exactTime(token.last_used_at)}>
+                  Connected — last request {timeAgo(token.last_used_at)}.
                 </p>
               ) : (
                 <>
-                  <div className="row row--wrap" style={{ marginTop: 4 }}>
-                    <Waiting>Waiting for this client to say hello…</Waiting>
-                    <span className="t-xs t-subtle">No refresh needed.</span>
-                  </div>
-                  <p className="t-xs t-muted" style={{ marginTop: 8 }}>
-                    Once a gateway profile named{" "}
-                    <span className="t-mono">{profile}</span> exposes a vault,
-                    ask it{" "}
-                    <em>
-                      &ldquo;what do you remember about this project?&rdquo;
-                    </em>{" "}
-                    and this line changes on its own. It only changes if the
-                    client sends its token — a call without one is turned away
-                    and never shows up here.
+                  <p className="t-sm t-muted">
+                    Ask {client.name}: &ldquo;What do you remember about this project?&rdquo; This
+                    turns green when palaia receives the request.
                   </p>
+                  <Waiting>Waiting for the first request…</Waiting>
                 </>
               )}
             </div>
           </div>
-        ) : null}
-      </CardBody>
-      <CardFoot>
-        <span className="t-xs t-subtle">
-          Every client gets its own token and its own tool profile. Revoking one
-          never touches the others.
-        </span>
-      </CardFoot>
+          {error ? (
+            <p className="field__error" role="alert" style={{ padding: "0 var(--space-5) var(--space-4)" }}>
+              {error}
+            </p>
+          ) : null}
+          <CardFoot>
+            <Button size="sm" onClick={() => setConfirm("replace")} disabled={busy}>
+              Replace access key
+            </Button>
+            <Button size="sm" variant="destructive" onClick={() => setConfirm("revoke")} disabled={busy}>
+              Revoke access
+            </Button>
+          </CardFoot>
+        </>
+      )}
+
+      <ConfirmDialog
+        open={confirm === "revoke"}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => void revokeAccess()}
+        title={`Revoke access for ${client.name}?`}
+        confirmLabel="Revoke access"
+        destructive
+        busy={busy}
+      >
+        <p>
+          {client.name} stops reading and saving your memories right away. You can connect it
+          again later with a new access key.
+        </p>
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={confirm === "replace"}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => void replaceKey()}
+        title={`Replace the access key for ${client.name}?`}
+        confirmLabel="Replace access key"
+        busy={busy}
+      >
+        <p>
+          palaia creates a new key with the same permissions and turns the old one off.{" "}
+          {client.name} stops working until you paste the new command.
+        </p>
+      </ConfirmDialog>
     </Card>
+  );
+}
+
+function PermissionRow({
+  memory,
+  read,
+  save,
+  onToggle,
+}: {
+  memory: string;
+  read: boolean;
+  save: boolean;
+  onToggle: (memory: string, permission: "read" | "write", checked: boolean) => void;
+}) {
+  return (
+    <>
+      <span className="permgrid__name">{memory}</span>
+      <span className="permgrid__cell">
+        <input
+          type="checkbox"
+          aria-label={`Read ${memory}`}
+          checked={read}
+          onChange={(event) => onToggle(memory, "read", event.target.checked)}
+        />
+      </span>
+      <span className="permgrid__cell">
+        <input
+          type="checkbox"
+          aria-label={`Save to ${memory}`}
+          checked={save}
+          onChange={(event) => onToggle(memory, "write", event.target.checked)}
+        />
+      </span>
+    </>
   );
 }

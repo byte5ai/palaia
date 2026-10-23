@@ -1,209 +1,153 @@
-import { useEffect, useState } from "react";
+/**
+ * Overview: is palaia running, and what needs me?
+ *
+ * The verdict first ("palaia is running", "Finish setting up palaia",
+ * "Can't reach palaia"), a few pills that summarise the state, the one next
+ * action when there is one, then a card per area — each linking to its
+ * detail — and the live activity feed. The health words are the sidebar's
+ * (`lib/health.ts`), so the two never disagree.
+ */
+import { type ReactNode, useEffect, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 
 import {
-  Badge,
   Button,
-  CardBody,
-  CardFoot,
-  CardHead,
-  EmptyState,
+  Callout,
+  Card,
+  CardHeader,
+  Disclosure,
+  InlineEmpty,
+  LinkButton,
+  ListRow,
+  LoadingState,
+  PageHeader,
+  RestartCallout,
+  StatusPill,
 } from "../components";
 import type {
+  BackupTargetsResponse,
   FunnelStatus,
-  InfoResponse,
   RecentChange,
-  SignInInfo,
+  SetupStatus,
   TokenInfo,
   VaultSummary,
 } from "../lib/api/client";
-import { api } from "../lib/api/client";
-import { docsUrl } from "../lib/docs";
-import { saveBlob } from "../lib/download";
-import { describeApiError } from "../lib/errors";
-import { nextPollDelay, POLL_INITIAL_MS } from "../lib/polling";
+import { api, ApiError } from "../lib/api/client";
 import { buildFeed } from "../lib/activityFeed";
+import { describeApiError } from "../lib/errors";
 import type { EventStreamState } from "../lib/events";
+import { count, exactTime, spokenDuration, timeAgo } from "../lib/format";
+import { hubHealth } from "../lib/health";
+import { nextPollDelay, POLL_INITIAL_MS } from "../lib/polling";
 import {
-  CheckIcon,
   ClientsIcon,
+  ErrorIcon,
   ExplorerIcon,
+  InfoIcon,
+  ReviewIcon,
+  VaultsIcon,
   WarningIcon,
 } from "../shell/icons";
 
-interface InboxAggregate {
-  count: number;
-  oldestAgeSeconds: number | null;
+interface IndexProgress {
+  ready: number;
+  pending: number;
 }
 
-/** Aggregated across every vault (SPEC-210 deliverable #3): the dashboard
- * shows one number for "how caught up is semantic search", not one tile
- * per vault — a per-vault breakdown lives on the Explorer page instead. */
-interface IndexAggregate {
-  totalReady: number;
-  totalPending: number;
-  totalFailed: number;
-  /** True once every vault that reports embeddings as enabled has fully
-   * drained its backlog (vaults with embeddings disabled don't count
-   * against this — see `embed_summary` for why). */
-  allCaughtUp: boolean;
+type BackupState = BackupTargetsResponse | "needs-sign-in" | null | undefined;
+
+const CELEBRATION_KEY = "palaia.overview.first-note-seen";
+
+function readFlag(key: string): boolean {
+  try {
+    return window.localStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
 }
 
-function formatDuration(seconds: number): string {
-  if (seconds < 3600) return `${Math.round(seconds / 60)} min`;
-  if (seconds < 86400) return `${Math.round(seconds / 3600)} h`;
-  return `${Math.round(seconds / 86400)} d`;
+function writeFlag(key: string): void {
+  try {
+    window.localStorage.setItem(key, "1");
+  } catch {
+    // a per-viewer convenience: it just shows again next time
+  }
 }
 
-function formatAgo(ms: number): string {
-  const seconds = Math.max(0, (Date.now() - ms) / 1000);
-  if (seconds < 60) return `${Math.round(seconds)} s ago`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)} min ago`;
-  if (seconds < 86400) return `${Math.round(seconds / 3600)} h ago`;
-  return `${Math.round(seconds / 86400)} d ago`;
+function lastBackup(state: BackupState): { tone: "ok" | "warn" | "neutral" | "error"; line: string } {
+  if (state === undefined) return { tone: "neutral", line: "Loading…" };
+  if (state === "needs-sign-in") {
+    return { tone: "warn", line: "Turn on dashboard sign-in to download backups." };
+  }
+  if (state === null) return { tone: "neutral", line: "Download a copy of your memories and settings." };
+  const runs = state.targets
+    .map((target) => target.last_run)
+    .filter((run): run is NonNullable<typeof run> => Boolean(run));
+  if (runs.length === 0) {
+    return state.targets.length > 0
+      ? { tone: "neutral", line: "No backup written yet." }
+      : { tone: "neutral", line: "No automatic backups. Download one any time." };
+  }
+  const newest = runs.reduce((a, b) => (a.finished_at > b.finished_at ? a : b));
+  if (!newest.ok) return { tone: "error", line: `Last automatic backup failed ${timeAgo(newest.finished_at * 1000)}.` };
+  return { tone: "ok", line: `Last backup ${timeAgo(newest.finished_at * 1000)}.` };
 }
 
-
-function Tile({
-  label,
-  metric,
-  unit,
-  sub,
-  attention,
-  action,
-}: {
-  label: string;
-  metric: string | number;
-  unit?: string;
-  sub: string;
-  attention?: boolean;
-  action?: React.ReactNode;
-}) {
+function VerdictIcon({ tone }: { tone: "ok" | "warn" | "error" | "info" | "neutral" }) {
+  const Icon = tone === "ok" ? ReviewIcon : tone === "error" ? ErrorIcon : tone === "warn" ? WarningIcon : InfoIcon;
   return (
-    <div
-      className={["tile", attention ? "tile--attention" : ""]
-        .filter(Boolean)
-        .join(" ")}
-    >
-      <div>
-        <span className="t-over">{label}</span>
-      </div>
-      <div className="tile__metric">
-        {metric}
-        {unit ? <span className="tile__unit"> {unit}</span> : null}
-      </div>
-      <div className="tile__sub">{sub}</div>
-      {action ? <div className="tile__action">{action}</div> : null}
-    </div>
+    <span className={`verdict__icon verdict__icon--${tone}`} aria-hidden="true">
+      <Icon className="icon" />
+    </span>
   );
 }
 
-/** The one-glance screen (SPEC-110 deliverable #4): health tiles, an
- * SSE-live activity feed, and connected clients with last-seen — on top
- * of SPEC-109's live-state layer, which this SPEC only reads from. */
 export function Home() {
   const stream = useOutletContext<EventStreamState>();
-  const [info, setInfo] = useState<InfoResponse | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [vaults, setVaults] = useState<VaultSummary[] | null>(null);
-  // Issue 378: a failed vault listing used to look like "nothing to
-  // remember yet" with two tiles stuck at "…".
+  // Issue 378: a failed listing must never read as "nothing here yet".
   const [vaultsError, setVaultsError] = useState<string | null>(null);
-  const [inbox, setInbox] = useState<InboxAggregate | null>(null);
+  // No answer at all (not an error answer): palaia itself is unreachable.
+  const [vaultsUnreachable, setVaultsUnreachable] = useState(false);
+  const [toFile, setToFile] = useState<number | null>(null);
+  const [index, setIndex] = useState<IndexProgress | null>(null);
   const [tokens, setTokens] = useState<TokenInfo[] | null>(null);
-  const [indexAggregate, setIndexAggregate] = useState<IndexAggregate | null>(
-    null,
-  );
+  const [setup, setSetup] = useState<SetupStatus | null>(null);
+  const [backups, setBackups] = useState<BackupState>(undefined);
   const [funnel, setFunnel] = useState<FunnelStatus | null>(null);
-  // What changed before this page was opened — the live feed alone started
-  // empty on every load, however much had just happened.
   const [loadedChanges, setLoadedChanges] = useState<RecentChange[]>([]);
+  const [celebrationSeen, setCelebrationSeen] = useState(() => readFlag(CELEBRATION_KEY));
   const feed = buildFeed(stream.recentChanges, loadedChanges);
-  const [backingUp, setBackingUp] = useState(false);
-  const [backupError, setBackupError] = useState<string | null>(null);
-
-  // Issue 382: a plain link to the gated endpoint saved the gate's refusal
-  // as the download once the session had expired. Fetching through the
-  // client redirects to sign-in like every other call, and any other
-  // refusal is shown in the hub's own words.
-  async function backUp() {
-    setBackingUp(true);
-    setBackupError(null);
-    try {
-      const file = await api.downloadBackup();
-      saveBlob(file.blob, file.filename ?? "palaia-backup.tar.gz");
-    } catch (err) {
-      setBackupError(describeApiError(err));
-    } finally {
-      setBackingUp(false);
-    }
-  }
+  const health = hubHealth(stream);
 
   useEffect(() => {
     let cancelled = false;
     api
-      .info()
-      .then((value) => {
-        if (!cancelled) setInfo(value);
-      })
-      .catch(() => {
-        // health/mode already reaches the topbar via SSE; this is extra
-      });
-    api
-      .recentActivity()
-      .then((changes) => {
-        if (!cancelled) setLoadedChanges(changes);
-      })
-      .catch(() => {
-        // the live feed still works; the list just starts empty
-      });
-    api
       .listVaults()
       .then(async (list) => {
         if (cancelled) return;
+        setVaultsError(null);
+        setVaultsUnreachable(false);
         setVaults(list);
-        const statuses = await Promise.all(
-          list.map((vault) => api.inboxStatus(vault.key).catch(() => null)),
-        );
+        const inbox = await Promise.all(list.map((v) => api.inboxStatus(v.key).catch(() => null)));
         if (cancelled) return;
-        let count = 0;
-        let oldest: number | null = null;
-        for (const status of statuses) {
-          if (!status) continue;
-          count += status.count;
-          if (status.oldest_age_seconds != null) {
-            oldest =
-              oldest == null
-                ? status.oldest_age_seconds
-                : Math.max(oldest, status.oldest_age_seconds);
-          }
-        }
-        setInbox({ count, oldestAgeSeconds: oldest });
-
-        const indexStatuses = await Promise.all(
-          list.map((vault) => api.indexStatus(vault.key).catch(() => null)),
-        );
+        setToFile(inbox.reduce((sum, status) => sum + (status?.count ?? 0), 0));
+        const indexes = await Promise.all(list.map((v) => api.indexStatus(v.key).catch(() => null)));
         if (cancelled) return;
-        let totalReady = 0;
-        let totalPending = 0;
-        let totalFailed = 0;
-        let allCaughtUp = true;
-        for (const status of indexStatuses) {
-          if (!status) continue;
-          totalReady += status.embeds.ready;
-          totalPending += status.embeds.pending;
-          totalFailed += status.embeds.failed;
-          if (status.embeds.enabled && status.embeds.pending > 0)
-            allCaughtUp = false;
+        let ready = 0;
+        let pending = 0;
+        for (const status of indexes) {
+          if (!status || !status.embeds.enabled) continue;
+          ready += status.embeds.ready;
+          pending += status.embeds.pending;
         }
-        setIndexAggregate({
-          totalReady,
-          totalPending,
-          totalFailed,
-          allCaughtUp,
-        });
+        setIndex({ ready, pending });
       })
       .catch((err: unknown) => {
-        if (!cancelled) setVaultsError(describeApiError(err));
+        if (cancelled) return;
+        setVaultsUnreachable(!(err instanceof ApiError));
+        setVaultsError(describeApiError(err));
       });
     api
       .listTokens()
@@ -214,24 +158,44 @@ export function Home() {
         if (!cancelled) setTokens([]);
       });
     api
+      .setupStatus()
+      .then((value) => {
+        if (!cancelled) setSetup(value);
+      })
+      .catch(() => {
+        // older hubs, or a hub mid-restart: the page works without it
+      });
+    api
+      .listBackupTargets()
+      .then((value) => {
+        if (!cancelled) setBackups(value);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const gated = err instanceof ApiError && (err.status === 401 || err.status === 403);
+        setBackups(gated ? "needs-sign-in" : null);
+      });
+    api
+      .recentActivity()
+      .then((changes) => {
+        if (!cancelled) setLoadedChanges(changes);
+      })
+      .catch(() => {
+        // the live feed still works; the list just starts empty
+      });
+    api
       .funnelStatus()
       .then((status) => {
         if (!cancelled) setFunnel(status);
       })
-      .catch(() => {
-        // no funnel store reachable yet — the rest of the page still works
-      });
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
 
-  // SPEC-504 deliverable #3: poll for the celebration moment the same
-  // "no refresh button anywhere" way ConnectPanel.tsx polls for a client's
-  // first call — this tile just isn't event-stream-backed either. Stops
-  // once a first memory is recorded; nothing left to wait for after that.
-  // Issue 384: backs off (3 s → … → 30 s) rather than asking every 3 s
-  // forever on a hub that never records a first memory.
+  // SPEC-504: wait for the first saved note without a refresh button,
+  // backing off (issue 384) and stopping once it arrived.
   const firstMemoryAt = funnel?.first_memory_at ?? null;
   useEffect(() => {
     if (firstMemoryAt) return;
@@ -244,9 +208,7 @@ export function Home() {
         .then((status) => {
           if (!cancelled) setFunnel(status);
         })
-        .catch(() => {
-          // a transient fetch failure just means the next tick tries again
-        })
+        .catch(() => {})
         .finally(() => {
           if (cancelled) return;
           delay = nextPollDelay(delay);
@@ -260,323 +222,282 @@ export function Home() {
     };
   }, [firstMemoryAt]);
 
-  const isHealthy = stream.health?.status === "ok";
-  // `sign_in` is typed `unknown` by the generated schema (see SignInInfo).
-  const signIn = info?.sign_in as SignInInfo | undefined;
-  const hasVaults = (vaults?.length ?? 0) > 0;
-  const totalNotes = vaults?.reduce((sum, v) => sum + v.note_count, 0) ?? 0;
-  const liveClients = (tokens ?? [])
-    .filter((t) => !t.revoked_at && t.last_used_at)
+  const activeTokens = (tokens ?? []).filter((token) => !token.revoked_at);
+  const connected = activeTokens
+    .filter((token) => token.last_used_at)
     .sort((a, b) => (b.last_used_at ?? "").localeCompare(a.last_used_at ?? ""));
+  const hasVaults = (vaults?.length ?? 0) > 0;
+  const totalNotes = vaults?.reduce((sum, vault) => sum + vault.note_count, 0) ?? 0;
+  const unreachable =
+    stream.connection === "reconnecting" || stream.connection === "closed" || vaultsUnreachable;
+
+  // ---- the verdict ------------------------------------------------------
+  let verdict: { tone: "ok" | "warn" | "error" | "info" | "neutral"; title: string; text?: ReactNode };
+  let primary: ReactNode = null;
+  if (unreachable) {
+    verdict = {
+      tone: "error",
+      title: "Can't reach palaia",
+      text: "Check that palaia is still running and that you opened the address shown at install. This page reconnects by itself.",
+    };
+  } else if (vaultsError) {
+    verdict = {
+      tone: "error",
+      title: "Couldn't load your memories",
+      text: `palaia answered with an error. ${vaultsError}`,
+    };
+    primary = (
+      <Button variant="primary" onClick={() => setAttempt((n) => n + 1)}>
+        Try again
+      </Button>
+    );
+  } else if (vaults === null) {
+    verdict = { tone: "neutral", title: "Connecting to palaia…" };
+  } else if (!hasVaults) {
+    verdict = {
+      tone: "info",
+      title: "Finish setting up palaia",
+      text: "Create a memory so your AI apps have somewhere to save.",
+    };
+    primary = (
+      <LinkButton variant="primary" to="/onboarding">
+        Continue setup
+      </LinkButton>
+    );
+  } else if (health.tone === "warn" || health.tone === "error") {
+    verdict = {
+      tone: health.tone,
+      title: "palaia needs attention",
+      text: "Part of palaia reports a problem. Restarting palaia often fixes it.",
+    };
+  } else if (health.tone === "neutral") {
+    verdict = { tone: "neutral", title: "Connecting to palaia…" };
+  } else {
+    verdict = { tone: "ok", title: "palaia is running" };
+    if (tokens !== null && connected.length === 0) {
+      verdict.text = "Connect an AI app so it can start saving to your memories.";
+      primary = (
+        <LinkButton variant="primary" to="/apps">
+          Connect an AI app
+        </LinkButton>
+      );
+    }
+  }
+
+  const problemComponents = Object.entries(stream.health?.components ?? {}).filter(
+    ([, status]) => status !== "ok",
+  );
+  const showCelebration = Boolean(funnel?.time_to_first_memory_display) && !celebrationSeen;
+  const backup = lastBackup(backups);
 
   return (
     <div className="stack">
-      <section className="verdict">
-        <div>
-          <p className="t-over">State of the hub</p>
-          <h2 className="verdict__line">
-            {stream.connection === "connecting"
-              ? "Connecting to the hub…"
-              : vaultsError
-                ? "The hub needs a look."
-                : vaults === null
-                  ? "Looking at your hub…"
-                  : !hasVaults
-                    ? "Your hub is up. Nothing to remember yet."
-                    : isHealthy
-                      ? "Everything is healthy."
-                      : "The hub needs a look."}
-          </h2>
-          <p className="verdict__sub">
-            {vaults === null ? (
-              (vaultsError ?? "Loading vaults…")
-            ) : hasVaults ? (
-              `${vaults.length} vault${vaults.length === 1 ? "" : "s"}, ${totalNotes} note${totalNotes === 1 ? "" : "s"} on disk.`
-            ) : (
-              <>
-                No vault exists yet —{" "}
-                <Link to="/onboarding">the setup wizard</Link> creates your
-                first one in a minute.
-              </>
-            )}
-          </p>
+      <PageHeader title="Overview" />
+
+      <section className="verdict" aria-labelledby="verdict-title">
+        <div className="verdict__main">
+          <VerdictIcon tone={verdict.tone} />
+          <div className="grow">
+            <h2 className="verdict__line" id="verdict-title">
+              {verdict.title}
+            </h2>
+            {verdict.text ? <p className="verdict__sub">{verdict.text}</p> : null}
+            {verdict.tone === "ok" && vaults ? (
+              <div className="verdict__pills">
+                <StatusPill tone="neutral" dot={false}>
+                  {count(vaults.length, "memory", "memories")} · {count(totalNotes, "note", "notes")}
+                </StatusPill>
+                {tokens !== null ? (
+                  <StatusPill tone={connected.length > 0 ? "ok" : "neutral"}>
+                    {connected.length > 0
+                      ? `${count(connected.length, "AI app", "AI apps")} connected`
+                      : "No AI app connected yet"}
+                  </StatusPill>
+                ) : null}
+                {toFile ? (
+                  <StatusPill tone="info" title="Captured notes waiting to be sorted">
+                    {count(toFile, "note", "notes")} to file
+                  </StatusPill>
+                ) : null}
+                {index && index.pending > 0 ? (
+                  <StatusPill tone="info">
+                    Search index: {index.ready} of {index.ready + index.pending} notes ready
+                  </StatusPill>
+                ) : null}
+              </div>
+            ) : null}
+            {problemComponents.length > 0 && (verdict.tone === "warn" || verdict.tone === "error") ? (
+              <div style={{ marginTop: "var(--space-3)" }}>
+                <Disclosure summary="Details">
+                  <ul>
+                    {problemComponents.map(([name, status]) => (
+                      <li key={name}>
+                        <span className="t-mono">{name}</span>: {status}
+                      </li>
+                    ))}
+                  </ul>
+                </Disclosure>
+              </div>
+            ) : null}
+          </div>
         </div>
-        <div className="verdict__aside">
-          {liveClients.length === 0 ? (
-            <>
-              <span className="t-over">Next step</span>
-              <Link className="btn btn--primary btn--lg" to="/apps">
-                <ClientsIcon className="icon--sm" />
-                Connect your first client
-              </Link>
-              <span className="t-meta">about 2 minutes</span>
-            </>
-          ) : (
-            <>
-              <span className="t-over">Connection</span>
-              <Badge
-                variant={stream.connection === "open" ? "ok" : "warn"}
-                live={stream.connection === "open"}
-              >
-                {stream.connection}
-              </Badge>
-            </>
-          )}
-        </div>
+        {primary ? <div className="verdict__aside">{primary}</div> : null}
       </section>
 
-      {funnel?.time_to_first_memory_display ? (
-        <section
-          className="banner banner--ok"
-          data-testid="first-memory-celebration"
-        >
-          <CheckIcon className="icon icon--sm" />
-          <div>
-            <p className="banner__title">Your first memory is in.</p>
-            <p className="t-sm t-muted">
-              Set up in {funnel.time_to_first_memory_display} — from install to
-              a client's first successful write, timed by the hub itself. This
-              number never leaves this hub.
-            </p>
-          </div>
-        </section>
+      {vaults === null && !vaultsError && !unreachable ? <LoadingState label="Loading your overview…" /> : null}
+
+      {setup?.restart_required ? <RestartCallout supported={setup.restart_supported} /> : null}
+
+      {showCelebration ? (
+        <div data-testid="first-memory-celebration">
+          <Callout
+            tone="ok"
+            title={`First note saved — setup took ${spokenDuration(funnel?.time_to_first_memory_display ?? "")}.`}
+            actions={
+              <Button
+                size="sm"
+                variant="plain"
+                onClick={() => {
+                  writeFlag(CELEBRATION_KEY);
+                  setCelebrationSeen(true);
+                }}
+              >
+                Dismiss
+              </Button>
+            }
+          >
+            Measured from install to an AI app's first saved note. The time stays on this server.
+          </Callout>
+        </div>
       ) : null}
 
-      <section className="tiles">
-        <Tile
-          label="Hub"
-          metric={info?.version ? String(info.version) : "…"}
-          unit={info?.mode ? String(info.mode) : undefined}
-          sub={
-            isHealthy
-              ? "healthy"
-              : stream.connection === "connecting"
-                ? "connecting…"
-                : "needs a look"
-          }
-        />
-        <Tile
-          label="Vaults"
-          metric={vaults?.length ?? (vaultsError ? "—" : "…")}
-          unit={vaults?.length === 1 ? "vault" : "vaults"}
-          sub={
-            vaultsError
-              ? "could not load"
-              : `${totalNotes} note${totalNotes === 1 ? "" : "s"}`
-          }
-        />
-        <Tile
-          label="Semantic search"
-          metric={
-            indexAggregate === null
-              ? vaultsError
-                ? "—"
-                : "…"
-              : indexAggregate.allCaughtUp
-                ? "caught up"
-                : `${indexAggregate.totalPending}`
-          }
-          unit={
-            indexAggregate && !indexAggregate.allCaughtUp
-              ? "embedding"
-              : undefined
-          }
-          sub={
-            indexAggregate === null
-              ? vaultsError
-                ? "could not load"
-                : "loading…"
-              : indexAggregate.allCaughtUp
-                ? "searchable now — fully caught up"
-                : `searchable now — catching up (${indexAggregate.totalReady} of ` +
-                  `${indexAggregate.totalReady + indexAggregate.totalPending} embedded)`
-          }
-          attention={Boolean(indexAggregate && indexAggregate.totalFailed > 0)}
-        />
-        <Tile
-          label="Inbox"
-          metric={inbox?.count ?? (vaultsError ? "—" : "…")}
-          unit="waiting"
-          sub={
-            vaultsError
-              ? "could not load"
-              : inbox && inbox.oldestAgeSeconds != null
-                ? `oldest capture ${formatDuration(inbox.oldestAgeSeconds)} old`
-                : "nothing captured yet"
-          }
-          attention={Boolean(inbox && inbox.count > 0)}
-          action={
-            inbox && inbox.count > 0 ? (
-              // Issue 375: this used to lead to a "not built yet" page.
-              // Captures wait in the vault's inbox folder, which the
-              // explorer shows.
-              <Link className="btn btn--sm" to="/memories">
-                See in explorer
-              </Link>
-            ) : undefined
-          }
-        />
-        <Tile
-          label="Clients"
-          metric={liveClients.length}
-          unit="connected"
-          sub={
-            tokens
-              ? `${tokens.length} token${tokens.length === 1 ? "" : "s"} issued`
-              : "…"
-          }
-        />
-      </section>
+      {hasVaults ? (
+        <div className="overview-cards">
+          <Card>
+            <CardHeader
+              title="Memories"
+              actions={
+                toFile ? (
+                  <StatusPill tone="info" title="Captured notes waiting to be sorted">
+                    {toFile} to file
+                  </StatusPill>
+                ) : undefined
+              }
+            />
+            {(vaults ?? []).slice(0, 3).map((vault) => (
+              <ListRow
+                key={vault.key}
+                icon={<VaultsIcon className="icon" />}
+                title={vault.key}
+                description={count(vault.note_count, "note", "notes")}
+              />
+            ))}
+            <div className="card__foot">
+              <Link to="/memories">Open Memories</Link>
+            </div>
+          </Card>
 
-      <section className="home-grid">
-        <div
-          className="card"
-          style={{ display: "flex", flexDirection: "column", minHeight: 0 }}
-        >
-          <CardHead title="activity">
-            <Badge variant="neutral" live={stream.connection === "open"}>
-              live
-            </Badge>
-          </CardHead>
-          <div className="feed scrollpane" style={{ maxHeight: 320 }}>
-            {feed.length === 0 ? (
-              <div style={{ padding: "var(--space-6) var(--space-4)" }}>
-                <EmptyState
-                  mark={<ExplorerIcon className="icon--lg" />}
-                  title="Nothing yet."
-                >
-                  A note written, moved or deleted anywhere in a vault shows up
-                  here the moment it happens — no refresh needed.
-                </EmptyState>
-              </div>
+          <Card>
+            <CardHeader
+              title="AI apps"
+              actions={
+                tokens !== null ? <span className="t-meta">{connected.length} connected</span> : undefined
+              }
+            />
+            {tokens === null ? (
+              <InlineEmpty>Loading…</InlineEmpty>
+            ) : activeTokens.length === 0 ? (
+              <InlineEmpty>No AI app connected yet.</InlineEmpty>
             ) : (
-              feed.map((item) => (
-                <div className="feed__item" key={item.key}>
-                  <span className="feed__mark">
-                    <ExplorerIcon className="icon--sm" />
-                  </span>
-                  <div className="grow">
-                    <p className="feed__text">{item.text}</p>
-                    <div className="feed__meta">
-                      {item.path ? (
-                        <span className="chip chip--mono">{item.path}</span>
-                      ) : null}
-                      {item.at !== null ? (
-                        <span className="t-meta">{formatAgo(item.at)}</span>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
+              activeTokens.slice(0, 3).map((token) => (
+                <ListRow
+                  key={token.id}
+                  icon={<ClientsIcon className="icon" />}
+                  title={token.name}
+                  description={
+                    token.last_used_at ? (
+                      <span title={exactTime(token.last_used_at)}>
+                        Last request {timeAgo(token.last_used_at)}
+                      </span>
+                    ) : (
+                      "Access key created, no request yet"
+                    )
+                  }
+                  trailing={
+                    token.last_used_at ? (
+                      <StatusPill tone="ok">Connected</StatusPill>
+                    ) : (
+                      <StatusPill tone="info">Waiting for first use</StatusPill>
+                    )
+                  }
+                />
               ))
             )}
-          </div>
-        </div>
-
-        <div className="card">
-          <CardHead title="clients" meta="last seen" />
-          <div>
-            {(tokens ?? []).length === 0 ? (
-              <div style={{ padding: "var(--space-5)" }}>
-                <p className="t-sm t-muted">No client has connected yet.</p>
-              </div>
-            ) : (
-              (tokens ?? [])
-                .filter((t) => !t.revoked_at)
-                .map((token) => (
-                  <div className="listrow" key={token.id}>
-                    <span
-                      className={["dot", token.last_used_at ? "dot--ok" : ""]
-                        .filter(Boolean)
-                        .join(" ")}
-                    />
-                    <div className="grow">
-                      <div className="listrow__title">{token.name}</div>
-                      <div className="listrow__meta">
-                        profile: {token.profile}
-                      </div>
-                    </div>
-                    <span className="t-meta">
-                      {token.last_used_at
-                        ? formatAgo(new Date(token.last_used_at).getTime())
-                        : "waiting"}
-                    </span>
-                  </div>
-                ))
-            )}
-          </div>
-          <CardFoot>
-            <Link className="btn btn--primary btn--sm" to="/apps">
-              <ClientsIcon className="icon--sm" />
-              Connect a client
-            </Link>
-            {inbox && inbox.count > 0 ? (
-              <span className="t-meta">{inbox.count} in the inbox</span>
-            ) : null}
-          </CardFoot>
-        </div>
-      </section>
-
-      {/* SPEC-604: the dashboard's one "Back up" action. Issue 317: the
-       * download is served only to a signed-in owner (the file can act as
-       * the hub), so on a hub whose dashboard has no sign-in turned on the
-       * card explains the way to take a backup there instead of offering a
-       * link that would come back as a refusal. */}
-      <section className="card" data-testid="backup-card">
-        <CardHead title="back up" />
-        <CardBody className="stack stack--3">
-          <p className="t-sm t-muted">
-            Downloads one file with everything this hub has saved — every
-            memory, your sign-in and connection setup, and any saved keys for
-            tools you&rsquo;ve connected.
-          </p>
-          <div className="banner banner--warn">
-            <WarningIcon className="icon icon--sm" />
-            <div>
-              <p className="banner__title">This file can act as your hub.</p>
-              <p className="t-sm t-muted">
-                Anyone who has it can read everything in it. Store it like
-                you&rsquo;d store a password — never somewhere shared or public.
-              </p>
+            <div className="card__foot">
+              <Link to="/apps">Open AI apps</Link>
             </div>
-          </div>
-        </CardBody>
-        <CardFoot>
-          {signIn?.required ? (
-            <>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => void backUp()}
-                disabled={backingUp}
-              >
-                {backingUp ? "Preparing the file…" : "Back up now"}
-              </Button>
-              {backupError ? (
-                <p className="field__error">{backupError}</p>
-              ) : null}
-            </>
+          </Card>
+
+          <Card>
+            <CardHeader
+              title="Backup"
+              actions={
+                backup.tone === "ok" ? (
+                  <StatusPill tone="ok">Backed up</StatusPill>
+                ) : backup.tone === "error" ? (
+                  <StatusPill tone="error">Failed</StatusPill>
+                ) : backup.tone === "warn" ? (
+                  <StatusPill tone="warn">Needs sign-in</StatusPill>
+                ) : undefined
+              }
+            />
+            <div className="card__body">
+              <p className="t-muted">{backup.line}</p>
+            </div>
+            <div className="card__foot">
+              <Link to="/settings/backups">Open Backups</Link>
+            </div>
+          </Card>
+        </div>
+      ) : null}
+
+      {/* Nothing to say about activity while palaia can't be read: an
+          empty feed there would claim "nothing happened". */}
+      {unreachable || vaultsError ? null : (
+        <Card>
+          <CardHeader
+            title="Activity"
+            actions={
+              stream.connection === "open" ? (
+                <StatusPill tone="ok" title="New and changed notes appear here as they happen">
+                  Live
+                </StatusPill>
+              ) : undefined
+            }
+          />
+          {feed.length === 0 ? (
+            <InlineEmpty>No activity yet. New and changed notes appear here.</InlineEmpty>
           ) : (
-            <span className="t-sm t-muted" data-testid="backup-needs-sign-in">
-              Downloading a backup needs the dashboard sign-in, which this hub
-              has not turned on. On the machine the hub runs on,{" "}
-              <code>palaia-hub backup</code> writes the same file.
-            </span>
+            <ul className="feed" aria-label="Recent activity">
+              {feed.map((item) => (
+                <li className="feed__item" key={item.key}>
+                  <span className="feed__mark" aria-hidden="true">
+                    <ExplorerIcon className="icon" />
+                  </span>
+                  <div className="grow">
+                    <p className="feed__text">
+                      {item.verb} <strong>{item.title}</strong>
+                    </p>
+                    <p className="feed__meta t-meta">
+                      {[item.vault, item.at !== null ? timeAgo(item.at) : null].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
-          <span className="t-meta">
-            {/* Issue 438: the folders the hub backs up into by itself. */}
-            <Link to="/settings/backups">Backup folders &amp; schedule</Link>
-          </span>
-          <span className="t-meta">
-            <a
-              href={docsUrl("/backup-restore/")}
-              target="_blank"
-              rel="noreferrer"
-            >
-              How restore works
-            </a>
-          </span>
-        </CardFoot>
-      </section>
+        </Card>
+      )}
     </div>
   );
 }

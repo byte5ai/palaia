@@ -20,13 +20,24 @@ make each request's cost scale with the number of issued tokens; looking
 the id up first keeps verification O(1) regardless of how many tokens
 exist, with the *secret* half still checked by argon2's constant-time
 compare (:mod:`palaia_hub.auth.hashing`) — the only half that needs it.
+
+**Last use** (issue #570): when each token last verified is kept in a second
+file, ``tokens_last_used.json``, next to ``tokens.yaml`` — so the dashboard
+still says "Connected — last request 2 min ago" after a restart instead of
+"waiting" for an app that worked before. It is written on a token's first use
+in a process and then at most once every :data:`LAST_USED_FLUSH_SECONDS` per
+token, never on every request, and ``tokens.yaml`` (which the CLI also writes)
+keeps its format and is never touched by a verify. The file holds only public
+token ids and timestamps; losing or corrupting it only loses those times.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import secrets
+import time
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -43,7 +54,14 @@ from .models import CreatedToken, TokenInfo, TokenRecord
 logger = logging.getLogger("palaia_hub.auth.store")
 
 TOKENS_FILE = "tokens.yaml"
+LAST_USED_FILE = "tokens_last_used.json"
 TOKEN_PREFIX = "plt"
+
+#: How stale the persisted last-use time of a token may get while it is in
+#: use: a busy client writes the file once per this many seconds, not once
+#: per request. The in-memory time the dashboard reads is always exact; only
+#: the time remembered across a restart can be this much behind.
+LAST_USED_FLUSH_SECONDS = 300
 
 # vault:<key>:read|write, plus the hub-level families' own scope shapes
 # (stash:read|write, directory:read|write, messenger:read|send) — the only
@@ -134,14 +152,18 @@ class TokenStore:
     def __init__(self, home: Path | None = None) -> None:
         self.home = Path(home).expanduser() if home is not None else palaia_home()
         self._records: dict[str, TokenRecord] = {}
-        # In-memory only (see TokenInfo.last_used_at's docstring for why):
-        # token_id -> ISO timestamp of its last successful verify().
-        self._last_used: dict[str, str] = {}
+        # token_id -> ISO timestamp of its last successful verify(), seeded
+        # from LAST_USED_FILE so it survives a restart (module docstring).
+        self._last_used: dict[str, str] = self._read_last_used()
+        # Tokens that verified in *this* process, for ``is_first_use``.
+        self._seen: set[str] = set()
+        # token_id -> monotonic time its last-use time was last written.
+        self._flushed_at: dict[str, float] = {}
         #: SPEC-201's ``client.connected`` hook point: called with
         #: ``(record, is_first_use)`` after every *successful* verify(),
         #: ``is_first_use`` true exactly once per token per process
-        #: lifetime (mirrors ``last_used_at``'s own "resets on restart"
-        #: trade). ``None`` (the default) keeps this store's behavior
+        #: lifetime, whether or not a last-use time was remembered from an
+        #: earlier one. ``None`` (the default) keeps this store's behavior
         #: identical to before this hook existed. Wired by
         #: :func:`palaia_hub.app.create_app` onto the hub's event bus —
         #: this module stays free of any dependency on it (see this file's
@@ -162,6 +184,11 @@ class TokenStore:
     def store_path(self) -> Path:
         """Path to ``tokens.yaml``."""
         return self.home / TOKENS_FILE
+
+    @property
+    def last_used_path(self) -> Path:
+        """Path to ``tokens_last_used.json`` (module docstring, "Last use")."""
+        return self.home / LAST_USED_FILE
 
     # ------------------------------------------------------------- persistence
 
@@ -214,6 +241,35 @@ class TokenStore:
             record = TokenRecord.model_validate(item)
             records[record.id] = record
         return records
+
+    def _read_last_used(self) -> dict[str, str]:
+        """The remembered last-use times; empty when there are none or the
+        file cannot be read — it only ever costs those times, never a token."""
+        try:
+            raw: Any = json.loads(self.last_used_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return {}
+        except (OSError, ValueError) as exc:
+            logger.warning(
+                "%s could not be read, starting without last-use times: %s", LAST_USED_FILE, exc
+            )
+            return {}
+        if not isinstance(raw, Mapping):
+            return {}
+        return {str(k): str(v) for k, v in raw.items() if isinstance(v, str)}
+
+    def _save_last_used(self) -> None:
+        """Write the last-use times. A failure is logged, never raised: a
+        verify must not fail because a timestamp could not be written."""
+        try:
+            self.home.mkdir(parents=True, exist_ok=True)
+            known = {k: v for k, v in self._last_used.items() if k in self._records}
+            atomic_write_text(
+                self.last_used_path, json.dumps(known, indent=2, sort_keys=True) + "\n"
+            )
+            harden_file(self.last_used_path)
+        except OSError as exc:
+            logger.warning("could not write %s: %s", LAST_USED_FILE, exc)
 
     def _save(self) -> None:
         self.home.mkdir(parents=True, exist_ok=True)
@@ -326,8 +382,14 @@ class TokenStore:
             return None
         if record.is_revoked:
             return None
-        is_first_use = token_id not in self._last_used
+        is_first_use = token_id not in self._seen
+        self._seen.add(token_id)
         self._last_used[token_id] = _now()
+        now = time.monotonic()
+        flushed = self._flushed_at.get(token_id)
+        if flushed is None or now - flushed >= LAST_USED_FLUSH_SECONDS:
+            self._flushed_at[token_id] = now
+            self._save_last_used()
         if self.on_verified is not None:
             try:
                 self.on_verified(record, is_first_use)
@@ -336,4 +398,4 @@ class TokenStore:
         return record
 
 
-__all__ = ["CreatedToken", "TOKEN_PREFIX", "TokenError", "TokenStore"]
+__all__ = ["CreatedToken", "LAST_USED_FILE", "TOKEN_PREFIX", "TokenError", "TokenStore"]

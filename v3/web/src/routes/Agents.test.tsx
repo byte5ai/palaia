@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,7 +15,7 @@ import type {
   SessionListResult,
   SessionRecord,
 } from "../lib/api/client";
-import { api } from "../lib/api/client";
+import { api, ApiError } from "../lib/api/client";
 import type { EventStreamState } from "../lib/events";
 import { useEventStream } from "../lib/events";
 import { FakeEventSource } from "../lib/testEventSource";
@@ -153,7 +154,7 @@ describe("Agents screen", () => {
     vi.spyOn(api, "messageFlows").mockResolvedValue({ flows: [] });
 
     mountLive();
-    await screen.findByText(/No agents yet/i);
+    await screen.findByText(/No live sessions/i);
     expect(listSessions).toHaveBeenCalledTimes(1);
 
     const source = FakeEventSource.instances.at(-1)!;
@@ -241,8 +242,9 @@ describe("Agents screen", () => {
     mount();
     await screen.findByText(A_FLOW.subject);
     fireEvent.click(screen.getByText(A_FLOW.subject));
-    fireEvent.click(await screen.findByText("End conversation"));
-    fireEvent.click(await screen.findByText("Yes, end it"));
+    fireEvent.click(await screen.findByRole("button", { name: "End conversation" }));
+    const dialog = screen.getByRole("dialog", { name: "End this conversation?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "End conversation" }));
 
     await waitFor(() =>
       expect(endConversation).toHaveBeenCalledWith(A_FLOW.id),
@@ -260,8 +262,9 @@ describe("Agents screen", () => {
 
     mount();
     await screen.findByText(STALE_SESSION.handle);
-    fireEvent.click(screen.getByText("Remove"));
-    fireEvent.click(await screen.findByText("Yes, remove"));
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    const dialog = screen.getByRole("dialog", { name: `Remove ${STALE_SESSION.handle} from the list?` });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove session" }));
 
     await waitFor(() =>
       expect(deregister).toHaveBeenCalledWith(STALE_SESSION.handle),
@@ -282,11 +285,12 @@ describe("Agents screen", () => {
 
     mount();
     await screen.findByText(ACTIVE_SESSION.handle);
-    fireEvent.click(screen.getByText("Send a message"));
+    fireEvent.click(screen.getByRole("button", { name: "Send a message" }));
 
+    expect(screen.getByRole("dialog", { name: "Send a message" })).toBeInTheDocument();
     expect(screen.queryByPlaceholderText(/secret/i)).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText("Agent ID, or *"), {
+    fireEvent.change(screen.getByLabelText("To"), {
       target: { value: ACTIVE_SESSION.handle },
     });
     fireEvent.change(screen.getByLabelText("Subject"), {
@@ -309,16 +313,16 @@ describe("Agents screen", () => {
   });
 
   it("refuses to send an over-budget message before it ever reaches the hub", async () => {
-    vi.spyOn(api, "listSessions").mockResolvedValue({ sessions: [] });
+    vi.spyOn(api, "listSessions").mockResolvedValue({ sessions: [ACTIVE_SESSION] });
     vi.spyOn(api, "messageFlows").mockResolvedValue({ flows: [] });
     vi.spyOn(api, "listVaults").mockResolvedValue([]);
     const sendAsOwner = vi.spyOn(api, "sendAsOwner");
 
     mount();
-    await screen.findByText(/No agents yet/i);
-    fireEvent.click(screen.getByText("Send a message"));
+    await screen.findByText(ACTIVE_SESSION.handle);
+    fireEvent.click(screen.getByRole("button", { name: "Send a message" }));
 
-    fireEvent.change(screen.getByPlaceholderText("Agent ID, or *"), {
+    fireEvent.change(screen.getByLabelText("To"), {
       target: { value: "*" },
     });
     fireEvent.change(screen.getByLabelText("Subject"), {
@@ -331,6 +335,37 @@ describe("Agents screen", () => {
 
     await screen.findByText(/over the limit/i);
     expect(sendAsOwner).not.toHaveBeenCalled();
+  });
+});
+
+describe("Live sessions — empty, blocked and failed states (report §3.9)", () => {
+  it("says how sessions appear, and offers no message to nobody", async () => {
+    vi.spyOn(api, "listSessions").mockResolvedValue({ sessions: [] });
+    vi.spyOn(api, "messageFlows").mockResolvedValue({ flows: [] });
+
+    mount();
+
+    expect(
+      await screen.findByText(/sessions appear when an app with the palaia-messenger skill starts working/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send a message" })).toBeDisabled();
+    expect(screen.getByText("No session to send to")).toBeInTheDocument();
+  });
+
+  it("an error loading sessions is an error with Try again, never 'No live sessions'", async () => {
+    const listSessions = vi
+      .spyOn(api, "listSessions")
+      .mockRejectedValueOnce(new ApiError("/api/directory/sessions", 500, { detail: "directory is down" }))
+      .mockResolvedValue({ sessions: [ACTIVE_SESSION] });
+    vi.spyOn(api, "messageFlows").mockResolvedValue({ flows: [] });
+
+    mount();
+
+    expect(await screen.findByText("Couldn't load live sessions")).toBeInTheDocument();
+    expect(screen.queryByText(/no live sessions/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await screen.findByText(ACTIVE_SESSION.handle);
+    expect(listSessions).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -362,6 +397,7 @@ describe("Agents screen copy — no jargon in the surface (system.md §3 rule 0)
 
     mount();
     await screen.findByText(ACTIVE_SESSION.handle);
+    fireEvent.click(screen.getByRole("button", { name: "Send a message" }));
 
     const controls = [
       ...screen.queryAllByRole("heading"),
@@ -389,7 +425,7 @@ describe("refetch coalescing (issue 384)", () => {
     vi.spyOn(api, "messageFlows").mockResolvedValue({ flows: [] });
 
     mountLive();
-    await screen.findByText(/No agents yet/i);
+    await screen.findByText(/No live sessions/i);
     expect(listSessions).toHaveBeenCalledTimes(1);
 
     // Three frames, three renders (one `act` each — the way heartbeats

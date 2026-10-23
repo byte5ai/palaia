@@ -1,23 +1,32 @@
 /**
- * The review queue (SPEC-208's dashboard mirror, issue 375).
+ * Memories › Needs review (SPEC-208's dashboard mirror, issue 375).
  *
  * The curator files simple captures on its own and *proposes* anything
- * bigger — a merge, a rename, a retirement (SPEC-206, format spec §8).
- * Those proposals waited behind a nav item that led to "not built yet",
- * although the hub already served them (`GET /api/vaults/{key}/review`)
- * and took the decision (`POST …/review/{permalink}/decision`) — the same
- * calls the review-queue MCP App makes inside a chat client. This screen
- * is the admin surface for the same thing: every vault's pending
- * proposals, approve or reject.
+ * bigger — a merge, a rename, a retirement (SPEC-206, format spec §8). Each
+ * proposal waits here, one card each, until the person approves or rejects
+ * it — the same calls the review MCP App makes inside a chat
+ * (`GET /api/vaults/{key}/review`, `POST …/review/{permalink}/decision`).
  */
 import { useEffect, useState } from "react";
 
-import { Badge, Button, Card, CardBody, CardHead, EmptyState, useToast } from "../components";
-import { Waiting } from "../components/Skeleton";
+import {
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Disclosure,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  StatusPill,
+  useToast,
+} from "../components";
 import type { ProposalSummary } from "../lib/api/client";
 import { api } from "../lib/api/client";
 import { describeApiError } from "../lib/errors";
+import { count, exactTime, shortDate } from "../lib/format";
 import { ReviewIcon } from "../shell/icons";
+import "./memories.css";
 
 interface QueuedProposal {
   vault: string;
@@ -34,7 +43,6 @@ export function ReviewQueue() {
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
-  const [open, setOpen] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,7 +75,11 @@ export function ReviewQueue() {
     try {
       await api.decideReview(item.vault, item.proposal.permalink, decision);
       setItems((prev) => prev?.filter((other) => keyOf(other) !== keyOf(item)) ?? prev);
-      toast.show(decision === "approved" ? "Approved." : "Rejected.");
+      toast.show(
+        decision === "approved"
+          ? `Approved: ${item.proposal.title}. palaia applies it now.`
+          : `Rejected: ${item.proposal.title}. Nothing changes.`,
+      );
     } catch (err) {
       toast.show(describeApiError(err));
     } finally {
@@ -76,89 +88,72 @@ export function ReviewQueue() {
   }
 
   if (items === null) {
-    return (
-      <Card>
-        <CardBody className="stack stack--2">
-          {error ? (
-            <>
-              <p className="t-sm t-muted">Could not load the review queue: {error}</p>
-              <div className="row">
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setError(null);
-                    setAttempt((n) => n + 1);
-                  }}
-                >
-                  Try again
-                </Button>
-              </div>
-            </>
-          ) : (
-            <Waiting>Looking for proposals…</Waiting>
-          )}
-        </CardBody>
-      </Card>
-    );
+    if (error) {
+      return (
+        <ErrorState
+          title="Couldn't load what needs review"
+          details={error}
+          onRetry={() => {
+            setError(null);
+            setAttempt((n) => n + 1);
+          }}
+        >
+          palaia didn't answer with the curator's proposals.
+        </ErrorState>
+      );
+    }
+    return <LoadingState label="Looking for proposals…" />;
   }
 
   if (items.length === 0) {
     return (
-      <Card>
-        <CardBody>
-          <EmptyState mark={<ReviewIcon className="icon--lg" />} title="Nothing waiting for you.">
-            When the curator wants to merge, rename or retire a note, the proposal shows up
-            here for you to approve or reject. Simple additions are filed without asking.
-          </EmptyState>
-        </CardBody>
-      </Card>
+      <EmptyState mark={<ReviewIcon className="icon icon--xl" />} title="Nothing to review">
+        palaia asks you here before it merges, renames or archives a note. New notes are filed
+        without asking.
+      </EmptyState>
     );
   }
 
   return (
-    <div className="stack stack--3">
-      <p className="t-sm t-muted">
-        {items.length} proposal{items.length === 1 ? "" : "s"} waiting. Nothing here happens
-        until you decide — approving lets the curator apply it, rejecting drops it.
+    <div className="stack stack--4">
+      <p className="t-muted">
+        {count(items.length, "proposal", "proposals")} waiting. Nothing changes until you decide.
       </p>
       {items.map((item) => {
         const id = keyOf(item);
+        const created = item.proposal.created;
         return (
           <Card key={id}>
-            <CardHead
+            <CardHeader
               title={item.proposal.title}
-              meta={<Badge variant="neutral">{item.vault}</Badge>}
+              description={
+                <span className="review-meta">
+                  <span>{item.vault}</span>
+                  {created ? (
+                    <span title={exactTime(created)}>· proposed {shortDate(created) || created}</span>
+                  ) : null}
+                </span>
+              }
+              actions={<StatusPill tone="info">Needs review</StatusPill>}
             />
-            <CardBody className="stack stack--2">
-              <div className="row row--wrap" style={{ gap: 8 }}>
-                <span className="chip chip--mono">{item.proposal.permalink}</span>
-                {item.proposal.created ? (
-                  <span className="t-xs t-subtle">proposed {item.proposal.created}</span>
-                ) : null}
-              </div>
-              <Button
-                size="sm"
-                variant="quiet"
-                onClick={() => setOpen((current) => (current === id ? null : id))}
-              >
-                {open === id ? "Hide details" : "Show details"}
-              </Button>
-              {open === id ? (
-                <pre className="snippet snippet--block" style={{ whiteSpace: "pre-wrap" }}>
-                  {item.proposal.body || "(no details attached)"}
+            <CardBody className="stack stack--3">
+              <Disclosure summary="Details">
+                <pre className="review-body">
+                  {item.proposal.body || "No details were attached to this proposal."}
                 </pre>
-              ) : null}
-              <div className="row" style={{ gap: 8 }}>
+              </Disclosure>
+              <div className="row row--wrap">
                 <Button
-                  variant="primary"
                   size="sm"
                   disabled={busy !== null}
+                  loading={busy === id}
                   onClick={() => void decide(item, "approved")}
                 >
                   Approve
                 </Button>
                 <Button
                   size="sm"
+                  variant="plain"
                   disabled={busy !== null}
                   onClick={() => void decide(item, "rejected")}
                 >

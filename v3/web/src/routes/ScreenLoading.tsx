@@ -1,10 +1,8 @@
-/** What a lazily loaded screen shows for the moment its code is still on
- * its way (issue 406) — text, not a spinner, so a slow connection reads
- * "loading", and tests can wait for it to go away. */
+import { LoadingState } from "../components/EmptyState";
+
+/** What a lazily loaded screen shows while its code is on its way (issue
+ * 406): grey lines after 300 ms, and "Loading this screen…" for screen
+ * readers (and for tests that wait for it to go away). */
 export function ScreenLoading() {
-  return (
-    <p className="t-sm t-muted" role="status">
-      Loading this screen…
-    </p>
-  );
+  return <LoadingState label="Loading this screen…" />;
 }

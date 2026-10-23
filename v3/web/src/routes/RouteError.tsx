@@ -1,23 +1,25 @@
 /**
  * What the router shows when a URL matches nothing, or a screen throws
- * while rendering (issue 379).
- *
- * The hub serves `index.html` for every dashboard path, so a typo like
- * `/explorer/typo` reaches the router — which, with no `errorElement`,
- * showed React Router's own "Unexpected Application Error!" page. Both
- * cases now get a page in the dashboard's own words, inside the shell
- * when the shell itself is fine, with a way back.
+ * while rendering (issue 379) — inside the shell when the shell itself is
+ * fine, in palaia's own words, with a way on.
  */
-import { Link, isRouteErrorResponse, useRouteError } from "react-router-dom";
+import { isRouteErrorResponse, useRouteError } from "react-router-dom";
 
-import { EmptyState } from "../components";
-import { HomeIcon } from "../shell/icons";
+import { Button, Disclosure, EmptyState, LinkButton } from "../components";
+import { ErrorIcon, HomeIcon } from "../shell/icons";
 
 export function NotFound() {
   return (
-    <EmptyState mark={<HomeIcon className="icon--lg" />} title="That page doesn't exist.">
-      The address may have a typo, or the page moved.{" "}
-      <Link to="/">Back to Home</Link>.
+    <EmptyState
+      mark={<HomeIcon className="icon icon--xl" />}
+      title="That page doesn't exist"
+      actions={
+        <LinkButton variant="primary" to="/">
+          Go to Overview
+        </LinkButton>
+      }
+    >
+      The address may have a typo, or the page moved.
     </EmptyState>
   );
 }
@@ -34,15 +36,28 @@ export function RouteError() {
         : "";
 
   return (
-    <EmptyState mark={<HomeIcon className="icon--lg" />} title="This screen ran into a problem.">
-      Reloading the page usually fixes it; if it keeps happening, the hub&rsquo;s logs will
-      say why. <Link to="/">Back to Home</Link>.
+    <div className="stack">
+      <EmptyState
+        mark={<ErrorIcon className="icon icon--xl" />}
+        title="Something went wrong on this page"
+        actions={
+          <>
+            <Button variant="primary" onClick={() => window.location.reload()}>
+              Reload
+            </Button>
+            <LinkButton to="/">Go to Overview</LinkButton>
+          </>
+        }
+      >
+        Reload to try again.
+      </EmptyState>
       {detail ? (
-        <>
-          <br />
-          <code className="t-xs t-subtle">{detail}</code>
-        </>
+        <div className="narrow" style={{ margin: "0 auto" }}>
+          <Disclosure summary="Show details">
+            <p className="t-mono">{detail}</p>
+          </Disclosure>
+        </div>
       ) : null}
-    </EmptyState>
+    </div>
   );
 }

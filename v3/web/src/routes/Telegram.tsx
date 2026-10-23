@@ -1,5 +1,6 @@
 /**
- * Issue 439: the Telegram screen — the owner's view of the connector.
+ * Settings › Telegram (issue 439; copy and layout per issues 570 and 571):
+ * the owner's view of the connector.
  * ADR-006 names exactly this: "per bot: connection state, last update
  * received, routing table, recent deliveries — a dashboard panel", and
  * records the MASTERPLAN §4 rule-8 answer that it is a dashboard screen,
@@ -34,15 +35,20 @@ import type { BadgeVariant, Column } from "../components";
 import {
   Badge,
   Button,
+  Callout,
   Card,
-  CardBody,
+  CardHeader,
   Chip,
+  Disclosure,
   Dot,
-  EmptyState,
   Field,
+  InlineEmpty,
   LabeledInput,
+  ListRow,
+  LoadingState,
+  PageHeader,
   Segmented,
-  Skeleton,
+  StatusPill,
   SwitchRow,
   Table,
   useToast,
@@ -69,7 +75,7 @@ import {
   AGENT_REFRESH_COALESCE_MS,
   useDebouncedValue,
 } from "../lib/useDebouncedValue";
-import { TelegramIcon } from "../shell/icons";
+import "./settings.css";
 
 /** The connector's own guide — there is no docs-site page for it yet. */
 const SETUP_GUIDE_URL =
@@ -130,7 +136,7 @@ function botState(bot: TelegramBotStatus): BotState {
     return {
       variant: "risk",
       label: "Token missing",
-      title: "The hub's secret store holds no bot token for this bot yet.",
+      title: "palaia holds no bot token for this bot yet.",
       error: null,
     };
   }
@@ -140,7 +146,7 @@ function botState(bot: TelegramBotStatus): BotState {
     return {
       variant: "risk",
       label: "Failing",
-      title: `${polling.consecutive_failures} failed attempts in a row — the hub keeps retrying.`,
+      title: `${polling.consecutive_failures} failed attempts in a row — palaia keeps retrying.`,
       error: polling.last_error,
     };
   }
@@ -167,15 +173,15 @@ function botState(bot: TelegramBotStatus): BotState {
   return {
     variant: "warn",
     label: "Not checked yet",
-    title: "Nothing has reached Telegram for this bot since the hub started.",
+    title: "Nothing has reached Telegram for this bot since palaia started.",
     error: null,
   };
 }
 
 function receiveTitle(bot: TelegramBotStatus): string {
   return bot.transport === "webhook"
-    ? "Webhook: Telegram delivers this bot's messages to the hub's public address."
-    : "Long polling: the hub asks Telegram for this bot's messages, so it works behind a firewall.";
+    ? "Telegram delivers this bot's messages to palaia's public address."
+    : "palaia asks Telegram for this bot's messages, so it works behind a firewall.";
 }
 
 /** A route's destination in plain words — the hub's own `describe()` is
@@ -186,14 +192,14 @@ function destinationLabel(destination: string | null): string {
     return `Messenger → ${destination.slice("messenger:".length)}`;
   }
   if (destination.startsWith("inbox:")) {
-    return `Inbox of vault ${destination.slice("inbox:".length)}`;
+    return `To file in ${destination.slice("inbox:".length)}`;
   }
-  return "Hub event";
+  return "Event for automations";
 }
 
 function destinationTitle(destination: string | null): string | undefined {
   if (destination === "event") {
-    return "Published on the hub's event stream, text included — automations can react to it.";
+    return "Sent to palaia's event stream, text included — automations can react to it.";
   }
   return undefined;
 }
@@ -222,7 +228,7 @@ function RemoveControl({
     );
   }
   return (
-    <span className="row" style={{ gap: 6 }}>
+    <span className="row row--wrap">
       <Button
         variant="ghost"
         size="sm"
@@ -313,7 +319,7 @@ function BotEditor({
       toast.show(
         stored.length > 0
           ? `Saved, and the ${stored.join(" and ")} stored. Check the connection to confirm Telegram accepts it.`
-          : "Saved — the hub runs it now.",
+          : "Saved. palaia uses it now.",
       );
       onSaved(status);
     } catch (err) {
@@ -324,11 +330,12 @@ function BotEditor({
   }
 
   return (
-    <CardBody className="stack stack--3">
+    <div className="settings-form">
       {bot === null ? (
         <LabeledInput
-          label="Name on the hub"
-          hint="Lowercase letters, digits, - or _. Rules and agents use it to pick this bot; it cannot be changed later."
+          label="Name"
+          placeholder="support"
+          hint="Lowercase letters, digits, - or _. Rules use it to pick this bot. Can't be changed later."
           value={key}
           onChange={(event) => setKey(event.target.value)}
           invalid={keyTaken}
@@ -337,25 +344,26 @@ function BotEditor({
       ) : null}
       <LabeledInput
         label="Display name"
+        optional
         placeholder={cleanKey || bot?.key}
-        hint="Cosmetic only."
+        hint="Only shown here."
         value={label}
         onChange={(event) => setLabel(event.target.value)}
       />
       <Field
-        label="How messages reach the hub"
+        label="How messages reach palaia"
         hint={
           transport === "polling"
-            ? "The hub asks Telegram for new messages (long polling). Works behind a firewall and on a private hub."
-            : "Telegram delivers each message to the hub's public address (a webhook). Needs a hub reachable from the internet."
+            ? "palaia asks Telegram for new messages. Works behind a firewall and in Private mode."
+            : "Telegram delivers each message to palaia's public address. Needs Cloud or Public mode."
         }
       >
         <Segmented<TelegramTransport>
-          ariaLabel="How messages reach the hub"
+          ariaLabel="How messages reach palaia"
           value={transport}
           onChange={setTransport}
           options={[
-            { value: "polling", label: "The hub fetches them" },
+            { value: "polling", label: "palaia fetches them" },
             { value: "webhook", label: "Telegram sends them" },
           ]}
         />
@@ -375,9 +383,9 @@ function BotEditor({
         placeholder={
           bot?.token_stored ? "Stored — type a new one to replace it" : ""
         }
-        hint={`From @BotFather. Stored encrypted in the hub's secret store${
+        hint={`From @BotFather. palaia stores it encrypted${
           bot ? ` as ${bot.token_secret}` : ""
-        } — never in config.yaml.${bot?.token_stored ? " Leave empty to keep the stored one." : ""}`}
+        }, never in config.yaml.${bot?.token_stored ? " Leave empty to keep the stored one." : ""}`}
         value={token}
         onChange={(event) => setToken(event.target.value)}
       />
@@ -391,25 +399,26 @@ function BotEditor({
               ? "Stored — type a new one to replace it"
               : ""
           }
-          hint="A random value Telegram sends along with every message, so the hub can tell it apart from anyone else. Pass the same value as secret_token when you point the bot at this hub (setWebhook)."
+          hint="A random value Telegram sends with every message, so palaia can tell it apart from anyone else. Use the same value as secret_token when you point the bot at palaia (setWebhook)."
           value={echo}
           onChange={(event) => setEcho(event.target.value)}
         />
       ) : null}
       {error ? <p className="field__error">{error}</p> : null}
-      <div className="row row--wrap">
+      <div className="settings-form__actions">
         <Button
           variant="primary"
           onClick={save}
           disabled={saving || (bot === null && (!cleanKey || keyTaken))}
+          loading={saving}
         >
           {saving ? "Saving…" : bot === null ? "Add bot" : "Save"}
         </Button>
-        <Button variant="ghost" onClick={onCancel} disabled={saving}>
+        <Button onClick={onCancel} disabled={saving}>
           Cancel
         </Button>
       </div>
-    </CardBody>
+    </div>
   );
 }
 
@@ -455,8 +464,8 @@ function BotRow({
 
   return (
     <>
-      <div className="listrow">
-        <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="listrow settings-row--top">
+        <div className="listrow__main">
           <div className="listrow__title">{bot.label}</div>
           <div className="listrow__meta t-mono" title={receiveTitle(bot)}>
             {bot.key}
@@ -467,20 +476,20 @@ function BotRow({
                 Last message received {ago(bot.last_update_at)}
               </span>
             ) : (
-              "No message received since the hub started"
+              "No message received since palaia started"
             )}
           </div>
           {bot.enabled && !bot.token_stored ? (
             <div className="listrow__meta t-muted">
               {editable
                 ? "Edit the bot to store its token, then check the connection."
-                : "Store this bot's token in the hub's secret store, then check again."}
+                : "Store this bot's token on the server, then check again."}
             </div>
           ) : null}
           {bot.webhook_secret_stored === false ? (
             <div className="listrow__meta t-muted">
-              Cannot receive yet: the secret Telegram sends along with each
-              message is not stored on the hub.
+              Can't receive yet: the delivery secret Telegram sends with each
+              message isn't stored in palaia.
             </div>
           ) : null}
           {state.error ? (
@@ -495,7 +504,7 @@ function BotRow({
             </div>
           ) : null}
         </div>
-        <div className="row row--wrap" style={{ gap: 8, alignItems: "center" }}>
+        <div className="listrow__trail row row--wrap">
           <span title={state.title}>
             <Badge variant={state.variant}>{state.label}</Badge>
           </span>
@@ -505,7 +514,7 @@ function BotRow({
             </Button>
           ) : null}
           {editable && !editing ? (
-            <Button size="sm" variant="ghost" onClick={() => onEdit(bot.key)}>
+            <Button size="sm" onClick={() => onEdit(bot.key)}>
               Edit
             </Button>
           ) : null}
@@ -641,9 +650,8 @@ function RouteEditor({
     (kind === "inbox" && !vault);
 
   return (
-    <Card>
-      <CardBody className="stack stack--3">
-        <div className="row row--wrap" style={{ gap: 12, alignItems: "flex-start" }}>
+    <div className="settings-form">
+        <div className="row row--wrap settings-row--top">
           <Field label="Bot" controlId={botId}>
             <select
               id={botId}
@@ -673,8 +681,8 @@ function RouteEditor({
             onChange={setKind}
             options={[
               { value: "messenger", label: "An agent's inbox" },
-              { value: "inbox", label: "A vault's inbox" },
-              { value: "event", label: "A hub event" },
+              { value: "inbox", label: "A memory, to file" },
+              { value: "event", label: "An event for automations" },
             ]}
           />
         </Field>
@@ -685,12 +693,12 @@ function RouteEditor({
               hint={
                 messenger
                   ? "The agent's handle, or * for everyone — relayed as you, the owner."
-                  : "This hub runs without a messenger, so a rule like this cannot deliver."
+                  : "palaia runs without its messenger here, so this rule can't deliver."
               }
               value={to}
               onChange={(event) => setTo(event.target.value)}
             />
-            <div className="row row--wrap" style={{ gap: 12 }}>
+            <div className="row row--wrap">
               <Field label="Type" controlId={typeId}>
                 <select
                   id={typeId}
@@ -728,13 +736,13 @@ function RouteEditor({
         ) : null}
         {kind === "inbox" ? (
           <Field
-            label="Vault"
+            label="Memory"
             controlId={vaultId}
-            hint="The message lands in the vault's inbox, waiting to be sorted."
+            hint="The message lands in the memory as a note to file."
           >
             {vaultChoices.length === 0 ? (
               <span className="t-sm t-muted">
-                This hub has no vault yet — create one first.
+                There is no memory yet. Create one first.
               </span>
             ) : (
               <select
@@ -755,26 +763,27 @@ function RouteEditor({
         {kind === "event" ? (
           <LabeledInput
             label="Label"
-            hint="Optional. Tells this rule's events apart from another's, so an automation can react to just these. The event carries the message text."
+            optional
+            hint="Tells this rule's events apart, so an automation can react to just these. The event carries the message text."
             value={eventLabel}
             onChange={(event) => setEventLabel(event.target.value)}
           />
         ) : null}
         {error ? <p className="field__error">{error}</p> : null}
-        <div className="row row--wrap">
+        <div className="settings-form__actions">
           <Button
             variant="primary"
             onClick={save}
             disabled={saving || incomplete}
+            loading={saving}
           >
             {saving ? "Saving…" : "Save rule"}
           </Button>
-          <Button variant="ghost" onClick={onCancel} disabled={saving}>
+          <Button onClick={onCancel} disabled={saving}>
             Cancel
           </Button>
         </div>
-      </CardBody>
-    </Card>
+    </div>
   );
 }
 
@@ -827,8 +836,8 @@ function RoutesTable({
       key: "actions",
       header: "",
       render: (route) => (
-        <span className="row" style={{ gap: 6, justifyContent: "flex-end" }}>
-          <Button size="sm" variant="ghost" onClick={() => onEdit(route)}>
+        <span className="row row--wrap">
+          <Button size="sm" onClick={() => onEdit(route)}>
             Edit
           </Button>
           <RemoveControl
@@ -928,7 +937,7 @@ function GrantEditor({
         bots: everyBot ? [EVERY] : [...chosen],
         chats: parseList(chats),
       });
-      toast.show("Saved — the profile's next send follows it.");
+      toast.show("Saved. The tool set's next message follows it.");
       onSaved(status);
     } catch (err) {
       setError(explain(err));
@@ -938,27 +947,26 @@ function GrantEditor({
   }
 
   return (
-    <Card>
-      <CardBody className="stack stack--3">
+    <div className="settings-form">
         {grant ? (
           <p className="t-sm">
-            Tool profile <span className="t-mono">{grant.profile}</span>
+            Tool set <span className="t-mono">{grant.profile}</span>
           </p>
         ) : (
           <Field
-            label="Tool profile"
+            label="Tool set"
             controlId={profileId}
             hint={
               selected && !selected.telegram
-                ? "This profile does not carry the Telegram tools yet — switch them on under Tool profiles, or it has nothing to send with."
-                : "Its clients can send only where this says."
+                ? "This tool set doesn't include the Telegram tools yet. Switch them on in Settings › Advanced, or it has nothing to send with."
+                : "AI apps on this tool set can send only where this says."
             }
           >
             {profiles === null ? (
               <span className="t-sm t-muted">Loading…</span>
             ) : profiles.length === 0 ? (
               <span className="t-sm t-muted">
-                Every tool profile already has an entry.
+                Every tool set can already send.
               </span>
             ) : (
               <select
@@ -986,7 +994,7 @@ function GrantEditor({
           {everyBot ? null : (
             <div className="stack stack--2">
               {bots.map((b) => (
-                <label key={b.key} className="row" style={{ gap: 8 }}>
+                <label key={b.key} className="checkrow">
                   <input
                     type="checkbox"
                     checked={chosen.has(b.key)}
@@ -1003,8 +1011,8 @@ function GrantEditor({
                 </label>
               ))}
               {chosen.size === 0 ? (
-                <span className="t-xs t-muted">
-                  No bot chosen: this profile can send nothing.
+                <span className="t-sm t-muted">
+                  No bot chosen: this tool set can send nothing.
                 </span>
               ) : null}
             </div>
@@ -1012,25 +1020,25 @@ function GrantEditor({
         </div>
         <LabeledInput
           label="To these chats"
-          hint="* for every chat, or chat ids and @names separated by commas. Empty: none."
+          hint="* for every chat, or chat ids and @names separated by commas. Leave empty for none."
           value={chats}
           onChange={(event) => setChats(event.target.value)}
         />
         {error ? <p className="field__error">{error}</p> : null}
-        <div className="row row--wrap">
+        <div className="settings-form__actions">
           <Button
             variant="primary"
             onClick={save}
             disabled={saving || !profile}
+            loading={saving}
           >
             {saving ? "Saving…" : "Save"}
           </Button>
-          <Button variant="ghost" onClick={onCancel} disabled={saving}>
+          <Button onClick={onCancel} disabled={saving}>
             Cancel
           </Button>
         </div>
-      </CardBody>
-    </Card>
+    </div>
   );
 }
 
@@ -1059,16 +1067,16 @@ function GrantRow({
     : grant.bots.map((b) => labels.get(b) ?? b);
   return (
     <div className="listrow">
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="listrow__title t-mono">{grant.profile}</div>
+      <div className="listrow__main">
+        <div className="listrow__title">{grant.profile}</div>
         <div className="listrow__meta">
           Through {listLabel(bots, "every bot", "no bot")}, to{" "}
           {listLabel(grant.chats, "every chat", "no chat")}
         </div>
       </div>
       {editable ? (
-        <div className="row row--wrap" style={{ gap: 8 }}>
-          <Button size="sm" variant="ghost" onClick={onEdit}>
+        <div className="listrow__trail row row--wrap">
+          <Button size="sm" onClick={onEdit}>
             Edit
           </Button>
           <RemoveControl
@@ -1106,10 +1114,7 @@ function RecentRow({
     ? `@${entry.chat_username}`
     : String(entry.chat_id);
   return (
-    <div
-      className="listrow"
-      style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}
-    >
+    <div className="listrow telegram-recent">
       <div>
         <div className="listrow__title">
           {labels.get(entry.bot) ?? entry.bot} ·{" "}
@@ -1140,7 +1145,7 @@ function RecentRow({
             chats would catch the next one
             {editable ? " — pick one to write it:" : ":"}
           </p>
-          <div className="row row--wrap" style={{ gap: 6 }}>
+          <div className="row row--wrap">
             {(entry.candidates ?? []).map((key) =>
               editable ? (
                 <Button
@@ -1230,101 +1235,108 @@ export function Telegram() {
     );
   }
 
-  const intro = editable
-    ? "Your Telegram bots, where their messages go, and who may send through them — every change is saved to the hub and applies at once, no restart."
-    : "Your Telegram bots, where their messages go, and what happened to the last ones — updates live.";
+  const header = (
+    <PageHeader
+      title="Telegram"
+      description="Let AI apps read and send Telegram messages through your bots."
+      back={{ to: "/settings", label: "Settings" }}
+      actions={
+        <a className="btn" href={SETUP_GUIDE_URL} target="_blank" rel="noreferrer">
+          Setup guide
+        </a>
+      }
+    />
+  );
+
+  const loading = status === null && error === null;
 
   return (
-    <section className="stack stack--4">
-      <p className="t-sm t-muted" style={{ maxWidth: 620 }}>
-        {intro} Only which chat and where a message went is kept, never what
-        it said, and the list of recent messages starts over when the hub
-        restarts. New to this? The{" "}
-        <a href={SETUP_GUIDE_URL} target="_blank" rel="noreferrer">
-          setup guide
-        </a>{" "}
-        walks through creating a bot.
-      </p>
+    <div className="stack narrow">
+      {header}
 
       {error ? (
-        <div className="banner banner--warn">
-          <p className="t-sm t-muted">{error}</p>
-        </div>
+        <Callout tone="error" title="Couldn't load your Telegram setup" role="alert">
+          {error}
+        </Callout>
       ) : null}
 
       {status && status.warnings.length > 0 ? (
-        <div className="banner banner--warn stack stack--2">
+        <Callout tone="warn" title="palaia can't serve everything this setup asks for">
           {status.warnings.map((warning) => (
-            <p key={warning} className="t-sm t-muted">
-              {warning}
-            </p>
+            <p key={warning}>{warning}</p>
           ))}
-        </div>
+        </Callout>
       ) : null}
 
-      <div className="stack stack--2">
-        <div className="row row--between">
-          <span className="field__label">Bots</span>
-          {editable && editingBot !== "" ? (
-            <Button size="sm" onClick={() => setEditingBot("")}>
-              Add a bot
-            </Button>
-          ) : null}
-        </div>
+      {status && !editable ? (
+        <Callout tone="info" title="Changes are made in config.yaml on the server">
+          This palaia runs without a config.yaml it can write, so the lists below only show what
+          it runs.
+        </Callout>
+      ) : null}
+
+      <Card>
+        <CardHeader
+          title="Bots"
+          actions={
+            editable && editingBot !== "" ? (
+              <Button size="sm" onClick={() => setEditingBot("")}>
+                Add a bot
+              </Button>
+            ) : undefined
+          }
+        />
         {editingBot === "" ? (
-          <Card>
-            <BotEditor
-              bot={null}
-              existingKeys={new Set(bots.map((b) => b.key))}
-              onSaved={(next) => {
-                setStatus(next);
-                setEditingBot(null);
-              }}
-              onCancel={() => setEditingBot(null)}
-            />
-          </Card>
+          <BotEditor
+            bot={null}
+            existingKeys={new Set(bots.map((b) => b.key))}
+            onSaved={(next) => {
+              setStatus(next);
+              setEditingBot(null);
+            }}
+            onCancel={() => setEditingBot(null)}
+          />
         ) : null}
-        {status === null ? (
-          error ? null : (
-            <Skeleton height={60} />
-          )
-        ) : bots.length === 0 ? (
+        {loading ? (
+          <div className="settings-body">
+            <LoadingState label="Loading your bots…" lines={2} />
+          </div>
+        ) : status === null ? null : bots.length === 0 ? (
           editingBot === "" ? null : (
-            <EmptyState
-              mark={<TelegramIcon className="icon--lg" />}
-              title="No bots yet."
-            >
+            <InlineEmpty>
+              No bots yet.{" "}
               {editable
-                ? "Create a bot with @BotFather in Telegram, then add it here with its token."
-                : "Add a bot under telegram.bots in config.yaml and restart the hub to see it here."}
-            </EmptyState>
+                ? "Create one with @BotFather in Telegram, then add it here."
+                : "Add one under telegram.bots in config.yaml and restart palaia."}
+            </InlineEmpty>
           )
         ) : (
-          <Card>
-            {bots.map((bot) => (
-              <BotRow
-                key={bot.key}
-                bot={bot}
-                editable={editable}
-                editing={editingBot === bot.key}
-                onEdit={setEditingBot}
-                onChecked={replaceBot}
-                onSaved={setStatus}
-              />
-            ))}
-          </Card>
+          bots.map((bot) => (
+            <BotRow
+              key={bot.key}
+              bot={bot}
+              editable={editable}
+              editing={editingBot === bot.key}
+              onEdit={setEditingBot}
+              onChecked={replaceBot}
+              onSaved={setStatus}
+            />
+          ))
         )}
-      </div>
+      </Card>
 
-      <div className="stack stack--2" id="telegram-rules">
-        <div className="row row--between">
-          <span className="field__label">Where messages go</span>
-          {editable && bots.length > 0 && routeDraft === null ? (
-            <Button size="sm" onClick={() => startRule(bots[0].key, EVERY)}>
-              Add a rule
-            </Button>
-          ) : null}
-        </div>
+      <Card id="telegram-rules">
+        <CardHeader
+          title="Where messages go"
+          description="A rule sends a bot's messages from a chat to a memory, an agent or an automation."
+          actions={
+            editable && bots.length > 0 && routeDraft === null ? (
+              <Button size="sm" onClick={() => startRule(bots[0].key, EVERY)}>
+                Add a rule
+              </Button>
+            ) : undefined
+          }
+        />
         {routeDraft !== null && status !== null ? (
           <RouteEditor
             key={`${routeDraft.original?.bot ?? ""}/${routeDraft.original?.chat ?? ""}/${routeDraft.bot}/${routeDraft.chat}`}
@@ -1339,19 +1351,20 @@ export function Telegram() {
             onCancel={() => setRouteDraft(null)}
           />
         ) : null}
-        {status === null ? (
-          error ? null : (
-            <Skeleton height={60} />
-          )
-        ) : status.routes.length === 0 ? (
-          <EmptyState
-            mark={<TelegramIcon className="icon--lg" />}
-            title="No rules yet."
-          >
-            {editable
-              ? "Without a rule, every message a bot receives is dropped. Add one — or send the bot a message and write the rule from it under Recent messages."
-              : "Without a rule, every message a bot receives is dropped. Add one under telegram.routes in config.yaml and restart the hub."}
-          </EmptyState>
+        {loading ? (
+          <div className="settings-body">
+            <LoadingState label="Loading the rules…" lines={2} />
+          </div>
+        ) : status === null ? null : status.routes.length === 0 ? (
+          <ListRow
+            title="No rules"
+            description={
+              editable
+                ? "Incoming messages are dropped. Add a rule, or write one from a message under Recent messages."
+                : "Incoming messages are dropped. Rules are set under telegram.routes in config.yaml."
+            }
+            trailing={<StatusPill tone="warn">Messages dropped</StatusPill>}
+          />
         ) : (
           <RoutesTable
             routes={status.routes}
@@ -1368,22 +1381,20 @@ export function Telegram() {
             onSaved={setStatus}
           />
         )}
-      </div>
+      </Card>
 
-      <div className="stack stack--2">
-        <div className="row row--between">
-          <span className="field__label">Who may send</span>
-          {editable && editingGrant === null ? (
-            <Button size="sm" onClick={() => setEditingGrant("")}>
-              Let a profile send
-            </Button>
-          ) : null}
-        </div>
-        <p className="t-xs t-muted" style={{ maxWidth: 620 }}>
-          Agents send through the Telegram tools of their tool profile. A
-          profile with no entry here can send nothing at all; the curator
-          never can.
-        </p>
+      <Card>
+        <CardHeader
+          title="Who can send"
+          description="Choose which tool sets may send messages. None can by default; the curator never can."
+          actions={
+            editable && editingGrant === null ? (
+              <Button size="sm" onClick={() => setEditingGrant("")}>
+                Let a tool set send
+              </Button>
+            ) : undefined
+          }
+        />
         {editingGrant === "" && status !== null ? (
           <GrantEditor
             grant={null}
@@ -1396,78 +1407,70 @@ export function Telegram() {
             onCancel={() => setEditingGrant(null)}
           />
         ) : null}
-        {status === null ? (
-          error ? null : (
-            <Skeleton height={60} />
-          )
-        ) : status.grants.length === 0 ? (
+        {loading ? (
+          <div className="settings-body">
+            <LoadingState label="Loading who can send…" lines={2} />
+          </div>
+        ) : status === null ? null : status.grants.length === 0 ? (
           editingGrant === "" ? null : (
-            <EmptyState
-              mark={<TelegramIcon className="icon--lg" />}
-              title="No profile may send yet."
-            >
-              Messages still arrive; only sending is off until a tool profile
-              is let through.
-            </EmptyState>
+            <InlineEmpty>No tool set can send yet. Messages still arrive.</InlineEmpty>
           )
         ) : (
-          <Card>
-            {status.grants.map((grant) =>
-              editingGrant === grant.profile ? (
-                <GrantEditor
-                  key={grant.profile}
-                  grant={grant}
-                  bots={bots}
-                  granted={[]}
-                  onSaved={(next) => {
-                    setStatus(next);
-                    setEditingGrant(null);
-                  }}
-                  onCancel={() => setEditingGrant(null)}
-                />
-              ) : (
-                <GrantRow
-                  key={grant.profile}
-                  grant={grant}
-                  labels={labels}
-                  editable={editable}
-                  onEdit={() => setEditingGrant(grant.profile)}
-                  onSaved={setStatus}
-                />
-              ),
-            )}
-          </Card>
-        )}
-      </div>
-
-      <div className="stack stack--2">
-        <span className="field__label">Recent messages</span>
-        {status === null ? (
-          error ? null : (
-            <Skeleton height={60} />
-          )
-        ) : status.recent.length === 0 ? (
-          <EmptyState
-            mark={<TelegramIcon className="icon--lg" />}
-            title="No messages yet."
-          >
-            Messages your bots receive show up here, newest first. Send one to
-            a bot to see where it goes.
-          </EmptyState>
-        ) : (
-          <Card>
-            {status.recent.map((entry, index) => (
-              <RecentRow
-                key={`${entry.bot}/${entry.chat_id}/${entry.message_id}/${index}`}
-                entry={entry}
+          status.grants.map((grant) =>
+            editingGrant === grant.profile ? (
+              <GrantEditor
+                key={grant.profile}
+                grant={grant}
+                bots={bots}
+                granted={[]}
+                onSaved={(next) => {
+                  setStatus(next);
+                  setEditingGrant(null);
+                }}
+                onCancel={() => setEditingGrant(null)}
+              />
+            ) : (
+              <GrantRow
+                key={grant.profile}
+                grant={grant}
                 labels={labels}
                 editable={editable}
-                onCreateRule={startRule}
+                onEdit={() => setEditingGrant(grant.profile)}
+                onSaved={setStatus}
               />
-            ))}
-          </Card>
+            ),
+          )
         )}
-      </div>
-    </section>
+      </Card>
+
+      <Card>
+        <CardHeader title="Recent messages" description="Newest first. Updates by itself." />
+        {loading ? (
+          <div className="settings-body">
+            <LoadingState label="Loading recent messages…" lines={2} />
+          </div>
+        ) : status === null ? null : status.recent.length === 0 ? (
+          <InlineEmpty>No messages yet. Send one to a bot to see where it goes.</InlineEmpty>
+        ) : (
+          status.recent.map((entry, index) => (
+            <RecentRow
+              key={`${entry.bot}/${entry.chat_id}/${entry.message_id}/${index}`}
+              entry={entry}
+              labels={labels}
+              editable={editable}
+              onCreateRule={startRule}
+            />
+          ))
+        )}
+        <div className="settings-body">
+          <Disclosure summary="What palaia stores">
+            <p>
+              Which chat a message came from and where it went — never what it said. The list of
+              recent messages starts over when palaia restarts.
+            </p>
+          </Disclosure>
+        </div>
+      </Card>
+    </div>
   );
 }

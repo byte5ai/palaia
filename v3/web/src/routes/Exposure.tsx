@@ -1,478 +1,592 @@
 /**
- * The access-mode & reach-it-from-outside wizard (SPEC-205).
+ * Settings › Access & sign-in (SPEC-205, issues 570 and 571).
  *
- * Locked -> Cloud -> Open is presented as a guided, safe journey rather
- * than a raw settings form: each mode is explained in plain language
- * before the switch (MASTERPLAN §5.5's table, and its "vendor-cloud
- * reality check" — claude.ai/ChatGPT connect from their own cloud, so
- * Locked mode genuinely cannot reach them, whatever the local network
- * looks like); Cloud mode's tunnel guidance is copy-paste ready for
- * Tailscale or cloudflared, with a real "is it actually reachable"
- * self-test that never claims success it did not itself observe; Open
- * mode surfaces its hardening checklist, honest about which items the hub
- * verified itself and which only the operator can confirm.
+ * Three questions, in this order: where palaia can be reached (Private,
+ * Cloud, Public — each with what it means for the person choosing it), who
+ * has to sign in to this dashboard, and whether AI apps need an access key.
+ * The last two used to be one switch labelled "Require sign-in" that in fact
+ * controlled AI apps' access keys (`auth_enabled`) while the dashboard's own
+ * sign-in (`dashboard.require_sign_in`) had no control at all; they are two
+ * rows now, each saying what it changes.
  *
- * Deliberately dashboard-only — no MCP App surface (system's own
- * principles.md: "Access mode / exposure, token revocation — changes the
- * attack surface — dashboard only").
+ * Every change is written to config.yaml and applies after a restart; the
+ * page says so and offers the restart where palaia can do it itself.
+ * Deliberately dashboard-only — no MCP App surface (principles.md §4:
+ * access and sign-in change the attack surface).
  */
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
-import { Badge } from "../components/Badge";
 import { Button } from "../components/Button";
-import { Card, CardBody, CardFoot, CardHead } from "../components/Card";
-import { SwitchRow } from "../components/Field";
-import { Waiting } from "../components/Skeleton";
+import { Card, CardHeader } from "../components/Card";
+import { Callout } from "../components/Callout";
+import { ConfirmDialog } from "../components/Dialog";
+import { Disclosure } from "../components/Disclosure";
+import { ErrorState, LoadingState } from "../components/EmptyState";
+import { Field, Input, Segmented, Switch } from "../components/Field";
+import { ListRow } from "../components/ListRow";
+import { PageHeader } from "../components/PageHeader";
+import { RestartCallout } from "../components/RestartHub";
+import { StatusPill, type StatusTone } from "../components/StatusPill";
 import { useToast } from "../components/Toast";
 import type {
   ChecklistItem,
-  ExposureStatus,
+  ModeChangeRequest,
   ModeStatus,
   SelfTestResult,
+  SetupStatus,
   TunnelGuidance,
 } from "../lib/api/client";
-import { api, ApiError } from "../lib/api/client";
-import {
-  SEARCH_DEBOUNCE_MS,
-  useDebouncedValue,
-} from "../lib/useDebouncedValue";
-import { isHubMode, notifyModeChanged } from "../lib/mode";
-import { CheckIcon, CopyIcon, InfoIcon, WarningIcon } from "../shell/icons";
+import { api } from "../lib/api/client";
+import { describeApiError } from "../lib/errors";
+import { isHubMode, MODE_LABEL, MODE_OUTCOME, notifyModeChanged, type HubMode } from "../lib/mode";
+import { SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../lib/useDebouncedValue";
+import { CopyIcon } from "../shell/icons";
+import "./settings.css";
 
-type Mode = "locked" | "cloud" | "open";
+const MODES: HubMode[] = ["locked", "cloud", "open"];
 
-const MODE_COPY: Record<Mode, { title: string; body: string }> = {
-  locked: {
-    title: "Only your own network can reach it",
-    body:
-      "Your laptop, your phone on your home Wi-Fi, or anything on your VPN can connect. " +
-      "claude.ai and ChatGPT connect from their own cloud, not from your device — in this " +
-      "mode they simply cannot reach palaia, whatever your network looks like.",
+/** Whether the dashboard asks for sign-in with this configuration: always in
+ * Public, otherwise the explicit setting, otherwise what the mode implies
+ * (on in Cloud, off in Private) — `admin_session.sign_in_required`. */
+function dashboardSignInWanted(status: ModeStatus): boolean {
+  if (status.configured_mode === "open") return true;
+  if (status.dashboard_require_sign_in !== null) return status.dashboard_require_sign_in;
+  return status.configured_mode === "cloud";
+}
+
+/** The self-test's checks, named for the person reading them. */
+const CHECK_LABEL: Record<string, string> = {
+  discovery: "Sign-in details",
+  mcp: "AI connection",
+  admin_private: "Admin stays private",
+  dashboard_private: "Dashboard stays private",
+};
+
+/** The Public-mode checklist's items, in plain words. Unknown items keep the
+ * hub's own wording. */
+const CHECKLIST_COPY: Record<string, { title: string; detail: string }> = {
+  auth_mandatory: {
+    title: "AI apps need a key or sign-in",
+    detail: "No AI app connects without an access key or signing in.",
   },
-  cloud: {
-    title: "Claude, ChatGPT and your phone can reach your memory",
-    body:
-      "Your memory becomes reachable from anywhere, once you point a tunnel at it below. " +
-      "This dashboard stays on your own network only — someone would need to be on your " +
-      "VPN to see or change anything here.",
+  rate_limited: {
+    title: "Repeated sign-in attempts are slowed down",
+    detail: "Guessing a password or a key gets slower with every attempt.",
   },
-  open: {
-    title:
-      "Everything is reachable from the internet — including this dashboard",
-    body:
-      "Only choose this if you mean it: vault contents, tokens and hooks management all " +
-      "become reachable from anywhere, not just your memory. Everything here is then " +
-      "behind your sign-in, which this mode requires. Go through the checklist below first.",
+  tls: {
+    title: "The public address uses https",
+    detail: "Run “Check it from the internet” below to confirm.",
+  },
+  owner_account: {
+    title: "The owner account has its own password",
+    detail: "Nobody can sign in with a default password.",
   },
 };
 
-function errorDetail(err: unknown): string {
-  if (err instanceof ApiError) {
-    const body = err.body as { detail?: string } | undefined;
-    if (body?.detail) return body.detail;
-    return `The hub answered ${err.status}.`;
-  }
-  return "Could not reach the hub.";
-}
-
-/** What the "Require sign-in" switch reflects for a saved status. */
-function signInRequired(status: ModeStatus): boolean {
-  return status.auth_enabled || status.oauth_enabled;
-}
-
-function copy(text: string, toast: ReturnType<typeof useToast>, what: string) {
+function copyText(text: string, toast: ReturnType<typeof useToast>, what: string) {
   navigator.clipboard.writeText(text).then(
     () => toast.show(`${what} copied.`),
-    () => toast.show("Could not copy — select and copy manually."),
+    () => toast.show("Couldn't copy. Select the text and copy it yourself."),
   );
 }
+
+const HEADER = (
+  <PageHeader
+    title="Access & sign-in"
+    description="Who can reach palaia, and who has to sign in."
+    back={{ to: "/settings", label: "Settings" }}
+  />
+);
 
 export function Exposure() {
   const toast = useToast();
   const [status, setStatus] = useState<ModeStatus | null>(null);
+  const [setup, setSetup] = useState<SetupStatus | null>(null);
+  const [owner, setOwner] = useState<boolean | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const [draftMode, setDraftMode] = useState<Mode>("locked");
-  const [requireSignIn, setRequireSignIn] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     api
       .mode()
       .then((body) => {
-        if (cancelled) return;
-        setStatus(body);
-        setDraftMode(body.configured_mode as Mode);
-        setRequireSignIn(signInRequired(body));
+        if (!cancelled) setStatus(body);
       })
       .catch((err: unknown) => {
-        // Issue 378: no hub reachable used to leave this page on its
-        // loading state for good. Say so, and offer to try again — never
-        // guess at a mode the hub did not report.
-        if (!cancelled) setLoadError(errorDetail(err));
+        // Issue 378: never sit on a loading state, never guess a mode.
+        if (!cancelled) setLoadError(describeApiError(err));
+      });
+    api
+      .setupStatus()
+      .then((body) => {
+        if (!cancelled) setSetup(body);
+      })
+      .catch(() => {
+        // Restart support is a convenience; without it the page names the command.
+      });
+    api
+      .ownerAccount()
+      .then((body) => {
+        if (!cancelled) setOwner(body.configured);
+      })
+      .catch(() => {
+        if (!cancelled) setOwner(null);
       });
     return () => {
       cancelled = true;
     };
   }, [attempt]);
 
-  async function save() {
-    setSaving(true);
-    setSaveError(null);
+  /** Write one change; the hub answers with the new status, or why not. */
+  async function change(body: ModeChangeRequest, done: string): Promise<string | null> {
     try {
-      const body = await api.changeMode({
-        mode: draftMode,
-        auth_enabled: draftMode === "locked" ? requireSignIn : true,
-      });
-      setStatus(body);
-      setRequireSignIn(signInRequired(body));
-      // Issue issue 343: the shell's footer shows the mode the hub is *running*.
-      if (isHubMode(body.active_mode)) notifyModeChanged(body.active_mode);
-      toast.show(
-        body.restart_required
-          ? "Saved. Restart the hub for this to take effect."
-          : "Saved.",
-      );
+      const next = await api.changeMode(body);
+      setStatus(next);
+      if (isHubMode(next.active_mode)) notifyModeChanged(next.active_mode);
+      api
+        .setupStatus()
+        .then(setSetup)
+        .catch(() => {});
+      toast.show(next.restart_required ? `${done} Restart palaia to apply it.` : done);
+      return null;
     } catch (err) {
-      setSaveError(errorDetail(err));
-    } finally {
-      setSaving(false);
+      return describeApiError(err);
     }
   }
 
   if (!status) {
     return (
-      <Card>
-        <CardBody className="stack stack--2">
-          {loadError ? (
-            <>
-              <div className="banner banner--warn">
-                <WarningIcon className="icon icon--sm" />
-                <p className="t-sm t-muted">
-                  Could not load your current access mode: {loadError}
-                </p>
-              </div>
-              <div className="row">
-                <Button
-                  onClick={() => {
-                    setLoadError(null);
-                    setAttempt((n) => n + 1);
-                  }}
-                >
-                  Try again
-                </Button>
-              </div>
-            </>
-          ) : (
-            <Waiting>Loading your current access mode…</Waiting>
-          )}
-        </CardBody>
-      </Card>
+      <div className="stack narrow">
+        {HEADER}
+        {loadError ? (
+          <ErrorState
+            title="Couldn't load how palaia is reached"
+            details={loadError}
+            onRetry={() => {
+              setLoadError(null);
+              setAttempt((n) => n + 1);
+            }}
+          >
+            palaia didn't answer. It may be restarting.
+          </ErrorState>
+        ) : (
+          <LoadingState label="Loading how palaia is reached…" />
+        )}
+      </div>
     );
   }
 
-  // Issue 374: the sign-in switch is a change too — it used to leave the
-  // button at "No changes to save" when toggled on its own.
-  const dirty =
-    draftMode !== status.configured_mode ||
-    (draftMode === "locked" && requireSignIn !== signInRequired(status));
-  const showTunnel = draftMode === "cloud" || draftMode === "open";
-  const showChecklist = draftMode === "open";
+  const configured = (isHubMode(status.configured_mode) ? status.configured_mode : "locked") as HubMode;
+  const dashboardOn = dashboardSignInWanted(status);
 
   return (
-    <div className="stack stack--4">
+    <div className="stack narrow">
+      {HEADER}
+
       <Card>
-        <CardHead
-          title="access mode"
-          meta={
-            status.restart_required ? (
-              <Badge variant="warn">saved — restart to apply</Badge>
-            ) : (
-              <Badge variant="ok">
-                {status.active_mode === "locked"
-                  ? "your network only"
-                  : status.active_mode === "cloud"
-                    ? "memory reachable everywhere"
-                    : "everything reachable everywhere"}
-              </Badge>
-            )
-          }
-        />
-        <CardBody className="stack stack--3">
-          <div className="segmented" role="radiogroup" aria-label="Access mode">
-            {(["locked", "cloud", "open"] as Mode[]).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                role="radio"
-                aria-checked={draftMode === mode}
-                className={[
-                  "segmented__item",
-                  draftMode === mode ? "segmented__item--on" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                onClick={() => setDraftMode(mode)}
-              >
-                {mode === "locked"
-                  ? "Locked"
-                  : mode === "cloud"
-                    ? "Cloud"
-                    : "Open"}
-              </button>
-            ))}
+        <div className="settings-summary" data-testid="access-summary">
+          <div className="settings-summary__main">
+            <p className="settings-summary__title">{MODE_LABEL[configured]}</p>
+            <p className="t-sm t-muted">{MODE_OUTCOME[configured]}</p>
+            <div className="settings-summary__pills">
+              <StatusPill tone={dashboardOn ? "ok" : "neutral"}>
+                {dashboardOn ? "Dashboard sign-in on" : "Dashboard sign-in off"}
+              </StatusPill>
+              <StatusPill tone={status.auth_enabled ? "ok" : "warn"}>
+                {status.auth_enabled ? "AI apps need an access key" : "AI apps connect without a key"}
+              </StatusPill>
+            </div>
           </div>
-          <p className="card__subject">{MODE_COPY[draftMode].title}</p>
-          <p className="t-sm t-muted">{MODE_COPY[draftMode].body}</p>
-          {draftMode !== "locked" ? (
-            <div className="banner">
-              <InfoIcon className="icon icon--sm" />
-              <p className="t-sm t-muted">
-                Cloud and Open both require sign-in — anyone without a token or
-                an account is turned away.
-              </p>
-            </div>
-          ) : (
-            <SwitchRow
-              label="Require sign-in"
-              consequence="Off by default here, since only your own trusted devices can reach palaia in this mode."
-              checked={requireSignIn}
-              onChange={setRequireSignIn}
-            />
-          )}
-          {saveError ? (
-            <div className="banner banner--warn">
-              <WarningIcon className="icon icon--sm" />
-              <p className="t-sm t-muted">{saveError}</p>
-            </div>
-          ) : null}
-        </CardBody>
-        <CardFoot>
-          <Button variant="primary" onClick={save} disabled={saving || !dirty}>
-            {saving
-              ? "Saving…"
-              : dirty
-                ? "Save this access mode"
-                : "No changes to save"}
-          </Button>
-        </CardFoot>
+        </div>
       </Card>
 
-      {showTunnel ? (
-        <TunnelCard mode={draftMode === "open" ? "open" : "cloud"} />
+      {status.restart_required ? (
+        <RestartCallout supported={setup?.restart_supported ?? false}>
+          <p>Your changes are saved. palaia uses them after a restart.</p>
+        </RestartCallout>
       ) : null}
-      {showChecklist ? <ChecklistCard /> : null}
+
+      <ModeCard status={status} setup={setup} onChange={change} />
+
+      <SignInCard status={status} owner={owner} onChange={change} />
     </div>
   );
 }
 
-function TunnelCard({ mode }: { mode: "cloud" | "open" }) {
-  const toast = useToast();
-  const [kind, setKind] = useState<"tailscale" | "cloudflared" | "own">(
-    "tailscale",
+type ChangeFn = (body: ModeChangeRequest, done: string) => Promise<string | null>;
+
+function ModeCard({
+  status,
+  setup,
+  onChange,
+}: {
+  status: ModeStatus;
+  setup: SetupStatus | null;
+  onChange: ChangeFn;
+}) {
+  const configured = (isHubMode(status.configured_mode) ? status.configured_mode : "locked") as HubMode;
+  const [draft, setDraft] = useState<HubMode>(configured);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [confirmPrivate, setConfirmPrivate] = useState(false);
+
+  async function apply(body: ModeChangeRequest, done: string) {
+    setBusy(true);
+    setError(null);
+    const problem = await onChange(body, done);
+    setBusy(false);
+    if (problem) setError(problem);
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        title="Where palaia can be reached"
+        description="Choose where your AI apps connect from. You can change this any time."
+      />
+      <div className="settings-body">
+        <div className="mode-choice radiocards" role="radiogroup" aria-label="Access mode">
+          {MODES.map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              role="radio"
+              aria-checked={draft === mode}
+              className={["radiocard", draft === mode ? "radiocard--on" : ""].filter(Boolean).join(" ")}
+              onClick={() => {
+                setDraft(mode);
+                setError(null);
+              }}
+            >
+              <span className="radiocard__pick" aria-hidden="true" />
+              <span>
+                <span className="radiocard__name">{MODE_LABEL[mode]}</span>
+                <span className="radiocard__when">
+                  {MODE_OUTCOME[mode]}
+                </span>
+                {mode === configured ? (
+                  <span className="mode-choice__current">
+                    <StatusPill tone="ok">Current</StatusPill>
+                  </span>
+                ) : null}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {error ? (
+          <Callout tone="error" title="palaia didn't save this" role="alert">
+            {error}
+          </Callout>
+        ) : null}
+
+        {draft === "locked" && configured !== "locked" ? (
+          <div className="row row--wrap">
+            <Button variant="primary" loading={busy} onClick={() => setConfirmPrivate(true)}>
+              {busy ? "Saving…" : "Switch to Private"}
+            </Button>
+          </div>
+        ) : null}
+
+        {draft === "cloud" || draft === "open" ? (
+          <PublicAddressSetup
+            mode={draft}
+            status={status}
+            setup={setup}
+            busy={busy}
+            onApply={(address, tunnel) =>
+              void apply(
+                {
+                  mode: draft,
+                  oauth_enabled: true,
+                  oauth_issuer: address,
+                  public_url: address,
+                  ...(tunnel ? { tunnel } : {}),
+                },
+                draft === "cloud" ? "Cloud access saved." : "Public access saved.",
+              )
+            }
+          />
+        ) : null}
+      </div>
+      <ConfirmDialog
+        open={confirmPrivate}
+        onCancel={() => setConfirmPrivate(false)}
+        onConfirm={() => {
+          setConfirmPrivate(false);
+          void apply({ mode: "locked" }, "Private access saved.");
+        }}
+        title="Switch to Private?"
+        confirmLabel="Switch to Private"
+      >
+        <p>
+          Only devices on your network or VPN can reach palaia afterwards. claude.ai, ChatGPT and
+          other apps that connect from the internet stop working.
+        </p>
+      </ConfirmDialog>
+    </Card>
   );
-  const [hostname, setHostname] = useState("");
+}
+
+/** The host part of a valid https address, for the tunnel commands. */
+function hostnameOf(address: string, invalid: string | undefined): string {
+  if (!address || invalid) return "";
+  try {
+    return new URL(address).hostname;
+  } catch {
+    return "";
+  }
+}
+
+function PublicAddressSetup({
+  mode,
+  status,
+  setup,
+  busy,
+  onApply,
+}: {
+  mode: "cloud" | "open";
+  status: ModeStatus;
+  setup: SetupStatus | null;
+  busy: boolean;
+  onApply: (address: string, tunnel: "tailscale" | "cloudflared" | "reverse_proxy" | undefined) => void;
+}) {
+  const configuredHere = status.configured_mode === mode;
+  const [address, setAddress] = useState(status.public_url ?? setup?.cloud_url_hint ?? "");
+  const [kind, setKind] = useState<"tailscale" | "cloudflared" | "reverse_proxy">(
+    status.tunnel === "cloudflared" || status.tunnel === "reverse_proxy" ? status.tunnel : "tailscale",
+  );
+  const [acknowledged, setAcknowledged] = useState(false);
+
+  const trimmed = address.trim().replace(/\/+$/, "");
+  const addressError =
+    trimmed && !/^https:\/\/[^/\s]+$/.test(trimmed)
+      ? "Use the full https:// address, without a path."
+      : undefined;
+  const ready = Boolean(trimmed) && !addressError && (mode === "cloud" || acknowledged);
+  const unchanged =
+    configuredHere && trimmed === (status.public_url ?? "").replace(/\/+$/, "") && status.oauth_enabled;
+
+  const hostname = hostnameOf(trimmed, addressError);
+
+  return (
+    <div className="stack stack--4" data-testid={`setup-${mode}`}>
+      <div className="stack stack--1">
+        <p className="t-strong">
+          {mode === "cloud" ? "Set up a public address" : "Set up a public address for everything"}
+        </p>
+        <p className="t-sm t-muted">
+          {mode === "cloud"
+            ? "AI apps on the internet connect to palaia at a secure https address. That address leads only to palaia's AI connection; this dashboard stays on your private network. Each app signs in with your owner account."
+            : "The address leads to all of palaia, this dashboard included. Everyone who opens it has to sign in with the owner account."}
+        </p>
+      </div>
+
+      <Field
+        label="Public address"
+        hint={
+          setup?.cloud_url_hint && trimmed === setup.cloud_url_hint.replace(/\/+$/, "")
+            ? "Set up during installation."
+            : "The https address your tunnel or proxy gives palaia."
+        }
+        error={addressError}
+      >
+        <Input
+          value={address}
+          onChange={(event) => setAddress(event.target.value)}
+          placeholder="https://palaia.your-tailnet.ts.net"
+          inputMode="url"
+          autoComplete="off"
+          invalid={Boolean(addressError)}
+        />
+      </Field>
+
+      <Disclosure summary="I don't have a public address yet">
+        <TunnelGuide mode={mode} kind={kind} onKind={setKind} hostname={hostname} />
+      </Disclosure>
+
+      {mode === "open" ? (
+        <>
+          <ChecklistBlock />
+          <label className="checkrow">
+            <input
+              type="checkbox"
+              checked={acknowledged}
+              onChange={(event) => setAcknowledged(event.target.checked)}
+            />
+            <span className="t-sm">
+              I understand that this dashboard, my memories and the access keys can be reached
+              from the internet, behind the owner sign-in.
+            </span>
+          </label>
+        </>
+      ) : null}
+
+      <div className="row row--wrap">
+        <Button
+          variant="primary"
+          loading={busy}
+          disabled={!ready || unchanged}
+          onClick={() => onApply(trimmed, kind)}
+        >
+          {busy
+            ? "Saving…"
+            : unchanged
+              ? mode === "cloud"
+                ? "Cloud is set up"
+                : "Public is set up"
+              : mode === "cloud"
+                ? "Switch to Cloud"
+                : "Switch to Public"}
+        </Button>
+        <span className="t-sm t-muted">palaia restarts once to apply it.</span>
+      </div>
+
+      {configuredHere && status.public_url ? <SelfTest address={status.public_url} /> : null}
+    </div>
+  );
+}
+
+function TunnelGuide({
+  mode,
+  kind,
+  onKind,
+  hostname,
+}: {
+  mode: "cloud" | "open";
+  kind: "tailscale" | "cloudflared" | "reverse_proxy";
+  onKind: (kind: "tailscale" | "cloudflared" | "reverse_proxy") => void;
+  hostname: string;
+}) {
+  const toast = useToast();
   const [guidance, setGuidance] = useState<TunnelGuidance | null>(null);
-  const [detected, setDetected] = useState<{
-    tailscale: boolean;
-    cloudflared: boolean;
-  } | null>(null);
-  const [publicUrl, setPublicUrl] = useState("");
-  const [testResult, setTestResult] = useState<SelfTestResult | null>(null);
-  const [testing, setTesting] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .exposure()
-      .then((body: ExposureStatus) => {
-        if (cancelled) return;
-        setDetected(body.detected);
-        if (body.status.public_url) setPublicUrl(body.status.public_url);
-      })
-      .catch(() => {
-        // Detection/known-public-URL is a convenience, not a requirement —
-        // the tabs below still work with nothing pre-filled.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Issue 384: one guidance request per pause in typing the hostname, the
-  // previous one aborted — not a POST per keystroke.
+  // Issue 384: one request per pause in typing, the previous one aborted.
   const debouncedHostname = useDebouncedValue(hostname, SEARCH_DEBOUNCE_MS);
   useEffect(() => {
-    // Nothing to fetch for "I have my own reverse proxy" — the render
-    // below never reads `guidance` in that branch, so leaving stale state
-    // sit unread here is harmless, and it is refreshed the moment `kind`
-    // switches back to a real provider.
-    if (kind === "own") return;
+    if (kind === "reverse_proxy") return;
     const controller = new AbortController();
     api
-      .tunnelGuidance(
-        { kind, hostname: debouncedHostname || undefined },
-        controller.signal,
-      )
+      .tunnelGuidance({ kind, hostname: debouncedHostname || undefined }, controller.signal)
       .then((body) => {
         if (!controller.signal.aborted) setGuidance(body);
       })
       .catch(() => {
-        // No hub reachable — the tab just stays without a generated
-        // config rather than showing a stale or fabricated one.
+        // No answer: no commands rather than stale or made-up ones.
       });
     return () => controller.abort();
   }, [kind, debouncedHostname, mode]);
 
-  async function runSelfTest() {
-    if (!publicUrl.trim()) return;
+  return (
+    <div className="stack stack--3">
+      <Segmented
+        ariaLabel="How the public address is made"
+        value={kind}
+        onChange={onKind}
+        options={[
+          { value: "tailscale", label: "Tailscale" },
+          { value: "cloudflared", label: "Cloudflare Tunnel" },
+          { value: "reverse_proxy", label: "My own proxy" },
+        ]}
+      />
+      {kind === "reverse_proxy" ? (
+        <p>
+          Point your proxy at port {mode === "cloud" ? "8422" : "8420"} on the server palaia runs
+          on, with an https address in front. Then enter that address above.
+        </p>
+      ) : guidance ? (
+        <>
+          <div className="command-list">
+            <span className="command-list__label">Run this on the server palaia runs on:</span>
+            {guidance.commands.map((command) => (
+              <div className="snippet" key={command}>
+                <code>{command}</code>
+                {command.startsWith("#") ? null : (
+                  <Button size="sm" onClick={() => copyText(command, toast, "Command")}>
+                    <CopyIcon className="icon" />
+                    Copy
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+          <p>{guidance.note}</p>
+          {guidance.config ? (
+            <Disclosure summary="Show configuration">
+              <div className="snippet snippet--block">
+                <code>{guidance.config}</code>
+              </div>
+              <div>
+                <Button size="sm" onClick={() => copyText(guidance.config, toast, "Configuration")}>
+                  <CopyIcon className="icon" />
+                  Copy configuration
+                </Button>
+              </div>
+            </Disclosure>
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function SelfTest({ address }: { address: string }) {
+  const [result, setResult] = useState<SelfTestResult | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run() {
     setTesting(true);
-    setTestResult(null);
+    setResult(null);
+    setError(null);
     try {
-      setTestResult(await api.selfTest(publicUrl.trim()));
-    } catch {
-      // The self-test endpoint itself was unreachable (not the public URL
-      // it was asked to check) — leave the result blank rather than
-      // reporting a fabricated "unreachable" for the wrong target.
+      setResult(await api.selfTest(address));
+    } catch (err) {
+      // The check itself could not run — never a made-up "unreachable".
+      setError(describeApiError(err));
     } finally {
       setTesting(false);
     }
   }
 
   return (
-    <Card>
-      <CardHead title="reach it from outside your network" />
-      <CardBody className="stack stack--3">
-        <div
-          className="segmented"
-          role="radiogroup"
-          aria-label="How you reach this hub"
-        >
-          {[
-            { value: "tailscale" as const, label: "Tailscale" },
-            { value: "cloudflared" as const, label: "cloudflared" },
-            { value: "own" as const, label: "I have my own reverse proxy" },
-          ].map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              role="radio"
-              aria-checked={kind === option.value}
-              className={[
-                "segmented__item",
-                kind === option.value ? "segmented__item--on" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              onClick={() => setKind(option.value)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-
-        {kind === "own" ? (
-          <p className="t-sm t-muted">
-            Point your reverse proxy at this machine and terminate a secure
-            (https) address there. Once it answers, put its address in the box
-            below and test it.
-          </p>
-        ) : (
-          <>
-            <p className="t-xs t-muted">
-              {detected
-                ? detected[kind]
-                  ? `${kind === "tailscale" ? "Tailscale" : "cloudflared"} was found on this machine.`
-                  : `${kind === "tailscale" ? "Tailscale" : "cloudflared"} was not found on this machine — install it first, then come back to run these.`
-                : null}
-            </p>
-            <input
-              className="input"
-              placeholder={
-                kind === "tailscale"
-                  ? "your-machine.tailnet-name.ts.net"
-                  : "hub.example.com"
-              }
-              value={hostname}
-              onChange={(event) => setHostname(event.target.value)}
-              aria-label="Hostname"
-            />
-            {guidance ? (
-              <div className="stack stack--2">
-                <div className="snippet snippet--block">
-                  <code>{guidance.config}</code>
-                </div>
-                <div className="row row--wrap" style={{ gap: 6 }}>
-                  <Button
-                    size="sm"
-                    onClick={() => copy(guidance.config, toast, "Config")}
-                  >
-                    <CopyIcon className="icon--sm" />
-                    Copy config
-                  </Button>
-                  {guidance.commands.map((command) => (
-                    <Button
-                      key={command}
-                      size="sm"
-                      variant="quiet"
-                      onClick={() => copy(command, toast, "Command")}
-                    >
-                      <CopyIcon className="icon--sm" />
-                      {command}
-                    </Button>
-                  ))}
-                </div>
-                <p className="t-xs t-muted">{guidance.note}</p>
-              </div>
-            ) : null}
-          </>
-        )}
-
-        <div className="stack stack--2" style={{ marginTop: 8 }}>
-          <span className="field__label">Check it actually works</span>
-          <div className="row row--wrap">
-            <input
-              className="input"
-              style={{ maxWidth: 320 }}
-              placeholder="https://hub.example.com"
-              value={publicUrl}
-              onChange={(event) => setPublicUrl(event.target.value)}
-              aria-label="Public address to test"
-            />
-            <Button
-              onClick={runSelfTest}
-              disabled={testing || !publicUrl.trim()}
-            >
-              {testing ? "Testing…" : "Test now"}
-            </Button>
-          </div>
-          {testResult ? (
-            testResult.reachable ? (
-              <div className="banner banner--ok">
-                <CheckIcon className="icon icon--sm" />
-                <p className="t-sm t-muted">
-                  Reachable — palaia fetched itself through this address in{" "}
-                  {Math.round(testResult.latency_ms ?? 0)} ms.
-                </p>
-              </div>
-            ) : (
-              <div className="banner banner--warn">
-                <WarningIcon className="icon icon--sm" />
-                <p className="t-sm t-muted">
-                  Not reachable — {testResult.error}
-                </p>
-              </div>
-            )
-          ) : null}
-        </div>
-      </CardBody>
-    </Card>
+    <div className="stack stack--3" data-testid="self-test">
+      <div className="row row--wrap">
+        <Button onClick={() => void run()} loading={testing}>
+          {testing ? "Checking…" : "Check it from the internet"}
+        </Button>
+        {result ? (
+          <StatusPill tone={result.reachable ? "ok" : "error"}>
+            {result.reachable ? "Works" : "Doesn't work yet"}
+          </StatusPill>
+        ) : null}
+      </div>
+      {error ? <p className="field__error">{error}</p> : null}
+      {result ? (
+        result.checks.length > 0 ? (
+          <ul className="check-list">
+            {result.checks.map((check) => (
+              <li className="check-list__item" key={check.id}>
+                <StatusPill tone={check.passed ? "ok" : "error"}>
+                  {check.passed ? "Passed" : "Failed"}
+                </StatusPill>
+                <span className="check-list__text">
+                  <span className="check-list__title">{CHECK_LABEL[check.id] ?? check.id}</span>
+                  <span className="check-list__detail">{check.detail}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : result.reachable ? null : (
+          <p className="t-sm t-muted">{result.error}</p>
+        )
+      ) : null}
+    </div>
   );
 }
 
-function ChecklistCard() {
+function ChecklistBlock() {
   const [items, setItems] = useState<ChecklistItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -481,64 +595,207 @@ function ChecklistCard() {
     let cancelled = false;
     api
       .exposure()
-      .then((body: ExposureStatus) => {
+      .then((body) => {
         if (!cancelled) setItems(body.checklist);
       })
       .catch((err: unknown) => {
-        // Issue 378: "Checking…" forever told the operator nothing.
-        if (!cancelled) setError(errorDetail(err));
+        if (!cancelled) setError(describeApiError(err));
       });
     return () => {
       cancelled = true;
     };
   }, [attempt]);
 
+  const shown = (items ?? []).filter((item) => item.id !== "dashboard_exposure_acknowledged");
+
+  return (
+    <div className="stack stack--2" data-testid="public-checklist">
+      <p className="t-strong">Before the dashboard goes on the internet</p>
+      {error && !items ? (
+        <ErrorState
+          title="Couldn't run the checks"
+          details={error}
+          onRetry={() => {
+            setError(null);
+            setAttempt((n) => n + 1);
+          }}
+        />
+      ) : items === null ? (
+        <LoadingState label="Checking…" lines={2} />
+      ) : (
+        <ul className="check-list">
+          {shown.map((item) => {
+            const copy = CHECKLIST_COPY[item.id] ?? { title: item.title, detail: item.detail };
+            const tone: StatusTone = !item.auto ? "neutral" : item.passed ? "ok" : "error";
+            const word = !item.auto ? "Check yourself" : item.passed ? "Done" : "Not yet";
+            return (
+              <li className="check-list__item" key={item.id}>
+                <StatusPill tone={tone}>{word}</StatusPill>
+                <span className="check-list__text">
+                  <span className="check-list__title">{copy.title}</span>
+                  <span className="check-list__detail">{copy.detail}</span>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function SignInCard({
+  status,
+  owner,
+  onChange,
+}: {
+  status: ModeStatus;
+  owner: boolean | null;
+  onChange: ChangeFn;
+}) {
+  const [busy, setBusy] = useState<"keys" | "dashboard" | null>(null);
+  const [error, setError] = useState<{ row: "keys" | "dashboard"; text: string } | null>(null);
+  const [confirmKeysOff, setConfirmKeysOff] = useState(false);
+
+  const isPublic = status.configured_mode === "open";
+  const dashboardOn = dashboardSignInWanted(status);
+  // Turning the dashboard's sign-in on needs an owner account to sign in
+  // with; without one the gate would stay open (admin_session.py).
+  const needsOwner = !dashboardOn && owner === false;
+
+  async function run(row: "keys" | "dashboard", body: ModeChangeRequest, done: string) {
+    setBusy(row);
+    setError(null);
+    const problem = await onChange(body, done);
+    setBusy(null);
+    if (problem) setError({ row, text: problem });
+  }
+
+  function setDashboard(on: boolean) {
+    const body: ModeChangeRequest = { dashboard_require_sign_in: on };
+    if (on && !status.oauth_enabled) {
+      // The sign-in page is served by palaia's sign-in server; switch it on
+      // for this dashboard's own address (the same call setup makes).
+      body.oauth_enabled = true;
+      body.oauth_issuer = status.oauth_issuer ?? window.location.origin;
+    }
+    void run(
+      "dashboard",
+      body,
+      on ? "Dashboard sign-in turned on." : "Dashboard sign-in turned off.",
+    );
+  }
+
+  let keysNote: ReactNode = null;
+  if (error?.row === "keys") {
+    keysNote = <p className="field__error">{error.text}</p>;
+  }
+  let dashboardNote: ReactNode = null;
+  if (error?.row === "dashboard") {
+    dashboardNote = <p className="field__error">{error.text}</p>;
+  } else if (needsOwner) {
+    dashboardNote = (
+      <Callout
+        tone="info"
+        title="Create the owner account first"
+        actions={
+          <Link className="btn btn--sm" to="/onboarding">
+            Continue setup
+          </Link>
+        }
+      >
+        The dashboard asks for this account's password once sign-in is on.
+      </Callout>
+    );
+  }
+
   return (
     <Card>
-      <CardHead title="before you open the dashboard itself" />
-      <CardBody className="stack stack--2">
-        {items === null && error ? (
-          <>
-            <div className="banner banner--warn">
-              <WarningIcon className="icon icon--sm" />
-              <p className="t-sm t-muted">Could not run the checks: {error}</p>
-            </div>
-            <div className="row">
-              <Button
-                size="sm"
-                onClick={() => {
-                  setError(null);
-                  setAttempt((n) => n + 1);
-                }}
-              >
-                Try again
-              </Button>
-            </div>
-          </>
-        ) : items === null ? (
-          <Waiting>Checking…</Waiting>
-        ) : (
-          items.map((item) => (
-            <div
-              className="row"
-              key={item.id}
-              style={{ gap: 10, alignItems: "flex-start" }}
-            >
-              {item.auto ? (
-                <Badge variant={item.passed ? "ok" : "risk"}>
-                  {item.passed ? "checked" : "not yet"}
-                </Badge>
-              ) : (
-                <Badge variant="neutral">check yourself</Badge>
-              )}
-              <div>
-                <p className="t-sm">{item.title}</p>
-                <p className="t-xs t-muted">{item.detail}</p>
-              </div>
-            </div>
-          ))
-        )}
-      </CardBody>
+      <CardHeader title="Sign-in" />
+      <ListRow
+        setting
+        labelId="row-dashboard-sign-in"
+        title="Require sign-in for this dashboard"
+        description={
+          isPublic
+            ? "Always on in Public mode."
+            : dashboardOn
+              ? "Anyone who opens the dashboard signs in with the owner account."
+              : "Anyone who can open this address can use the dashboard."
+        }
+        trailing={
+          <Switch
+            checked={dashboardOn}
+            onChange={setDashboard}
+            disabled={isPublic || needsOwner || busy !== null}
+            labelledBy="row-dashboard-sign-in"
+          />
+        }
+      />
+      {dashboardNote ? <div className="setting-note">{dashboardNote}</div> : null}
+      <ListRow
+        setting
+        labelId="row-access-keys"
+        title="AI apps need an access key"
+        description={
+          status.auth_enabled
+            ? "Each AI app connects with its own key, which you can revoke."
+            : status.oauth_enabled
+              ? "Access keys don't work; AI apps connect only by signing in."
+              : "Any AI app on your network can read and change your memories."
+        }
+        trailing={
+          <Switch
+            checked={status.auth_enabled}
+            onChange={(on) => {
+              if (on) {
+                void run("keys", { auth_enabled: true }, "Access keys turned on.");
+              } else {
+                setConfirmKeysOff(true);
+              }
+            }}
+            disabled={busy !== null}
+            labelledBy="row-access-keys"
+          />
+        }
+      />
+      {keysNote ? <div className="setting-note">{keysNote}</div> : null}
+      <ListRow
+        title="Owner account"
+        description={
+          owner === null
+            ? "palaia couldn't say whether it exists."
+            : owner
+              ? "Set up. It is the account you sign in to this dashboard with."
+              : "Not set up yet."
+        }
+        trailing={
+          owner === false ? (
+            <Link className="btn btn--sm" to="/onboarding">
+              Set up
+            </Link>
+          ) : owner ? (
+            <StatusPill tone="ok">Set up</StatusPill>
+          ) : null
+        }
+      />
+      <ConfirmDialog
+        open={confirmKeysOff}
+        onCancel={() => setConfirmKeysOff(false)}
+        onConfirm={() => {
+          setConfirmKeysOff(false);
+          void run("keys", { auth_enabled: false }, "Access keys turned off.");
+        }}
+        title="Let AI apps connect without an access key?"
+        confirmLabel="Turn off access keys"
+        destructive
+      >
+        <p>
+          {status.oauth_enabled
+            ? "The access keys you created stop working. AI apps can then only connect by signing in to palaia."
+            : "Anyone on your network could read and change your memories. The access keys you created stop being checked."}
+        </p>
+      </ConfirmDialog>
     </Card>
   );
 }
