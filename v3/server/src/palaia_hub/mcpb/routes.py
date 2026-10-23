@@ -73,10 +73,11 @@ def build_mcpb_router(
     """Build the ``/api/connect/mcpb`` router.
 
     Args:
-        public_url: the hub's configured public address
-            (``exposure.public_url``). Given, the bundle points there; the
-            request's own ``Host`` header is the fallback, which is wrong
-            behind a reverse proxy (issue #397).
+        public_url: the hub's public address while it serves MCP
+            (``exposure.public_url`` in ``cloud``/``open`` mode, see
+            :func:`palaia_hub.app.connect_address_base`). Given, the bundle
+            points there; otherwise at the address the request came in on,
+            which the packaged image's proxy passes through (issue #397).
         known_profiles: returns the profile paths the gateway currently
             mounts; given, an unknown ``profile`` is a 404 instead of a
             bundle that can never connect.

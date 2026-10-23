@@ -1071,7 +1071,7 @@ def create_app(
                 token_store=token_store,
                 oauth_server=oauth_server,
                 home=hub_home,
-                public_url=config.exposure.public_url,
+                public_url=connect_address_base(config),
                 known_profiles=(
                     (lambda: [p.path for p in dynamic_gateway.config.profiles])
                     if dynamic_gateway is not None
@@ -1151,6 +1151,19 @@ def dashboard_link_base(config: HubConfig) -> str | None:
     if config.mode != "open" or not config.exposure.public_url:
         return None
     return config.exposure.public_url.rstrip("/")
+
+
+def connect_address_base(config: HubConfig) -> str | None:
+    """The address a downloaded Claude Desktop extension connects to, if fixed.
+
+    The public address serves MCP only in ``cloud`` and ``open`` mode. A hub
+    switched back to ``locked`` keeps ``exposure.public_url`` for the next
+    switch to Cloud, but its cloud entry then refuses every request, so the
+    extension uses the address the dashboard was opened at instead.
+    """
+    if config.mode == "locked":
+        return None
+    return config.exposure.public_url
 
 
 def _default_outbox_path() -> Path:
