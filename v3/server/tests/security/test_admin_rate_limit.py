@@ -6,6 +6,11 @@ session cookie produced 401s that the limiter never saw and never counted.
 This module is the closing of that note — and of the second half of it, the
 per-caller key that collapsed to ``127.0.0.1`` behind the container's own
 reverse proxy.
+
+Issue #593 sharpened what counts: a guess is a session cookie the hub does
+not know, each distinct one once. So the tests below guess with different
+cookie values, and a request with no cookie, or the same stale one again,
+must never lock the owner out.
 """
 
 from __future__ import annotations
@@ -21,8 +26,10 @@ from palaia_hub.admin_session import SIGN_IN_FREE_PATHS
 from palaia_hub.modes.rate_limit import (
     ADMIN_BUCKET,
     ADMIN_FREE_PATHS,
+    ADMIN_SESSION_COOKIE,
     AuthRateLimitMiddleware,
 )
+from palaia_hub.oauth.login import SESSION_COOKIE
 from palaia_hub.security.client_ip import client_ip_for_scope
 
 from .conftest import build_hub
@@ -30,8 +37,14 @@ from .conftest import build_hub
 # ------------------------------------------- the gate, through the real app
 
 
+def _guess(client: TestClient, path: str, value: str) -> int:
+    """One request presenting ``value`` as the session cookie."""
+    return client.get(path, headers={"Cookie": f"{SESSION_COOKIE}={value}"}).status_code
+
+
 def _tries(client: TestClient, path: str, count: int) -> list[int]:
-    return [client.get(path).status_code for _ in range(count)]
+    """``count`` guesses, each a different session value."""
+    return [_guess(client, path, f"guess-{i}") for i in range(count)]
 
 
 def test_guessing_a_session_is_throttled_in_cloud_mode(tmp_path: Path) -> None:
@@ -52,7 +65,7 @@ def test_the_whole_admin_surface_shares_one_bucket(tmp_path: Path) -> None:
     paths = ["/api/vaults", "/api/mode", "/api/session", "/api/auth/tokens", "/api/hooks"]
     try:
         with TestClient(built.app) as client:
-            statuses = [client.get(paths[i % len(paths)]).status_code for i in range(13)]
+            statuses = [_guess(client, paths[i % len(paths)], f"guess-{i}") for i in range(13)]
     finally:
         built.server.store.close()
 
@@ -66,8 +79,7 @@ def test_the_sign_in_free_paths_are_never_throttled(tmp_path: Path) -> None:
     built = build_hub(tmp_path, mode="cloud")
     try:
         with TestClient(built.app) as client:
-            for _ in range(12):
-                client.get("/api/vaults")  # fill the bucket
+            _tries(client, "/api/vaults", 12)  # fill the bucket
             assert client.get("/api/health").status_code == 200
             assert client.get("/api/info").status_code == 200
     finally:
@@ -90,6 +102,47 @@ def test_locked_mode_has_no_limiter_at_all(tmp_path: Path) -> None:
         built.server.store.close()
 
     assert set(statuses) == {401}, statuses
+
+
+def test_opening_the_dashboard_without_a_session_never_locks_the_owner_out(
+    tmp_path: Path,
+) -> None:
+    """Issue #593: a fresh browser's first page load sends a dozen requests
+    with no session at all. They guess nothing, so after signing in the
+    owner gets in, not a minute of 429s."""
+    built = build_hub(tmp_path, mode="cloud")
+    paths = ["/api/vaults", "/api/mode", "/api/session", "/api/setup", "/api/notifications"]
+    try:
+        with TestClient(built.app) as client:
+            statuses = [client.get(paths[i % len(paths)]).status_code for i in range(15)]
+            client.cookies.set(SESSION_COOKIE, built.session_cookie())
+            signed_in = client.get("/api/vaults").status_code
+    finally:
+        built.server.store.close()
+
+    assert set(statuses) == {401}, statuses
+    assert signed_in == 200
+
+
+def test_a_stale_session_costs_one_attempt_not_one_per_request(tmp_path: Path) -> None:
+    """Signed out elsewhere, a new password, a restored backup: the browser
+    keeps sending the one cookie the hub no longer knows. That is one guess."""
+    built = build_hub(tmp_path, mode="cloud")
+    try:
+        with TestClient(built.app) as client:
+            statuses = [_guess(client, "/api/vaults", "stale") for _ in range(15)]
+            client.cookies.set(SESSION_COOKIE, built.session_cookie())
+            signed_in = client.get("/api/vaults").status_code
+    finally:
+        built.server.store.close()
+
+    assert set(statuses) == {401}, statuses
+    assert signed_in == 200
+
+
+def test_the_cookie_literal_matches_the_gate() -> None:
+    """The limiter names the session cookie itself to avoid an import cycle."""
+    assert ADMIN_SESSION_COOKIE == SESSION_COOKIE
 
 
 def test_a_signed_in_operator_is_not_throttled_by_their_own_404s(tmp_path: Path) -> None:
@@ -125,7 +178,7 @@ def test_only_auth_failures_fill_the_admin_bucket(status: int, throttled: bool) 
     app.add_middleware(AuthRateLimitMiddleware, paths=set(), limit=2, window_seconds=60)
     client = TestClient(app)
 
-    statuses = [client.get("/api/thing").status_code for _ in range(4)]
+    statuses = [_guess(client, "/api/thing", f"guess-{i}") for i in range(4)]
 
     assert (429 in statuses) is throttled, statuses
 
@@ -138,7 +191,7 @@ def test_the_admin_half_can_be_switched_off() -> None:
     )
     client = TestClient(app)
 
-    assert [client.get("/api/thing").status_code for _ in range(4)] == [401] * 4
+    assert [_guess(client, "/api/thing", f"guess-{i}") for i in range(4)] == [401] * 4
 
 
 def test_the_bucket_name_is_not_a_path() -> None:

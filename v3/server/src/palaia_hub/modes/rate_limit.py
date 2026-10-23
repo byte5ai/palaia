@@ -60,6 +60,16 @@ responses now count per caller in one bucket for every bot
 (:data:`PREFIX_BUCKETS`), so walking bot keys buys no extra tries either.
 Telegram's own deliveries succeed and are never counted, so a real bot is
 never throttled by somebody else's guessing — the bucket key is the caller.
+
+**Issue #593: the admin bucket counts guesses, not refusals.** Guessing a
+session means presenting a session cookie the hub does not know, so only
+those refusals count, and each distinct cookie once per window. A request
+with no session cookie guesses nothing; the dashboard's own first page load
+sends a dozen of them at once and, counted, locked the owner out for the
+rest of the window right after they signed in. A stale cookie (signed out
+elsewhere, a new password, a restored backup) is one value sent many times,
+so it costs one attempt, not one per request. Walking through different
+values is throttled exactly as before.
 """
 
 from __future__ import annotations
@@ -68,9 +78,11 @@ import json
 import time
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Any
 
 from ..security.client_ip import client_ip_for_scope
+from ..security.cookies import request_cookies
 
 Scope = dict[str, Any]
 Receive = Callable[[], Awaitable[dict[str, Any]]]
@@ -111,6 +123,12 @@ ADMIN_FAILURE_STATUSES: frozenset[int] = frozenset({401, 403})
 #: mutually dependent; ``tests/modes/test_rate_limit.py`` asserts the two
 #: sets agree.
 ADMIN_FREE_PATHS: frozenset[str] = frozenset({"/api/health", "/api/info"})
+
+#: The cookie a guess at the admin surface presents (issue #593). A literal
+#: for the same reason as :data:`ADMIN_FREE_PATHS`;
+#: ``tests/security/test_admin_rate_limit.py`` asserts it matches
+#: :data:`palaia_hub.oauth.login.SESSION_COOKIE`.
+ADMIN_SESSION_COOKIE = "palaia_oauth_session"
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,7 +214,10 @@ class AuthRateLimitMiddleware:
         self._admin_prefix = admin_prefix
         self._prefix_buckets = tuple(prefix_buckets)
         self._statuses_by_bucket = {pb.bucket: pb.statuses for pb in self._prefix_buckets}
-        self._failures: dict[tuple[str, str], list[float]] = {}
+        #: ``(time, guess)`` per failure. ``guess`` is ``None`` where every
+        #: failure counts, and the presented session's digest in the admin
+        #: bucket, where each one counts once.
+        self._failures: dict[tuple[str, str], list[tuple[float, str | None]]] = {}
 
     def _bucket_for(self, path: str) -> str | None:
         """Which bucket ``path`` counts into, or ``None`` if it is untracked.
@@ -228,6 +249,21 @@ class AuthRateLimitMiddleware:
             return status in self._statuses_by_bucket[bucket]
         return status >= 400
 
+    @staticmethod
+    def _guess(bucket: str, scope: Scope) -> tuple[bool, str | None]:
+        """``(is a guess, which one)`` for a failure in ``bucket``.
+
+        In the admin bucket only a presented session cookie is a guess, keyed
+        by its digest so the limiter holds no session values. Everywhere else
+        every failure is one, with no key.
+        """
+        if bucket != ADMIN_BUCKET:
+            return True, None
+        session = request_cookies(scope).get(ADMIN_SESSION_COOKIE)
+        if not session:
+            return False, None
+        return True, sha256(session.encode("latin-1")).hexdigest()
+
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope.get("type") != "http":
             await self._app(scope, receive, send)
@@ -241,11 +277,11 @@ class AuthRateLimitMiddleware:
         now = self._clock()
         attempts = self._failures.setdefault((client_ip, bucket), [])
         cutoff = now - self._window
-        while attempts and attempts[0] < cutoff:
+        while attempts and attempts[0][0] < cutoff:
             attempts.pop(0)
 
         if len(attempts) >= self._limit:
-            retry_after = max(1, int(attempts[0] + self._window - now) + 1)
+            retry_after = max(1, int(attempts[0][0] + self._window - now) + 1)
             await self._reject(send, retry_after)
             return
 
@@ -257,8 +293,14 @@ class AuthRateLimitMiddleware:
             await send(message)
 
         await self._app(scope, receive, observing_send)
-        if self._counts(bucket, status_holder.get("status", 200)):
-            attempts.append(now)
+        if not self._counts(bucket, status_holder.get("status", 200)):
+            return
+        is_guess, guess = self._guess(bucket, scope)
+        if not is_guess:
+            return
+        if guess is not None and any(seen == guess for _, seen in attempts):
+            return
+        attempts.append((now, guess))
 
     @staticmethod
     async def _reject(send: Send, retry_after: int) -> None:
@@ -287,6 +329,7 @@ __all__ = [
     "ADMIN_FAILURE_STATUSES",
     "ADMIN_FREE_PATHS",
     "ADMIN_PREFIX",
+    "ADMIN_SESSION_COOKIE",
     "DEFAULT_LIMIT",
     "DEFAULT_RATE_LIMITED_PATHS",
     "DEFAULT_WINDOW_SECONDS",

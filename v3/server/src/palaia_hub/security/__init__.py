@@ -1,6 +1,6 @@
 """Cross-cutting security machinery (SPEC-502).
 
-Four small modules, each the single place one hardening rule is written
+Five small modules, each the single place one hardening rule is written
 down so no caller re-derives it:
 
 * :mod:`palaia_hub.security.files` — the on-disk posture every store shares
@@ -14,6 +14,8 @@ down so no caller re-derives it:
 * :mod:`palaia_hub.security.cross_site` — the changes under ``/api/*`` that
   another site's page could make through the owner's browser, refused in
   every mode (issue #587).
+* :mod:`palaia_hub.security.cookies` — the cookies a request carries, read
+  by the admin gate and by the limiter that counts its refusals.
 
 Nothing here holds state or opens anything: this package is policy, applied
 by the modules that own the resources.
@@ -22,6 +24,7 @@ by the modules that own the resources.
 from __future__ import annotations
 
 from .client_ip import client_ip_for_scope
+from .cookies import request_cookies
 from .cross_site import CrossSiteRequestGuard
 from .files import (
     DIR_MODE,
@@ -51,4 +54,5 @@ __all__ = [
     "harden_directory",
     "harden_file",
     "harden_sqlite_database",
+    "request_cookies",
 ]
