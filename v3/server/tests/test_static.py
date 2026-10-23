@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from palaia_hub.app import create_app
 from palaia_hub.config import HubConfig
+from palaia_hub.oauth import AuthorizationServer
 from palaia_hub.static import WEB_DIST_ENV, _default_dist_dir, resolve_dist_dir
 
 
@@ -159,6 +160,34 @@ def test_unregistered_telegram_path_404s_even_with_a_build_mounted(
     ):
         assert response.status_code == 404
         assert "palaia" not in response.text
+
+
+def test_an_unknown_discovery_path_404s_even_with_a_build_mounted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``/.well-known`` belongs to the hub, and the cloud entry lets all of it
+    through: an unknown path there must 404, never hand the dashboard shell
+    to the internet — while the real discovery documents still answer."""
+    dist = _make_fake_build(tmp_path)
+    monkeypatch.setenv(WEB_DIST_ENV, str(dist))
+    config = HubConfig(
+        mode="cloud",
+        host="127.0.0.1",
+        oauth={"enabled": True, "issuer": "https://hub.example.test"},  # type: ignore[arg-type]
+    )
+    server = AuthorizationServer.build(config, {"default": ["vault:work:read"]}, home=tmp_path)
+    try:
+        client = TestClient(create_app(config, home=tmp_path, oauth_server=server))
+        for headers in ({}, {"x-palaia-entry": "cloud"}):
+            for path in ("/.well-known/nonexistent", "/.well-known"):
+                response = client.get(path, headers=headers)
+                assert response.status_code == 404, (path, headers)
+                assert "id='root'" not in response.text, (path, headers)
+            found = client.get("/.well-known/oauth-authorization-server", headers=headers)
+            assert found.status_code == 200
+            assert found.json()["issuer"] == "https://hub.example.test"
+    finally:
+        server.store.close()
 
 
 def test_the_dashboards_own_telegram_address_gets_the_spa(

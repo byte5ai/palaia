@@ -80,7 +80,10 @@ class SPAStaticFiles(StaticFiles):
     #: path, not all of ``/telegram``: ``/telegram`` itself is a dashboard
     #: address (issue #570, it redirects to Settings › Telegram), and a
     #: reload or bookmark of it must get the SPA, not a blank 404.
-    _BACKEND_PREFIXES = ("api", "mcp", "oauth", "telegram/webhook")
+    #: ".well-known" holds the discovery documents (RFC 8414/9728), which
+    #: the cloud entry lets through whole: an unknown path there must 404,
+    #: not hand the dashboard shell to the internet.
+    _BACKEND_PREFIXES = ("api", "mcp", "oauth", "telegram/webhook", ".well-known")
 
     @classmethod
     def is_backend_path(cls, path: str) -> bool:
