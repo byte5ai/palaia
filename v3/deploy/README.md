@@ -49,9 +49,9 @@ SPEC-601. For a server you rent rather than a machine you already own —
 Hetzner Cloud, DigitalOcean, or similar — the vehicle is
 [`cloud-init.yaml`](cloud-init.yaml): paste the whole file into the
 provider's server-creation user-data field (Hetzner Cloud calls it "Cloud
-config"; DigitalOcean calls it "User data"; the file is about 20 KB, so
-providers with a 16 KB limit such as AWS need the installer instead), fill
-in one setup code first, and the server finishes its own setup with no
+config"; DigitalOcean calls it "User data"; the file is about 4 KB and
+downloads the installer when the server starts), fill in one setup code
+first, and the server finishes its own setup with no
 terminal session needed: a few minutes after boot, open
 `http://<server-address>:8420/`, enter the code and click "Connect with
 Tailscale" — a one-time setup page (SPEC-605,

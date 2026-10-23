@@ -180,13 +180,13 @@ them run this line; it shows a star per character and checks the start:
 mkdir -p ~/.palaia-setup && chmod 700 ~/.palaia-setup && bash -c 'del=$(printf "\177"); s=; printf "Tailscale auth key: "; while IFS= read -rsn1 c; do if [ -z "$c" ]; then break; elif [ "$c" = "$del" ]; then [ -n "$s" ] && s=${s%?} && printf "\b \b"; else s=$s$c; printf "*"; fi; done; echo; case $s in tskey-auth-*) (umask 077; printf "%s" "$s" > ~/.palaia-setup/tskey); echo "Saved (${#s} characters).";; *) echo "That is not an auth key (it starts with tskey-auth-). Nothing was saved; run this line again.";; esac'
 ```
 
-Copy it to the server through the login you checked (prefix it as in 3b for a
-password), run the installer with the file — the installer deletes it there —
-and delete the local copy:
+Copy it to the server through the login you checked (prefix both `ssh` lines as
+in 3b for a password), run the installer there with the file — it deletes the
+file — and delete the local copy. All three lines run on their computer:
 
 ```
 ssh root@<address> 'umask 077; cat > /root/.palaia-tskey' < ~/.palaia-setup/tskey
-curl -fsSL https://get.palaia.ai | PALAIA_TSKEY_FILE=/root/.palaia-tskey sh
+ssh root@<address> 'curl -fsSL https://get.palaia.ai | PALAIA_TSKEY_FILE=/root/.palaia-tskey sh'
 rm -rf ~/.palaia-setup
 ```
 

@@ -370,12 +370,14 @@ def code_form(error=""):
     )
 
 
-def poll_script(code):
+def poll_script(code, shown):
+    """Reload once the phase differs from the one this page shows — also when
+    it changed between rendering and the first poll."""
     status_url = "/status?code=" + html.escape(normalise(code))
     return (
-        "<script>let p=null;setInterval(async()=>{try{"
+        f'<script>const p="{html.escape(shown)}";setInterval(async()=>{{try{{'
         f'const r=await fetch("{status_url}");const s=await r.json();'
-        "if(p!==null&&s.phase!==p)location.reload();p=s.phase;}catch(e){}},2500)</script>"
+        "if(s.phase!==p)location.reload();}catch(e){}},2500)</script>"
     )
 
 
@@ -398,7 +400,7 @@ def connect_body(state, code):
         return (
             steps(1)
             + "<h1>Preparing the connection</h1><p>This takes a few seconds.</p>"
-            + poll_script(code)
+            + poll_script(code, current)
         )
     if current == "join":
         return (
@@ -408,13 +410,13 @@ def connect_body(state, code):
             f'<div class="row"><a class="btn" href="{html.escape(state.login_url)}" '
             'target="_blank" rel="noopener">Connect with Tailscale</a></div>'
             '<p class="muted">This page moves on by itself once you have logged in.</p>'
-            + poll_script(code)
+            + poll_script(code, current)
         )
     if current == "cloud-check":
         return (
             steps(2)
             + "<h1>Setting up cloud access</h1><p>This takes a few seconds.</p>"
-            + poll_script(code)
+            + poll_script(code, current)
         )
     if current == "cloud-link":
         return (
@@ -428,7 +430,7 @@ def connect_body(state, code):
             'target="_blank" rel="noopener">Allow in Tailscale</a>'
             f'<form method="post" action="/skip?code={safe_code}">'
             '<button class="ghost" type="submit">Keep it private</button></form></div>'
-            '<p class="muted">You can turn cloud access on later.</p>' + poll_script(code)
+            '<p class="muted">You can turn cloud access on later.</p>' + poll_script(code, current)
         )
     return done_body(state)
 

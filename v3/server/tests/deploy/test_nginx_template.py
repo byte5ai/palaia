@@ -168,3 +168,18 @@ def test_the_cloud_entry_and_the_hub_agree_on_the_routes() -> None:
 
     alternatives = _cloud_pattern().pattern.split("(", 1)[1].split(")", 1)[0].split("|")
     assert {"/" + alt.replace("\\.", ".") for alt in alternatives} == set(CLOUD_ENTRY_PREFIXES)
+
+
+def test_the_cloud_entry_tells_the_hub_who_is_calling() -> None:
+    """Every request at the cloud entry comes from the local tunnel through
+    Docker's bridge: without the real address from X-Forwarded-For, all public
+    callers would share one failed-sign-in bucket and one caller could lock
+    everyone out. Only local hops are trusted; the private door trusts none."""
+    cloud = _cloud_block()
+    assert "real_ip_header X-Forwarded-For;" in cloud
+    assert "real_ip_recursive on;" in cloud
+    trusted = set(re.findall(r"set_real_ip_from (\S+);", cloud))
+    assert trusted == {"127.0.0.0/8", "::1", "172.16.0.0/12"}
+    text = TEMPLATE.read_text(encoding="utf-8")
+    private = text[: text.index("listen ${CLOUD_PORT};")]
+    assert "set_real_ip_from" not in private

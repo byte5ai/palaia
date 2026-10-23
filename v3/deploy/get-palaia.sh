@@ -58,8 +58,10 @@ SUDO=""
 KEYFILE=""
 UFW_OPENED=0
 cleanup() {
-    if [ -n "$KEYFILE" ] && [ -e "$KEYFILE" ]; then
+    if [ -n "$KEYFILE" ]; then
         # A secret is removed for good, never moved somewhere recoverable.
+        # No `[ -e ]` first: run as a sudo user, /root is not searchable
+        # without sudo, so the test would say "missing" and keep the key.
         $SUDO rm -f "$KEYFILE" 2>/dev/null || rm -f "$KEYFILE" 2>/dev/null || true
     fi
     if [ "$UFW_OPENED" = "1" ]; then
@@ -69,6 +71,14 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'cleanup; exit 130' INT TERM HUP
+
+# Does an active ufw already let everyone reach PORT/tcp? Only a rule from
+# Anywhere on every interface counts: the tailnet-only rule a previous run
+# left ("on tailscale0") or a rule for one source address would keep the
+# setup page unreachable from the browser.
+ufw_allows_everyone() {
+    $SUDO ufw status 2>/dev/null | grep -Eq "^$1(/tcp)?[[:space:]]+ALLOW( IN)?[[:space:]]+Anywhere([[:space:]]|$)"
+}
 
 # The key, if any, goes into a file only root can read; Tailscale reads it
 # from there (`--auth-key=file:`), so it is never a command-line argument.
@@ -98,6 +108,15 @@ fi
 $SUDO systemctl enable --now docker >/dev/null 2>&1 || true
 DOCKER="docker"
 docker info >/dev/null 2>&1 || DOCKER="$SUDO docker"
+
+# Is 127.0.0.1:CLOUD_PORT free, or held by this palaia's own container?
+cloud_port_is_ours() {
+    if $DOCKER inspect --format '{{range .HostConfig.PortBindings}}{{range .}}{{.HostIp}}:{{.HostPort}} {{end}}{{end}}' \
+        "${CONTAINER_NAME}" 2>/dev/null | grep -q "127.0.0.1:${CLOUD_PORT} "; then
+        return 0
+    fi
+    ! $SUDO ss -Htln "sport = :${CLOUD_PORT}" 2>/dev/null | grep -q .
+}
 $DOCKER info >/dev/null 2>&1 || die "Docker is installed but not reachable (daemon down, or no permission)."
 
 # --- Tailscale (unless explicitly disabled) ---------------------------------
@@ -500,12 +519,14 @@ def code_form(error=""):
     )
 
 
-def poll_script(code):
+def poll_script(code, shown):
+    """Reload once the phase differs from the one this page shows — also when
+    it changed between rendering and the first poll."""
     status_url = "/status?code=" + html.escape(normalise(code))
     return (
-        "<script>let p=null;setInterval(async()=>{try{"
+        f'<script>const p="{html.escape(shown)}";setInterval(async()=>{{try{{'
         f'const r=await fetch("{status_url}");const s=await r.json();'
-        "if(p!==null&&s.phase!==p)location.reload();p=s.phase;}catch(e){}},2500)</script>"
+        "if(s.phase!==p)location.reload();}catch(e){}},2500)</script>"
     )
 
 
@@ -528,7 +549,7 @@ def connect_body(state, code):
         return (
             steps(1)
             + "<h1>Preparing the connection</h1><p>This takes a few seconds.</p>"
-            + poll_script(code)
+            + poll_script(code, current)
         )
     if current == "join":
         return (
@@ -538,13 +559,13 @@ def connect_body(state, code):
             f'<div class="row"><a class="btn" href="{html.escape(state.login_url)}" '
             'target="_blank" rel="noopener">Connect with Tailscale</a></div>'
             '<p class="muted">This page moves on by itself once you have logged in.</p>'
-            + poll_script(code)
+            + poll_script(code, current)
         )
     if current == "cloud-check":
         return (
             steps(2)
             + "<h1>Setting up cloud access</h1><p>This takes a few seconds.</p>"
-            + poll_script(code)
+            + poll_script(code, current)
         )
     if current == "cloud-link":
         return (
@@ -558,7 +579,7 @@ def connect_body(state, code):
             'target="_blank" rel="noopener">Allow in Tailscale</a>'
             f'<form method="post" action="/skip?code={safe_code}">'
             '<button class="ghost" type="submit">Keep it private</button></form></div>'
-            '<p class="muted">You can turn cloud access on later.</p>' + poll_script(code)
+            '<p class="muted">You can turn cloud access on later.</p>' + poll_script(code, current)
         )
     return done_body(state)
 
@@ -773,6 +794,15 @@ PALAIA_SETUP_PAGE
 
     LOGIN_ARG=""
     [ -z "$LOGIN_SERVER" ] || LOGIN_ARG="--login-server=${LOGIN_SERVER}"
+    # Cloud access points Tailscale Funnel at 127.0.0.1:CLOUD_PORT before the
+    # hub runs. If another program already listens there (and it is not this
+    # palaia's own container, on a re-install), Funnel would publish that
+    # program instead — so cloud access is skipped.
+    if [ "$CLOUD" != "0" ] && ! cloud_port_is_ours; then
+        log "cloud access skipped: 127.0.0.1:${CLOUD_PORT} is used by another program."
+        log "  Free it, or set PALAIA_CLOUD_PORT to a free port, and run this again."
+        CLOUD=0
+    fi
     CLOUD_ARG=""
     [ "$CLOUD" = "0" ] || CLOUD_ARG="--cloud-target=${CLOUD_TARGET}"
 
@@ -790,7 +820,7 @@ PALAIA_SETUP_PAGE
         # for it only if ufw is on and does not allow it already, and remove
         # only the rule this run added, also when the run is interrupted.
         if command -v ufw >/dev/null 2>&1 && $SUDO ufw status 2>/dev/null | grep -q "Status: active" \
-            && ! $SUDO ufw status 2>/dev/null | grep -q "^${PORT}/tcp .*ALLOW"; then
+            && ! ufw_allows_everyone "$PORT"; then
             $SUDO ufw allow "${PORT}/tcp" comment 'palaia setup page, temporary' >/dev/null && UFW_OPENED=1
         fi
         log "starting the setup page (closes itself after 30 minutes) ..."
@@ -864,7 +894,17 @@ DIGEST="$($DOCKER image inspect --format '{{range .RepoDigests}}{{println .}}{{e
 
 # --- Container --------------------------------------------------------------
 if $DOCKER inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
-    log "a container named '${CONTAINER_NAME}' exists — replacing it (your data in the '${VOLUME}' volume is untouched)."
+    # Keep the data the existing container uses: a volume or folder chosen
+    # with PALAIA_VOLUME on the first run must not be swapped for an empty
+    # default one on a re-run without it.
+    CURRENT_DATA="$($DOCKER inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{if eq .Type "volume"}}{{.Name}}{{else}}{{.Source}}{{end}}{{end}}{{end}}' "${CONTAINER_NAME}" 2>/dev/null || true)"
+    if [ -n "$CURRENT_DATA" ] && [ "$CURRENT_DATA" != "$VOLUME" ]; then
+        if [ -n "${PALAIA_VOLUME:-}" ]; then
+            die "'${CONTAINER_NAME}' keeps its data in '${CURRENT_DATA}', not in '${VOLUME}' (PALAIA_VOLUME). Run this again without PALAIA_VOLUME to keep that data, or remove the container first if you really want a different one."
+        fi
+        VOLUME="$CURRENT_DATA"
+    fi
+    log "a container named '${CONTAINER_NAME}' exists — replacing it (your data in '${VOLUME}' is untouched)."
     $DOCKER rm -f "${CONTAINER_NAME}" >/dev/null
 fi
 
