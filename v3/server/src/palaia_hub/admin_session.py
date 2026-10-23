@@ -365,14 +365,26 @@ def sign_in_url_for(oauth_server: AuthorizationServer) -> str:
 
 
 def build_admin_session_middleware_kwargs(
-    oauth_server: AuthorizationServer, config: HubConfig
+    oauth_server: AuthorizationServer | None, config: HubConfig
 ) -> dict[str, Any]:
     """The keyword arguments :func:`palaia_hub.app.create_app` passes in.
 
     Kept here rather than inline in ``app.py`` so the whole policy — which
     door to point at, and how "is there a way in" is answered — reads in one
     place next to the middleware that applies it.
+
+    Without a server (sign-in required and configured, but its server not
+    running) no session can be resolved, so the gate fails closed: every
+    guarded call is refused.
     """
+    if oauth_server is None:
+        return {
+            "current_user": lambda _session: None,
+            "sign_in_configured": lambda: True,
+            "sign_in_url": IDP_SIGN_IN_PATH
+            if config.oauth.idp is not None
+            else PASSWORD_SIGN_IN_PATH,
+        }
     return {
         "current_user": oauth_server.current_user,
         "sign_in_configured": lambda: sign_in_available(oauth_server, config),

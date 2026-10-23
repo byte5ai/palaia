@@ -357,14 +357,29 @@ def test_the_gate_stays_open_until_an_account_exists(tmp_path: Path) -> None:
         built.server.store.close()
 
 
-def test_no_gate_without_a_sign_in_server_at_all(tmp_path: Path) -> None:
-    """A hub with no authorization server has no session to require — and
-    enforcing would lock the operator out with nothing to unlock it."""
-    built = _build_hub(tmp_path, mode="cloud", with_oauth_server=False)
+def test_no_gate_without_a_sign_in_server_or_a_way_in(tmp_path: Path) -> None:
+    """A hub with no authorization server and no way in has no session to
+    require — and enforcing would lock the operator out with nothing to
+    unlock it."""
+    built = _build_hub(tmp_path, mode="cloud", with_owner=False, with_oauth_server=False)
     try:
         with TestClient(built.app) as client:
             assert client.get("/api/vaults").status_code == 200
             assert client.get("/api/info").json()["sign_in"]["required"] is False
+    finally:
+        built.server.store.close()
+
+
+def test_a_way_in_without_its_sign_in_server_fails_closed(tmp_path: Path) -> None:
+    """Sign-in required, an owner account set up, but the server that would
+    sign the owner in is not running: every admin call is refused rather than
+    left open to whoever reaches the hub."""
+    built = _build_hub(tmp_path, mode="open", with_oauth_server=False)
+    try:
+        with TestClient(built.app) as client:
+            assert client.get("/api/vaults").status_code == 401
+            assert client.post("/api/vaults", json={"key": "work"}).status_code == 401
+            assert client.get("/api/info").json()["sign_in"]["required"] is True
     finally:
         built.server.store.close()
 

@@ -25,6 +25,7 @@ from . import __version__
 from .admin_session import (
     AdminSessionMiddleware,
     build_admin_session_middleware_kwargs,
+    sign_in_configured,
     sign_in_required,
     sign_in_url_for,
 )
@@ -748,14 +749,17 @@ def create_app(
     # `modes.rate_limit`'s docstring). The work the limiter does first is a
     # dictionary lookup and a list trim.
     #
-    # SPEC-401: the admin session gate. Mounted only when there is an
-    # authorization server to resolve a session against — without one there
-    # is no sign-in flow at all, and enforcing would lock the operator out
-    # of their own hub with nothing to unlock it (see
-    # `admin_session.sign_in_required` for the per-mode policy, and the
-    # middleware itself for the "only once an account exists" half).
-    admin_session_enforced = oauth_server is not None and sign_in_required(config)
-    if oauth_server is not None and admin_session_enforced:  # the None check narrows the type
+    # SPEC-401: the admin session gate (see `admin_session.sign_in_required`
+    # for the per-mode policy, and the middleware itself for the "only once
+    # an account exists" half). Without an authorization server it is
+    # mounted only if a way in is configured all the same — the owner
+    # cannot sign in then, so it refuses every admin call instead of
+    # leaving them open. With no way in configured at all, enforcing would
+    # lock the operator out with nothing to unlock it.
+    admin_session_enforced = sign_in_required(config) and (
+        oauth_server is not None or sign_in_configured(config, hub_home)
+    )
+    if admin_session_enforced:
         app.add_middleware(
             AdminSessionMiddleware,
             **build_admin_session_middleware_kwargs(oauth_server, config),

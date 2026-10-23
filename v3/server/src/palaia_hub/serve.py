@@ -61,7 +61,7 @@ from .messenger.service import MessengerService
 from .messenger.store import MessengerStore
 from .notifications import NotificationStore
 from .notifications.store import NOTIFICATIONS_RELATIVE_PATH
-from .oauth import AuthorizationServer
+from .oauth import AuthorizationServer, ResourceRegistry
 from .oauth.verifier import build_hub_auth, build_profile_auth, oauth_client_connected_hook
 from .registry import RegistryClient
 from .stash.service import StashService
@@ -433,11 +433,20 @@ async def build_production_app(
         yet at hub-startup, so no profile — and no verifier — did either).
         Without this, the wizard's very first vault would mount its
         `default` profile with no auth check at all, on every fresh
-        install, regardless of `auth_enabled`."""
+        install, regardless of `auth_enabled`.
+
+        A sign-in server that started before this path existed (it starts
+        with no profile at all on a hub with no memory yet) cannot grant
+        its tokens until a restart; the access-token check is built for it
+        all the same, so the path asks for a token and accepts none of
+        that kind until then."""
+        resources = oauth_server.resources if oauth_server is not None else None
+        if resources is not None and path not in resources.profiles:
+            resources = ResourceRegistry(resources.issuer, [*resources.profiles, path])
         return build_profile_auth(
             [path],
             key=oauth_server.key if oauth_server is not None else None,
-            resources=oauth_server.resources if oauth_server is not None else None,
+            resources=resources,
             token_store=token_store if config.auth_enabled else None,
             on_oauth_verified=on_oauth_verified,
         ).get(path)
