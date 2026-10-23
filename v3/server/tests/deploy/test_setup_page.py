@@ -32,7 +32,6 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-import yaml
 
 DEPLOY_ROOT = Path(__file__).resolve().parents[3] / "deploy"
 SETUP_PAGE = DEPLOY_ROOT / "setup-page.py"
