@@ -46,43 +46,68 @@ curl -fsSL https://get.palaia.ai/docker | bash
 ## Cloud-init (rented servers)
 
 SPEC-601. For a server you rent rather than a machine you already own —
-Hetzner Cloud, DigitalOcean, AWS, or similar — the vehicle is
+Hetzner Cloud, DigitalOcean, or similar — the vehicle is
 [`cloud-init.yaml`](cloud-init.yaml): paste the whole file into the
 provider's server-creation user-data field (Hetzner Cloud calls it "Cloud
-config"; DigitalOcean and AWS call it "User data"), enter one Tailscale
-auth key first, and the server finishes its own setup with no terminal
-session needed. The onboarding page's "A rented server" entry shows the
-same file with a copy button; this is the file it copies from — never a
-second, hand-typed one.
+config"; DigitalOcean calls it "User data"; the file is about 20 KB, so
+providers with a 16 KB limit such as AWS need the installer instead), fill
+in one setup code first, and the server finishes its own setup with no
+terminal session needed: a few minutes after boot, open
+`http://<server-address>:8420/`, enter the code and click "Connect with
+Tailscale" — a one-time setup page (SPEC-605,
+[`setup-page.py`](setup-page.py)) joins the server to your tailnet and
+closes itself. Prefer a key? Fill in `TAILSCALE_AUTH_KEY` instead and no
+page is shown. The onboarding page's "A rented server" entry shows the same
+file with a copy button; this is the file it copies from — never a second,
+hand-typed one.
 
 **Already have a server?** cloud-init only ever runs on a machine's *first*
 boot, so pasting `cloud-init.yaml` into a box that is already running does
 nothing. For that case the universal installer
 [`get-palaia.sh`](get-palaia.sh) — served at `get.palaia.ai` — does the same
 install over SSH (Docker, Tailscale, the tailnet-only firewall and the hardened
-container), ending at the identical hub. On the server:
+container), ending at the identical hub. The setup file in fact runs this same
+installer. On the server:
 
 ```bash
 curl -fsSL https://get.palaia.ai | sh
 ```
 
-It prompts for a Tailscale auth key interactively, or takes `PALAIA_TSKEY` /
-`PALAIA_NO_TAILSCALE` non-interactively (see the script header). During the
-release candidate the `stable` image does not exist yet, so pass
-`PALAIA_CHANNEL=beta` (`curl -fsSL https://get.palaia.ai | PALAIA_CHANNEL=beta
-sh`) — the script says so too if the `:stable` pull 404s. The onboarding page's
-"already have a server" step shows this same command.
+Plain POSIX `sh`, so `| sh` and `| bash` both work, on a fresh server and on
+one that already runs Docker or is already on your tailnet (both are kept).
+Without a key it opens the same one-time setup page and prints its address
+and code (or uses `PALAIA_SETUP_CODE`). The page then offers **cloud access**:
+Tailscale Funnel forwards palaia's *cloud entry* — the AI-connection routes
+only, never the dashboard or its API — so ChatGPT and Claude reach the hub over
+HTTPS; if your tailnet has not allowed Funnel yet, the page shows Tailscale's
+own "allow" link, and "Keep it private" skips the step (`PALAIA_CLOUD=0` skips
+it up front). The image channel follows this release (`beta` while it is a
+release candidate), so the command above needs nothing added. Other options are
+listed in the script header.
 
-What it does, in order: installs Docker and Tailscale, joins your tailnet
-with the key you provided, then starts the hub with the exact hardening
-flags [`install.sh`](install.sh) uses (`--security-opt
-no-new-privileges:true --cap-drop ALL --read-only --tmpfs /tmp --tmpfs
-/run` — never a forked copy of that list, checked by
-`server/tests/deploy/test_cloud_init.py`'s drift test) and binds its
-published port to the tailnet address only, backed by a `ufw` rule that
-denies the same port on every other interface. The hub is reachable from
-your own devices on the tailnet and nowhere else — never the public
-internet.
+A key instead of the page: put the auth key in a file only root can read and
+pass `PALAIA_TSKEY_FILE=/path`. Tailscale reads it from there
+(`tailscale up --auth-key=file:…`), so the key is never a command-line argument,
+and the installer deletes the file afterwards — on success, failure or
+cancellation. (`PALAIA_TSKEY` still works but leaves the key in your shell
+history.)
+
+What it does, in order: installs Docker and Tailscale if they are missing,
+joins your tailnet (unless the server is on one already), sets up cloud access
+if you allowed it, then starts the hub with the exact hardening flags
+[`install.sh`](install.sh) uses (`--security-opt no-new-privileges:true
+--cap-drop ALL --read-only --tmpfs /tmp --tmpfs /run` — never a forked copy of
+that list, checked by `server/tests/deploy/test_cloud_init.py`'s drift test).
+The dashboard port is published on the tailnet address only, plus two
+loopback-only ports for a tunnel on the server itself: `127.0.0.1:8422`, the
+cloud entry, and `127.0.0.1:8420`, the whole hub (for the deliberate "open"
+mode). An active `ufw` gets a rule for the tailnet; an inactive one is switched
+on only with `PALAIA_FIREWALL=on` (the setup file sets it), because on a server
+that already runs other services it would cut them off. SSH stays open either
+way. The installer counts as done only when the hub's own health check answers
+through the container's front door; otherwise it prints the hub's last log lines.
+The hub is reachable from your own devices on the tailnet and nowhere else;
+with cloud access on, the internet sees the AI connection only.
 
 **Where the data lives.** Same as every other install path: the
 `palaia_home` named Docker volume, holding everything under `/data`
@@ -122,8 +147,9 @@ a cloud instance instead of a local VM. That is an owner action, not
 something CI claims:
 
 - [ ] Create a server on a real provider (Hetzner Cloud, DigitalOcean, or
-      similar), pasting `cloud-init.yaml` with a real Tailscale auth key
-      into its user-data field.
+      similar), pasting `cloud-init.yaml` with a setup code filled in
+      into its user-data field; finish the setup page at
+      `http://<public-address>:8420/`.
 - [ ] Wait for the server to finish booting (a couple of minutes is
       typical for the package installs plus image pull).
 - [ ] From a device already on the same tailnet, open

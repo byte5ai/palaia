@@ -11,7 +11,7 @@ Pick the tool you use. Each one takes a couple of minutes, and every tool you co
 
 - **[Claude Code CLI](/connect/clients/claude-code-cli/)** — about one command · 1 min
 - **[Codex](/connect/clients/codex/)** — about one command · 1 min
-- **[Claude Desktop](/connect/clients/claude-desktop/)** — One-click download — a signed bridge to your hub, no typing required
+- **[Claude Desktop](/connect/clients/claude-desktop/)** — The Claude app on a computer in your private network — a one-click extension download
 - **[Antigravity / Gemini CLI](/connect/clients/gemini-cli/)** — about one command · 1 min
 - **[LM Studio](/connect/clients/lm-studio/)** — about one command · 1 min
 - **[Any other AI tool](/connect/clients/generic/)** — about a couple of minutes
@@ -20,8 +20,8 @@ Pick the tool you use. Each one takes a couple of minutes, and every tool you co
 
 These connect from a company's own service rather than from your device, so they need your hub reachable from the internet and sign-in turned on. Each page says exactly what to turn on and how.
 
-- **[claude.ai](/connect/clients/claude-ai/)** — Web, desktop, mobile and Cowork — custom connector on every plan
-- **[ChatGPT](/connect/clients/chatgpt/)** — Developer mode / custom connectors
+- **[Claude](/connect/clients/claude-ai/)** — The Claude app on Mac, Windows and phones, and claude.ai — a custom connector
+- **[ChatGPT](/connect/clients/chatgpt/)** — A custom connector in developer mode
 - **[Grok](/connect/clients/grok/)** — Custom (bring-your-own) `MCP` connectors — web/iOS/Android
 
 Using something else? Any tool that speaks the open connector protocol works the same way — see [Any other AI tool](/connect/clients/generic/).

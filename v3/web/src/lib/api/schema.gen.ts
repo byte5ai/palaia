@@ -496,6 +496,8 @@ export interface components {
             completed: boolean;
             /** Goal */
             goal: ("cloud" | "private") | null;
+            /** Skipped */
+            skipped: ("account" | "cloud" | "client")[];
             /** Owner Configured */
             owner_configured: boolean;
             /** Vaults */
@@ -530,6 +532,8 @@ export interface components {
             restart_supported: boolean;
             /** Cloud Ready */
             cloud_ready: boolean;
+            /** Cloud Verified */
+            cloud_verified: boolean;
             /** Client Connected */
             client_connected: boolean;
             /** First Memory Saved */
@@ -543,6 +547,8 @@ export interface components {
             goal?: ("cloud" | "private") | null;
             /** Completed */
             completed?: boolean | null;
+            /** Skipped */
+            skipped?: ("account" | "cloud" | "client")[] | null;
         };
         /** TunnelGuidanceOut */
         TunnelGuidanceOut: {

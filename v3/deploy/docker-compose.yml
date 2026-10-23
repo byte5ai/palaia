@@ -15,10 +15,18 @@ services:
     container_name: palaia-hub
     ports:
       - "8420:8420"
+      # The cloud entry — palaia's AI connection only, for a tunnel on this
+      # machine (Tailscale Funnel, cloudflared). Loopback: never reachable
+      # from another device.
+      - "127.0.0.1:8422:8422"
     volumes:
       - palaia_home:/data
     environment:
-      PALAIA_MODE: locked
+      # The operating mode lives in config.yaml, where the dashboard changes
+      # it; a PALAIA_MODE here would silently override every such change.
+      # `restart: unless-stopped` below starts the hub again after the
+      # dashboard's "Restart" button ends it.
+      PALAIA_SELF_RESTART: "1"
       # SPEC-501: tells the dashboard's "Update available" banner which
       # instructions to show — this file, so "run `palaia-hub update`,
       # then `docker compose pull && docker compose up -d`" rather than a

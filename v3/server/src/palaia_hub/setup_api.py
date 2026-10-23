@@ -62,6 +62,9 @@ SELF_RESTART_ENV = "PALAIA_SELF_RESTART"
 CLOUD_URL_HINT_ENV = "PALAIA_CLOUD_URL_HINT"
 
 Goal = Literal["cloud", "private"]
+#: Wizard steps the owner may leave out on purpose: an account on a private
+#: hub, cloud access, connecting an AI app now.
+SkippableStep = Literal["account", "cloud", "client"]
 
 
 class SetupStatus(BaseModel):
@@ -70,6 +73,8 @@ class SetupStatus(BaseModel):
     #: Finished or skipped — the dashboard then opens on Home.
     completed: bool
     goal: Goal | None
+    #: Steps the owner chose to leave out (so the wizard does not ask again).
+    skipped: list[SkippableStep]
     owner_configured: bool
     vaults: list[str]
     profiles: list[str]
@@ -90,6 +95,9 @@ class SetupStatus(BaseModel):
     #: Cloud access is live: cloud mode, sign-in under an https address,
     #: an owner, and a profile for AI tools to connect to.
     cloud_ready: bool
+    #: The hub's last self-test of its public address (the configured one)
+    #: passed every check.
+    cloud_verified: bool
     client_connected: bool
     first_memory_saved: bool
     #: Plain-language problems the hub found while starting.
@@ -101,6 +109,7 @@ class SetupUpdate(BaseModel):
 
     goal: Goal | None = None
     completed: bool | None = None
+    skipped: list[SkippableStep] | None = None
 
 
 class RestartOut(BaseModel):
@@ -125,6 +134,18 @@ def _write_choices(home: Path, choices: dict[str, object]) -> None:
     path = home / SETUP_FILE
     atomic_write_text(path, json.dumps(choices, indent=2) + "\n")
     harden_file(path)
+
+
+def record_cloud_check(home: Path, url: str, passed: bool) -> None:
+    """Remember the last public-address self-test (``/api/exposure/selftest``).
+
+    The wizard ticks cloud access only once the hub itself has reached its
+    public address and found every check passing — configuration alone does
+    not prove a tunnel leads here (issue #561).
+    """
+    choices = _read_choices(home) or {}
+    choices["cloud_check"] = {"url": url.rstrip("/"), "passed": passed}
+    _write_choices(home, choices)
 
 
 def build_setup_router(
@@ -183,10 +204,22 @@ def build_setup_router(
         configured = configured_cache.get() if config_file_path(home).exists() else config
         keys = sorted(vault_keys())
         choices = _read_choices(home)
+        skipped: list[SkippableStep] = []
+        check = (choices or {}).get("cloud_check")
+        public = (configured.exposure.public_url or configured.oauth.issuer or "").rstrip("/")
+        cloud_verified = (
+            isinstance(check, dict)
+            and bool(check.get("passed"))
+            and bool(public)
+            and check.get("url") == public
+        )
         if choices is None:
             completed = bool(keys)
             goal: Goal | None = None
         else:
+            raw_skipped = choices.get("skipped")
+            if isinstance(raw_skipped, list):
+                skipped = [step for step in ("account", "cloud", "client") if step in raw_skipped]
             completed = bool(choices.get("completed", False))
             raw_goal = choices.get("goal")
             goal = "cloud" if raw_goal == "cloud" else "private" if raw_goal == "private" else None
@@ -201,6 +234,7 @@ def build_setup_router(
         return SetupStatus(
             completed=completed,
             goal=goal,
+            skipped=skipped,
             owner_configured=owner,
             vaults=keys,
             profiles=profiles,
@@ -223,6 +257,7 @@ def build_setup_router(
                 and owner
                 and bool(profiles)
             ),
+            cloud_verified=cloud_verified,
             client_connected=bool(funnel and funnel.client_connected_at),
             first_memory_saved=bool(funnel and funnel.first_memory_at),
             problems=list(problems),
@@ -240,6 +275,8 @@ def build_setup_router(
                 choices["goal"] = body.goal
             if body.completed is not None:
                 choices["completed"] = body.completed
+            if body.skipped is not None:
+                choices["skipped"] = sorted(set(body.skipped))
             await asyncio.to_thread(_write_choices, home, choices)
         return await asyncio.to_thread(_status)
 
@@ -263,4 +300,10 @@ def build_setup_router(
     return router
 
 
-__all__ = ["SETUP_FILE", "SetupStatus", "SetupUpdate", "build_setup_router"]
+__all__ = [
+    "SETUP_FILE",
+    "SetupStatus",
+    "SetupUpdate",
+    "build_setup_router",
+    "record_cloud_check",
+]

@@ -117,17 +117,15 @@ def test_mcpb_build_script_never_hardcodes_a_release_version() -> None:
 #: Every install path that behaves differently during a release candidate
 #: carries an `rc-channel-note` (issue #326): the ones a person types and can
 #: adjust pin the `stable` channel tag and add a note to use `beta` instead;
-#: the unattended one (cloud-init.yaml — see ``_UNATTENDED_IMAGE_FILES`` below)
-#: pins `beta` directly and its note explains that the final tag flips it to
-#: `stable`. Either way the note is present only while `VERSION` is a
+#: the installer (get-palaia.sh — see ``_UNATTENDED_CHANNEL_FILES`` below)
+#: defaults to `beta` directly and its note explains that the final tag flips
+#: it to `stable`. Either way the note is present only while `VERSION` is a
 #: pre-release. The generated Synology page is included: its generator emits
-#: the note. (get-palaia.sh is not here: it defaults to `stable` and, rather
-#: than a note, fails loudly with a "re-run with PALAIA_CHANNEL=beta" message
-#: if the `:stable` pull 404s during an RC.)
+#: the note. (cloud-init.yaml runs that same installer, so it names no image.)
 _RC_CHANNEL_NOTE_FILES = (
     "deploy/README.md",
     "deploy/docker-compose.yml",
-    "deploy/cloud-init.yaml",
+    "deploy/get-palaia.sh",
     "docs/how-it-works.md",
     "site/docs/src/content/docs/install.md",
     "site/docs/src/content/docs/install-synology.md",
@@ -159,37 +157,38 @@ def test_compose_pins_the_stable_channel_tag_not_a_literal_version() -> None:
     assert match.group(1) == "ghcr.io/byte5ai/palaia-hub:stable"
 
 
-#: The install path consumed UNATTENDED: cloud-init.yaml is pasted into a
-#: provider's user-data field and boots without anyone watching. Unlike the
-#: `docker run`/compose commands a person types (and can adjust from `stable`
-#: to `beta` after reading the note next to them), it must pull a tag that
-#: *exists at the moment it runs* — a `stable` alias that the release workflow
-#: only creates on the final tag would 404 silently mid-boot. So it pins the
-#: release channel that matches `VERSION` directly — `beta` during a
-#: pre-release, `stable` once final — the same reasoning
+#: The install path people run without reading it first: get-palaia.sh is
+#: what `curl -fsSL https://get.palaia.ai | sh` and the server-creation file
+#: (cloud-init.yaml) run, unattended or from an AI assistant. It must pull a
+#: tag that *exists at the moment it runs* — a `stable` alias that the release
+#: workflow only creates on the final tag would 404 mid-install. So its default
+#: channel matches `VERSION` directly — `beta` during a pre-release, `stable`
+#: once final — the same reasoning
 #: ``test_home_assistant_addon_version_is_this_version`` applies to the HA
 #: add-on. `RELEASING.md` §3 flips it on the final tag; this test is what
 #: forces that flip (and forbids shipping a dead `:stable` during an RC).
-#: (get-palaia.sh is the interactive SSH counterpart: it defaults to `stable`
-#: but fails loudly with a re-run hint, so it needs no pinning here.)
-_UNATTENDED_IMAGE_FILES = ("deploy/cloud-init.yaml",)
+_UNATTENDED_CHANNEL_FILES = ("deploy/get-palaia.sh",)
 
-_PALAIA_HUB_IMAGE_RE = re.compile(r"ghcr\.io/byte5ai/palaia-hub:([A-Za-z0-9][\w.-]*)")
+_DEFAULT_CHANNEL_RE = re.compile(r'^DEFAULT_CHANNEL="([a-z]+)"$', re.M)
 
 
 def test_unattended_install_paths_pin_the_channel_matching_version() -> None:
     version = _read_version_file()
-    expected_tag = "beta" if "-" in version else "stable"
-    for relative in _UNATTENDED_IMAGE_FILES:
+    expected = "beta" if "-" in version else "stable"
+    for relative in _UNATTENDED_CHANNEL_FILES:
         text = (V3_ROOT / relative).read_text(encoding="utf-8")
-        tags = _PALAIA_HUB_IMAGE_RE.findall(text)
-        assert tags, f"{relative} names no ghcr.io/byte5ai/palaia-hub image"
-        for tag in tags:
-            assert tag == expected_tag, (
-                f"{relative} pins ':{tag}' but VERSION {version!r} needs ':{expected_tag}' — "
-                "an unattended install must pull a tag that exists now, and RELEASING.md §3 "
-                "flips these on the final tag"
-            )
+        channels = _DEFAULT_CHANNEL_RE.findall(text)
+        assert channels == [expected], (
+            f"{relative} defaults to {channels} but VERSION {version!r} needs "
+            f"{expected!r} — an unattended install must pull a tag that exists now, "
+            "and RELEASING.md §3 flips this on the final tag"
+        )
+
+
+def test_cloud_init_names_no_image_of_its_own() -> None:
+    """cloud-init.yaml runs get-palaia.sh, so the image choice lives there only."""
+    text = (V3_ROOT / "deploy" / "cloud-init.yaml").read_text(encoding="utf-8")
+    assert "ghcr.io/byte5ai/palaia-hub" not in text
 
 
 def test_install_sh_defaults_to_the_stable_channel_tag() -> None:

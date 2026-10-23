@@ -1,625 +1,750 @@
 /**
- * The onboarding wizard (SPEC-110 deliverable #1): owner account → access
- * mode → first vault → connect a client. Visual ground truth:
- * v3/docs/design/mockups/onboarding.html — its `.wiz` rail-and-panel
- * layout, `.steps` list and `.radiocards`/`.clientgrid` are ported in
- * components.css and reused as-is.
+ * The first-run setup (SPEC-110 deliverable #1, reworked for issues 559, 561,
+ * 562, 563 and 565 after the 2026-10-23 installation test).
  *
- * Honest about which steps are real:
- * - Step 3 (first vault) is fully wired to `POST /api/vaults` — creating
- *   it here creates a real vault on disk, with a real git history, and
- *   (SPEC-210) mounts it live on the running hub's MCP gateway under the
- *   `default` profile — no hub restart needed before step 4's client can
- *   reach it.
- * - Step 4 (first client) reuses the same `ConnectPanel` the dedicated
- *   Clients page uses — issuing a token here is real, and (as of
- *   SPEC-210) so is the endpoint it names: the `default` profile the
- *   wizard's vault creation just mounted.
- * - Step 1 (owner account) is real since issue 342: it creates the hub's
- *   one owner account through `POST /api/auth/owner` (accepted only while
- *   none exists) and signs this browser in with it. A hub whose sign-in
- *   server is off (`oauth.enabled: false`, the default) is offered the
- *   switch here too — `POST /api/mode` turns it on, one restart applies
- *   it, and the step then shows the account form. A hub signing in
- *   through an identity provider has nothing to set up here.
- * - Step 2 (access mode) is a preview by design: changing the hub's real
- *   mode is the Access page's job (SPEC-205, linked from the step); this
- *   step previews how step 4 gates clients, showing the real current mode
- *   read-only from `GET /api/info`.
+ * One forward journey, in the order the hub needs it:
  *
- * Reachable from the Home and Explorer empty states (issue 372) — a hub
- * with no vault yet points here instead of merely mentioning "the wizard".
+ *   How you'll use palaia → Your first memory → Your account →
+ *   Cloud access (cloud goal only) → Connect an AI app → Done
+ *
+ * - Every step's state comes from `/api/setup` (the hub), so a reload, a
+ *   restart or another browser resume at the first open step; a ticked step
+ *   is one the hub confirms.
+ * - The goal comes first, because it decides what the rest means: the usual
+ *   shared hub (cloud: ChatGPT and Claude connect over a public HTTPS
+ *   address and sign in; the dashboard stays private) or private only.
+ * - The memory comes before the account and cloud access, because the
+ *   sign-in server grants access to memories and has nothing to grant
+ *   without one — the order that sent the 2026-10-23 tester back from step
+ *   4 to step 1.
+ * - Turning cloud access on needs one restart; the wizard says so before,
+ *   restarts the hub itself where it can, and continues here after the
+ *   sign-in that follows.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { ConnectPanel } from "../../components/ConnectPanel";
 import { Field, Input } from "../../components/Field";
+import type { SetupStatus } from "../../lib/api/client";
 import { api } from "../../lib/api/client";
-import type { SignInInfo } from "../../lib/api/client";
-import type { HubMode } from "../../lib/clients";
-import { guidedClients } from "../../lib/clients";
-import { docsUrl } from "../../lib/docs";
 import { describeApiError } from "../../lib/errors";
+import { useSetupStatus, waitForRestart } from "../../lib/setup";
+import { ArrowRightIcon, CheckIcon, WarningIcon } from "../../shell/icons";
+import { CloudStep } from "./CloudStep";
+import { RestartByHand } from "./RestartByHand";
+import { ConnectStep } from "./ConnectStep";
+import "./onboarding.css";
 import {
-  ArrowRightIcon,
-  CheckIcon,
-  ClientsIcon,
-  LinkIcon,
-  MarketplaceIcon,
-  WarningIcon,
-} from "../../shell/icons";
-
-const STEP_NAMES = [
-  { name: "Owner account", hint: "who administers this hub" },
-  { name: "Access mode", hint: "who can reach it" },
-  { name: "First vault", hint: "where memory lives" },
-  { name: "First client", hint: "the two-minute part" },
-];
-
-const MODE_CARDS: { mode: HubMode; label: string; badge: string; when: string }[] = [
-  {
-    mode: "locked",
-    label: "Locked",
-    badge: "sign-in optional",
-    when: "You only use agents in your terminal and apps on your own machines.",
-  },
-  {
-    mode: "cloud",
-    label: "Cloud",
-    badge: "sign-in required",
-    when:
-      "You want claude.ai, ChatGPT or your phone to reach your memory, over a private tunnel — " +
-      "this dashboard stays reachable only from your own network.",
-  },
-  {
-    mode: "open",
-    label: "Open",
-    badge: "sign-in, plus a security checklist",
-    when: "You consciously want the dashboard itself reachable from the internet.",
-  },
-];
-
-/** What step 1 has to offer, once the hub has answered (issue 342). */
-type OwnerStep =
-  | { kind: "checking" }
-  /** No sign-in server: the step offers to turn it on. */
-  | { kind: "server-off" }
-  /** Sign-in server turned on this session; the hub needs a restart first. */
-  | { kind: "restart-pending" }
-  | { kind: "idp"; provider: string }
-  /** Password sign-in, no owner yet: the account form. */
-  | { kind: "form" }
-  | { kind: "configured" };
+  firstOpenStep,
+  goalOf,
+  type Goal,
+  type StepId,
+  stepViews,
+} from "./steps";
 
 const MIN_PASSWORD_LENGTH = 12;
 
-function StepRail({ step }: { step: number }) {
-  return (
-    <div className="steps">
-      {STEP_NAMES.map((item, index) => {
-        const num = index + 1;
-        const state = num === step ? "step--on" : num < step ? "step--done" : "";
-        return (
-          <div className={["step", state].filter(Boolean).join(" ")} key={item.name}>
-            <span className="step__num">{num < step ? <CheckIcon className="icon--sm" /> : num}</span>
-            <span className="grow">
-              <span className="step__name">{item.name}</span>
-              <br />
-              <span className="step__hint">{item.hint}</span>
-            </span>
+/** Spoken after a step's name: the rail's ticks are not only visual. */
+const STATE_LABEL = {
+  done: " (done)",
+  skipped: " (skipped)",
+  attention: " (needs attention)",
+  todo: "",
+} as const;
+const VAULT_KEY_RE = /^[a-z0-9][a-z0-9-]*$/;
+
+export function Onboarding() {
+  const navigate = useNavigate();
+  const { status, error, refresh } = useSetupStatus(3000);
+  // The step on screen. It starts at the first open one and moves only when
+  // the person moves (Continue, the rail): a status poll that finds a step
+  // done must not pull the page away from the result they are reading.
+  const [pinned, setPinned] = useState<StepId | "done" | null>(null);
+  const panel = useRef<HTMLDivElement>(null);
+
+  const views = useMemo(() => (status ? stepViews(status) : []), [status]);
+  const open = status ? firstOpenStep(views) : null;
+  if (status && pinned === null) setPinned(open ?? "done");
+  const current: StepId | "done" = pinned ?? open ?? "done";
+
+  // A new step starts at its top, on a phone too.
+  useEffect(() => {
+    panel.current?.scrollTo?.({ top: 0 });
+    window.scrollTo?.({ top: 0 });
+  }, [current]);
+
+  async function finish() {
+    await api.updateSetup({ completed: true });
+    navigate("/", { replace: true });
+  }
+
+  async function next() {
+    const latest = await refresh();
+    if (latest) setPinned(firstOpenStep(stepViews(latest)) ?? "done");
+  }
+
+  if (!status) {
+    return (
+      <div className="ob">
+        <div className="ob__panel" ref={panel}>
+          <div className="ob__inner">
+            {error ? (
+              <div className="banner banner--risk" role="alert">
+                <WarningIcon className="icon icon--sm" />
+                <div>
+                  <p className="banner__title">Can't reach palaia</p>
+                  <p className="t-sm t-muted">
+                    {describeApiError(error)} This page tries again by itself.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="t-muted">Loading setup…</p>
+            )}
           </div>
-        );
-      })}
+        </div>
+      </div>
+    );
+  }
+
+  const index = views.findIndex((view) => view.id === current);
+  const position = current === "done" ? views.length : index + 1;
+
+  return (
+    <div className="ob">
+      <aside className="ob__rail" aria-label="Setup steps">
+        <span className="ob__brand">palaia</span>
+        <ol className="ob__steps">
+          {views.map((view, i) => {
+            const isCurrent = view.id === current;
+            const reachable = view.state !== "todo" || view.id === open;
+            return (
+              <li key={view.id}>
+                <button
+                  type="button"
+                  className={[
+                    "ob__step",
+                    isCurrent ? "ob__step--current" : "",
+                    `ob__step--${view.state}`,
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  aria-current={isCurrent ? "step" : undefined}
+                  aria-label={`${view.name}${STATE_LABEL[view.state]}`}
+                  disabled={!reachable}
+                  onClick={() => setPinned(view.id)}
+                >
+                  <span className="ob__num" aria-hidden="true">
+                    {view.state === "done" ? (
+                      <CheckIcon className="icon--sm" />
+                    ) : (
+                      i + 1
+                    )}
+                  </span>
+                  <span className="ob__step-name">{view.name}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+        <p className="t-xs t-muted ob__rail-note">
+          About 5 minutes. You can change everything later in Settings. Your
+          data stays on this server.
+        </p>
+      </aside>
+
+      <main className="ob__panel" ref={panel}>
+        <div className="ob__inner">
+          <div className="ob__top">
+            <span className="t-meta">
+              {current === "done"
+                ? "Done"
+                : `Step ${position} of ${views.length}`}
+            </span>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => void finish()}
+            >
+              Leave setup
+            </button>
+          </div>
+          <div
+            className="ob__progress"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={views.length}
+            aria-valuenow={
+              views.filter((v) => v.state === "done" || v.state === "skipped")
+                .length
+            }
+          >
+            <span
+              style={{
+                width: `${(100 * views.filter((v) => v.state === "done" || v.state === "skipped").length) / views.length}%`,
+              }}
+            />
+          </div>
+
+          {status.problems.length > 0 ? (
+            <div className="banner banner--warn" role="status">
+              <WarningIcon className="icon icon--sm" />
+              <div>
+                {status.problems.map((problem) => (
+                  <p className="t-sm" key={problem}>
+                    {problem}
+                  </p>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {current === "goal" ? (
+            <GoalStep status={status} onDone={next} />
+          ) : null}
+          {current === "memory" ? (
+            <MemoryStep status={status} onDone={next} />
+          ) : null}
+          {current === "account" ? (
+            <AccountStep status={status} onDone={next} />
+          ) : null}
+          {current === "cloud" ? (
+            <CloudStep status={status} refresh={refresh} onDone={next} />
+          ) : null}
+          {current === "connect" ? (
+            <ConnectStep
+              status={status}
+              onDone={next}
+              onWantCloud={async () => {
+                await api.updateSetup({ goal: "cloud" });
+                await refresh();
+                setPinned("cloud");
+              }}
+            />
+          ) : null}
+          {current === "done" ? (
+            <DoneStep status={status} onFinish={finish} />
+          ) : null}
+        </div>
+      </main>
     </div>
   );
 }
 
-export function Onboarding() {
-  const navigate = useNavigate();
-  const [step, setStep] = useState(1);
-  const [realMode, setRealMode] = useState<HubMode>("locked");
+// --------------------------------------------------------------------- goal
 
-  const [ownerStep, setOwnerStep] = useState<OwnerStep>({ kind: "checking" });
-  const [ownerName, setOwnerName] = useState("");
-  const [ownerPassword, setOwnerPassword] = useState("");
-  const [ownerConfirm, setOwnerConfirm] = useState("");
-  const [ownerBusy, setOwnerBusy] = useState(false);
-  const [ownerError, setOwnerError] = useState<string | null>(null);
+const GOALS: { goal: Goal; title: string; badge?: string; text: string }[] = [
+  {
+    goal: "cloud",
+    title: "With ChatGPT and Claude",
+    badge: "Recommended",
+    text:
+      "Your AI apps — also the Claude app on your phone or Mac — reach palaia over a secure " +
+      "web address and sign in with your account. This dashboard stays on your private network.",
+  },
+  {
+    goal: "private",
+    title: "Only on my own devices",
+    text:
+      "For AI apps on computers in your private network, such as Claude Desktop or Claude " +
+      "Code. ChatGPT and claude.ai can't connect.",
+  },
+];
 
-  const [previewMode, setPreviewMode] = useState<HubMode>("locked");
+function GoalStep({
+  status,
+  onDone,
+}: {
+  status: SetupStatus;
+  onDone: () => Promise<void>;
+}) {
+  const [goal, setGoal] = useState<Goal>(goalOf(status));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const [vaultKey, setVaultKey] = useState("work");
-  const [vaultPurpose, setVaultPurpose] = useState("");
-  const [vaultPath, setVaultPath] = useState("");
-  const [template, setTemplate] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
-
-  const [clientId, setClientId] = useState(guidedClients()[0]!.id);
-
-  useEffect(() => {
-    let cancelled = false;
-    const info = api.info().catch(() => null);
-    const owner = api.ownerAccount().catch(() => null);
-    Promise.all([info, owner]).then(([hubInfo, ownerState]) => {
-      if (cancelled) return;
-      if (hubInfo) {
-        setRealMode(hubInfo.mode as HubMode);
-        setPreviewMode(hubInfo.mode as HubMode);
-      }
-      const signIn = (hubInfo?.sign_in ?? null) as SignInInfo | null;
-      if (signIn?.method === "idp") {
-        setOwnerStep({ kind: "idp", provider: signIn.provider_name ?? "your sign-in provider" });
-      } else if (ownerState === null) {
-        // 404 (no sign-in server) or no hub reachable at all.
-        setOwnerStep({ kind: "server-off" });
-      } else {
-        setOwnerStep({ kind: ownerState.configured ? "configured" : "form" });
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  async function createOwner() {
-    setOwnerBusy(true);
-    setOwnerError(null);
+  async function save() {
+    setBusy(true);
+    setError(null);
     try {
-      await api.createOwnerAccount({ username: ownerName.trim(), password: ownerPassword });
-      setOwnerStep({ kind: "configured" });
-      setStep(2);
+      await api.updateSetup({ goal });
+      await onDone();
     } catch (err) {
-      setOwnerError(describeApiError(err));
+      setError(describeApiError(err));
     } finally {
-      setOwnerBusy(false);
+      setBusy(false);
     }
   }
-
-  async function turnOnSignIn() {
-    setOwnerBusy(true);
-    setOwnerError(null);
-    try {
-      const status = await api.changeMode({
-        oauth_enabled: true,
-        oauth_issuer: window.location.origin,
-      });
-      setOwnerStep({ kind: status.restart_required ? "restart-pending" : "form" });
-    } catch (err) {
-      setOwnerError(describeApiError(err));
-    } finally {
-      setOwnerBusy(false);
-    }
-  }
-
-  const ownerFormValid =
-    ownerName.trim().length > 0 &&
-    ownerPassword.length >= MIN_PASSWORD_LENGTH &&
-    ownerPassword === ownerConfirm;
-
-  async function createVault() {
-    setCreating(true);
-    setCreateError(null);
-    try {
-      await api.createVault({
-        key: vaultKey,
-        purpose: vaultPurpose || undefined,
-        path: vaultPath || undefined,
-        template,
-      });
-      setStep(4);
-    } catch (err) {
-      setCreateError(describeApiError(err));
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  const selectedClient = guidedClients().find((c) => c.id === clientId) ?? guidedClients()[0]!;
 
   return (
-    <div className="wiz">
-      <aside className="wiz__rail">
-        <a className="brand" href="/">
-          <span className="brand__mark">p</span>
-          <span className="brand__name">palaia</span>
-          <span className="brand__ver">v3</span>
-        </a>
-        <StepRail step={step} />
-        <div className="stack stack--2" style={{ marginTop: "auto" }}>
-          <p className="t-xs t-muted">
-            Takes about two minutes. Every answer is changeable later — vaults, clients and
-            access each have their own page. Nothing here is a one-way door.
-          </p>
-          <p className="t-xs t-subtle">No account on our servers, no telemetry. This hub is yours.</p>
+    <section className="ob__step-body" aria-labelledby="ob-goal-title">
+      <h1 id="ob-goal-title" className="ob__title">
+        How do you want to use palaia?
+      </h1>
+      <div
+        className="radiocards"
+        role="radiogroup"
+        aria-label="How you'll use palaia"
+      >
+        {GOALS.map((card) => (
+          <button
+            type="button"
+            role="radio"
+            aria-checked={goal === card.goal}
+            key={card.goal}
+            className={["radiocard", goal === card.goal ? "radiocard--on" : ""]
+              .filter(Boolean)
+              .join(" ")}
+            onClick={() => setGoal(card.goal)}
+          >
+            <span className="radiocard__pick" />
+            <span className="grow">
+              <span className="row" style={{ gap: 8 }}>
+                <span className="radiocard__name">{card.title}</span>
+                {card.badge ? (
+                  <span className="badge badge--ok">{card.badge}</span>
+                ) : null}
+              </span>
+              <span className="radiocard__when">{card.text}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+      <p className="t-sm t-muted">You can change this later under Access.</p>
+      {error ? <p className="field__error">{error}</p> : null}
+      <div className="ob__foot">
+        <button
+          type="button"
+          className="btn btn--primary btn--lg"
+          onClick={() => void save()}
+          disabled={busy}
+        >
+          Continue
+          <ArrowRightIcon className="icon--sm" />
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// ------------------------------------------------------------------- memory
+
+function MemoryStep({
+  status,
+  onDone,
+}: {
+  status: SetupStatus;
+  onDone: () => Promise<void>;
+}) {
+  const [key, setKey] = useState("work");
+  const [purpose, setPurpose] = useState("");
+  const [path, setPath] = useState("");
+  const [template, setTemplate] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (status.vaults.length > 0) {
+    return (
+      <section className="ob__step-body">
+        <h1 className="ob__title">Your memory is ready</h1>
+        <p className="t-lead">
+          {status.vaults.length === 1
+            ? `“${status.vaults[0]}” is where your AI apps save and find notes.`
+            : `${status.vaults.length} memories are ready for your AI apps.`}
+        </p>
+        <div className="ob__foot">
+          <button
+            type="button"
+            className="btn btn--primary btn--lg"
+            onClick={() => void onDone()}
+          >
+            Continue
+            <ArrowRightIcon className="icon--sm" />
+          </button>
         </div>
-      </aside>
+      </section>
+    );
+  }
 
-      <div className="wiz__panel">
-        <div className="wiz__inner">
-          {step === 1 ? (
-            <>
-              <div className="wiz__eyebrow">
-                <span className="t-over">Step 1 of 4</span>
-                <span className="badge">nothing installed on your clients yet</span>
-              </div>
-              <h2 className="wiz__title">Let's set up your hub.</h2>
-              {ownerStep.kind === "form" ? (
-                <>
-                  <p className="t-lead">
-                    The account you sign in to this dashboard with. palaia has exactly one owner —
-                    AI tools connect with their own tokens, never with this password.
-                  </p>
-                  <form
-                    className="card"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      if (ownerFormValid && !ownerBusy) void createOwner();
-                    }}
-                  >
-                    <div className="card__body stack stack--3">
-                      <Field label="Username">
-                        <Input
-                          value={ownerName}
-                          onChange={(e) => setOwnerName(e.target.value)}
-                          placeholder="owner"
-                          autoComplete="username"
-                        />
-                      </Field>
-                      <Field
-                        label="Password"
-                        hint={`At least ${MIN_PASSWORD_LENGTH} characters — a passphrase, or one from your password manager. Changeable later where the hub runs (palaia-hub oauth set-password).`}
-                      >
-                        <Input
-                          type="password"
-                          value={ownerPassword}
-                          onChange={(e) => setOwnerPassword(e.target.value)}
-                          autoComplete="new-password"
-                        />
-                      </Field>
-                      <Field
-                        label="Repeat the password"
-                        error={
-                          ownerConfirm && ownerConfirm !== ownerPassword
-                            ? "The two passwords differ."
-                            : undefined
-                        }
-                      >
-                        <Input
-                          type="password"
-                          value={ownerConfirm}
-                          onChange={(e) => setOwnerConfirm(e.target.value)}
-                          autoComplete="new-password"
-                        />
-                      </Field>
-                      {ownerError ? <p className="field__error">{ownerError}</p> : null}
-                    </div>
-                  </form>
-                </>
-              ) : null}
-              {ownerStep.kind === "configured" ? (
-                <p className="t-lead">
-                  This hub already has its owner account. When the dashboard asks you to sign in,
-                  that is the account to use — to change its password, run{" "}
-                  <code>palaia-hub oauth set-password</code> where the hub runs.
-                </p>
-              ) : null}
-              {ownerStep.kind === "idp" ? (
-                <p className="t-lead">
-                  This hub signs you in through {ownerStep.provider}, so there is no password to
-                  set here — who may sign in is that provider's allow-list in the hub's
-                  configuration.
-                </p>
-              ) : null}
-              {ownerStep.kind === "server-off" ? (
-                <>
-                  <p className="t-lead">
-                    This hub is running without its sign-in server, so the dashboard is protected
-                    by your network alone. That is fine for a hub only your own devices reach —
-                    turn sign-in on now if other people share the network, or before you make the
-                    hub reachable from the internet.
-                  </p>
-                  {ownerError ? <p className="field__error">{ownerError}</p> : null}
-                  <div className="row" style={{ gap: 8 }}>
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={() => void turnOnSignIn()}
-                      disabled={ownerBusy}
-                    >
-                      {ownerBusy ? "Turning on…" : "Turn on sign-in"}
-                    </button>
-                  </div>
-                </>
-              ) : null}
-              {ownerStep.kind === "restart-pending" ? (
-                <div className="banner">
-                  <WarningIcon className="icon icon--sm" />
-                  <div>
-                    <p className="banner__title">Sign-in is switched on — one restart applies it</p>
-                    <p className="t-sm t-muted">
-                      Restart the hub (the container, or the service), then open this setup again:
-                      this step will ask for your account. Everything else below works without the
-                      restart.
-                    </p>
-                  </div>
-                </div>
-              ) : null}
-              {ownerStep.kind === "checking" ? (
-                <p className="t-lead t-muted">Checking how this hub signs you in…</p>
-              ) : null}
-              <div className="wiz__foot">
-                <span className="t-meta">Step 1 of 4</span>
-                <span className="grow" style={{ textAlign: "right" }}>
-                  {ownerStep.kind === "form" ? (
-                    <button
-                      type="button"
-                      className="btn btn--primary btn--lg"
-                      onClick={() => void createOwner()}
-                      disabled={!ownerFormValid || ownerBusy}
-                    >
-                      {ownerBusy ? "Creating…" : "Create account"}
-                      <ArrowRightIcon className="icon--sm" />
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="btn btn--primary btn--lg"
-                      onClick={() => setStep(2)}
-                      disabled={ownerStep.kind === "checking"}
-                    >
-                      Continue
-                      <ArrowRightIcon className="icon--sm" />
-                    </button>
-                  )}
-                </span>
-              </div>
-            </>
-          ) : null}
+  const keyError =
+    key && !VAULT_KEY_RE.test(key)
+      ? "Use lowercase letters, numbers and dashes, starting with a letter or number."
+      : undefined;
 
-          {step === 2 ? (
-            <>
-              <div className="wiz__eyebrow">
-                <span className="t-over">Step 2 of 4</span>
-                <span className="badge">this hub is currently running in {realMode} mode</span>
-              </div>
-              <h2 className="wiz__title">Who should be able to reach palaia?</h2>
-              <p className="t-lead">
-                This previews which clients Step 4 can guide you through. The hub's real mode is
-                changed on the <Link to="/exposure">Access page</Link>, with its checks and
-                self-test — pick here the one you mean to use so the reasons in Step 4 line up.
-              </p>
-              <div className="radiocards" role="radiogroup" aria-label="Access mode to prepare for">
-                {MODE_CARDS.map((card) => (
-                  <button
-                    type="button"
-                    role="radio"
-                    aria-checked={previewMode === card.mode}
-                    key={card.mode}
-                    className={["radiocard", previewMode === card.mode ? "radiocard--on" : ""]
-                      .filter(Boolean)
-                      .join(" ")}
-                    onClick={() => setPreviewMode(card.mode)}
-                    style={{ textAlign: "left", width: "100%" }}
-                  >
-                    <span className="radiocard__pick" />
-                    <span className="grow">
-                      <span className="row" style={{ gap: 8 }}>
-                        <span className="radiocard__name">{card.label}</span>
-                        <span className="badge">{card.badge}</span>
-                      </span>
-                      <span className="radiocard__when">{card.when}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-              <div className="banner">
-                <WarningIcon className="icon icon--sm" />
-                <div>
-                  <p className="banner__title">The part other tools leave out</p>
-                  <p className="t-sm t-muted">
-                    claude.ai, ChatGPT and the phone apps connect from <em>their vendor's cloud</em>,
-                    not from your device: in Locked mode they cannot reach palaia, whatever your
-                    network looks like.
-                  </p>
-                </div>
-              </div>
-              <div className="wiz__foot">
-                <button type="button" className="btn" onClick={() => setStep(1)}>
-                  Back
-                </button>
-                <span className="t-meta">Step 2 of 4</span>
-                <span className="grow" style={{ textAlign: "right" }}>
-                  <button type="button" className="btn btn--primary btn--lg" onClick={() => setStep(3)}>
-                    Continue with {MODE_CARDS.find((c) => c.mode === previewMode)!.label}
-                    <ArrowRightIcon className="icon--sm" />
-                  </button>
-                </span>
-              </div>
-            </>
-          ) : null}
+  async function create() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.createVault({
+        key,
+        purpose: purpose.trim() || undefined,
+        path: path.trim() || undefined,
+        template,
+      });
+      await onDone();
+    } catch (err) {
+      setError(describeApiError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
 
-          {step === 3 ? (
-            <>
-              <div className="wiz__eyebrow">
-                <span className="t-over">Step 3 of 4</span>
-                <span className="badge">plain Markdown, versioned with git</span>
-              </div>
-              <h2 className="wiz__title">Your first vault.</h2>
-              <p className="t-lead">
-                A folder of Markdown files your agents share. Add more later; they stay physically
-                separate.
-              </p>
-              <div className="card">
-                <div className="card__body stack stack--3">
-                  <Field label="Name" hint="Becomes part of your agents' tool names, e.g. work_memory_search.">
-                    <Input
-                      value={vaultKey}
-                      onChange={(e) => setVaultKey(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))}
-                    />
-                  </Field>
-                  <Field
-                    label="What is this vault for?"
-                    hint="The agents read this line. It is how they pick the right memory instead of guessing."
-                  >
-                    <Input
-                      value={vaultPurpose}
-                      onChange={(e) => setVaultPurpose(e.target.value)}
-                      placeholder="Clients, projects and technical decisions at byte5"
-                    />
-                  </Field>
-                  <Field label="Where it lives" hint="Leave blank to use the default location under the hub's data directory.">
-                    <Input
-                      value={vaultPath}
-                      onChange={(e) => setVaultPath(e.target.value)}
-                      placeholder="(default)"
-                    />
-                  </Field>
-                  <div className="switchgrid">
-                    <div className="switchrow">
-                      <span className="switch switch--on" aria-hidden="true" />
-                      <span className="grow">
-                        <span className="field__label">Version with git</span>
-                        <br />
-                        <span className="field__hint">
-                          Every write becomes a commit naming the agent and the reason. Always on —
-                          this is the engine's own undo mechanism.
-                        </span>
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={template}
-                      className="switchrow"
-                      style={{ textAlign: "left", cursor: "pointer" }}
-                      onClick={() => setTemplate((v) => !v)}
-                    >
-                      <span className={["switch", template ? "switch--on" : ""].filter(Boolean).join(" ")} />
-                      <span className="grow">
-                        <span className="field__label">Start from a template</span>
-                        <br />
-                        <span className="field__hint">Two example notes to learn from. Deletable, no lock-in.</span>
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div className="preview stack stack--2">
-                <div className="row row--wrap" style={{ gap: 6 }}>
-                  <span className="t-over">What your agents will see</span>
-                  <span className="chip chip--mono">{vaultKey}_memory_search</span>
-                  <span className="chip chip--mono">{vaultKey}_memory_write</span>
-                </div>
-                <p className="t-xs t-muted">
-                  Names carry the vault: an agent with two memories tells them apart from the tool
-                  list alone.
-                </p>
-              </div>
-              {createError ? <p className="field__error">{createError}</p> : null}
-              <div className="wiz__foot">
-                <button type="button" className="btn" onClick={() => setStep(2)}>
-                  Back
-                </button>
-                <span className="t-meta">Step 3 of 4</span>
-                <span className="grow" style={{ textAlign: "right" }}>
-                  <button
-                    type="button"
-                    className="btn btn--signal btn--lg"
-                    onClick={createVault}
-                    disabled={creating || !vaultKey}
-                  >
-                    {creating ? "Creating…" : "Create vault"}
-                    <ArrowRightIcon className="icon--sm" />
-                  </button>
+  return (
+    <form
+      className="ob__step-body"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (key && !keyError && !busy) void create();
+      }}
+    >
+      <h1 className="ob__title">Create your first memory</h1>
+      <p className="t-lead">
+        A memory is a folder of notes your AI apps read and write. You can add
+        more later.
+      </p>
+      <div className="card">
+        <div className="card__body stack stack--3">
+          <Field
+            label="Name"
+            hint="Lowercase letters, numbers and dashes, e.g. work."
+            error={keyError}
+          >
+            <Input
+              value={key}
+              onChange={(e) =>
+                setKey(e.target.value.toLowerCase().replace(/\s+/g, "-"))
+              }
+              required
+              autoComplete="off"
+            />
+          </Field>
+          <Field
+            label={
+              <>
+                What it's for <span className="field__optional">Optional</span>
+              </>
+            }
+            hint="AI apps read this to choose the right memory. Leave it empty to add it later."
+          >
+            <Input
+              value={purpose}
+              onChange={(e) => setPurpose(e.target.value)}
+              placeholder="Projects, decisions and notes"
+            />
+          </Field>
+          <details className="ob__more">
+            <summary>More options</summary>
+            <div className="stack stack--3">
+              <Field
+                label={
+                  <>
+                    Folder <span className="field__optional">Optional</span>
+                  </>
+                }
+                hint="Leave empty to keep it in palaia's data folder."
+              >
+                <Input value={path} onChange={(e) => setPath(e.target.value)} />
+              </Field>
+              <label className="ob__check">
+                <input
+                  type="checkbox"
+                  checked={template}
+                  onChange={(e) => setTemplate(e.target.checked)}
+                />
+                <span>
+                  Add two example notes{" "}
+                  <span className="t-muted">— delete them any time</span>
                 </span>
-              </div>
-            </>
-          ) : null}
-
-          {step === 4 ? (
-            <>
-              <div className="wiz__eyebrow">
-                <span className="t-over">Step 4 of 4</span>
-                <span className="badge">most people finish this one in a minute</span>
-              </div>
-              <h2 className="wiz__title">Connect your first client.</h2>
-              <p className="t-lead">
-                Pick where you work most. You paste one thing — palaia handles the endpoint and
-                the token.
-              </p>
-              <div className="clientgrid">
-                {guidedClients().map((client) => (
-                  <button
-                    type="button"
-                    key={client.id}
-                    className={["clientcard", client.id === clientId ? "clientcard--on" : ""]
-                      .filter(Boolean)
-                      .join(" ")}
-                    onClick={() => setClientId(client.id)}
-                  >
-                    <span className="row" style={{ gap: 8 }}>
-                      <client.icon className="icon--sm" />
-                      <span className="clientcard__name">{client.name}</span>
-                    </span>
-                    <span className="t-xs t-muted">{client.estimate}</span>
-                  </button>
-                ))}
-              </div>
-              <ConnectPanel
-                key={selectedClient.id}
-                client={selectedClient}
-                defaultProfile="default"
-              />
-              <div className="card" style={{ marginTop: "var(--space-4)" }}>
-                <div className="card__body stack stack--3">
-                  <p className="t-over">What's next</p>
-                  <div className="row row--wrap" style={{ gap: 8 }}>
-                    <Link className="btn" to="/clients">
-                      <ClientsIcon className="icon--sm" />
-                      Connect a second AI
-                    </Link>
-                    <Link className="btn" to="/marketplace">
-                      <MarketplaceIcon className="icon--sm" />
-                      Install a tool
-                    </Link>
-                    <a
-                      className="btn"
-                      href={docsUrl("/first-shared-memory/")}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <LinkIcon className="icon--sm" />
-                      Read the docs
-                    </a>
-                  </div>
-                  <p className="t-xs t-muted">
-                    A second AI is the whole point — one memory both of them read from and write
-                    to. All three are here whenever you're ready; nothing above is required to
-                    finish.
-                  </p>
-                </div>
-              </div>
-              <div className="wiz__foot">
-                <button type="button" className="btn" onClick={() => setStep(3)}>
-                  Back
-                </button>
-                <span className="t-meta">Step 4 of 4</span>
-                <span className="grow row" style={{ justifyContent: "flex-end" }}>
-                  <button type="button" className="btn btn--ghost" onClick={() => navigate("/")}>
-                    Skip for now
-                  </button>
-                  <button type="button" className="btn btn--primary btn--lg" onClick={() => navigate("/")}>
-                    Finish
-                    <ArrowRightIcon className="icon--sm" />
-                  </button>
-                </span>
-              </div>
-            </>
-          ) : null}
+              </label>
+            </div>
+          </details>
+          <p className="t-sm t-muted">
+            Every change is saved with its history, so you can undo it.
+          </p>
         </div>
       </div>
-    </div>
+      {error ? <p className="field__error">{error}</p> : null}
+      <div className="ob__foot">
+        <button
+          type="submit"
+          className="btn btn--primary btn--lg"
+          disabled={busy || !key || Boolean(keyError)}
+        >
+          {busy ? "Creating…" : "Create memory"}
+          <ArrowRightIcon className="icon--sm" />
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// ------------------------------------------------------------------ account
+
+function AccountStep({
+  status,
+  onDone,
+}: {
+  status: SetupStatus;
+  onDone: () => Promise<void>;
+}) {
+  const goal = goalOf(status);
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [restarting, setRestarting] = useState(false);
+
+  const signInPending =
+    goal === "private" &&
+    status.owner_configured &&
+    status.configured_sign_in &&
+    !status.sign_in_active;
+
+  if (status.owner_configured && !signInPending) {
+    return (
+      <section className="ob__step-body">
+        <h1 className="ob__title">Your account is set up</h1>
+        <p className="t-lead">
+          {goal === "cloud"
+            ? "You sign in with it to this dashboard and when an AI app connects to palaia."
+            : "You sign in with it to this dashboard."}
+        </p>
+        <div className="ob__foot">
+          <button
+            type="button"
+            className="btn btn--primary btn--lg"
+            onClick={() => void onDone()}
+          >
+            Continue
+            <ArrowRightIcon className="icon--sm" />
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  if (signInPending) {
+    async function restart() {
+      setRestarting(true);
+      setError(null);
+      try {
+        await api.restartHub();
+        await waitForRestart();
+        window.location.reload();
+      } catch (err) {
+        setError(describeApiError(err));
+        setRestarting(false);
+      }
+    }
+    return (
+      <section className="ob__step-body">
+        <h1 className="ob__title">Restart palaia to turn on sign-in</h1>
+        <p className="t-lead">
+          After the restart, palaia asks for your password, then setup continues
+          here.
+        </p>
+        {status.restart_supported ? (
+          <div className="ob__foot">
+            <button
+              type="button"
+              className="btn btn--primary btn--lg"
+              onClick={() => void restart()}
+              disabled={restarting}
+            >
+              {restarting ? "Restarting palaia…" : "Restart palaia"}
+            </button>
+          </div>
+        ) : (
+          <RestartByHand />
+        )}
+        {error ? <p className="field__error">{error}</p> : null}
+      </section>
+    );
+  }
+
+  const confirmError =
+    confirm && confirm !== password
+      ? "The two passwords are not the same."
+      : undefined;
+  const valid =
+    name.trim().length > 0 &&
+    password.length >= MIN_PASSWORD_LENGTH &&
+    password === confirm;
+
+  async function create() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.createOwnerAccount({ username: name.trim(), password });
+      if (goal === "private" && !status.sign_in_active) {
+        // A private hub asks for the password only once its sign-in server
+        // runs: turn it on for this dashboard (one restart, next screen).
+        await api.changeMode({
+          oauth_enabled: true,
+          oauth_issuer: window.location.origin,
+          dashboard_require_sign_in: true,
+        });
+      }
+      await onDone();
+    } catch (err) {
+      setError(describeApiError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function skip() {
+    setBusy(true);
+    try {
+      await api.updateSetup({ skipped: [...status.skipped, "account"] });
+      await onDone();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form
+      className="ob__step-body"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (valid && !busy) void create();
+      }}
+    >
+      <h1 className="ob__title">Create your account</h1>
+      <p className="t-lead">
+        {goal === "cloud"
+          ? "You sign in with this account to the dashboard and whenever ChatGPT or Claude " +
+            "connects. AI apps never see the password."
+          : "Optional. With an account, this dashboard asks for your password; without one, " +
+            "anyone on your private network can open it."}
+      </p>
+      <div className="card">
+        <div className="card__body stack stack--3">
+          <Field label="Username">
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoComplete="username"
+              required
+            />
+          </Field>
+          <Field
+            label="Password"
+            hint={`At least ${MIN_PASSWORD_LENGTH} characters.`}
+          >
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
+              required
+            />
+          </Field>
+          <Field label="Repeat the password" error={confirmError}>
+            <Input
+              type="password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              autoComplete="new-password"
+              required
+            />
+          </Field>
+        </div>
+      </div>
+      {goal === "private" ? (
+        <p className="t-sm t-muted">Turning sign-in on restarts palaia once.</p>
+      ) : null}
+      {error ? <p className="field__error">{error}</p> : null}
+      <div className="ob__foot">
+        {goal === "private" ? (
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void skip()}
+            disabled={busy}
+          >
+            Skip
+          </button>
+        ) : null}
+        <button
+          type="submit"
+          className="btn btn--primary btn--lg"
+          disabled={!valid || busy}
+        >
+          {busy ? "Creating…" : "Create account"}
+          <ArrowRightIcon className="icon--sm" />
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// --------------------------------------------------------------------- done
+
+function DoneStep({
+  status,
+  onFinish,
+}: {
+  status: SetupStatus;
+  onFinish: () => Promise<void>;
+}) {
+  const goal = goalOf(status);
+  const rows: { label: string; value: string; ok: boolean }[] = [
+    {
+      label: "Memory",
+      value: status.vaults.length ? status.vaults.join(", ") : "None yet",
+      ok: status.vaults.length > 0,
+    },
+    {
+      label: "Account",
+      value: status.owner_configured ? "Set up" : "Not set up",
+      ok: status.owner_configured,
+    },
+  ];
+  if (goal === "cloud") {
+    rows.push({
+      label: "Cloud access",
+      value: status.cloud_ready ? (status.issuer ?? "On") : "Off",
+      ok: status.cloud_ready,
+    });
+  }
+  rows.push({
+    label: "AI app",
+    value: status.client_connected
+      ? "Connected"
+      : "Waiting for the first request",
+    ok: status.client_connected,
+  });
+  return (
+    <section className="ob__step-body">
+      <h1 className="ob__title">You're set up</h1>
+      <ul className="ob__summary">
+        {rows.map((row) => (
+          <li key={row.label}>
+            <span
+              className={row.ok ? "ob__dot ob__dot--ok" : "ob__dot"}
+              aria-hidden="true"
+            />
+            <span className="ob__summary-label">{row.label}</span>
+            <span className="ob__summary-value">{row.value}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="ob__foot">
+        <button
+          type="button"
+          className="btn btn--primary btn--lg"
+          onClick={() => void onFinish()}
+        >
+          Open palaia
+          <ArrowRightIcon className="icon--sm" />
+        </button>
+      </div>
+      <p className="t-sm t-muted">
+        Next: <Link to="/clients">connect another AI app</Link> — one memory,
+        shared by all of them.
+      </p>
+    </section>
   );
 }

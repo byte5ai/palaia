@@ -6,6 +6,7 @@ import { useEventStream } from "../lib/events";
 import { hubHealth } from "../lib/health";
 import { useHubMode } from "../lib/mode";
 import { useSession } from "../lib/session";
+import { useFirstRunRedirect } from "../lib/setup";
 import { PHONE_QUERY, useMediaQuery } from "../lib/useMediaQuery";
 import { ScreenLoading } from "../routes/ScreenLoading";
 import { MenuIcon } from "./icons";
@@ -41,6 +42,8 @@ function isPageHandle(value: unknown): value is PageHandle {
 export function AppShell() {
   const stream = useEventStream();
   const mode = useHubMode();
+  // issue 559: an unfinished first-run setup opens the wizard, not Home.
+  useFirstRunRedirect();
   const { session, signOut } = useSession();
   const location = useLocation();
   const matches = useMatches();

@@ -58,9 +58,9 @@ Think Home Assistant, for your AI tools.
 - **Runs where you decide.** A server in your office, a machine in your cloud account,
   a NAS, or a Raspberry Pi. No account with us, no subscription, no data leaving your
   infrastructure unless you say so.
-- **Safe by default.** Sign in with GitHub or Google, pick in the setup wizard how far
-  your hub should reach (just this machine, your private network, or the internet),
-  and back everything up with one click.
+- **Safe by default.** Your dashboard stays on your private network. ChatGPT and Claude
+  reach only palaia's AI connection, over HTTPS, and sign in with your account. Back
+  everything up with one click.
 
 ## Get started in 60 seconds
 
@@ -78,9 +78,9 @@ docker run -d --name palaia-hub \
 ```
 
 Then open **`http://<your-machine>:8420`** in a browser (on many home networks
-`http://palaia.local` works too). A short setup wizard takes it from there: sign in,
-save your first memory, connect your first AI tool. No config files, no second
-command.
+`http://palaia.local` works too). palaia's setup opens by itself and takes it from
+there: your first memory, your account, cloud access if you want it, your first AI
+app. No config files, no second command.
 
 Once `3.0.0` is final, use `:stable` instead of `:beta`. Updating later is one click
 in the dashboard.
