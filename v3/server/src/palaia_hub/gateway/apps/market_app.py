@@ -11,10 +11,12 @@ MASTERPLAN §5.7's "security-sensitive administration stays
 dashboard-only"). This page contains no install tool call at all: its
 "Install" control is a plain ``<a target="_blank">`` to this hub's
 dashboard, built server-side from ``config.exposure.public_url`` (the same
-field the exposure wizard already fills in — SPEC-205) — never a guess at
-an origin the sandboxed app iframe cannot reliably know. A hub with no
-public URL recorded yet (the common case for a brand-new locked-mode hub)
-shows plain instructions instead of a dead link, same "never a dead end"
+field the exposure wizard already fills in — SPEC-205) where that address
+serves the dashboard, ``open`` mode (:func:`palaia_hub.app.dashboard_link_base`)
+— never a guess at an origin the sandboxed app iframe cannot reliably know.
+Any other hub (a locked one, or a cloud one whose public address is the
+cloud entry, which refuses the dashboard) shows plain instructions instead
+of a dead link, same "never a dead end"
 posture :mod:`palaia_hub.gateway.apps.hub_status_app` and the dashboard's
 own Clients screen already hold to.
 """
@@ -63,10 +65,10 @@ class MarketBrowseResult(BaseModel):
     query: str
     entries: list[MarketBrowseEntry] = Field(default_factory=list)
     stale: bool = False
-    #: This hub's dashboard, if known (``config.exposure.public_url`` —
-    #: SPEC-205) — the base every "Install" deep link is built from. ``None``
-    #: means the page shows plain instructions instead of a link (see the
-    #: module docstring).
+    #: This hub's dashboard, if known (``config.exposure.public_url`` in
+    #: ``open`` mode — SPEC-205) — the base every "Install" deep link is
+    #: built from. ``None`` means the page shows plain instructions instead
+    #: of a link (see the module docstring).
     dashboard_url: str | None = None
 
 

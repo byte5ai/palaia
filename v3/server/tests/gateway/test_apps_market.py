@@ -147,3 +147,54 @@ def test_market_mount_present_only_with_a_market_service(tmp_path: Path) -> None
         # test_apps_hub_status.py's own mount test uses (see that file's
         # docstring for why no full JSON-RPC round trip is attempted here).
         assert rest.get("/mcp/market").status_code == 406
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected"),
+    [
+        # The public address is the cloud entry, which refuses the dashboard.
+        ("cloud", None),
+        ("locked", None),
+        # The whole hub is public: the address leads to the dashboard.
+        ("open", "https://hub.example.com"),
+    ],
+)
+def test_the_apps_link_the_dashboard_only_where_the_public_address_serves_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str, expected: str | None
+) -> None:
+    from palaia_hub import app as app_module
+    from palaia_hub.auth.store import TokenStore
+    from palaia_hub.directory.service import DirectoryService
+    from palaia_hub.directory.store import DirectoryStore
+    from palaia_hub.messenger.service import MessengerService
+    from palaia_hub.messenger.store import MessengerStore
+    from palaia_hub.oauth.verifier import build_hub_auth
+
+    links: dict[str, str | None] = {}
+
+    def recording(name: str, deps_class: type) -> type:
+        class Recording(deps_class):  # type: ignore[misc, valid-type]
+            def __init__(self, **kwargs: object) -> None:
+                links[name] = kwargs["dashboard_url"]  # type: ignore[assignment]
+                super().__init__(**kwargs)
+
+        return Recording
+
+    monkeypatch.setattr(app_module, "MarketAppDeps", recording("market", MarketAppDeps))
+    monkeypatch.setattr(app_module, "TeamAppDeps", recording("team", app_module.TeamAppDeps))
+    config = HubConfig(
+        mode=mode,  # type: ignore[arg-type]
+        host="127.0.0.1",
+        exposure={"public_url": "https://hub.example.com/"},  # type: ignore[arg-type]
+    )
+    directory = DirectoryService(DirectoryStore(":memory:"))
+    create_app(
+        config,
+        home=tmp_path,
+        market_service=_market_service(tmp_path),
+        directory_service=directory,
+        messenger_service=MessengerService(MessengerStore(":memory:"), directory),
+        hub_auth=build_hub_auth(token_store=TokenStore(home=tmp_path)),
+    )
+
+    assert links == {"market": expected, "team": expected}

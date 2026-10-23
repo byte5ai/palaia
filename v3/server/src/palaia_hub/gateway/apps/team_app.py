@@ -80,7 +80,8 @@ class TeamMonitorResult(BaseModel):
     #: get from a result, the same discipline
     #: `~palaia_hub.gateway.apps.recall_app`'s `pick_tool` field documents.
     send_tool: str = "messenger_send"
-    #: This hub's dashboard, if known (`config.exposure.public_url`) — the
+    #: This hub's dashboard, if known (`config.exposure.public_url` in `open`
+    #: mode, see `palaia_hub.app.dashboard_link_base`) — the
     #: base the "manage from the dashboard" deep link is built from. `None`
     #: means the page shows plain instructions instead (see
     #: `~palaia_hub.gateway.apps.market_app`'s identical fallback).

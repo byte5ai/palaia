@@ -467,10 +467,7 @@ def create_app(
     market_asgi_app = None
     if market_service is not None:
         market_app_deps = MarketAppDeps(
-            market_service=market_service,
-            dashboard_url=(
-                config.exposure.public_url.rstrip("/") if config.exposure.public_url else None
-            ),
+            market_service=market_service, dashboard_url=dashboard_link_base(config)
         )
         market_server = build_market_server(market_app_deps, auth=hub_auth)
         market_asgi_app = market_server.http_app(path="/")
@@ -486,9 +483,7 @@ def create_app(
         team_app_deps = TeamAppDeps(
             directory_service=directory_service,
             messenger_service=messenger_service,
-            dashboard_url=(
-                config.exposure.public_url.rstrip("/") if config.exposure.public_url else None
-            ),
+            dashboard_url=dashboard_link_base(config),
         )
         team_server = build_team_server(team_app_deps, auth=hub_auth)
         team_asgi_app = team_server.http_app(path="/")
@@ -1133,6 +1128,20 @@ def create_app(
     mount_dashboard(app)
 
     return app
+
+
+def dashboard_link_base(config: HubConfig) -> str | None:
+    """The address the MCP apps link the dashboard under, if one is known.
+
+    The public address leads to the dashboard only in ``open`` mode. In
+    ``cloud`` it is the cloud entry, which refuses the dashboard (issues
+    #566/#567), and the hub does not know the private address the owner
+    opens it at — so there is no link, and the apps say where to find the
+    dashboard instead of linking to a page that answers 404.
+    """
+    if config.mode != "open" or not config.exposure.public_url:
+        return None
+    return config.exposure.public_url.rstrip("/")
 
 
 def _default_outbox_path() -> Path:
