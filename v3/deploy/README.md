@@ -46,14 +46,20 @@ curl -fsSL https://get.palaia.ai/docker | bash
 ## Cloud-init (rented servers)
 
 SPEC-601. For a server you rent rather than a machine you already own —
-Hetzner Cloud, DigitalOcean, AWS, or similar — the vehicle is
+Hetzner Cloud, DigitalOcean, or similar — the vehicle is
 [`cloud-init.yaml`](cloud-init.yaml): paste the whole file into the
 provider's server-creation user-data field (Hetzner Cloud calls it "Cloud
-config"; DigitalOcean and AWS call it "User data"), enter one Tailscale
-auth key first, and the server finishes its own setup with no terminal
-session needed. The onboarding page's "A rented server" entry shows the
-same file with a copy button; this is the file it copies from — never a
-second, hand-typed one.
+config"; DigitalOcean calls it "User data"; the file is about 20 KB, so
+providers with a 16 KB limit such as AWS need the installer instead), fill
+in one setup code first, and the server finishes its own setup with no
+terminal session needed: a few minutes after boot, open
+`http://<server-address>:8420/`, enter the code and click "Connect with
+Tailscale" — a one-time setup page (SPEC-605,
+[`setup-page.py`](setup-page.py)) joins the server to your tailnet and
+closes itself. Prefer a key? Fill in `TAILSCALE_AUTH_KEY` instead and no
+page is shown. The onboarding page's "A rented server" entry shows the same
+file with a copy button; this is the file it copies from — never a second,
+hand-typed one.
 
 **Already have a server?** cloud-init only ever runs on a machine's *first*
 boot, so pasting `cloud-init.yaml` into a box that is already running does
@@ -66,8 +72,9 @@ container), ending at the identical hub. On the server:
 curl -fsSL https://get.palaia.ai | sh
 ```
 
-It prompts for a Tailscale auth key interactively, or takes `PALAIA_TSKEY` /
-`PALAIA_NO_TAILSCALE` non-interactively (see the script header). During the
+Without a key it opens the same one-time setup page and prints its address
+and code (or uses `PALAIA_SETUP_CODE`); `PALAIA_TSKEY` / `PALAIA_NO_TAILSCALE`
+skip the page (see the script header). During the
 release candidate the `stable` image does not exist yet, so pass
 `PALAIA_CHANNEL=beta` (`curl -fsSL https://get.palaia.ai | PALAIA_CHANNEL=beta
 sh`) — the script says so too if the `:stable` pull 404s. The onboarding page's
@@ -122,8 +129,9 @@ a cloud instance instead of a local VM. That is an owner action, not
 something CI claims:
 
 - [ ] Create a server on a real provider (Hetzner Cloud, DigitalOcean, or
-      similar), pasting `cloud-init.yaml` with a real Tailscale auth key
-      into its user-data field.
+      similar), pasting `cloud-init.yaml` with a setup code filled in
+      into its user-data field; finish the setup page at
+      `http://<public-address>:8420/`.
 - [ ] Wait for the server to finish booting (a couple of minutes is
       typical for the package installs plus image pull).
 - [ ] From a device already on the same tailnet, open
