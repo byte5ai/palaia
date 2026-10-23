@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 
-import { Badge } from "../components/Badge";
 import { Button } from "../components/Button";
-import { Card, CardBody, CardHead } from "../components/Card";
+import { Callout } from "../components/Callout";
 import { useToast } from "../components/Toast";
 import type { UpdateCheckResponse } from "../lib/api/client";
 import { api } from "../lib/api/client";
@@ -66,50 +65,50 @@ export function UpdateBanner() {
   const { guidance } = check;
 
   return (
-    <Card className="update-banner" role="status">
-      <CardHead title="Update available" meta={check.channel}>
-        <Badge variant="info">
-          {check.current_version}
-          {check.latest_version ? ` → ${check.latest_version}` : ""}
-        </Badge>
-      </CardHead>
-      <CardBody className="stack stack--2">
-        <p className="t-sm t-muted">{guidance.message}</p>
-        {guidance.commands.length > 0 ? (
-          <div className="row row--wrap" style={{ gap: 6 }}>
+    <div className="update-banner">
+      <Callout
+        tone="info"
+        role="status"
+        title="Update available"
+        actions={
+          <>
             {guidance.commands.map((command) => (
               <Button
                 key={command}
                 size="sm"
-                variant="quiet"
                 onClick={() => {
                   navigator.clipboard.writeText(command).then(
                     () => toast.show("Command copied."),
-                    () => toast.show("Could not copy — select and copy manually."),
+                    () => toast.show("Couldn't copy. Select the command and copy it."),
                   );
                 }}
+                title="Copy this command"
               >
                 <CopyIcon className="icon--sm" />
-                {command}
+                <span className="t-mono">{command}</span>
               </Button>
             ))}
-          </div>
-        ) : null}
-        <div>
-          <Button
-            variant="quiet"
-            size="sm"
-            onClick={() => {
-              if (check.latest_version) {
-                writeDismissedVersion(check.latest_version);
-                setDismissedVersion(check.latest_version);
-              }
-            }}
-          >
-            Dismiss
-          </Button>
-        </div>
-      </CardBody>
-    </Card>
+            <Button
+              variant="plain"
+              size="sm"
+              onClick={() => {
+                if (check.latest_version) {
+                  writeDismissedVersion(check.latest_version);
+                  setDismissedVersion(check.latest_version);
+                }
+              }}
+            >
+              Dismiss
+            </Button>
+          </>
+        }
+      >
+        <p>
+          palaia {check.current_version}
+          {check.latest_version ? ` → ${check.latest_version}` : ""} ({check.channel} channel).{" "}
+          {guidance.message}
+        </p>
+      </Callout>
+    </div>
   );
 }

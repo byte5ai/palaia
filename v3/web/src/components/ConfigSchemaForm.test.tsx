@@ -21,7 +21,7 @@ describe("ConfigSchemaForm (SPEC-304 deliverable #2)", () => {
   it("renders nothing to configure when the schema has no properties", () => {
     render(<ConfigSchemaForm schema={null} values={{}} onChange={vi.fn()} />);
 
-    expect(screen.getByText(/ready to connect/i)).toBeInTheDocument();
+    expect(screen.getByText(/nothing to set up/i)).toBeInTheDocument();
   });
 
   it("renders every field kind and reports value changes", () => {
@@ -54,10 +54,13 @@ describe("ConfigSchemaForm (SPEC-304 deliverable #2)", () => {
     );
   });
 
-  it("marks a required field's label and flags it as missing until filled", () => {
+  it("marks the optional fields, not the required one, and flags the required one as missing", () => {
     render(<ConfigSchemaForm schema={SCHEMA} values={{}} onChange={vi.fn()} />);
 
-    expect(screen.getByText(/access token \(required\)/i)).toBeInTheDocument();
+    // Region, Port and Folder are optional; the switch carries no marker.
+    expect(screen.getAllByText("Optional")).toHaveLength(3);
+    expect(screen.getByText("Access token").closest("label")).not.toHaveTextContent("Optional");
+    expect(screen.queryByText(/\(required\)/i)).not.toBeInTheDocument();
     expect(missingRequiredFields(SCHEMA, {})).toEqual(["api_key"]);
     expect(missingRequiredFields(SCHEMA, { api_key: "x" })).toEqual([]);
   });

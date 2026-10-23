@@ -1,22 +1,30 @@
 /**
- * SPEC-305: the "Tool profiles" screen — MASTERPLAN §5.2's per-client
- * profiles ("Codex gets memory only; Claude Desktop gets everything") as a
- * screen, not a YAML exercise. Everything here reads and writes SPEC-301's
- * REST surface (`/api/gateway/profiles`, `/api/gateway/vaults`) — this
- * screen adds no second write path of its own.
+ * Settings › Advanced (SPEC-305, issues 570 and 571): tool sets and tool
+ * names — the settings most setups never need.
+ *
+ * A tool set (a "tool profile" in config.yaml) is a named address that
+ * limits which memories and add-ons an AI app sees: "Codex gets the work
+ * memory only; Claude Desktop gets everything". Everything here reads and
+ * writes SPEC-301's REST surface (`/api/gateway/profiles`,
+ * `/api/gateway/vaults`) — no second write path of its own.
  */
 import { useEffect, useState } from "react";
 
 import {
-  Badge,
   Button,
   Card,
-  CardBody,
-  CardFoot,
-  CardHead,
-  EmptyState,
+  CardHeader,
+  ConfirmDialog,
+  Dialog,
+  Disclosure,
+  ErrorState,
+  InlineEmpty,
   LabeledInput,
-  SwitchRow,
+  ListRow,
+  LoadingState,
+  PageHeader,
+  StatusPill,
+  Switch,
   useToast,
 } from "../components";
 import type {
@@ -27,13 +35,14 @@ import type {
   VaultSummary,
 } from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
-import { CopyIcon, InfoIcon, ToolsIcon, WarningIcon } from "../shell/icons";
+import { describeApiError } from "../lib/errors";
+import { count } from "../lib/format";
+import { CopyIcon } from "../shell/icons";
+import "./settings.css";
 
-// The eight base actions every vault's memory-tool family carries, and the
-// only ones a rename applies to (`palaia_hub.gateway.vault_protocol.
-// MEMORY_TOOL_ACTIONS`) — mirrored here as a literal list rather than
-// fetched, since it is a closed, versioned set the server itself treats as
-// stable API surface (a new action needs its own SPEC either way).
+// The eight base actions every memory's tool family carries, and the only
+// ones a rename applies to (`palaia_hub.gateway.vault_protocol.
+// MEMORY_TOOL_ACTIONS`) — a closed, versioned set the server treats as stable.
 const RENAMEABLE_ACTIONS = [
   "search",
   "read",
@@ -45,15 +54,26 @@ const RENAMEABLE_ACTIONS = [
   "recent_activity",
 ] as const;
 
-/** Mirrors `palaia_hub.gateway.naming.sanitize_tool_name` for an *inline*
- * preview only — the server's own sanitization (returned in
- * `GatewayVaultIdentity.sanitized` after a save) is always the source of
- * truth; this just avoids a round-trip for the common case of typing. */
-/** Issue 463: the profile flag, with what it does and does not grant —
- * the tools alone send nowhere until the Telegram screen grants it. */
-const TELEGRAM_CONSEQUENCE =
-  "Lets this client send, reply to, edit and delete Telegram messages. It can only reach the bots and chats the Telegram screen grants this profile — none until you add a grant.";
+const STASH_COPY = {
+  title: "Include scratchpad tools",
+  description: "5 tools for short shared values that don't belong in a memory.",
+};
 
+/** Issue 463: the flag, with what it does and does not grant. */
+const TELEGRAM_COPY = {
+  title: "Include Telegram tools",
+  description:
+    "Lets AI apps send, reply to, edit and delete Telegram messages — only in the bots and chats Settings › Telegram allows this tool set.",
+};
+
+const ROUTING_COPY = {
+  title: "Search for tools instead of listing them (experimental)",
+  description:
+    "For apps with many add-ons: the app sees 2 tools and finds the right one by description.",
+};
+
+/** Mirrors `palaia_hub.gateway.naming.sanitize_tool_name` for an inline
+ * preview only — the server's own answer after a save is authoritative. */
 function previewSanitize(raw: string): string {
   let value = raw.replace(/[^a-zA-Z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
   if (/^[0-9]/.test(value)) value = `t_${value}`;
@@ -62,16 +82,96 @@ function previewSanitize(raw: string): string {
 
 function sanitizeProfilePath(raw: string): string {
   const lowered = raw.toLowerCase().replace(/[^a-z0-9-_]+/g, "-");
-  return lowered.replace(/^-+|-+$/g, "") || "profile";
+  return lowered.replace(/^-+|-+$/g, "") || "";
 }
 
-function describeError(err: unknown): string {
-  if (err instanceof ApiError) {
-    const body = err.body as { detail?: string } | undefined;
-    if (body?.detail) return body.detail;
-    return `The hub answered ${err.status}.`;
-  }
-  return "Could not reach the hub.";
+function toggled(set: Set<string>, key: string, on: boolean): Set<string> {
+  const next = new Set(set);
+  if (on) next.add(key);
+  else next.delete(key);
+  return next;
+}
+
+/** A switch with its title and one line, inside a form. */
+function SwitchSetting({
+  id,
+  title,
+  description,
+  checked,
+  onChange,
+}: {
+  id: string;
+  title: string;
+  description: string;
+  checked: boolean;
+  onChange: (on: boolean) => void;
+}) {
+  return (
+    <ListRow
+      setting
+      labelId={id}
+      title={title}
+      description={description}
+      trailing={<Switch checked={checked} onChange={onChange} labelledBy={id} />}
+    />
+  );
+}
+
+function MemoryChoices({
+  vaults,
+  selected,
+  onToggle,
+}: {
+  vaults: VaultSummary[];
+  selected: Set<string>;
+  onToggle: (key: string, on: boolean) => void;
+}) {
+  if (vaults.length === 0) return <p className="t-sm t-muted">No memories yet.</p>;
+  return (
+    <div className="stack stack--2">
+      {vaults.map((vault) => (
+        <label key={vault.key} className="checkrow">
+          <input
+            type="checkbox"
+            checked={selected.has(vault.key)}
+            onChange={(event) => onToggle(vault.key, event.target.checked)}
+          />
+          <span className="t-sm">{vault.key}</span>
+          {vault.purpose ? <span className="t-sm t-muted">— {vault.purpose}</span> : null}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+/** Add-ons (installed from Add-ons, or added by hand) a tool set can use. */
+function AddonChoices({
+  upstreams,
+  selected,
+  onToggle,
+}: {
+  upstreams: GatewayUpstream[];
+  selected: Set<string>;
+  onToggle: (key: string, on: boolean) => void;
+}) {
+  if (upstreams.length === 0) return <p className="t-sm t-muted">No add-ons installed yet.</p>;
+  return (
+    <div className="stack stack--2">
+      {upstreams.map((upstream) => (
+        <label key={upstream.key} className="checkrow">
+          <input
+            type="checkbox"
+            checked={selected.has(upstream.key)}
+            onChange={(event) => onToggle(upstream.key, event.target.checked)}
+          />
+          <span className="t-sm">{upstream.display_name}</span>
+          <StatusPill tone={upstream.up ? "ok" : "warn"}>
+            {upstream.up ? "Working" : "Not responding"}
+          </StatusPill>
+        </label>
+      ))}
+    </div>
+  );
 }
 
 function ToolVisibilityList({
@@ -83,59 +183,22 @@ function ToolVisibilityList({
   hidden: Set<string>;
   onToggle: (name: string, visible: boolean) => void;
 }) {
-  if (tools.length === 0) {
-    return <p className="t-xs t-muted">No tools yet — add a vault first.</p>;
-  }
+  if (tools.length === 0) return <p className="t-sm t-muted">No tools yet. Add a memory first.</p>;
   return (
     <div className="stack stack--2">
       {tools.map((tool) => (
-        <label key={tool.name} className="row" style={{ gap: 8, alignItems: "flex-start" }}>
+        <label key={tool.name} className="checkrow">
           <input
             type="checkbox"
             checked={!hidden.has(tool.name)}
             onChange={(event) => onToggle(tool.name, event.target.checked)}
           />
           <span className="stack stack--1">
-            <span className="t-sm t-mono">{tool.name}</span>
+            <span className="t-mono">{tool.name}</span>
             {tool.description ? (
-              <span className="t-xs t-muted">{tool.description.split("\n")[0]}</span>
+              <span className="t-sm t-muted">{tool.description.split("\n")[0]}</span>
             ) : null}
           </span>
-        </label>
-      ))}
-    </div>
-  );
-}
-
-/** SPEC-304 follow-up: the checkbox section next to the vault list — an
- * installed marketplace add-on (or any server connected under Tools &
- * skills) becomes usable by a profile here, the same way a vault does.
- * "Connected tools" rather than "upstream servers": the latter is this
- * codebase's own internal name for the thing, not a word a person reading
- * this screen needs. */
-function ConnectedToolsList({
-  upstreams,
-  selected,
-  onToggle,
-}: {
-  upstreams: GatewayUpstream[];
-  selected: Set<string>;
-  onToggle: (key: string, on: boolean) => void;
-}) {
-  if (upstreams.length === 0) {
-    return <span className="t-xs t-muted">No external tools connected yet.</span>;
-  }
-  return (
-    <div className="stack stack--2">
-      {upstreams.map((upstream) => (
-        <label key={upstream.key} className="row" style={{ gap: 8 }}>
-          <input
-            type="checkbox"
-            checked={selected.has(upstream.key)}
-            onChange={(event) => onToggle(upstream.key, event.target.checked)}
-          />
-          <span className="t-sm">{upstream.display_name}</span>
-          <span className="t-xs t-subtle">{upstream.up ? "connected" : "not responding"}</span>
         </label>
       ))}
     </div>
@@ -148,26 +211,29 @@ function ProfileEditForm({
   upstreams,
   onSaved,
   onCancel,
+  onDeleted,
 }: {
   profile: GatewayProfile;
   vaults: VaultSummary[];
   upstreams: GatewayUpstream[];
   onSaved: () => void;
   onCancel: () => void;
+  onDeleted: () => void;
 }) {
   const toast = useToast();
   const [label, setLabel] = useState(profile.label ?? "");
-  const [selectedVaults, setSelectedVaults] = useState<Set<string>>(new Set(profile.vaults));
-  const [selectedUpstreams, setSelectedUpstreams] = useState<Set<string>>(
-    new Set(profile.upstreams),
-  );
+  const [selectedVaults, setSelectedVaults] = useState(new Set(profile.vaults));
+  const [selectedUpstreams, setSelectedUpstreams] = useState(new Set(profile.upstreams));
   const [stash, setStash] = useState(profile.stash);
   const [telegram, setTelegram] = useState(profile.telegram);
   const [semanticRouting, setSemanticRouting] = useState(profile.semantic_routing);
   const [tools, setTools] = useState<GatewayTool[] | null>(null);
-  const [hidden, setHidden] = useState<Set<string>>(new Set(profile.hidden_tools));
+  const [hidden, setHidden] = useState(new Set(profile.hidden_tools));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const address = `${origin}/mcp/${profile.path}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -184,33 +250,6 @@ function ProfileEditForm({
     };
   }, [profile.path]);
 
-  function toggleVault(key: string, on: boolean) {
-    setSelectedVaults((prev) => {
-      const next = new Set(prev);
-      if (on) next.add(key);
-      else next.delete(key);
-      return next;
-    });
-  }
-
-  function toggleUpstream(key: string, on: boolean) {
-    setSelectedUpstreams((prev) => {
-      const next = new Set(prev);
-      if (on) next.add(key);
-      else next.delete(key);
-      return next;
-    });
-  }
-
-  function toggleTool(name: string, visible: boolean) {
-    setHidden((prev) => {
-      const next = new Set(prev);
-      if (visible) next.delete(name);
-      else next.add(name);
-      return next;
-    });
-  }
-
   async function save() {
     setSaving(true);
     setError(null);
@@ -224,160 +263,131 @@ function ProfileEditForm({
         semantic_routing: semanticRouting,
         upstreams: [...selectedUpstreams],
       });
-      toast.show(`${profile.path} saved.`);
+      toast.show(`Tool set ${profile.label ?? profile.path} saved.`);
       onSaved();
     } catch (err) {
-      setError(describeError(err));
+      setError(describeApiError(err));
     } finally {
       setSaving(false);
     }
   }
 
+  async function remove() {
+    setConfirmDelete(false);
+    try {
+      await api.deleteGatewayProfile(profile.path);
+      toast.show(`Tool set ${profile.path} deleted.`);
+      onDeleted();
+    } catch (err) {
+      setError(describeApiError(err));
+    }
+  }
+
   return (
-    <CardBody className="stack stack--4">
+    <div className="settings-form" data-testid={`tool-set-form-${profile.path}`}>
+      <div className="stack stack--2">
+        <span className="field__label">Address</span>
+        <div className="snippet snippet--wrap">
+          <code>{address}</code>
+          <Button
+            size="sm"
+            onClick={() =>
+              navigator.clipboard.writeText(address).then(
+                () => toast.show("Address copied."),
+                () => toast.show("Couldn't copy. Select the address and copy it yourself."),
+              )
+            }
+          >
+            <CopyIcon className="icon" />
+            Copy
+          </Button>
+        </div>
+        <span className="field__hint">AI apps that use this tool set connect to this address.</span>
+      </div>
       <LabeledInput
         label="Display name"
+        optional
         placeholder={profile.path}
-        hint="Cosmetic only — the address stays the same."
+        hint="Only shown here; the address stays the same."
         value={label}
         onChange={(event) => setLabel(event.target.value)}
       />
-
       <div className="stack stack--2">
-        <span className="field__label">Vaults this profile can see</span>
-        <div className="stack stack--2">
-          {vaults.map((vault) => (
-            <label key={vault.key} className="row" style={{ gap: 8 }}>
-              <input
-                type="checkbox"
-                checked={selectedVaults.has(vault.key)}
-                onChange={(event) => toggleVault(vault.key, event.target.checked)}
-              />
-              <span className="t-sm">{vault.key}</span>
-              {vault.purpose ? <span className="t-xs t-muted">— {vault.purpose}</span> : null}
-            </label>
-          ))}
-          {vaults.length === 0 ? (
-            <span className="t-xs t-muted">No vaults exist yet.</span>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="stack stack--2">
-        <span className="field__label">Connected tools this profile can use</span>
-        <ConnectedToolsList
-          upstreams={upstreams}
-          selected={selectedUpstreams}
-          onToggle={toggleUpstream}
+        <span className="field__label">Memories this tool set can see</span>
+        <MemoryChoices
+          vaults={vaults}
+          selected={selectedVaults}
+          onToggle={(key, on) => setSelectedVaults((prev) => toggled(prev, key, on))}
         />
       </div>
-
-      <SwitchRow
-        label="Also carry the built-in stash tools"
-        consequence="Five extra tools: a small shared key/value scratchpad, not tied to any vault."
-        checked={stash}
-        onChange={setStash}
-      />
-
-      <SwitchRow
-        label="Also carry the Telegram tools"
-        consequence={TELEGRAM_CONSEQUENCE}
-        checked={telegram}
-        onChange={setTelegram}
-      />
-
-      <SwitchRow
-        label="Semantic tool routing (experimental)"
-        consequence="For very large tool collections: this client sees only find_tool and invoke_tool instead of the full list above, and searches by plain language to find the real tool to run."
-        checked={semanticRouting}
-        onChange={setSemanticRouting}
-      />
-
       <div className="stack stack--2">
-        <span className="field__label">Per-tool visibility</span>
-        <p className="t-xs t-muted">
-          Uncheck a tool to mount its vault without exposing that one action. A hidden tool
-          disappears from this client&rsquo;s tool list entirely — it is not just tucked away.
-        </p>
-        {tools === null ? (
-          <p className="t-xs t-muted">Loading…</p>
-        ) : (
-          <ToolVisibilityList tools={tools} hidden={hidden} onToggle={toggleTool} />
-        )}
+        <span className="field__label">Add-ons this tool set can use</span>
+        <AddonChoices
+          upstreams={upstreams}
+          selected={selectedUpstreams}
+          onToggle={(key, on) => setSelectedUpstreams((prev) => toggled(prev, key, on))}
+        />
       </div>
-
+      <div className="card card--flat">
+        <SwitchSetting id={`stash-${profile.path}`} {...STASH_COPY} checked={stash} onChange={setStash} />
+        <SwitchSetting
+          id={`telegram-${profile.path}`}
+          {...TELEGRAM_COPY}
+          checked={telegram}
+          onChange={setTelegram}
+        />
+        <SwitchSetting
+          id={`routing-${profile.path}`}
+          {...ROUTING_COPY}
+          checked={semanticRouting}
+          onChange={setSemanticRouting}
+        />
+      </div>
+      <Disclosure summary="Hide single tools">
+        <p>Unchecked tools disappear from the AI app's list entirely.</p>
+        {tools === null ? (
+          <LoadingState label="Loading tools…" lines={2} />
+        ) : (
+          <ToolVisibilityList
+            tools={tools}
+            hidden={hidden}
+            onToggle={(name, visible) => setHidden((prev) => toggled(prev, name, !visible))}
+          />
+        )}
+      </Disclosure>
       {error ? <p className="field__error">{error}</p> : null}
-
-      <div className="row row--wrap">
-        <Button variant="primary" onClick={save} disabled={saving}>
+      <div className="settings-form__actions">
+        <Button variant="primary" onClick={() => void save()} loading={saving}>
           {saving ? "Saving…" : "Save"}
         </Button>
-        <Button variant="ghost" onClick={onCancel} disabled={saving}>
+        <Button onClick={onCancel} disabled={saving}>
           Cancel
         </Button>
+        {/* The default set catches every AI app that chose none; palaia keeps it. */}
+        {profile.path === "default" ? null : (
+          <Button variant="destructive" onClick={() => setConfirmDelete(true)} disabled={saving}>
+            Delete tool set
+          </Button>
+        )}
       </div>
-    </CardBody>
-  );
-}
-
-function DeleteProfileControl({
-  profile,
-  onDeleted,
-}: {
-  profile: GatewayProfile;
-  onDeleted: () => void;
-}) {
-  const toast = useToast();
-  const [confirming, setConfirming] = useState(false);
-  const isDefault = profile.path === "default";
-
-  if (isDefault) {
-    return (
-      <span className="t-xs t-subtle" title="Every client that has not chosen a profile lands here — palaia keeps at least one profile around.">
-        Cannot delete the default profile
-      </span>
-    );
-  }
-
-  if (!confirming) {
-    return (
-      <Button variant="risk" size="sm" onClick={() => setConfirming(true)}>
-        Delete
-      </Button>
-    );
-  }
-
-  return (
-    <div className="stack stack--2" style={{ alignItems: "flex-end" }}>
-      <span className="t-xs t-muted" style={{ textAlign: "right" }}>
-        Any client connected at this address stops working immediately, and its token becomes
-        useless. This cannot be undone.
-      </span>
-      <div className="row" style={{ gap: 6 }}>
-        <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
-          Never mind
-        </Button>
-        <Button
-          variant="risk"
-          size="sm"
-          onClick={() =>
-            api
-              .deleteGatewayProfile(profile.path)
-              .then(() => {
-                toast.show(`${profile.path} deleted.`);
-                onDeleted();
-              })
-              .catch((err) => toast.show(describeError(err)))
-          }
-        >
-          Yes, delete it
-        </Button>
-      </div>
+      <ConfirmDialog
+        open={confirmDelete}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => void remove()}
+        title={`Delete the tool set ${profile.label ?? profile.path}?`}
+        confirmLabel="Delete tool set"
+        destructive
+      >
+        <p>
+          AI apps connected at this address stop working right away, and their access keys stop
+          working with it. This can't be undone.
+        </p>
+      </ConfirmDialog>
     </div>
   );
 }
 
-function ProfileCard({
+function ProfileRow({
   profile,
   vaults,
   upstreams,
@@ -388,95 +398,75 @@ function ProfileCard({
   upstreams: GatewayUpstream[];
   onChanged: () => void;
 }) {
-  const toast = useToast();
   const [editing, setEditing] = useState(false);
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const url = `${origin}/mcp/${profile.path}`;
+  const traits = [
+    profile.vaults.length === 0
+      ? "No memories"
+      : `Memories: ${profile.vaults.join(", ")}`,
+    profile.upstreams.length > 0 ? count(profile.upstreams.length, "add-on", "add-ons") : null,
+  ].filter(Boolean);
 
   return (
-    <Card>
-      <CardHead
+    <li data-testid={`tool-set-${profile.path}`}>
+      <ListRow
         title={profile.label ?? profile.path}
-        meta={`${profile.tool_count} tool${profile.tool_count === 1 ? "" : "s"}`}
-      />
-      <CardBody className="stack stack--3">
-        <div className="row row--wrap" style={{ gap: 6 }}>
-          {profile.managed ? <Badge variant="info">curator — managed elsewhere</Badge> : null}
-          {profile.semantic_routing ? <Badge variant="warn">semantic routing</Badge> : null}
-          {profile.stash ? <Badge variant="neutral">stash</Badge> : null}
-          {profile.telegram ? <Badge variant="neutral">telegram</Badge> : null}
-          {profile.vaults.length === 0 ? (
-            <span className="t-xs t-muted">No vaults mounted.</span>
-          ) : (
-            profile.vaults.map((v) => (
-              <span className="chip" key={v}>
-                {v}
-              </span>
-            ))
-          )}
-        </div>
-        <div className="snippet snippet--wrap">
-          <code>{url}</code>
-          <Button
-            size="sm"
-            onClick={() =>
-              navigator.clipboard.writeText(url).then(() => toast.show("Address copied."))
-            }
-          >
-            <CopyIcon className="icon--sm" />
-            Copy
-          </Button>
-        </div>
-
-        {profile.managed ? (
-          <p className="t-xs t-muted">
-            The curator&rsquo;s profile is edited through <code>curator:</code> settings, not
-            here — see Settings.
-          </p>
-        ) : editing ? (
-          <ProfileEditForm
-            profile={profile}
-            vaults={vaults}
-            upstreams={upstreams}
-            onSaved={() => {
-              setEditing(false);
-              onChanged();
-            }}
-            onCancel={() => setEditing(false)}
-          />
-        ) : null}
-      </CardBody>
-      {profile.managed ? null : (
-        <CardFoot>
-          <div className="row" style={{ justifyContent: "space-between", width: "100%" }}>
-            {editing ? (
-              <span className="t-xs t-subtle">Editing above.</span>
-            ) : (
+        description={traits.join(" · ")}
+        meta={count(profile.tool_count, "tool", "tools")}
+        trailing={
+          <>
+            {profile.managed ? <StatusPill tone="info">Managed by the curator</StatusPill> : null}
+            {profile.semantic_routing ? <StatusPill tone="warn">Tool search</StatusPill> : null}
+            {profile.stash ? <StatusPill tone="neutral">Scratchpad</StatusPill> : null}
+            {profile.telegram ? <StatusPill tone="neutral">Telegram</StatusPill> : null}
+            {profile.managed || editing ? null : (
               <Button size="sm" onClick={() => setEditing(true)}>
                 Edit
               </Button>
             )}
-            <DeleteProfileControl profile={profile} onDeleted={onChanged} />
-          </div>
-        </CardFoot>
-      )}
-    </Card>
+          </>
+        }
+      />
+      {profile.managed ? (
+        <p className="setting-note t-sm t-muted">
+          The curator's tool set follows the curator's settings in config.yaml.
+        </p>
+      ) : null}
+      {editing ? (
+        <ProfileEditForm
+          profile={profile}
+          vaults={vaults}
+          upstreams={upstreams}
+          onSaved={() => {
+            setEditing(false);
+            onChanged();
+          }}
+          onCancel={() => setEditing(false)}
+          onDeleted={() => {
+            setEditing(false);
+            onChanged();
+          }}
+        />
+      ) : null}
+    </li>
   );
 }
 
-function CreateProfileCard({
+function CreateProfileDialog({
+  open,
+  onClose,
   vaults,
   upstreams,
   existingPaths,
   onCreated,
 }: {
+  open: boolean;
+  onClose: () => void;
   vaults: VaultSummary[];
   upstreams: GatewayUpstream[];
   existingPaths: Set<string>;
   onCreated: () => void;
 }) {
   const toast = useToast();
-  const [open, setOpen] = useState(false);
   const [path, setPath] = useState("");
   const [label, setLabel] = useState("");
   const [selectedVaults, setSelectedVaults] = useState<Set<string>>(new Set());
@@ -486,33 +476,17 @@ function CreateProfileCard({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!open) {
-    return (
-      <Button variant="primary" onClick={() => setOpen(true)}>
-        New tool profile
-      </Button>
-    );
-  }
-
   const cleanPath = sanitizeProfilePath(path);
   const pathTaken = existingPaths.has(cleanPath);
 
-  function toggleVault(key: string, on: boolean) {
-    setSelectedVaults((prev) => {
-      const next = new Set(prev);
-      if (on) next.add(key);
-      else next.delete(key);
-      return next;
-    });
-  }
-
-  function toggleUpstream(key: string, on: boolean) {
-    setSelectedUpstreams((prev) => {
-      const next = new Set(prev);
-      if (on) next.add(key);
-      else next.delete(key);
-      return next;
-    });
+  function reset() {
+    setPath("");
+    setLabel("");
+    setSelectedVaults(new Set());
+    setSelectedUpstreams(new Set());
+    setStash(false);
+    setTelegram(false);
+    setError(null);
   }
 
   async function create() {
@@ -528,87 +502,82 @@ function CreateProfileCard({
         telegram,
         upstreams: [...selectedUpstreams],
       });
-      toast.show(`${cleanPath} created.`);
-      setOpen(false);
-      setPath("");
-      setLabel("");
-      setSelectedVaults(new Set());
-      setSelectedUpstreams(new Set());
-      setStash(false);
-      setTelegram(false);
+      toast.show(`Tool set ${cleanPath} created.`);
+      reset();
+      onClose();
       onCreated();
     } catch (err) {
-      setError(describeError(err));
+      setError(describeApiError(err));
     } finally {
       setCreating(false);
     }
   }
 
   return (
-    <Card>
-      <CardHead title="new tool profile" />
-      <CardBody className="stack stack--3">
-        <LabeledInput
-          label="Address segment"
-          hint={`Becomes /mcp/${cleanPath || "…"} — cannot be changed later; create a new profile instead.`}
-          value={path}
-          onChange={(event) => setPath(event.target.value)}
-          invalid={pathTaken}
-        />
-        {pathTaken ? <p className="field__error">A profile at this address already exists.</p> : null}
-        <LabeledInput
-          label="Display name"
-          placeholder={cleanPath}
-          value={label}
-          onChange={(event) => setLabel(event.target.value)}
-        />
-        <div className="stack stack--2">
-          <span className="field__label">Vaults</span>
-          {vaults.map((vault) => (
-            <label key={vault.key} className="row" style={{ gap: 8 }}>
-              <input
-                type="checkbox"
-                checked={selectedVaults.has(vault.key)}
-                onChange={(event) => toggleVault(vault.key, event.target.checked)}
-              />
-              <span className="t-sm">{vault.key}</span>
-            </label>
-          ))}
-        </div>
-        <div className="stack stack--2">
-          <span className="field__label">Connected tools</span>
-          <ConnectedToolsList
-            upstreams={upstreams}
-            selected={selectedUpstreams}
-            onToggle={toggleUpstream}
-          />
-        </div>
-        <SwitchRow
-          label="Also carry the built-in stash tools"
-          checked={stash}
-          onChange={setStash}
-        />
-        <SwitchRow
-          label="Also carry the Telegram tools"
-          consequence={TELEGRAM_CONSEQUENCE}
-          checked={telegram}
-          onChange={setTelegram}
-        />
-        {error ? <p className="field__error">{error}</p> : null}
-        <div className="row row--wrap">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      size="form"
+      title="New tool set"
+      description="AI apps that connect at its address see only what you choose here."
+      footer={
+        <>
+          <Button onClick={onClose} disabled={creating}>
+            Cancel
+          </Button>
           <Button
             variant="primary"
-            onClick={create}
-            disabled={creating || !cleanPath || pathTaken}
+            onClick={() => void create()}
+            disabled={!cleanPath || pathTaken}
+            loading={creating}
           >
             {creating ? "Creating…" : "Create"}
           </Button>
-          <Button variant="ghost" onClick={() => setOpen(false)} disabled={creating}>
-            Cancel
-          </Button>
-        </div>
-      </CardBody>
-    </Card>
+        </>
+      }
+    >
+      <LabeledInput
+        label="Address name"
+        placeholder="codex"
+        hint={
+          pathTaken
+            ? undefined
+            : `Used in the app's address (…/mcp/${cleanPath || "name"}). Can't be changed later.`
+        }
+        error={pathTaken ? "A tool set with this address already exists." : undefined}
+        value={path}
+        onChange={(event) => setPath(event.target.value)}
+        invalid={pathTaken}
+      />
+      <LabeledInput
+        label="Display name"
+        optional
+        placeholder={cleanPath || "Codex"}
+        value={label}
+        onChange={(event) => setLabel(event.target.value)}
+      />
+      <div className="stack stack--2">
+        <span className="field__label">Memories</span>
+        <MemoryChoices
+          vaults={vaults}
+          selected={selectedVaults}
+          onToggle={(key, on) => setSelectedVaults((prev) => toggled(prev, key, on))}
+        />
+      </div>
+      <div className="stack stack--2">
+        <span className="field__label">Add-ons</span>
+        <AddonChoices
+          upstreams={upstreams}
+          selected={selectedUpstreams}
+          onToggle={(key, on) => setSelectedUpstreams((prev) => toggled(prev, key, on))}
+        />
+      </div>
+      <div className="card card--flat">
+        <SwitchSetting id="new-stash" {...STASH_COPY} checked={stash} onChange={setStash} />
+        <SwitchSetting id="new-telegram" {...TELEGRAM_COPY} checked={telegram} onChange={setTelegram} />
+      </div>
+      {error ? <p className="field__error">{error}</p> : null}
+    </Dialog>
   );
 }
 
@@ -639,75 +608,64 @@ function VaultRenameRow({ vault, onSaved }: { vault: GatewayVaultIdentity; onSav
             .join(" "),
         );
       }
-      toast.show(`${vault.key} tools renamed.`);
+      toast.show(`Tool names for ${vault.name} saved.`);
       onSaved();
-    } catch {
-      toast.show("Could not save the rename.");
+    } catch (err) {
+      toast.show(`Couldn't save the tool names: ${describeApiError(err)}`);
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div className="card" style={{ padding: 0 }}>
-      <div className="card__body stack stack--3">
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <span className="t-sm">{vault.name}</span>
-          <span className="t-xs t-subtle">its tools start with {vault.namespace}_</span>
-        </div>
-        <div className="banner banner--warn">
-          <WarningIcon className="icon icon--sm" />
-          <p className="t-xs t-muted">
-            Renaming a tool a client already approved may make it re-prompt for approval the
-            next time it is used.
-          </p>
-        </div>
-        <div className="stack stack--2">
-          {RENAMEABLE_ACTIONS.map((action) => {
-            const value = draft[action] ?? "";
-            const preview = value ? previewSanitize(value) : action;
-            return (
-              <div key={action} className="row row--wrap" style={{ gap: 8, alignItems: "baseline" }}>
-                <span className="t-xs t-mono" style={{ minWidth: 110 }}>
-                  {action}
-                </span>
-                <input
-                  className="input"
-                  style={{ maxWidth: 180 }}
-                  aria-label={`New name for ${action}`}
-                  placeholder={action}
-                  value={value}
-                  onChange={(event) => setValue(action, event.target.value)}
-                />
-                <span className="t-xs t-subtle">
-                  → {vault.namespace}_{preview}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-        {warning ? (
-          <div className="banner banner--warn">
-            <InfoIcon className="icon icon--sm" />
-            <p className="t-xs t-muted">{warning}</p>
-          </div>
-        ) : null}
-        <div className="row">
-          <Button size="sm" variant="primary" onClick={save} disabled={saving}>
-            {saving ? "Saving…" : "Save renames"}
-          </Button>
-        </div>
+    <Disclosure summary={vault.name}>
+      <div className="stack stack--2">
+        {RENAMEABLE_ACTIONS.map((action) => {
+          const value = draft[action] ?? "";
+          const preview = value ? previewSanitize(value) : action;
+          return (
+            <div key={action} className="row row--wrap">
+              <input
+                className="input input--mono"
+                style={{ maxWidth: 220 }}
+                aria-label={`New name for ${action}`}
+                placeholder={action}
+                value={value}
+                onChange={(event) => setValue(action, event.target.value)}
+              />
+              <span className="t-mono t-muted">
+                → {vault.namespace}_{preview}
+              </span>
+            </div>
+          );
+        })}
       </div>
-    </div>
+      {warning ? <p className="t-sm">{warning}</p> : null}
+      <div>
+        <Button size="sm" onClick={() => void save()} loading={saving}>
+          {saving ? "Saving…" : "Save names"}
+        </Button>
+      </div>
+    </Disclosure>
   );
 }
 
+const HEADER = (
+  <PageHeader
+    title="Advanced"
+    description="Tool sets and tool names. Most setups never need these."
+    back={{ to: "/settings", label: "Settings" }}
+  />
+);
+
 export function ToolProfiles() {
   const [profiles, setProfiles] = useState<GatewayProfile[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [vaultIdentities, setVaultIdentities] = useState<GatewayVaultIdentity[]>([]);
   const [vaultSummaries, setVaultSummaries] = useState<VaultSummary[]>([]);
   const [upstreams, setUpstreams] = useState<GatewayUpstream[]>([]);
   const [available, setAvailable] = useState(true);
+  const [creating, setCreating] = useState(false);
 
   function refresh() {
     api
@@ -715,9 +673,11 @@ export function ToolProfiles() {
       .then((list) => {
         setProfiles(list);
         setAvailable(true);
+        setLoadError(null);
       })
       .catch((err) => {
         if (err instanceof ApiError && err.status === 404) setAvailable(false);
+        else setLoadError(describeApiError(err));
       });
     api.listGatewayVaults().then(setVaultIdentities).catch(() => setVaultIdentities([]));
     api.listVaults().then(setVaultSummaries).catch(() => setVaultSummaries([]));
@@ -728,65 +688,89 @@ export function ToolProfiles() {
 
   if (!available) {
     return (
-      <section className="stack stack--4">
+      <div className="stack narrow">
+        {HEADER}
         <Card>
-          <CardBody>
-            <p className="t-sm t-muted">
-              This hub has no gateway attached, so there is nothing to edit here yet.
-            </p>
-          </CardBody>
+          <CardHeader title="Tool sets" />
+          <InlineEmpty>
+            This palaia doesn't serve tool sets (it runs without its AI connection), so there is
+            nothing to change here.
+          </InlineEmpty>
         </Card>
-      </section>
+      </div>
     );
   }
 
-  return (
-    <section className="stack stack--4">
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <p className="t-sm t-muted" style={{ maxWidth: 560 }}>
-          Each connected client gets its own tool profile — its own address, its own set of
-          vaults, and (optionally) its own hidden tools. A hundred tools in one conversation
-          ruins an agent; this is where you decide who sees what.
-        </p>
-        <CreateProfileCard
-          vaults={vaultSummaries}
-          upstreams={upstreams}
-          existingPaths={new Set((profiles ?? []).map((p) => p.path))}
-          onCreated={refresh}
-        />
-      </div>
+  const nonDefault = (profiles ?? []).filter((profile) => profile.path !== "default");
 
-      {profiles && profiles.length === 0 ? (
-        <EmptyState mark={<ToolsIcon className="icon--lg" />} title="No tool profiles yet.">
-          Every vault mounts on the default profile until you create your own — add one above
-          once you have a client that should see less than everything.
-        </EmptyState>
-      ) : (
-        <div className="stack stack--3">
-          {(profiles ?? []).map((profile) => (
-            <ProfileCard
-              key={profile.path}
-              profile={profile}
-              vaults={vaultSummaries}
-              upstreams={upstreams}
-              onChanged={refresh}
-            />
-          ))}
-        </div>
-      )}
+  return (
+    <div className="stack narrow">
+      {HEADER}
+      <Card>
+        <CardHeader
+          title="Tool sets"
+          description="A tool set is a named address that limits which memories and tools an AI app sees."
+          actions={
+            <Button onClick={() => setCreating(true)} disabled={profiles === null}>
+              New tool set
+            </Button>
+          }
+        />
+        {loadError && profiles === null ? (
+          <div className="settings-body">
+            <ErrorState title="Couldn't load the tool sets" details={loadError} onRetry={refresh} />
+          </div>
+        ) : profiles === null ? (
+          <div className="settings-body">
+            <LoadingState label="Loading tool sets…" lines={2} />
+          </div>
+        ) : (
+          <>
+            {profiles.length > 0 ? (
+              <ul className="settings-rows">
+                {profiles.map((profile) => (
+                  <ProfileRow
+                    key={profile.path}
+                    profile={profile}
+                    vaults={vaultSummaries}
+                    upstreams={upstreams}
+                    onChanged={refresh}
+                  />
+                ))}
+              </ul>
+            ) : null}
+            {nonDefault.length === 0 ? (
+              <InlineEmpty>
+                Only the default tool set exists. It includes every memory, and most setups
+                only need it.
+              </InlineEmpty>
+            ) : null}
+          </>
+        )}
+      </Card>
 
       {vaultIdentities.length > 0 ? (
-        <div className="stack stack--3">
-          <span className="field__label">Vault tool names</span>
-          <p className="t-xs t-muted">
-            Renaming here changes the tool everywhere it is mounted — across every profile that
-            includes this vault, live.
-          </p>
-          {vaultIdentities.map((vault) => (
-            <VaultRenameRow key={vault.key} vault={vault} onSaved={refresh} />
-          ))}
-        </div>
+        <Card data-testid="tool-names">
+          <CardHeader
+            title="Tool names"
+            description="Rename what AI apps see. Apps may ask you to approve renamed tools again."
+          />
+          <div className="settings-body">
+            {vaultIdentities.map((vault) => (
+              <VaultRenameRow key={vault.key} vault={vault} onSaved={refresh} />
+            ))}
+          </div>
+        </Card>
       ) : null}
-    </section>
+
+      <CreateProfileDialog
+        open={creating}
+        onClose={() => setCreating(false)}
+        vaults={vaultSummaries}
+        upstreams={upstreams}
+        existingPaths={new Set((profiles ?? []).map((p) => p.path))}
+        onCreated={refresh}
+      />
+    </div>
   );
 }

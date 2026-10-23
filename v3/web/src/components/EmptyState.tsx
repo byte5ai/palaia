@@ -94,32 +94,3 @@ export function ErrorState({
     </Callout>
   );
 }
-
-/** The done state: a finished task, with an optional recap. */
-export function DoneState({
-  mark,
-  title,
-  recapLabel,
-  recap,
-  children,
-}: {
-  mark: ReactNode;
-  title: ReactNode;
-  recapLabel?: ReactNode;
-  recap?: ReactNode;
-  children?: ReactNode;
-}) {
-  return (
-    <div className="empty empty--done">
-      <div className="empty__mark">{mark}</div>
-      <h2 className="empty__title">{title}</h2>
-      {children ? <p className="empty__text">{children}</p> : null}
-      {recap ? (
-        <div className="empty__recap">
-          {recapLabel ? <span className="t-over">{recapLabel}</span> : null}
-          {recap}
-        </div>
-      ) : null}
-    </div>
-  );
-}

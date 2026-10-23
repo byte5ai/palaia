@@ -2,15 +2,15 @@
  * SPEC-304 deliverable #2: one shared form renderer for every add-on's
  * `config_schema` — string / number / boolean / enum / secret, the fixed
  * subset the hub's install endpoint understands. Labels come straight
- * from the schema's own `title`s (jargon-free by the marketplace
- * curator's own convention, not by anything this component enforces);
- * a `secret` field never carries its previous value back in — see
- * `Marketplace.tsx`'s install flow for why (the hub never echoes one
- * back either).
+ * from the schema's own `title`s (jargon-free by the add-on index's own
+ * convention, not by anything this component enforces). Fields the schema
+ * does not require say "Optional"; required ones carry no marker
+ * (system.md §2, Field). A `secret` field never carries its previous value
+ * back in — the hub never echoes one back either.
  */
 import { useId } from "react";
 import type { MarketConfigSchema } from "../lib/api/client";
-import { LabeledInput, SwitchRow } from "./Field";
+import { Field, LabeledInput, SwitchRow } from "./Field";
 
 export type ConfigFormValue = string | number | boolean;
 export type ConfigFormValues = Record<string, ConfigFormValue>;
@@ -34,9 +34,7 @@ export function ConfigSchemaForm({
 
   if (keys.length === 0) {
     return (
-      <p className="t-xs t-muted">
-        This add-on needs no setup — it is ready to connect.
-      </p>
+      <p className="t-sm t-muted">Nothing to set up. It's ready to install.</p>
     );
   }
 
@@ -49,7 +47,7 @@ export function ConfigSchemaForm({
       {keys.map((key) => {
         const prop = properties[key] ?? {};
         const label = prop.title || key;
-        const suffix = required.has(key) ? " (required)" : "";
+        const optional = !required.has(key);
         const value = values[key];
 
         if (prop.type === "boolean") {
@@ -66,11 +64,7 @@ export function ConfigSchemaForm({
         if (prop.enum && prop.enum.length > 0) {
           const selectId = `${formId}-${key}`;
           return (
-            <div className="field" key={key}>
-              <label className="field__label" htmlFor={selectId}>
-                {label}
-                {suffix}
-              </label>
+            <Field key={key} label={label} optional={optional} controlId={selectId}>
               <select
                 id={selectId}
                 className="input"
@@ -86,7 +80,7 @@ export function ConfigSchemaForm({
                   </option>
                 ))}
               </select>
-            </div>
+            </Field>
           );
         }
 
@@ -94,10 +88,11 @@ export function ConfigSchemaForm({
           return (
             <LabeledInput
               key={key}
-              label={`${label}${suffix}`}
+              label={label}
+              optional={optional}
               type="password"
               autoComplete="off"
-              hint="Stored safely on this hub and never shown again once you save it."
+              hint="Saved in palaia and never shown again."
               value={typeof value === "string" ? value : ""}
               onChange={(event) => setValue(key, event.target.value)}
             />
@@ -108,7 +103,8 @@ export function ConfigSchemaForm({
           return (
             <LabeledInput
               key={key}
-              label={`${label}${suffix}`}
+              label={label}
+              optional={optional}
               type="number"
               value={value === undefined ? "" : String(value)}
               onChange={(event) =>
@@ -124,10 +120,11 @@ export function ConfigSchemaForm({
         return (
           <LabeledInput
             key={key}
-            label={`${label}${suffix}`}
+            label={label}
+            optional={optional}
             hint={
               prop.format === "path"
-                ? "A folder on this computer — shared with the add-on."
+                ? "A folder on the server palaia runs on, shared with the add-on."
                 : undefined
             }
             value={typeof value === "string" ? value : ""}

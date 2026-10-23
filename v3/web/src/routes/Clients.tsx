@@ -1,99 +1,124 @@
 /**
- * Connect-a-client (SPEC-110 deliverable #3): every §6-matrix client gets
- * a row; a guided one gets the real `ConnectPanel` flow, a not-yet one
- * gets a truthful, mode-aware explanation — never a dead end.
+ * AI apps › Apps (SPEC-110 #3, report §3.5): every app palaia supports as one
+ * row — name, status, one line — and the selected app's way to connect next
+ * to it. An app that cannot work in the current mode says why and links to
+ * the setting that fixes it; nothing here is a dead end.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { Button } from "../components/Button";
-import { ConnectPanel } from "../components/ConnectPanel";
+import "./apps.css";
+
+import { Button, LinkButton } from "../components/Button";
+import { Callout } from "../components/Callout";
+import { Card, CardBody, CardFoot, CardHeader } from "../components/Card";
+import { ConnectPanel, ToolSetPicker } from "../components/ConnectPanel";
+import { ConfirmDialog } from "../components/Dialog";
+import { Disclosure } from "../components/Disclosure";
+import { ErrorState, LoadingState } from "../components/EmptyState";
+import { ListRow } from "../components/ListRow";
 import { SkillPanel } from "../components/SkillPanel";
-import { MemoryUseCard } from "./MemoryUse";
+import { StatusPill, type StatusTone } from "../components/StatusPill";
 import { useToast } from "../components/Toast";
 import type { GatewayProfile, TokenInfo } from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
-import { saveBlob } from "../lib/download";
-import { describeApiError } from "../lib/errors";
-import { formatAge } from "../lib/format";
 import {
   CLIENTS,
+  type ClientEntry,
   type DownloadClient,
   type HubMode,
   type NotYetClient,
 } from "../lib/clients";
-import { CopyIcon, InfoIcon, WarningIcon } from "../shell/icons";
+import { saveBlob } from "../lib/download";
+import { describeApiError } from "../lib/errors";
+import { exactTime, timeAgo } from "../lib/format";
+import { PHONE_QUERY, useMediaQuery } from "../lib/useMediaQuery";
+import { CopyIcon, DownloadIcon } from "../shell/icons";
+import { MemoryUseCard } from "./MemoryUse";
 
-/** SPEC-205 deliverable #3: sign-in is turned on and configured — the
- * client's own connector unlocks with the real address filled in, instead
- * of the "not yet" reason. */
-function OAuthReadyCard({
-  client,
-  issuer,
-  profile,
-}: {
-  client: NotYetClient;
-  issuer: string;
-  profile: string;
-}) {
-  const toast = useToast();
-  const Icon = client.icon;
-  const connect = client.oauthConnect?.(issuer, profile);
-  if (!connect) return null;
-  return (
-    <div className="card">
-      <div className="card__head">
-        <div>
-          <span className="card__subject">{client.name}</span>
-          <p className="t-xs t-muted">{client.subtitle}</p>
-        </div>
-        <span className="badge badge--ok">
-          <Icon className="icon icon--sm" style={{ marginRight: 4 }} />
-          ready to connect
-        </span>
-      </div>
-      <div className="card__body stack">
-        <div className="snippet snippet--wrap">
-          <code>{connect.url}</code>
-          <Button
-            size="sm"
-            onClick={() =>
-              navigator.clipboard
-                .writeText(connect.url)
-                .then(() => toast.show("Address copied."))
-            }
-          >
-            <CopyIcon className="icon--sm" />
-            Copy
-          </Button>
-        </div>
-        <p className="t-sm t-muted">{connect.note}</p>
-      </div>
-    </div>
-  );
+interface AppStatus {
+  tone: StatusTone;
+  label: string;
+  line: string;
 }
 
-/** SPEC-306: the Claude Desktop "Download bundle" card. A real network
- * fetch rather than a plain `<a href>` — so a hub with no auth method
- * configured yet (the download endpoint's 501) shows a plain-language
- * error here instead of the browser opening a blank tab, matching this
- * page's "never a dead end" rule for every other client card. */
-function DownloadCard({
+/** The live keys of an app, newest use first. */
+function liveKeys(tokens: TokenInfo[], name: string): TokenInfo[] {
+  return tokens
+    .filter((t) => t.name === name && !t.revoked_at)
+    .sort((a, b) => (b.last_used_at ?? "").localeCompare(a.last_used_at ?? ""));
+}
+
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** clients.ts states a cloud app's plan limits inside its "not yet"
+ * reason; the part after "come back here." is that note on its own. */
+function planNote(client: NotYetClient): string {
+  const reason = client.reason("cloud");
+  const marker = "come back here. ";
+  const at = reason.indexOf(marker);
+  return at >= 0 ? reason.slice(at + marker.length).trim() : "";
+}
+
+function statusOf(
+  client: ClientEntry,
+  keys: TokenInfo[],
+  mode: HubMode | null,
+  cloudReady: boolean,
+): AppStatus {
+  const lastUsed = keys.find((k) => k.last_used_at)?.last_used_at ?? null;
+  if (client.kind === "notYet") {
+    if (cloudReady && client.oauthConnect) {
+      return { tone: "neutral", label: "Ready to connect", line: "Signs in with your palaia account" };
+    }
+    if (mode === "locked") {
+      return { tone: "warn", label: "Needs Cloud mode", line: "Connects from the internet" };
+    }
+    if (mode === null) {
+      return { tone: "neutral", label: "Connects from the internet", line: client.subtitle };
+    }
+    return { tone: "warn", label: "Needs sign-in", line: "Turn on sign-in for AI apps first" };
+  }
+  if (lastUsed) return { tone: "ok", label: "Connected", line: `Last request ${timeAgo(lastUsed)}` };
+  if (keys.length > 0) {
+    return { tone: "info", label: "Waiting for first use", line: "Access key created, no request yet" };
+  }
+  if (client.kind === "download") {
+    return { tone: "neutral", label: "Ready to connect", line: "One-click download" };
+  }
+  return { tone: "neutral", label: "Ready to connect", line: capitalize(client.estimate) };
+}
+
+/** Claude Desktop (SPEC-306): a signed extension built for this palaia on
+ * every download, with the address and a new access key inside. Fetched
+ * through the API client, so an expired session goes to sign-in and a
+ * refusal is shown in palaia's words (issue 382). */
+function DesktopCard({
   client,
-  profile,
+  keys,
+  status,
+  profiles,
+  onRevoked,
 }: {
   client: DownloadClient;
-  profile: string;
+  keys: TokenInfo[];
+  status: AppStatus;
+  profiles: GatewayProfile[];
+  onRevoked: (ids: string[]) => void;
 }) {
   const toast = useToast();
+  const [profile, setProfile] = useState(profiles[0]?.path ?? "default");
   const [downloading, setDownloading] = useState(false);
-  const Icon = client.icon;
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const lastUsed = keys.find((k) => k.last_used_at)?.last_used_at ?? null;
+  const toolSet = profiles.some((p) => p.path === profile) ? profile : (profiles[0]?.path ?? "default");
 
   async function download() {
     setDownloading(true);
     try {
-      // Issue 382: through the API client, so an expired session redirects
-      // to sign-in instead of saving the refusal as the bundle.
-      const file = await api.downloadFile(client.downloadUrl("", profile));
+      const file = await api.downloadFile(client.downloadUrl("", toolSet));
       saveBlob(file.blob, file.filename ?? "palaia.mcpb");
     } catch (err) {
       toast.show(describeApiError(err));
@@ -102,97 +127,203 @@ function DownloadCard({
     }
   }
 
+  async function revoke() {
+    setBusy(true);
+    try {
+      for (const key of keys) await api.revokeToken(key.id);
+      onRevoked(keys.map((k) => k.id));
+      toast.show(`${client.name} can no longer use palaia.`);
+    } catch (err) {
+      toast.show(describeApiError(err));
+    } finally {
+      setBusy(false);
+      setConfirm(false);
+    }
+  }
+
   return (
-    <div className="card">
-      <div className="card__head">
-        <div>
-          <span className="card__subject">{client.name}</span>
-          <p className="t-xs t-muted">{client.subtitle}</p>
+    <Card>
+      <CardHeader
+        title={`Connect ${client.name}`}
+        description="Download the Claude Desktop extension, then open it."
+        actions={<StatusPill tone={status.tone}>{status.label}</StatusPill>}
+      />
+      <CardBody className="stack stack--4">
+        <p className="t-muted">
+          Claude Desktop shows palaia&rsquo;s address and a new access key. Click Install.
+        </p>
+        <div className="row row--wrap">
+          <Button variant="primary" onClick={download} loading={downloading}>
+            {downloading ? (
+              "Preparing the file…"
+            ) : (
+              <>
+                <DownloadIcon className="icon" />
+                Download extension
+              </>
+            )}
+          </Button>
         </div>
-      </div>
-      <div className="card__body stack">
-        <div className="numstep">
-          <span className="numstep__num numstep__num--on">1</span>
-          <div className="grow stack stack--3">
-            <div>
-              <p className="numstep__title">
-                Download, then double-click the file
-              </p>
-              <p className="t-sm t-muted">
-                Claude Desktop shows a settings form pre-filled with this
-                hub&rsquo;s address and a token made just for it — check it
-                over, then install.
-              </p>
-            </div>
-            <div className="row row--wrap">
-              <Button
-                variant="primary"
-                onClick={download}
-                disabled={downloading}
-              >
-                <Icon className="icon--sm" style={{ marginRight: 4 }} />
-                {downloading ? "Building…" : "Download bundle"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div className="card__foot">
-        <span className="t-xs t-subtle">
-          A fresh bundle is built for every download — closing and reopening
-          this page never reuses an old one.
-        </span>
-      </div>
-    </div>
+        {lastUsed ? (
+          <p className="t-sm" title={exactTime(lastUsed)}>
+            Connected — last request {timeAgo(lastUsed)}.
+          </p>
+        ) : keys.length > 0 ? (
+          <p className="t-sm t-muted">
+            An extension was downloaded. This turns green when Claude Desktop sends its first request.
+          </p>
+        ) : null}
+        {profiles.length > 1 ? (
+          <Disclosure summary="Advanced">
+            <ToolSetPicker
+              id="desktop-toolset"
+              profiles={profiles}
+              value={toolSet}
+              onChange={setProfile}
+              appName={client.name}
+            />
+          </Disclosure>
+        ) : null}
+      </CardBody>
+      {keys.length > 0 ? (
+        <CardFoot>
+          <Button size="sm" variant="destructive" onClick={() => setConfirm(true)} disabled={busy}>
+            Revoke access
+          </Button>
+        </CardFoot>
+      ) : null}
+      <ConfirmDialog
+        open={confirm}
+        onCancel={() => setConfirm(false)}
+        onConfirm={() => void revoke()}
+        title={`Revoke access for ${client.name}?`}
+        confirmLabel="Revoke access"
+        destructive
+        busy={busy}
+      >
+        <p>
+          Every extension downloaded for {client.name} stops working right away. Download a new
+          one to connect it again.
+        </p>
+      </ConfirmDialog>
+    </Card>
   );
 }
 
-function NotYetCard({ client, mode }: { client: NotYetClient; mode: HubMode }) {
-  const Icon = client.icon;
+/** claude.ai, ChatGPT, Grok: they connect from the internet and sign in with
+ * the owner's palaia account, so they need Cloud mode and sign-in for AI
+ * apps — said plainly, with the way to turn it on (SPEC-205 #3). */
+function CloudAppCard({
+  client,
+  status,
+  mode,
+  issuer,
+  profiles,
+}: {
+  client: NotYetClient;
+  status: AppStatus;
+  mode: HubMode | null;
+  issuer: string | null;
+  profiles: GatewayProfile[];
+}) {
+  const toast = useToast();
+  const [profile, setProfile] = useState(profiles[0]?.path ?? "default");
+  const toolSet = profiles.some((p) => p.path === profile) ? profile : (profiles[0]?.path ?? "default");
+  const connect = issuer ? client.oauthConnect?.(issuer, toolSet) : undefined;
+  const note = planNote(client);
+
   return (
-    <div className="card">
-      <div className="card__head">
-        <div>
-          <span className="card__subject">{client.name}</span>
-          <p className="t-xs t-muted">{client.subtitle}</p>
-        </div>
-        <span className="badge badge--warn">not yet available</span>
-      </div>
-      <div className="card__body stack">
-        <div className="banner banner--warn">
-          <WarningIcon className="icon icon--sm" />
-          <div>
-            <p className="banner__title">
-              Not available yet — and here is exactly why
+    <Card>
+      <CardHeader
+        title={`Connect ${client.name}`}
+        description={client.subtitle}
+        actions={<StatusPill tone={status.tone}>{status.label}</StatusPill>}
+      />
+      <CardBody className="stack stack--4">
+        {connect ? (
+          <>
+            <p>
+              Paste this address into {client.name}&rsquo;s custom connector settings, then sign in
+              with your palaia account when it asks.
             </p>
-            <p className="t-sm t-muted">{client.reason(mode)}</p>
-          </div>
-        </div>
-        <div className="row" style={{ gap: 8 }}>
-          <Icon className="icon icon--sm" />
-          <span className="t-xs t-subtle">
-            Tracked in MASTERPLAN.md §6 — this page updates the moment that
-            section does.
-          </span>
-        </div>
-      </div>
-    </div>
+            <div className="snippet snippet--wrap">
+              <code>{connect.url}</code>
+              <Button
+                size="sm"
+                onClick={() =>
+                  navigator.clipboard.writeText(connect.url).then(
+                    () => toast.show("Address copied."),
+                    () => toast.show("Couldn't copy. Select the address and copy it yourself."),
+                  )
+                }
+              >
+                <CopyIcon className="icon--sm" />
+                Copy
+              </Button>
+            </div>
+            {profiles.length > 1 ? (
+              <Disclosure summary="Advanced">
+                <ToolSetPicker
+                  id={`${client.id}-toolset`}
+                  profiles={profiles}
+                  value={toolSet}
+                  onChange={setProfile}
+                  appName={client.name}
+                />
+              </Disclosure>
+            ) : null}
+          </>
+        ) : mode === "locked" ? (
+          <Callout
+            tone="warn"
+            title={`${client.name} needs Cloud mode`}
+            actions={
+              <LinkButton to="/settings/access" variant="primary" size="sm">
+                Set up Cloud mode
+              </LinkButton>
+            }
+          >
+            {client.name} connects from the internet. Set up Cloud mode to give it a public
+            address; your dashboard stays private.
+          </Callout>
+        ) : (
+          <Callout
+            tone={mode === null ? "info" : "warn"}
+            title={
+              mode === null
+                ? `${client.name} connects from the internet`
+                : `${client.name} needs sign-in for AI apps`
+            }
+            actions={
+              <LinkButton to="/settings/access" variant="primary" size="sm">
+                Open Access &amp; sign-in
+              </LinkButton>
+            }
+          >
+            {mode === null
+              ? "It needs Cloud mode and sign-in for AI apps. Access & sign-in shows what this palaia has turned on."
+              : `${client.name} signs in with your palaia account. Turn on sign-in for AI apps, then come back here.`}
+          </Callout>
+        )}
+        {note ? <p className="t-sm t-muted">{note}</p> : null}
+      </CardBody>
+    </Card>
   );
 }
 
 export function Clients() {
-  const [mode, setMode] = useState<HubMode>("locked");
-  // SPEC-205 deliverable #3: null until known — while null, cloud
-  // connectors show their ordinary `reason()`, same as before this SPEC.
-  const [oauthIssuer, setOauthIssuer] = useState<string | null>(null);
-  const [tokens, setTokens] = useState<TokenInfo[]>([]);
-  const [tokenStoreAvailable, setTokenStoreAvailable] = useState(true);
-  const [selectedId, setSelectedId] = useState(CLIENTS[0]!.id);
-  // SPEC-305 deliverable #2: the profile picker every snippet/one-liner/
-  // bundle below renders with. Defaults to "default" and stays there for a
-  // hub with no gateway attached (the 404 case) or exactly one profile.
+  const isPhone = useMediaQuery(PHONE_QUERY);
+  const detailRef = useRef<HTMLDivElement>(null);
+  const [mode, setMode] = useState<HubMode | null>(null);
+  // SPEC-205 #3: the address cloud apps sign in through, once Cloud or
+  // Public mode has sign-in for AI apps turned on.
+  const [issuer, setIssuer] = useState<string | null>(null);
+  const [tokens, setTokens] = useState<TokenInfo[] | null>(null);
+  const [tokensError, setTokensError] = useState<string | null>(null);
+  const [keyStoreMissing, setKeyStoreMissing] = useState(false);
   const [profiles, setProfiles] = useState<GatewayProfile[]>([]);
-  const [selectedProfile, setSelectedProfile] = useState("default");
+  const [selectedId, setSelectedId] = useState(CLIENTS[0]!.id);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -205,193 +336,159 @@ export function Clients() {
           (status.active_mode === "cloud" || status.active_mode === "open") &&
           status.oauth_enabled &&
           status.oauth_issuer;
-        setOauthIssuer(ready ? status.oauth_issuer : null);
+        setIssuer(ready ? status.oauth_issuer : null);
       })
       .catch(() => {
-        // mode is cosmetic here — the not-yet reasons still render, just
-        // without the mode-specific half of the sentence
-      });
-    api
-      .listTokens()
-      .then((list) => {
-        if (!cancelled) setTokens(list);
-      })
-      .catch((err) => {
-        // A 404 means no token store is mounted at all (create_app's
-        // opt-in wiring) — every client then honestly reads "not
-        // connected" rather than issuing a token nothing will ever check.
-        if (!cancelled && err instanceof ApiError && err.status === 404) {
-          setTokenStoreAvailable(false);
-        }
+        // Unknown mode: cloud apps say what they need without claiming which
+        // mode this palaia is in.
       });
     api
       .listGatewayProfiles()
       .then((list) => {
-        if (cancelled) return;
-        setProfiles(list);
-        // Keep whatever is already selected if it still exists; otherwise
-        // fall back to "default" (or the only profile there is).
-        setSelectedProfile((current) =>
-          list.some((p) => p.path === current)
-            ? current
-            : (list[0]?.path ?? "default"),
-        );
+        if (!cancelled) setProfiles(list);
       })
       .catch(() => {
-        // No gateway attached, or the route 404s — every card below just
-        // keeps using "default", same as before this picker existed.
+        // No gateway: every address uses the default tool set.
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  function tokenFor(name: string): TokenInfo | undefined {
-    return tokens.find((t) => t.name === name && !t.revoked_at);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .listTokens()
+      .then((list) => {
+        if (cancelled) return;
+        setTokens(list);
+        setTokensError(null);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        if (err instanceof ApiError && err.status === 404) {
+          // No access key store at all (create_app's opt-in wiring).
+          setKeyStoreMissing(true);
+          setTokens([]);
+        } else {
+          setTokensError(describeApiError(err));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt]);
+
+  function upsert(info: TokenInfo) {
+    setTokens((prev) => [...(prev ?? []).filter((t) => t.id !== info.id), info]);
   }
 
+  function markRevoked(ids: string[]) {
+    const now = new Date().toISOString();
+    setTokens((prev) =>
+      (prev ?? []).map((t) => (ids.includes(t.id) ? { ...t, revoked_at: t.revoked_at ?? now } : t)),
+    );
+  }
+
+  function select(id: string) {
+    setSelectedId(id);
+    if (isPhone) detailRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  }
+
+  if (tokensError) {
+    return (
+      <ErrorState
+        title="Couldn't load your AI apps"
+        details={tokensError}
+        onRetry={() => {
+          setTokensError(null);
+          setAttempt((n) => n + 1);
+        }}
+      >
+        palaia didn&rsquo;t say which apps are connected, so this page can&rsquo;t show them yet.
+      </ErrorState>
+    );
+  }
+
+  const cloudReady = issuer !== null;
   const selected = CLIENTS.find((c) => c.id === selectedId) ?? CLIENTS[0]!;
-  const connectedCount = new Set(
-    tokens.filter((t) => !t.revoked_at && t.last_used_at).map((t) => t.name),
-  ).size;
+  const keysOf = (client: ClientEntry) => liveKeys(tokens ?? [], client.name);
+  const statusFor = (client: ClientEntry) => statusOf(client, keysOf(client), mode, cloudReady);
+  const connectedCount = CLIENTS.filter((c) => keysOf(c).some((k) => k.last_used_at)).length;
+  const selectedStatus = statusFor(selected);
 
   return (
-    <section className="connect">
-      <div className="stack">
-        <div className="card">
-          <div className="card__head">
-            <h3 className="card__title">clients</h3>
-            <span className="t-meta">
-              {connectedCount === 0
-                ? "none connected"
-                : `${connectedCount} connected`}
-            </span>
+    <div className="apps">
+      <Card className="apps__list">
+        <CardHeader
+          title="Apps"
+          description={tokens === null ? "Loading…" : `${connectedCount} of ${CLIENTS.length} connected`}
+        />
+        {tokens === null ? (
+          <div className="card__body">
+            <LoadingState label="Loading your AI apps…" lines={4} />
           </div>
-          <div className="clientlist">
+        ) : (
+          <div className="list">
             {CLIENTS.map((client) => {
-              const token = tokenFor(client.name);
+              const status = statusFor(client);
               const Icon = client.icon;
               return (
-                <button
+                <ListRow
                   key={client.id}
-                  type="button"
-                  className={[
-                    "clientrow",
-                    client.id === selectedId ? "clientrow--on" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  onClick={() => setSelectedId(client.id)}
-                  aria-current={client.id === selectedId ? "true" : undefined}
-                >
-                  <span className="clientrow__mark">
-                    <Icon className="icon--sm" />
-                  </span>
-                  <span className="grow">
-                    <span className="clientrow__name">{client.name}</span>
-                    <br />
-                    <span className="clientrow__meta">
-                      {token
-                        ? token.last_used_at
-                          ? `connected · ${formatAge(token.last_used_at)}`
-                          : "token issued · waiting for first call"
-                        : client.kind === "guided"
-                          ? "not connected"
-                          : client.kind === "download"
-                            ? "one-click bundle"
-                            : oauthIssuer && client.oauthConnect
-                              ? "ready to connect"
-                              : "not yet available"}
-                    </span>
-                  </span>
-                  {token?.last_used_at ? (
-                    <span className="dot dot--ok" />
-                  ) : null}
-                </button>
+                  onClick={() => select(client.id)}
+                  selected={client.id === selectedId}
+                  icon={<Icon className="icon" />}
+                  title={client.name}
+                  description={status.line}
+                  trailing={<StatusPill tone={status.tone}>{status.label}</StatusPill>}
+                />
               );
             })}
           </div>
-          <div className="card__foot">
-            <span className="t-xs t-subtle">
-              Every client gets its own token and its own tool profile. Revoking
-              one never touches the others.
-            </span>
-          </div>
-        </div>
-        <MemoryUseCard />
-      </div>
-      <div className="stack">
-        {profiles.length > 1 ? (
-          <div
-            className="row row--wrap"
-            style={{ gap: 8, alignItems: "baseline" }}
-          >
-            <label className="t-xs t-muted" htmlFor="connect-profile-picker">
-              Tool profile for {selected.name}
-            </label>
-            <select
-              id="connect-profile-picker"
-              className="input"
-              style={{ maxWidth: 220 }}
-              value={selectedProfile}
-              onChange={(event) => setSelectedProfile(event.target.value)}
-            >
-              {profiles.map((p) => (
-                <option key={p.path} value={p.path}>
-                  {p.label ?? p.path} ({p.tool_count} tools)
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
-        {!tokenStoreAvailable ? (
-          <div className="card">
-            <div className="card__body">
-              <div className="banner banner--warn">
-                <InfoIcon className="icon icon--sm" />
-                <p className="t-sm t-muted">
-                  This hub has no token store mounted, so no client can be
-                  issued a token from here yet.
-                </p>
-              </div>
-            </div>
-          </div>
+        )}
+      </Card>
+
+      <div className="apps__detail" ref={detailRef}>
+        {keyStoreMissing && selected.kind !== "notYet" ? (
+          <Callout tone="neutral" title="This palaia can't create access keys">
+            Its access key store is turned off, so {selected.name} can&rsquo;t be connected from here.
+          </Callout>
         ) : selected.kind === "guided" ? (
           <ConnectPanel
-            // Keyed by profile too (issue 373): the panel reads its
-            // `defaultProfile` once into state, so a picker change must
-            // remount it — otherwise a token issued after switching to
-            // `codex-only` still lands on `default`.
-            key={`${selected.id}:${selectedProfile}`}
-            client={selected}
-            defaultProfile={selectedProfile}
-            onTokenIssued={(info) =>
-              setTokens((prev) => [
-                ...prev.filter((t) => t.id !== info.id),
-                info,
-              ])
-            }
-          />
-        ) : selected.kind === "download" ? (
-          <DownloadCard
+            // Remounted per app: the panel reads its starting state once.
             key={selected.id}
             client={selected}
-            profile={selectedProfile}
+            onTokenIssued={upsert}
+            onTokenRevoked={markRevoked}
           />
-        ) : oauthIssuer && selected.oauthConnect ? (
-          <OAuthReadyCard
+        ) : selected.kind === "download" ? (
+          <DesktopCard
+            key={selected.id}
             client={selected}
-            issuer={oauthIssuer}
-            profile={selectedProfile}
+            keys={keysOf(selected)}
+            status={selectedStatus}
+            profiles={profiles}
+            onRevoked={markRevoked}
           />
         ) : (
-          <NotYetCard client={selected} mode={mode} />
+          <CloudAppCard
+            key={selected.id}
+            client={selected}
+            status={selectedStatus}
+            mode={mode}
+            issuer={issuer}
+            profiles={profiles}
+          />
         )}
-        {/* Offered whether or not the connector itself is ready: a skill is
-            installed in the client, not in the hub, so a not-yet client can
-            still be taught the habit before its connector lands (SPEC-207). */}
+        {/* A skill is installed in the app, not in palaia, so it is offered
+            whether or not the connection is ready yet (SPEC-207). */}
         <SkillPanel clientId={selected.id} clientName={selected.name} />
       </div>
-    </section>
+
+      <div className="apps__usage">
+        <MemoryUseCard />
+      </div>
+    </div>
   );
 }

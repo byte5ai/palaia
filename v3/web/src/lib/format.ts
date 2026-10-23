@@ -69,3 +69,12 @@ export function exactTime(value: string | number | Date): string {
 export function count(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
+
+/** "10m16s" (the hub's compact form) → "10 min 16 s". */
+export function spokenDuration(compact: string): string {
+  const parts: string[] = [];
+  for (const [, amount, unit] of compact.matchAll(/(\d+)\s*([dhms])/g)) {
+    parts.push(`${amount} ${unit === "m" ? "min" : unit}`);
+  }
+  return parts.length > 0 ? parts.join(" ") : compact;
+}

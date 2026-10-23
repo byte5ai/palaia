@@ -561,11 +561,11 @@ def _authorize_error_page(exc: OAuthError) -> Response:
     """Render a pre-redirect authorization error for the person in the browser."""
     return HTMLResponse(
         _PAGE_TEMPLATE.format(
-            title="Cannot continue",
+            title="Can't continue",
             body=(
-                f"<h1>Cannot continue</h1>"
-                f"<p class='err'>{html.escape(exc.error)}</p>"
+                "<h1>Can't continue</h1>"
                 f"<p>{html.escape(exc.description)}</p>"
+                f"<p class='hint'>Error code: <code>{html.escape(exc.error)}</code></p>"
             ),
         ),
         status_code=exc.status_code,
@@ -601,78 +601,165 @@ def _consent_page(outcome: ConsentRequired, *, csrf: str) -> str:
     )
     scope_items = (
         "".join(
-            f"<li>{html.escape(_describe_scope(scope))} <code>{html.escape(scope)}</code></li>"
+            f'<li title="{html.escape(scope)}">{html.escape(_describe_scope(scope))}</li>'
             for scope in outcome.scopes
         )
-        or "<li>Nothing specific — the tool asked for no permissions.</li>"
+        or "<li>Nothing in particular: the app asked for no permissions.</li>"
     )
     target = urlsplit(outcome.redirect_uri)
     where = html.escape(f"{target.scheme}://{target.netloc}")
     return _PAGE_TEMPLATE.format(
-        title="Allow this AI tool?",
+        title="Allow this AI app?",
         body=(
-            "<h1>Allow this AI tool?</h1>"
-            f"<p><strong>{html.escape(outcome.client_name)}</strong> wants to use your palaia "
-            f"hub. If you allow it, it may:</p>"
+            "<h1>Allow this AI app?</h1>"
+            f"<p><strong>{html.escape(outcome.client_name)}</strong> wants to use your palaia. "
+            "If you allow it, it may:</p>"
             f"<ul>{scope_items}</ul>"
-            f"<p class='hint'>After you allow, your browser is sent back to <code>{where}</code>. "
-            "If you did not just start connecting a tool, deny this.</p>"
+            f"<p class='hint'>Afterwards your browser goes back to <code>{where}</code>. "
+            "If you didn't just start connecting an AI app, choose Deny.</p>"
             f'<form method="post" action="{html.escape(AUTHORIZE_PATH)}">'
             f"{hidden}"
             f'<input type="hidden" name="{CSRF_FIELD}" value="{html.escape(csrf)}">'
-            '<button type="submit" name="decision" value="allow" autofocus>Allow</button> '
-            '<button type="submit" name="decision" value="deny">Deny</button>'
+            '<div class="actions">'
+            '<button type="submit" name="decision" value="allow" autofocus>Allow</button>'
+            '<button type="submit" name="decision" value="deny" class="secondary">Deny</button>'
+            "</div>"
             "</form>"
         ),
     )
 
 
 def _login_page(*, next_url: str, csrf: str, error: str) -> str:
-    error_block = f"<p class='err'>{html.escape(error)}</p>" if error else ""
+    error_block = f"<p class='err' role='alert'>{html.escape(error)}</p>" if error else ""
     return _PAGE_TEMPLATE.format(
         title="Sign in to palaia",
         body=(
             "<h1>Sign in to palaia</h1>"
             f"{error_block}"
             f'<form method="post" action="{html.escape(LOGIN_PATH)}">'
-            '<label>Username<input name="username" autocomplete="username" autofocus></label>'
+            '<label>Username<input name="username" autocomplete="username" autofocus '
+            "required></label>"
             '<label>Password<input name="password" type="password" '
-            'autocomplete="current-password"></label>'
+            'autocomplete="current-password" required></label>'
             f'<input type="hidden" name="{CSRF_FIELD}" value="{html.escape(csrf)}">'
             f'<input type="hidden" name="next" value="{html.escape(next_url)}">'
-            '<button type="submit">Sign in</button>'
+            '<div class="actions"><button type="submit">Sign in</button></div>'
             "</form>"
-            "<p class='hint'>The hub's operator sets this password with "
-            "<code>palaia-hub oauth set-password</code> — or, on a hub that has no "
-            "account yet, the dashboard's first-run setup creates it.</p>"
+            "<details><summary>Forgot your password?</summary>"
+            "<p class='hint'>Set a new one on the server palaia runs on:</p>"
+            "<p><code class='cmd'>palaia-hub oauth set-password --username &lt;name&gt;</code></p>"
+            "<p class='hint'>With Docker:</p>"
+            "<p><code class='cmd'>docker exec -it palaia-hub palaia-hub oauth set-password "
+            "--username &lt;name&gt;</code></p>"
+            "</details>"
         ),
     )
+
+
+#: The design tokens these pages use, as (light, dark) — the values of
+#: v3/design/tokens.json, which a test compares them with. The pages cannot
+#: load the dashboard's stylesheet or fonts: they are served before any
+#: session exists, possibly without a dashboard build, under
+#: OAUTH_PAGE_CSP (inline styles only, nothing fetched).
+_PAGE_COLORS: dict[str, tuple[str, str]] = {
+    "canvas": ("#F5F7FA", "#0F1520"),
+    "surface": ("#FFFFFF", "#161D2A"),
+    "surface-muted": ("#EEF1F5", "#1C2433"),
+    "border": ("#E3E7ED", "#263043"),
+    "text": ("#1D232C", "#E8ECF1"),
+    "text-2": ("#4B5563", "#AEB6C2"),
+    "text-3": ("#667080", "#8B95A3"),
+    "brand": ("#009FE3", "#009FE3"),
+    "action": ("#0369A1", "#38BDF8"),
+    "action-hover": ("#04618F", "#7DD3FC"),
+    "on-action": ("#FFFFFF", "#0A0F1A"),
+    "focus": ("#0369A1", "#009FE3"),
+    "error": ("#B91C1C", "#F87171"),
+    "error-bg": ("#F8E8E8", "#3A2A35"),
+}
+
+
+def _color_vars(index: int) -> str:
+    return " ".join(f"--{name}: {values[index]};" for name, values in _PAGE_COLORS.items())
+
+
+_PAGE_STYLE = f"""
+  :root {{ color-scheme: light; {_color_vars(0)} }}
+  @media (prefers-color-scheme: dark) {{ :root {{ color-scheme: dark; {_color_vars(1)} }} }}
+  *, *::before, *::after {{ box-sizing: border-box; }}
+  body {{ margin: 0; min-height: 100vh; display: grid; place-items: center;
+          background: var(--canvas); color: var(--text);
+          font: 15px/24px "Nunito Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+          -webkit-font-smoothing: antialiased; }}
+  main {{ width: min(420px, calc(100vw - 32px)); padding: 32px 0; }}
+  .brand {{ display: flex; align-items: center; gap: 10px; margin: 0 0 24px 4px;
+            font: 400 20px/28px "Days One", "Nunito Sans", system-ui, sans-serif; }}
+  .card {{ background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+           padding: 24px; box-shadow: 0 1px 2px rgba(15, 21, 32, .06); }}
+  h1 {{ font-size: 28px; line-height: 34px; font-weight: 700; margin: 0 0 20px; }}
+  p {{ margin: 0 0 12px; }}
+  ul {{ margin: 0 0 16px; padding-left: 20px; }}
+  li {{ margin: 4px 0; }}
+  label {{ display: block; margin: 0 0 16px; font-weight: 600; }}
+  input {{ display: block; width: 100%; height: 40px; margin-top: 8px; padding: 0 12px;
+           border: 1px solid var(--text-3); border-radius: 10px; background: var(--surface);
+           color: var(--text); font: inherit; font-weight: 400; }}
+  .actions {{ display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }}
+  button {{ height: 40px; padding: 0 20px; border-radius: 999px; border: 1px solid var(--action);
+            background: var(--action); color: var(--on-action); font: inherit; font-weight: 600;
+            cursor: pointer; }}
+  button:hover {{ background: var(--action-hover); border-color: var(--action-hover); }}
+  button.secondary {{ background: var(--surface); color: var(--text);
+                      border-color: var(--border); }}
+  button.secondary:hover {{ background: var(--surface-muted); }}
+  :focus-visible {{ outline: 2px solid var(--focus); outline-offset: 2px; }}
+  .err {{ padding: 12px 16px; border-radius: 14px; background: var(--error-bg); color: var(--error);
+          font-size: 13px; line-height: 20px; font-weight: 600; }}
+  .hint {{ font-size: 13px; line-height: 20px; color: var(--text-2); }}
+  details {{ margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }}
+  summary {{ cursor: pointer; color: var(--action); font-size: 13px; font-weight: 600; }}
+  details[open] summary {{ margin-bottom: 12px; }}
+  code {{ font: 13px/20px ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+          background: var(--surface-muted); padding: 1px 6px; border-radius: 6px;
+          overflow-wrap: anywhere; }}
+  code.cmd {{ display: block; padding: 8px 12px; border-radius: 10px; }}
+"""
+
+#: The palaia star — the website header's mark, inline (no request).
+_PAGE_MARK = (
+    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
+    '<circle cx="12" cy="12" r="3" fill="var(--brand)"/>'
+    '<g stroke="var(--brand)" stroke-opacity="0.5" stroke-width="1.3">'
+    '<line x1="12" y1="12" x2="12" y2="3"/><line x1="12" y1="12" x2="20" y2="8"/>'
+    '<line x1="12" y1="12" x2="19" y2="18"/><line x1="12" y1="12" x2="5" y2="18"/>'
+    '<line x1="12" y1="12" x2="4" y2="8"/></g>'
+    '<g fill="var(--brand)" fill-opacity="0.85">'
+    '<circle cx="12" cy="3" r="1.7"/><circle cx="20" cy="8" r="1.7"/>'
+    '<circle cx="19" cy="18" r="1.7"/><circle cx="5" cy="18" r="1.7"/>'
+    '<circle cx="4" cy="8" r="1.7"/></g></svg>'
+)
+
+
+def _escape_braces(text: str) -> str:
+    return text.replace("{", "{{").replace("}", "}}")
 
 
 #: Deliberately one self-contained page with no external assets: this form is
 #: served before any session exists, so it must not depend on the dashboard
 #: build being present, and it must not load anything from a third party.
-_PAGE_TEMPLATE = """<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="referrer" content="no-referrer">
-<title>{title}</title>
-<style>
-  :root {{ color-scheme: light dark; }}
-  body {{ font: 16px/1.5 system-ui, sans-serif; margin: 0; display: grid;
-          place-items: center; min-height: 100vh; }}
-  main {{ width: min(22rem, 92vw); padding: 2rem 0; }}
-  h1 {{ font-size: 1.25rem; margin: 0 0 1rem; }}
-  label {{ display: block; margin-bottom: .75rem; font-size: .875rem; }}
-  input {{ display: block; width: 100%; padding: .5rem; margin-top: .25rem;
-           font: inherit; box-sizing: border-box; }}
-  button {{ padding: .5rem 1rem; font: inherit; }}
-  .err {{ color: #b00020; font-size: .875rem; }}
-  .hint {{ font-size: .8125rem; opacity: .7; }}
-  code {{ font-size: .8125rem; }}
-</style></head>
-<body><main>{body}</main></body></html>
-"""
+#: Styled with the design system's tokens (v3/docs/design/system.md); fonts
+#: fall back to the system's own when Nunito Sans is not installed.
+_PAGE_TEMPLATE = (
+    "<!doctype html>\n"
+    '<html lang="en"><head><meta charset="utf-8">\n'
+    '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+    '<meta name="referrer" content="no-referrer">\n'
+    '<meta name="color-scheme" content="light dark">\n'
+    "<title>{title}</title>\n"
+    f"<style>{_escape_braces(_PAGE_STYLE)}</style></head>\n"
+    f'<body><main><div class="brand">{_escape_braces(_PAGE_MARK)}<span>palaia</span></div>'
+    '<div class="card">{body}</div></main></body></html>\n'
+)
 
 
 __all__ = [
