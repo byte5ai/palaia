@@ -4,6 +4,7 @@ import { Outlet, useLocation, useMatches, useNavigate } from "react-router-dom";
 import { useEventStream } from "../lib/events";
 import { useHubMode } from "../lib/mode";
 import { initialsFor, useSession } from "../lib/session";
+import { useFirstRunRedirect } from "../lib/setup";
 import { ScreenLoading } from "../routes/ScreenLoading";
 import { NAV_GROUPS } from "./navConfig";
 import { Sidebar } from "./Sidebar";
@@ -43,6 +44,8 @@ function healthStateFrom(
 export function AppShell() {
   const stream = useEventStream();
   const mode = useHubMode();
+  // issue 559: an unfinished first-run setup opens the wizard, not Home.
+  useFirstRunRedirect();
   const { session, signOut } = useSession();
   const location = useLocation();
   const matches = useMatches();

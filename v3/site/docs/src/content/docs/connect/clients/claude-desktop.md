@@ -5,7 +5,7 @@ title: "Claude Desktop"
 description: "Connect Claude Desktop to your shared memory."
 ---
 
-One-click download — a signed bridge to your hub, no typing required
+The Claude app on a computer in your private network — a one-click extension download
 
 ## Download and open it
 

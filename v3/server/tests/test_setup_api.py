@@ -176,3 +176,33 @@ def test_restart_ends_the_process_gracefully_when_a_supervisor_restarts_it(
         deadline = asyncio.run(asyncio.sleep(0.8, result=True))
         assert deadline
     assert sent == [(os.getpid(), signal.SIGTERM)]
+
+
+def test_skipped_steps_are_remembered(tmp_path: Path) -> None:
+    with _client(tmp_path) as client:
+        body = client.put("/api/setup", json={"skipped": ["account", "account"]}).json()
+        assert body["skipped"] == ["account"]
+    assert _client(tmp_path).get("/api/setup").json()["skipped"] == ["account"]
+    assert _client(tmp_path).put("/api/setup", json={"skipped": ["nope"]}).status_code == 422
+
+
+def test_cloud_access_counts_as_verified_only_after_a_passing_self_test(tmp_path: Path) -> None:
+    from palaia_hub.setup_api import record_cloud_check
+
+    (tmp_path / "config.yaml").write_text(f"exposure:\n  public_url: {ISSUER}\n", encoding="utf-8")
+    assert _client(tmp_path).get("/api/setup").json()["cloud_verified"] is False
+    record_cloud_check(tmp_path, ISSUER + "/", False)
+    assert _client(tmp_path).get("/api/setup").json()["cloud_verified"] is False
+    record_cloud_check(tmp_path, ISSUER, True)
+    assert _client(tmp_path).get("/api/setup").json()["cloud_verified"] is True
+    # A check of another address says nothing about this one.
+    record_cloud_check(tmp_path, "https://elsewhere.example", True)
+    assert _client(tmp_path).get("/api/setup").json()["cloud_verified"] is False
+
+
+def test_the_self_test_endpoint_records_its_result(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    body = client.post("/api/exposure/selftest", json={"public_url": "http://127.0.0.1:1"}).json()
+    assert body["reachable"] is False
+    stored = json.loads((tmp_path / "setup.json").read_text())
+    assert stored["cloud_check"] == {"url": "http://127.0.0.1:1", "passed": False}

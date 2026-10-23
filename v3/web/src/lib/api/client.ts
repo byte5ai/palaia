@@ -31,6 +31,11 @@ export type TunnelGuidance =
   paths["/api/exposure/tunnel"]["post"]["responses"][200]["content"]["application/json"];
 export type SelfTestResult =
   paths["/api/exposure/selftest"]["post"]["responses"][200]["content"]["application/json"];
+/** issues 559/561: where first-run setup stands, read from the hub. */
+export type SetupStatus =
+  paths["/api/setup"]["get"]["responses"][200]["content"]["application/json"];
+export type SetupUpdate =
+  paths["/api/setup"]["put"]["requestBody"]["content"]["application/json"];
 
 /**
  * `/api/info`'s `sign_in` field (SPEC-204 deliverable #4). Hand-written for
@@ -1385,6 +1390,10 @@ export const api = {
     postJson<SelfTestResult>("/api/exposure/selftest", {
       public_url: publicUrl,
     }),
+  setupStatus: (signal?: AbortSignal) =>
+    getJson<SetupStatus>("/api/setup", signal),
+  updateSetup: (body: SetupUpdate) => putJson<SetupStatus>("/api/setup", body),
+  restartHub: () => postJson<{ restarting: boolean }>("/api/hub/restart", {}),
 
   // ---- SPEC-303/304: the marketplace ----
   searchMarket: (q = "", source?: MarketProvenance, signal?: AbortSignal) =>

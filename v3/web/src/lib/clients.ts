@@ -112,17 +112,16 @@ const CLOUD_CONNECTOR_REASON =
   (name: string, planNote: string) =>
   (mode: HubMode): string =>
     mode === "locked"
-      ? `${name} connects from its own cloud, not from this device — Locked mode only answers ` +
-        `inside your network, so it would time out whatever you paste into it. Switch to Cloud or ` +
-        `Open mode to expose an endpoint it can reach.`
-      : `${name} needs sign-in turned on for this hub, and it is not yet — turn it on from the ` +
-        `Access mode page (Cloud and Open both support it), then come back here. ${planNote}`;
+      ? `${name} connects from the internet, so it needs cloud access. Turn it on in setup or ` +
+        `under Access; your dashboard stays on your private network.`
+      : `${name} signs in to palaia with your account, and sign-in is not on yet. Finish ` +
+        `turning on cloud access, then come back here. ${planNote}`;
 
 const OAUTH_CONNECT = (name: string) => (issuer: string, profile: string) => ({
   url: `${issuer.replace(/\/$/, "")}/mcp/${profile}`,
   note:
-    `Paste this address into ${name}'s custom connector settings, then sign in with your ` +
-    `palaia account when it asks.`,
+    `In ${name}, add a custom connector with this address. When it asks, sign in with your ` +
+    `palaia account and allow access.`,
 });
 
 const tokenOr = (token?: string): string => token ?? TOKEN_PLACEHOLDER;
@@ -193,7 +192,7 @@ export const CLIENTS: ClientEntry[] = [
     name: "Claude Desktop",
     icon: ExplorerIcon,
     subtitle:
-      "One-click download — a signed bridge to your hub, no typing required",
+      "The Claude app on a computer in your private network — a one-click extension download",
     downloadUrl: (origin, profile) =>
       `${origin}/api/connect/mcpb?profile=${encodeURIComponent(profile)}&client_name=${encodeURIComponent(
         "Claude Desktop",
@@ -202,22 +201,24 @@ export const CLIENTS: ClientEntry[] = [
   {
     kind: "notYet",
     id: "claude-ai",
-    name: "claude.ai",
+    // issue 565: the Claude app (Mac, Windows, phones) and claude.ai share
+    // custom connectors, so one cloud entry covers all of them.
+    name: "Claude",
     icon: LinkIcon,
     subtitle:
-      "Web, desktop, mobile and Cowork — custom connector on every plan",
+      "The Claude app on Mac, Windows and phones, and claude.ai — a custom connector",
     reason: CLOUD_CONNECTOR_REASON(
-      "claude.ai",
+      "Claude",
       "Every plan (including Free) can add palaia as a custom connector.",
     ),
-    oauthConnect: OAUTH_CONNECT("claude.ai"),
+    oauthConnect: OAUTH_CONNECT("Claude"),
   },
   {
     kind: "notYet",
     id: "chatgpt",
     name: "ChatGPT",
     icon: LinkIcon,
-    subtitle: "Developer mode / custom connectors",
+    subtitle: "A custom connector in developer mode",
     reason: CLOUD_CONNECTOR_REASON(
       "ChatGPT",
       "Write access needs a Business, Enterprise or Edu workspace — Plus/Pro get a read-only " +
@@ -317,4 +318,26 @@ export const CLIENTS: ClientEntry[] = [
 
 export function guidedClients(): GuidedClient[] {
   return CLIENTS.filter((c): c is GuidedClient => c.kind === "guided");
+}
+
+/** issue 565: what the setup wizard offers, by the owner's goal. Cloud
+ * connectors lead for the cloud goal; for a private hub they stay visible,
+ * marked as needing cloud access, so choosing Claude never silently turns
+ * into a different app. */
+export function wizardClients(): {
+  cloud: NotYetClient[];
+  local: (GuidedClient | DownloadClient)[];
+} {
+  const cloud = CLIENTS.filter(
+    (c): c is NotYetClient => c.kind === "notYet" && c.id !== "grok",
+  );
+  const local = CLIENTS.filter(
+    (c): c is GuidedClient | DownloadClient =>
+      c.kind === "guided" || c.kind === "download",
+  );
+  // The extension first for a private hub: it is the Claude app's way in there.
+  local.sort(
+    (a, b) => Number(b.kind === "download") - Number(a.kind === "download"),
+  );
+  return { cloud, local };
 }
