@@ -34,6 +34,7 @@ import json
 import logging
 import os
 import signal
+import threading
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -46,6 +47,7 @@ from .config import HubConfig, config_file_path
 from .events import EventBus, publish_event
 from .funnel import FunnelStore
 from .security.files import harden_file
+from .vault import VaultRegistry
 from .vault.atomic import atomic_write_text
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -137,6 +139,32 @@ def _write_choices(home: Path, choices: dict[str, object]) -> None:
     harden_file(path)
 
 
+#: Every read-modify-write of ``setup.json`` — the wizard's choices and the
+#: self-test's result — holds this, so neither overwrites what the other
+#: stored a moment before.
+_CHOICES_LOCK = threading.Lock()
+
+
+def _update_choices(
+    home: Path,
+    change: Callable[[dict[str, object]], None],
+    *,
+    has_memories: Callable[[], bool],
+) -> None:
+    """Read ``setup.json``, apply ``change`` and write it back, as one step.
+
+    A hub installed before the file existed counts as set up when it has
+    memories; the write that first creates the file keeps that answer
+    instead of turning it into "not set up".
+    """
+    with _CHOICES_LOCK:
+        choices = _read_choices(home)
+        if choices is None:
+            choices = {"completed": has_memories()}
+        change(choices)
+        _write_choices(home, choices)
+
+
 def record_cloud_check(home: Path, url: str, passed: bool) -> None:
     """Remember the last public-address self-test (``/api/exposure/selftest``).
 
@@ -144,9 +172,11 @@ def record_cloud_check(home: Path, url: str, passed: bool) -> None:
     public address and found every check passing — configuration alone does
     not prove a tunnel leads here (issue #561).
     """
-    choices = _read_choices(home) or {}
-    choices["cloud_check"] = {"url": url.rstrip("/"), "passed": passed}
-    _write_choices(home, choices)
+
+    def change(choices: dict[str, object]) -> None:
+        choices["cloud_check"] = {"url": url.rstrip("/"), "passed": passed}
+
+    _update_choices(home, change, has_memories=lambda: bool(VaultRegistry(home).names()))
 
 
 def _refuse_unless_sent_by_this_hubs_pages(request: Request) -> None:
@@ -193,7 +223,6 @@ def build_setup_router(
             sign-in server that could not start).
     """
     router = APIRouter(tags=["setup"])
-    lock = asyncio.Lock()
     # Polled by the wizard: re-read config.yaml only when it changed (#348).
     from .modes.api import _ConfiguredConfig
 
@@ -294,15 +323,17 @@ def build_setup_router(
 
     @router.put("/api/setup", response_model=SetupStatus)
     async def put_setup(body: SetupUpdate) -> SetupStatus:
-        async with lock:
-            choices = _read_choices(home) or {}
+        def change(choices: dict[str, object]) -> None:
             if body.goal is not None:
                 choices["goal"] = body.goal
             if body.completed is not None:
                 choices["completed"] = body.completed
             if body.skipped is not None:
                 choices["skipped"] = sorted(set(body.skipped))
-            await asyncio.to_thread(_write_choices, home, choices)
+
+        await asyncio.to_thread(
+            _update_choices, home, change, has_memories=lambda: bool(vault_keys())
+        )
         return await asyncio.to_thread(_status)
 
     @router.post("/api/hub/restart", response_model=RestartOut, status_code=202)
