@@ -6,7 +6,15 @@
  */
 import { useEffect, useState } from "react";
 
-import { Card, CardHeader, ErrorState, ListRow, LoadingState, StatusPill } from "../../components";
+import {
+  Card,
+  CardHeader,
+  ErrorState,
+  ListRow,
+  LoadingState,
+  PageHeader,
+  StatusPill,
+} from "../../components";
 import type { InfoResponse, SignInInfo, UpdateCheckResponse } from "../../lib/api/client";
 import { api } from "../../lib/api/client";
 import { docsUrl } from "../../lib/docs";
@@ -37,6 +45,8 @@ function updateLine(check: UpdateCheckResponse): { tone: "ok" | "info" | "neutra
   return { tone: "neutral", label: "Couldn't check" };
 }
 
+const HEADER = <PageHeader title="About & updates" back={{ to: "/settings", label: "Settings" }} />;
+
 export function About() {
   const [info, setInfo] = useState<InfoResponse | null | undefined>(undefined);
   const [check, setCheck] = useState<UpdateCheckResponse | null | undefined>(undefined);
@@ -65,12 +75,22 @@ export function About() {
     };
   }, [attempt]);
 
-  if (info === undefined) return <LoadingState label="Loading…" />;
+  if (info === undefined) {
+    return (
+      <div className="stack narrow">
+        {HEADER}
+        <LoadingState label="Loading…" />
+      </div>
+    );
+  }
   if (info === null) {
     return (
-      <ErrorState title="Couldn't load palaia's details" onRetry={() => setAttempt((n) => n + 1)}>
-        palaia didn't answer. It may be restarting.
-      </ErrorState>
+      <div className="stack narrow">
+        {HEADER}
+        <ErrorState title="Couldn't load palaia's details" onRetry={() => setAttempt((n) => n + 1)}>
+          palaia didn't answer. It may be restarting.
+        </ErrorState>
+      </div>
     );
   }
 
@@ -81,6 +101,7 @@ export function About() {
 
   return (
     <div className="stack narrow">
+      {HEADER}
       <Card>
         <CardHeader
           title="Version"

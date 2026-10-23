@@ -15,6 +15,7 @@ export * from "./SkillPanel";
 export * from "./StatusPill";
 export * from "./Stepper";
 export * from "./TabLinks";
+export * from "./Tabs";
 export * from "./Table";
 export * from "./Toast";
 export * from "./RestartHub";

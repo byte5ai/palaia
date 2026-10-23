@@ -1,5 +1,6 @@
 import { Outlet, useOutletContext } from "react-router-dom";
 
+import { PageHeader } from "../components/PageHeader";
 import { TabLinks } from "../components/TabLinks";
 import type { EventStreamState } from "../lib/events";
 
@@ -9,6 +10,10 @@ export function Memories() {
   const stream = useOutletContext<EventStreamState>();
   return (
     <div className="stack">
+      <PageHeader
+        title="Memories"
+        description="What your AI apps saved, and what palaia wants you to check."
+      />
       <TabLinks
         label="Memories"
         items={[

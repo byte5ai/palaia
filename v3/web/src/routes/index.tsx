@@ -39,10 +39,10 @@ export const REDIRECTS: Record<string, string> = {
   "/telegram": "/settings/telegram",
 };
 
-const SETTINGS_BACK = { to: "/settings", label: "Settings" };
-
-function page(handle: PageHandle): { handle: PageHandle } {
-  return { handle };
+/** Every page renders its own `PageHeader` (title, one line, its primary
+ * action); the handle's title names the browser tab. */
+function page(title: string): { handle: PageHandle } {
+  return { handle: { title, ownHeader: true } };
 }
 
 /** The route table — exported so tests can mount it in a memory router. */
@@ -69,14 +69,11 @@ export const routes: RouteObject[] = [
         // matches — renders its message *inside* the shell (issue 379).
         errorElement: <RouteError />,
         children: [
-          { index: true, element: <Home />, ...page({ title: "Overview", ownHeader: true }) },
+          { index: true, element: <Home />, ...page("Overview") },
           {
             path: "memories",
             element: <Memories />,
-            ...page({
-              title: "Memories",
-              description: "What your AI apps saved, and what palaia wants you to check.",
-            }),
+            ...page("Memories"),
             children: [
               { index: true, element: <Explorer /> },
               { path: "review", element: <ReviewQueue /> },
@@ -85,10 +82,7 @@ export const routes: RouteObject[] = [
           {
             path: "apps",
             element: <AiApps />,
-            ...page({
-              title: "AI apps",
-              description: "Connect the apps you use, and see which ones are working.",
-            }),
+            ...page("AI apps"),
             children: [
               { index: true, element: <Clients /> },
               { path: "sessions", element: <Agents /> },
@@ -97,47 +91,41 @@ export const routes: RouteObject[] = [
           {
             path: "add-ons",
             element: <Marketplace />,
-            ...page({
-              title: "Add-ons",
-              description: "Install a tool once and every connected AI app can use it.",
-            }),
+            ...page("Add-ons"),
           },
           {
             path: "automations",
             element: <Automations />,
-            ...page({
-              title: "Automations",
-              description: "Let palaia act when something happens in your memories.",
-            }),
+            ...page("Automations"),
           },
           {
             path: "settings",
             children: [
-              { index: true, element: <SettingsHub />, ...page({ title: "Settings" }) },
+              { index: true, element: <SettingsHub />, ...page("Settings") },
               {
                 path: "access",
                 element: <Exposure />,
-                ...page({ title: "Access & sign-in", back: SETTINGS_BACK }),
+                ...page("Access & sign-in"),
               },
               {
                 path: "backups",
                 element: <Backups />,
-                ...page({ title: "Backups", back: SETTINGS_BACK }),
+                ...page("Backups"),
               },
               {
                 path: "telegram",
                 element: <Telegram />,
-                ...page({ title: "Telegram", back: SETTINGS_BACK }),
+                ...page("Telegram"),
               },
               {
                 path: "advanced",
                 element: <ToolProfiles />,
-                ...page({ title: "Advanced", back: SETTINGS_BACK }),
+                ...page("Advanced"),
               },
               {
                 path: "about",
                 element: <About />,
-                ...page({ title: "About & updates", back: SETTINGS_BACK }),
+                ...page("About & updates"),
               },
             ],
           },
@@ -145,7 +133,7 @@ export const routes: RouteObject[] = [
             path: from.slice(1),
             element: <Redirect to={to} />,
           })),
-          { path: "*", element: <NotFound />, ...page({ title: "Page not found", ownHeader: true }) },
+          { path: "*", element: <NotFound />, ...page("Page not found") },
         ],
       },
     ],
