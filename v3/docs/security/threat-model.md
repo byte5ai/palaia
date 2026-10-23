@@ -57,6 +57,18 @@ to them.
                                             local container or remote)         proposing vault edits)
 ```
 
+**The cloud entry (issues #566, #567).** The packaged image has two doors.
+The private one (`:8420`) serves everything above to devices on the owner's
+network. The *cloud entry* (`:8422`, published on the server's loopback address
+only) is the one a public tunnel points at: nginx forwards only `/mcp`, `/oauth`,
+`/.well-known` and `/telegram/webhook` through it and answers 404 for the
+dashboard and every `/api` route; it marks each forwarded request with
+`X-Palaia-Entry: cloud`, which the private door always clears. The hub enforces
+the same rule itself (`palaia_hub.modes.cloud_entry`): admin routes are 404 on
+that door in every mode, and in `locked` mode every cloud-entry request is
+refused (403), so a tunnel prepared by the installer leads nowhere until the
+owner turns on Cloud mode.
+
 Seven boundaries, and what each one is:
 
 | # | Boundary | Who is on the far side | What crosses it |
@@ -162,6 +174,8 @@ See [§8](#8-accepted-risks-and-open-gaps).
 | `/api/backup/targets` | lists the destinations this hub writes that same archive to itself — with each one's last outcome and the schedule (issue #438) — and runs one on demand (issue #297) — `GET` lists, `POST /api/backup/targets/{name}/run` writes | the response never carries archive bytes (they go hub → the operator's own directory), but naming a destination is naming where the keys go: same admin gate, and the same 403-with-the-CLI-named refusal on an ungated hub. The schedule itself is set only in `config.yaml` — nothing on this route changes it |
 | `/api/update` | release-channel update check against GHCR (SPEC-501) — read-only, outbound fetch is size/time-capped, "cannot check" is a state not an error | makes one outbound registry request |
 | `/api/funnel` | local-only first-run funnel status — wizard-step timestamps, time-to-first-memory (SPEC-504) — **read-only**, never accepts a caller-supplied timestamp | every value it returns was set from a real server-side event, never from a request; `server/tests/funnel/test_no_egress.py` proves the whole path never opens a socket |
+| `/api/setup` | first-run setup state read from the hub (owner present, memories, profiles, running vs configured mode and sign-in, restart due, cloud ready) and the two choices it stores (`setup.json`: goal, finished) — issues #559/#561 | gated like everything else; returns no secret, no address beyond the configured issuer/public URL; the stored file is owner-only (0600) |
+| `/api/hub` | `POST /api/hub/restart`: ends the hub process gracefully so its supervisor starts it again (issue #561) | gated and CSRF-protected like every state-changing call; **only where `PALAIA_SELF_RESTART=1`** (set by the installer and the compose file, where a restart policy exists) — elsewhere 409, because it would only stop the hub; a restart is a short denial of service the owner chose |
 | `/api/_test` | a deliberately slow endpoint for shutdown testing | **only exists when `PALAIA_TEST_SLOW_ENDPOINT_SECONDS` is set**; never in a shipped hub |
 
 | Threat | Mitigation as built | Where |

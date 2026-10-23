@@ -39,7 +39,14 @@ Mode = Literal["locked", "cloud", "open"]
 #: build_production_app`). ``exposure.public_url``/``exposure.tunnel`` are
 #: deliberately not in this set: nothing reads them at wiring time, so a
 #: change to either is live the moment it is saved.
-_RESTART_SENSITIVE_FIELDS = ("mode", "host", "auth_enabled", "oauth.enabled", "oauth.issuer")
+_RESTART_SENSITIVE_FIELDS = (
+    "mode",
+    "host",
+    "auth_enabled",
+    "oauth.enabled",
+    "oauth.issuer",
+    "dashboard.require_sign_in",
+)
 
 
 def _field(config: HubConfig, dotted: str) -> Any:
@@ -63,6 +70,9 @@ class ModeStatusOut(BaseModel):
     auth_enabled: bool
     oauth_enabled: bool
     oauth_issuer: str | None
+    #: The dashboard's own sign-in gate; ``None`` = what the mode implies
+    #: (on in cloud/open once an account exists, off in locked).
+    dashboard_require_sign_in: bool | None
     public_url: str | None
     tunnel: str | None
 
@@ -78,6 +88,9 @@ class ModeChangeRequest(BaseModel):
     auth_enabled: bool | None = None
     oauth_enabled: bool | None = None
     oauth_issuer: str | None = None
+    #: Issue #571: the dashboard sign-in requirement had no control at all,
+    #: which left backups unreachable in the default private setup.
+    dashboard_require_sign_in: bool | None = None
     public_url: str | None = None
     tunnel: Literal["tailscale", "cloudflared", "reverse_proxy"] | None = None
 
@@ -94,6 +107,8 @@ def _dotted_updates(body: ModeChangeRequest) -> dict[str, Any]:
         updates["oauth.enabled"] = body.oauth_enabled
     if body.oauth_issuer is not None:
         updates["oauth.issuer"] = body.oauth_issuer
+    if body.dashboard_require_sign_in is not None:
+        updates["dashboard.require_sign_in"] = body.dashboard_require_sign_in
     if body.public_url is not None:
         updates["exposure.public_url"] = body.public_url
     if body.tunnel is not None:
@@ -193,6 +208,7 @@ def _status(active: HubConfig, configured: HubConfig) -> ModeStatusOut:
         auth_enabled=configured.auth_enabled,
         oauth_enabled=configured.oauth.enabled,
         oauth_issuer=configured.oauth.issuer,
+        dashboard_require_sign_in=configured.dashboard.require_sign_in,
         public_url=configured.exposure.public_url,
         tunnel=configured.exposure.tunnel,
     )

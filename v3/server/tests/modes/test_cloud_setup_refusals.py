@@ -90,3 +90,15 @@ def test_a_sign_in_server_with_nothing_to_grant_is_skipped_not_fatal(
         assert PROBLEMS and "has no memory yet" in PROBLEMS[0]
     finally:
         PROBLEMS.clear()
+
+
+def test_the_dashboard_sign_in_requirement_can_be_set_and_needs_a_restart(tmp_path: Path) -> None:
+    """Issue #571: `dashboard.require_sign_in` had no control, so backups stayed
+    unreachable in the default private setup with no way to fix it."""
+    client = _client(tmp_path)
+    response = client.post("/api/mode", json={"dashboard_require_sign_in": True})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["dashboard_require_sign_in"] is True
+    assert body["restart_required"] is True
+    assert load_config(tmp_path).dashboard.require_sign_in is True

@@ -41,7 +41,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 
 from .admin_session import owner_account_exists
-from .config import HubConfig, config_file_path, load_config
+from .config import HubConfig, config_file_path
 from .events import EventBus, publish_event
 from .funnel import FunnelStore
 from .security.files import harden_file
@@ -148,6 +148,10 @@ def build_setup_router(
     """
     router = APIRouter(tags=["setup"])
     lock = asyncio.Lock()
+    # Polled by the wizard: re-read config.yaml only when it changed (#348).
+    from .modes.api import _ConfiguredConfig
+
+    configured_cache = _ConfiguredConfig(home)
 
     def _profiles(configured: HubConfig, keys: list[str]) -> list[str]:
         # Lazy: palaia_hub.cli imports the app that mounts this router.
@@ -176,7 +180,7 @@ def build_setup_router(
     def _status() -> SetupStatus:
         from .modes.api import _restart_required
 
-        configured = load_config(home=home) if config_file_path(home).exists() else config
+        configured = configured_cache.get() if config_file_path(home).exists() else config
         keys = sorted(vault_keys())
         choices = _read_choices(home)
         if choices is None:
