@@ -8,7 +8,7 @@ to understand it before they trust it.
 ## What you get, in detail
 
 Grouped by what it does for you, not by what module it lives in. Every item below
-ships in `3.0.0-rc5` unless it says it is planned; the full list is in
+ships in `3.0.0-rc6` unless it says it is planned; the full list is in
 [`CHANGELOG.md`](../CHANGELOG.md).
 
 ### Memory that outlives the session

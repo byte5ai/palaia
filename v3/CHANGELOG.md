@@ -10,6 +10,77 @@ ADRs, phase-gate records, SPEC index docs, CI and release plumbing) are left
 out on purpose; they moved the project forward but nothing in them is a
 capability a user would notice.
 
+## 3.0.0-rc6 — 2026-10-24 (release candidate)
+
+The fixes from an independent code review of `rc5` and from a full
+installation run on a fresh server before this build. Still a pre-release —
+the `:beta` channel.
+
+### Security
+
+- **Another site can no longer change anything in palaia through your
+  browser.** Every change to the dashboard's API now has to come as JSON
+  from the dashboard's own page, in every mode, also on a private hub
+  without sign-in. Scripts that post to a route without a body now need
+  `Content-Type: application/json`.
+- **No memory no longer means no sign-in.** A hub with sign-in turned on but
+  no memory yet (or after the last one was removed) still asks for the
+  owner's password.
+- **The cloud self-test only checks public https addresses.** It refuses
+  plain http and anything that leads into a private network (except the
+  Tailscale range Funnel uses), reads answers only up to a limit and stops
+  after 20 seconds.
+- **"Admin stays private" means it.** The self-test counts only a refusal
+  as private; a redirect, a sign-in prompt or an error now fails the check.
+- **Restart from the browser** accepts only the dashboard's own request.
+- The session cookie keeps `Secure` behind a TLS tunnel in front of the
+  private door.
+- Failed sign-ins through a tunnel are counted per caller, not for everyone
+  at once.
+
+### Install
+
+- With a key file, the installer removes the key afterwards also when run
+  with `sudo` by a normal user.
+- Cloud access during install is skipped, with a message, when another
+  program already uses the cloud entry's port.
+- Running the installer again keeps a custom data volume or folder instead
+  of switching to the default.
+- A firewall rule that only allows the tailnet or one address no longer
+  counts as "port open" for the setup page.
+- The server-creation file writes the Tailscale key only after the
+  installer has downloaded, and is about 4 KB.
+- The setup guide for AI assistants runs the key handoff on the server
+  (`ssh root@<address> '…'`), not on your own computer.
+
+### Dashboard and setup
+
+- **Opening the dashboard before signing in no longer locks you out for a
+  minute** in Cloud or Public mode. Only real guesses at a session count as
+  failed attempts now.
+- **Switch to Private keeps the dashboard sign-in** and moves signing in to
+  the dashboard's private address, in Settings and in the first-run setup.
+  Choosing "private" in setup after turning cloud access on turns it off.
+- **The Claude Desktop extension download works in the container image**;
+  it used to fail every time. On a private hub the extension connects to
+  the private address. The image grows by about 167 MB for the Node runtime
+  the extension builder needs.
+- A private account step stays open until sign-in is really on, through the
+  restart.
+- Tunnel commands are always for the mode you are setting up.
+- Revoking an AI app's access also stops an extension downloaded after the
+  page loaded; a replaced key stays on screen if removing the old one fails.
+- Backups names any memory whose folder is outside palaia's data folder and
+  therefore not in the backup file.
+- "Connect another AI app" and "Finish" at the end of setup work; links to a
+  setup step open that step, also on a phone.
+- Overview counts an AI app that signs in (no access key) as connected.
+- The in-chat panels link the dashboard only where the public address
+  serves it; unknown `/.well-known/` addresses answer 404.
+- A cloud self-test result and a setup choice saved at the same time are
+  both kept, and a self-test no longer marks an installed hub as "not set
+  up".
+
 ## 3.0.0-rc5 — 2026-10-23 (release candidate)
 
 The fixes from the first supervised installation test of `rc4`: a browser-first
