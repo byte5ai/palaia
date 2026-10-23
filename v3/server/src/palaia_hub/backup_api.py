@@ -68,11 +68,10 @@ BACKUP_TARGET_RUN_PATH = "/api/backup/targets/{name}/run"
 #: The 403 an ungated hub answers (issue #317). Plain language, and it names
 #: both fixes — the same "Fix:" convention every other refusal follows.
 UNGATED_DETAIL = (
-    "Backups are only downloadable by a signed-in owner, and this hub has no "
-    "dashboard sign-in turned on — the file would hand every key this hub holds "
-    "to anyone who can reach it. Fix: turn on sign-in (`oauth.enabled: true` and "
-    "`oauth.issuer` in config.yaml, then `palaia-hub oauth set-password`), or run "
-    "`palaia-hub backup` on the machine the hub runs on."
+    "Only a signed-in owner can download a backup, and this palaia has no "
+    "dashboard sign-in: the file holds every key palaia keeps, so anyone who can "
+    "reach palaia could take it. Fix: turn on sign-in in Settings › Access & "
+    "sign-in, or run `palaia-hub backup` on the server palaia runs on."
 )
 
 
@@ -81,11 +80,10 @@ UNGATED_DETAIL = (
 #: write is the same key material, and the CLI can already run a target on
 #: the host without a dashboard session.
 UNGATED_TARGETS_DETAIL = (
-    "Backup targets are only reachable by a signed-in owner, and this hub has no "
-    "dashboard sign-in turned on — the archive a target writes holds every key this "
-    "hub has. Fix: turn on sign-in (`oauth.enabled: true` and `oauth.issuer` in "
-    "config.yaml, then `palaia-hub oauth set-password`), or run `palaia-hub backup "
-    "--target <name>` on the machine the hub runs on."
+    "Only a signed-in owner can use backup destinations, and this palaia has no "
+    "dashboard sign-in: a backup holds every key palaia keeps. Fix: turn on "
+    "sign-in in Settings › Access & sign-in, or run `palaia-hub backup --target "
+    "<name>` on the server palaia runs on."
 )
 
 

@@ -14,7 +14,7 @@ Pick the tool you use. Each one takes a couple of minutes, and every tool you co
 - **[Claude Desktop](/connect/clients/claude-desktop/)** — The Claude app on a computer in your private network — a one-click extension download
 - **[Antigravity / Gemini CLI](/connect/clients/gemini-cli/)** — about one command · 1 min
 - **[LM Studio](/connect/clients/lm-studio/)** — about one command · 1 min
-- **[Any other AI tool](/connect/clients/generic/)** — about a couple of minutes
+- **[Any other AI app](/connect/clients/generic/)** — about a couple of minutes
 
 ## Needs one thing turned on first
 
@@ -24,4 +24,4 @@ These connect from a company's own service rather than from your device, so they
 - **[ChatGPT](/connect/clients/chatgpt/)** — A custom connector in developer mode
 - **[Grok](/connect/clients/grok/)** — Custom (bring-your-own) `MCP` connectors — web/iOS/Android
 
-Using something else? Any tool that speaks the open connector protocol works the same way — see [Any other AI tool](/connect/clients/generic/).
+Using something else? Any tool that speaks the open connector protocol works the same way — see [Any other AI app](/connect/clients/generic/).

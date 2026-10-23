@@ -83,7 +83,7 @@ def test_create_with_template_seeds_two_notes(tmp_path: Path) -> None:
 
     notes = client.get("/api/vaults/work/notes").json()
     titles = {note["title"] for note in notes}
-    assert titles == {"Welcome to this vault", "Example project"}
+    assert titles == {"Welcome to this memory", "Example project"}
 
 
 def test_list_notes_unknown_vault_is_404(tmp_path: Path) -> None:
@@ -98,13 +98,13 @@ def test_read_note_roundtrip(tmp_path: Path) -> None:
     client = _client(tmp_path)
     client.post("/api/vaults", json={"key": "work", "template": True})
     notes = client.get("/api/vaults/work/notes").json()
-    welcome = _note_by_title(notes, "Welcome to this vault")
+    welcome = _note_by_title(notes, "Welcome to this memory")
 
     response = client.get(f"/api/vaults/work/notes/{welcome['permalink']}")
 
     assert response.status_code == 200
     body = response.json()
-    assert body["title"] == "Welcome to this vault"
+    assert body["title"] == "Welcome to this memory"
     assert "starter note" in body["body"]
 
 
@@ -125,7 +125,7 @@ def test_search_finds_matching_note(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     hits = response.json()
-    assert any(hit["title"] == "Welcome to this vault" for hit in hits)
+    assert any(hit["title"] == "Welcome to this memory" for hit in hits)
 
 
 def test_search_empty_query_returns_no_hits(tmp_path: Path) -> None:
@@ -142,7 +142,7 @@ def test_note_history_reports_the_creating_commit(tmp_path: Path) -> None:
     client = _client(tmp_path)
     client.post("/api/vaults", json={"key": "work", "template": True})
     notes = client.get("/api/vaults/work/notes").json()
-    welcome = _note_by_title(notes, "Welcome to this vault")
+    welcome = _note_by_title(notes, "Welcome to this memory")
 
     response = client.get(f"/api/vaults/work/notes/{welcome['permalink']}/history")
 
@@ -165,11 +165,11 @@ def test_note_graph_links_the_template_notes_both_ways(tmp_path: Path) -> None:
     client = _client(tmp_path)
     client.post("/api/vaults", json={"key": "work", "template": True})
     notes = client.get("/api/vaults/work/notes").json()
-    welcome = _note_by_title(notes, "Welcome to this vault")
+    welcome = _note_by_title(notes, "Welcome to this memory")
     example = _note_by_title(notes, "Example project")
 
     example_graph = client.get(f"/api/vaults/work/notes/{example['permalink']}/graph").json()
-    assert any(node["title"] == "Welcome to this vault" for node in example_graph["outbound"])
+    assert any(node["title"] == "Welcome to this memory" for node in example_graph["outbound"])
     assert example_graph["inbound"] == []
 
     welcome_graph = client.get(f"/api/vaults/work/notes/{welcome['permalink']}/graph").json()
@@ -209,7 +209,7 @@ def test_recent_activity_lists_changed_notes_across_vaults_newest_first(
 
     assert {change["vault"] for change in changes} == {"work", "family"}
     assert {change["title"] for change in changes} == {
-        "Welcome to this vault",
+        "Welcome to this memory",
         "Example project",
     }
     stamps = [change["modified"] for change in changes]

@@ -86,17 +86,17 @@ from .vault.watcher import VaultWatcher
 # its target note is read again.
 _TEMPLATE_NOTES: tuple[tuple[str, str], ...] = (
     (
-        "Welcome to this vault",
-        "This is a starter note so the vault is not empty on day one.\n\n"
-        "Delete it whenever you like — nothing here is load-bearing. Connect "
-        "a client and ask it to remember something, or write your first real "
-        "note yourself from the explorer.\n",
+        "Welcome to this memory",
+        "This is a starter note so the memory is not empty on day one.\n\n"
+        "Delete it whenever you like; nothing depends on it. Connect an AI app "
+        "and ask it to remember something, or write your first real note "
+        "yourself under Memories.\n",
     ),
     (
         "Example project",
         "An example of what a note can look like: a title, a folder, and "
         "whatever you want to say. Link to another note with two square "
-        "brackets around its title, like [[Welcome to this vault]] — the "
+        "brackets around its title, like [[Welcome to this memory]] — the "
         "link resolves even if you write the target note later.\n",
     ),
 )

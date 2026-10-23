@@ -1,8 +1,8 @@
 ---
 # Generated from v3/web/src/lib/clients.ts and skills.ts by v3/site/docs/scripts/generate-connect-pages.mjs. Do not hand-edit —
 # change the source and run `npm run gen:connect` from v3/site/docs.
-title: "Any other AI tool"
-description: "Connect Any other AI tool to your shared memory."
+title: "Any other AI app"
+description: "Connect Any other AI app to your shared memory."
 ---
 
 Time: about a couple of minutes.

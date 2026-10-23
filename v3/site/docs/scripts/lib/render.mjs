@@ -240,7 +240,7 @@ export function renderIndexPage(clients) {
     ...needsSignIn.map(line),
     "",
     "Using something else? Any tool that speaks the open connector protocol works the same way — see " +
-      "[Any other AI tool](/connect/clients/generic/).",
+      "[Any other AI app](/connect/clients/generic/).",
     "",
   ];
   return tidy(parts.join("\n"));

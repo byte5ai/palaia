@@ -58,7 +58,7 @@ describe("SkillPanel", () => {
   });
 
   it("is honest about an app whose skill support is unverified", () => {
-    mount("generic", "Any other AI tool");
+    mount("generic", "Any other AI app");
 
     expect(screen.getByText(/if your tool reads skill\.md folders/i)).toBeInTheDocument();
     // Unverified is not unsupported: the files are still offered.

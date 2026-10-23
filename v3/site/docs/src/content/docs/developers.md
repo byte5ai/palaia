@@ -33,7 +33,7 @@ Every AI tool in [Connect your AI](/connect/) talks to palaia over `MCP`
 (the Model Context Protocol) — an open, cross-vendor standard for how an AI
 tool discovers and calls tools, not something specific to palaia. Anything
 that speaks it can connect, including a tool you write yourself; see
-[Any other AI tool](/connect/clients/generic/) for the bare connection
+[Any other AI app](/connect/clients/generic/) for the bare connection
 details a new client needs.
 
 Sign-in for tools that connect from outside your own network follows the
