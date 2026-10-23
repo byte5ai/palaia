@@ -9,7 +9,11 @@
  */
 import { useState } from "react";
 
+import { Button } from "../../components/Button";
+import { Card, CardBody } from "../../components/Card";
 import { ConnectPanel } from "../../components/ConnectPanel";
+import { StatusPill } from "../../components/StatusPill";
+import { StepperPanel } from "../../components/Stepper";
 import type { SetupStatus } from "../../lib/api/client";
 import { api } from "../../lib/api/client";
 import {
@@ -20,7 +24,7 @@ import {
 } from "../../lib/clients";
 import { saveBlob } from "../../lib/download";
 import { describeApiError } from "../../lib/errors";
-import { ArrowRightIcon, CheckIcon, CopyIcon } from "../../shell/icons";
+import { ArrowRightIcon, CopyIcon } from "../../shell/icons";
 import { goalOf } from "./steps";
 
 type Pick = NotYetClient | GuidedClient | DownloadClient;
@@ -63,11 +67,21 @@ export function ConnectStep({
   }
 
   return (
-    <section className="ob__step-body">
-      <h1 className="ob__title">Connect your AI app</h1>
-      <p className="t-lead">
-        Pick the app you use most. You can add more later.
-      </p>
+    <StepperPanel
+      title="Connect your AI app"
+      description="Pick the app you use most. You can add more later."
+      back={
+        <Button variant="secondary" onClick={() => void skip()}>
+          Later
+        </Button>
+      }
+      primary={
+        <Button variant="primary" size="lg" onClick={() => void onDone()}>
+          {status.client_connected ? "Continue" : "Finish"}
+          <ArrowRightIcon className="icon--sm" />
+        </Button>
+      }
+    >
       <div className="clientgrid" role="radiogroup" aria-label="AI app">
         {ordered.map((item) => {
           const needsCloud = item.kind === "notYet" && !status.cloud_ready;
@@ -77,19 +91,16 @@ export function ConnectStep({
               role="radio"
               aria-checked={item.id === client.id}
               key={item.id}
-              className={[
-                "clientcard",
-                item.id === client.id ? "clientcard--on" : "",
-              ]
+              className={["clientcard", item.id === client.id ? "clientcard--on" : ""]
                 .filter(Boolean)
                 .join(" ")}
               onClick={() => setPicked(item.id)}
             >
-              <span className="row" style={{ gap: 8 }}>
+              <span className="row">
                 <item.icon className="icon--sm" />
                 <span className="clientcard__name">{item.name}</span>
               </span>
-              <span className="t-xs t-muted">
+              <span className="t-sm t-muted">
                 {item.kind === "notYet"
                   ? needsCloud
                     ? "Needs cloud access"
@@ -113,44 +124,23 @@ export function ConnectStep({
       ) : client.kind === "download" ? (
         <ExtensionDownload client={client} profile={profile} />
       ) : (
-        <ConnectPanel
-          key={client.id}
-          client={client}
-          defaultProfile={profile}
-        />
+        <ConnectPanel key={client.id} client={client} defaultProfile={profile} />
       )}
 
-      <p
-        className={
-          status.client_connected
-            ? "ob__connected ob__connected--ok"
-            : "ob__connected"
-        }
-      >
+      <p className="ob__connected" role="status">
         {status.client_connected ? (
           <>
-            <CheckIcon className="icon icon--sm" /> Connected — palaia received
-            the first request.
+            <StatusPill tone="ok">Connected</StatusPill>
+            palaia received the first request.
           </>
         ) : (
-          "Waiting for the first request from your AI app…"
+          <>
+            <StatusPill tone="info">Waiting</StatusPill>
+            Waiting for the first request from your AI app…
+          </>
         )}
       </p>
-
-      <div className="ob__foot">
-        <button type="button" className="btn" onClick={() => void skip()}>
-          Later
-        </button>
-        <button
-          type="button"
-          className="btn btn--primary btn--lg"
-          onClick={() => void onDone()}
-        >
-          {status.client_connected ? "Continue" : "Finish"}
-          <ArrowRightIcon className="icon--sm" />
-        </button>
-      </div>
-    </section>
+    </StepperPanel>
   );
 }
 
@@ -168,36 +158,31 @@ function CloudConnector({
   const [copied, setCopied] = useState(false);
   if (!status.cloud_ready || !status.issuer) {
     return (
-      <div className="card">
-        <div className="card__body stack stack--3">
-          <p className="t-sm">
-            {client.name} connects from the internet, so it needs cloud access.
-            Your dashboard stays on your private network either way.
+      <Card>
+        <CardBody className="stack stack--3">
+          <p>
+            {client.name} connects from the internet, so it needs cloud access. Your dashboard
+            stays on your private network either way.
           </p>
           <div>
-            <button
-              type="button"
-              className="btn btn--primary"
-              onClick={() => void onWantCloud()}
-            >
+            <Button variant="primary" onClick={() => void onWantCloud()}>
               Turn on cloud access
-            </button>
+            </Button>
           </div>
-        </div>
-      </div>
+        </CardBody>
+      </Card>
     );
   }
   const connect = client.oauthConnect?.(status.issuer, profile);
   if (!connect) return null;
   const steps = CONNECT_STEPS[client.id] ?? [connect.note];
   return (
-    <div className="card">
-      <div className="card__body stack stack--3">
+    <Card>
+      <CardBody className="stack stack--3">
         <div className="snippet snippet--wrap">
           <code>{connect.url}</code>
-          <button
-            type="button"
-            className="btn btn--sm"
+          <Button
+            size="sm"
             onClick={() =>
               void navigator.clipboard
                 ?.writeText(connect.url)
@@ -207,15 +192,15 @@ function CloudConnector({
           >
             <CopyIcon className="icon--sm" />
             {copied ? "Copied" : "Copy"}
-          </button>
+          </Button>
         </div>
         <ol className="ob__howto">
           {steps.map((line) => (
             <li key={line}>{line}</li>
           ))}
         </ol>
-      </div>
-    </div>
+      </CardBody>
+    </Card>
   );
 }
 
@@ -241,8 +226,8 @@ function ExtensionDownload({
     }
   }
   return (
-    <div className="card">
-      <div className="card__body stack stack--3">
+    <Card>
+      <CardBody className="stack stack--3">
         <ol className="ob__howto">
           <li>Download the palaia extension for Claude Desktop.</li>
           <li>
@@ -251,22 +236,17 @@ function ExtensionDownload({
           </li>
           <li>Click Install.</li>
         </ol>
-        <p className="t-xs t-muted">
+        <p className="t-sm t-muted">
           For a computer on your private network. For the Claude app on your
           phone, use cloud access with the Claude connector.
         </p>
         <div>
-          <button
-            type="button"
-            className="btn btn--primary"
-            onClick={() => void download()}
-            disabled={busy}
-          >
+          <Button variant="primary" onClick={() => void download()} loading={busy}>
             {busy ? "Preparing…" : "Download extension"}
-          </button>
+          </Button>
         </div>
         {error ? <p className="field__error">{error}</p> : null}
-      </div>
-    </div>
+      </CardBody>
+    </Card>
   );
 }

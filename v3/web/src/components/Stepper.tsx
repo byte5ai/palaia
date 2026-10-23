@@ -7,7 +7,16 @@ import { CheckIcon, PalaiaMark } from "../shell/icons";
  * clicked: `done` only once the server confirms it, `attention` when it
  * was done and is not any more (or needs a restart).
  */
-export type StepState = "todo" | "current" | "done" | "attention";
+export type StepState = "todo" | "current" | "done" | "skipped" | "attention";
+
+/** Spoken after a clickable step's name: the ticks are not only visual. */
+const STATE_SUFFIX: Record<StepState, string> = {
+  todo: "",
+  current: "",
+  done: " (done)",
+  skipped: " (skipped)",
+  attention: " (needs attention)",
+};
 
 export interface StepperStep {
   id: string;
@@ -25,6 +34,7 @@ export function Stepper({
   steps,
   currentIndex,
   barEnd,
+  onSelect,
   children,
 }: {
   steps: StepperStep[];
@@ -32,6 +42,8 @@ export function Stepper({
   currentIndex: number;
   /** Something for the right end of the bar (e.g. "Skip setup"). */
   barEnd?: ReactNode;
+  /** Makes finished steps (and the current one) clickable, to look back. */
+  onSelect?: (index: number) => void;
   /** Usually one `StepperPanel`. */
   children: ReactNode;
 }) {
@@ -82,17 +94,29 @@ export function Stepper({
                   <CheckIcon className="icon--sm" />
                 ) : step.state === "attention" ? (
                   "!"
+                ) : step.state === "skipped" ? (
+                  "–"
                 ) : (
                   index + 1
                 )}
               </span>
-              <span>
-                {step.label}
-                {step.state === "done" ? <span className="sr-only"> (done)</span> : null}
-                {step.state === "attention" ? (
-                  <span className="sr-only"> (needs attention)</span>
-                ) : null}
-              </span>
+              {onSelect && (step.state !== "todo" || index === currentIndex) ? (
+                <button
+                  type="button"
+                  className="stepper__link"
+                  onClick={() => onSelect(index)}
+                  aria-label={`${String(step.label)}${STATE_SUFFIX[step.state]}`}
+                >
+                  {step.label}
+                </button>
+              ) : (
+                <span>
+                  {step.label}
+                  {STATE_SUFFIX[step.state] ? (
+                    <span className="sr-only">{STATE_SUFFIX[step.state]}</span>
+                  ) : null}
+                </span>
+              )}
             </li>
           ))}
         </ol>
