@@ -705,7 +705,7 @@ function SignInCard({
         tone="info"
         title="Create the owner account first"
         actions={
-          <Link className="btn btn--sm" to="/onboarding">
+          <Link className="btn btn--sm" to="/onboarding?step=account">
             Continue setup
           </Link>
         }
@@ -777,7 +777,7 @@ function SignInCard({
         }
         trailing={
           owner === false ? (
-            <Link className="btn btn--sm" to="/onboarding">
+            <Link className="btn btn--sm" to="/onboarding?step=account">
               Set up
             </Link>
           ) : owner ? (

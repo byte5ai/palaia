@@ -11,29 +11,32 @@ import { api, type SetupStatus } from "./api/client";
 export const ONBOARDING_PATH = "/onboarding";
 
 /** Open the setup wizard instead of the app while first-run setup is
- * unfinished. Checked once per page load, so someone who chose to leave the
- * wizard can still use the app until the next visit. */
+ * unfinished. Asked once each time the app opens (leaving the wizard marks
+ * setup finished, so the answer then lets the app be).
+ *
+ * The answer is awaited across the app's own navigation: an old address
+ * (`/clients`) redirects before `/api/setup` answers, and that redirect must
+ * not drop the answer — the promise is kept, and only leaving the app
+ * (unmount) ignores it. */
 export function useFirstRunRedirect(): void {
   const navigate = useNavigate();
   const location = useLocation();
-  const checked = useRef(false);
+  const [openedAt] = useState(location.pathname);
+  const asked = useRef<Promise<SetupStatus> | null>(null);
   useEffect(() => {
-    if (checked.current) return;
-    checked.current = true;
-    if (location.pathname === ONBOARDING_PATH) return;
-    let cancelled = false;
-    api
-      .setupStatus()
+    if (openedAt === ONBOARDING_PATH) return;
+    let alive = true;
+    asked.current ??= api.setupStatus();
+    asked.current
       .then((status) => {
-        if (!cancelled && !status.completed)
-          navigate(ONBOARDING_PATH, { replace: true });
+        if (alive && !status.completed) navigate(ONBOARDING_PATH, { replace: true });
       })
       // A hub that cannot answer is the shell's own error to show.
       .catch(() => undefined);
     return () => {
-      cancelled = true;
+      alive = false;
     };
-  }, [location.pathname, navigate]);
+  }, [openedAt, navigate]);
 }
 
 export interface SetupState {

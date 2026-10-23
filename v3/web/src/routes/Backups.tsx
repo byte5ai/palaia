@@ -220,7 +220,7 @@ function NeedsSignIn({
         title="Backups need dashboard sign-in"
         actions={
           owner === false ? (
-            <Link className="btn btn--primary" to="/onboarding">
+            <Link className="btn btn--primary" to="/onboarding?step=account">
               Create the owner account
             </Link>
           ) : (

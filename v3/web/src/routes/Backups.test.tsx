@@ -319,9 +319,11 @@ describe("Backups (issue 438)", () => {
 
     mount();
 
+    // Straight to the account step: the wizard's step list is hidden on
+    // phones, and plain /onboarding opens the first open step instead.
     expect(await screen.findByRole("link", { name: "Create the owner account" })).toHaveAttribute(
       "href",
-      "/onboarding",
+      "/onboarding?step=account",
     );
   });
 
