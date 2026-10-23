@@ -39,7 +39,14 @@ import type {
 } from "../lib/api/client";
 import { api } from "../lib/api/client";
 import { describeApiError } from "../lib/errors";
-import { isHubMode, MODE_LABEL, MODE_OUTCOME, notifyModeChanged, type HubMode } from "../lib/mode";
+import {
+  isHubMode,
+  MODE_LABEL,
+  MODE_OUTCOME,
+  notifyModeChanged,
+  privateModeChange,
+  type HubMode,
+} from "../lib/mode";
 import { SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../lib/useDebouncedValue";
 import { CopyIcon } from "../shell/icons";
 import "./settings.css";
@@ -208,7 +215,7 @@ export function Exposure() {
         </RestartCallout>
       ) : null}
 
-      <ModeCard status={status} setup={setup} onChange={change} />
+      <ModeCard status={status} setup={setup} owner={owner} onChange={change} />
 
       <SignInCard status={status} owner={owner} onChange={change} />
     </div>
@@ -220,10 +227,12 @@ type ChangeFn = (body: ModeChangeRequest, done: string) => Promise<string | null
 function ModeCard({
   status,
   setup,
+  owner,
   onChange,
 }: {
   status: ModeStatus;
   setup: SetupStatus | null;
+  owner: boolean | null;
   onChange: ChangeFn;
 }) {
   const configured = (isHubMode(status.configured_mode) ? status.configured_mode : "locked") as HubMode;
@@ -231,6 +240,12 @@ function ModeCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmPrivate, setConfirmPrivate] = useState(false);
+  // Issue 588: Private alone turns "Require sign-in for this dashboard" off.
+  // The switch keeps it as it was, and the sign-in server moves to this
+  // dashboard's own address, since the public one answers nothing in Private.
+  const keepsSignIn = dashboardSignInWanted(status);
+  const origin = window.location.origin;
+  const movesSignIn = status.oauth_enabled && status.oauth_issuer !== origin;
 
   async function apply(body: ModeChangeRequest, done: string) {
     setBusy(true);
@@ -316,7 +331,14 @@ function ModeCard({
         onCancel={() => setConfirmPrivate(false)}
         onConfirm={() => {
           setConfirmPrivate(false);
-          void apply({ mode: "locked" }, "Private access saved.");
+          void apply(
+            privateModeChange({
+              keepDashboardSignIn: keepsSignIn,
+              signInServerOn: status.oauth_enabled,
+              origin,
+            }),
+            "Private access saved.",
+          );
         }}
         title="Switch to Private?"
         confirmLabel="Switch to Private"
@@ -325,6 +347,19 @@ function ModeCard({
           Only devices on your network or VPN can reach palaia afterwards. claude.ai, ChatGPT and
           other apps that connect from the internet stop working.
         </p>
+        {keepsSignIn ? (
+          <p>
+            {owner
+              ? "This dashboard keeps asking for the owner account's password."
+              : "Sign-in for this dashboard stays on."}
+          </p>
+        ) : null}
+        {movesSignIn ? (
+          <p>
+            Signing in to palaia moves from {status.oauth_issuer ?? "the public address"} to this
+            dashboard's address, {origin}.
+          </p>
+        ) : null}
       </ConfirmDialog>
     </Card>
   );

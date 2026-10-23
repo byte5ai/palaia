@@ -523,7 +523,13 @@ describe("first-run setup", () => {
       expect(hub.calls).toContainEqual({
         method: "POST",
         path: "/api/mode",
-        body: { mode: "locked", dashboard_require_sign_in: true },
+        // As Settings › Switch to Private sends it (issue 588): the sign-in
+        // server moves off the public address, which answers nothing in Private.
+        body: {
+          mode: "locked",
+          dashboard_require_sign_in: true,
+          oauth_issuer: window.location.origin,
+        },
       }),
     );
     expect(hub.calls).toContainEqual({ method: "PUT", path: "/api/setup", body: { goal: "private" } });

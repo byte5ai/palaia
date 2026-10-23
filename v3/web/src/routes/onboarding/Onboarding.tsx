@@ -34,6 +34,7 @@ import { Stepper, StepperPanel, type StepperStep } from "../../components/Steppe
 import type { SetupStatus } from "../../lib/api/client";
 import { api } from "../../lib/api/client";
 import { describeApiError } from "../../lib/errors";
+import { privateModeChange } from "../../lib/mode";
 import { useSetupStatus } from "../../lib/setup";
 import { ArrowRightIcon } from "../../shell/icons";
 import { CloudStep } from "./CloudStep";
@@ -221,7 +222,8 @@ function GoalStep({ status, onDone }: StepProps) {
   // Access & sign-in › Switch to Private makes — never silently leaves it on
   // behind a wizard that no longer shows it. With an account, the dashboard
   // keeps asking for its password, as a private setup with an account does
-  // (Private alone would stop asking).
+  // (Private alone would stop asking), and the sign-in server moves to this
+  // dashboard's address (issue 588).
   const turnsInternetOff = goal === "private" && status.configured_mode !== "locked";
 
   async function save() {
@@ -230,9 +232,11 @@ function GoalStep({ status, onDone }: StepProps) {
     try {
       if (turnsInternetOff) {
         await api.changeMode(
-          status.owner_configured
-            ? { mode: "locked", dashboard_require_sign_in: true }
-            : { mode: "locked" },
+          privateModeChange({
+            keepDashboardSignIn: status.owner_configured,
+            signInServerOn: status.configured_sign_in,
+            origin: window.location.origin,
+          }),
         );
       }
       await api.updateSetup({ goal });

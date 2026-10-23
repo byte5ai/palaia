@@ -12,6 +12,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from palaia_hub.admin_session import sign_in_configured, sign_in_required
 from palaia_hub.app import create_app
 from palaia_hub.auth.store import TokenStore
 from palaia_hub.cli import _maybe_oauth_server
@@ -186,3 +187,54 @@ def test_the_dashboard_sign_in_requirement_can_be_set_and_needs_a_restart(tmp_pa
     assert body["dashboard_require_sign_in"] is True
     assert body["restart_required"] is True
     assert load_config(tmp_path).dashboard.require_sign_in is True
+
+
+def test_switching_a_cloud_hub_to_private_keeps_its_dashboard_sign_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #588: the change Settings › Switch to Private sends. Private alone
+    turns the dashboard's sign-in off; kept, with the sign-in server moved to
+    the private address (the public one answers nothing in Private), the hub
+    accepts it, still starts its sign-in server and still asks for the owner's
+    password — and the public address stays saved for switching back."""
+    monkeypatch.setenv("PALAIA_HOME", str(tmp_path))
+    asyncio.run(VaultRegistry(tmp_path).create("work", path=tmp_path / "vaults" / "work"))
+    store = OAuthStore(tmp_path)
+    store.open()
+    set_owner_password(store, "owner", "a-long-enough-passphrase", now=1_800_000_000)
+    store.close()
+    public = "https://palaia-hub.tail1234.ts.net"
+    private = "http://100.64.0.1:8420"
+    client = _client(tmp_path)
+    cloud = client.post(
+        "/api/mode",
+        json={
+            "mode": "cloud",
+            "host": "127.0.0.1",
+            "oauth_enabled": True,
+            "oauth_issuer": public,
+            "public_url": public,
+        },
+    )
+    assert cloud.status_code == 200, cloud.text
+
+    response = client.post(
+        "/api/mode",
+        json={"mode": "locked", "dashboard_require_sign_in": True, "oauth_issuer": private},
+    )
+
+    assert response.status_code == 200, response.text
+    config = load_config(tmp_path)
+    assert (config.mode, config.oauth.issuer, config.exposure.public_url) == (
+        "locked",
+        private,
+        public,
+    )
+    assert sign_in_required(config)
+    assert sign_in_configured(config, tmp_path)
+    server = _maybe_oauth_server(config)
+    assert server is not None
+    try:
+        assert server.issuer == private
+    finally:
+        server.store.close()
