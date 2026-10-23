@@ -157,7 +157,7 @@ See [§8](#8-accepted-risks-and-open-gaps).
 | `/api/events` | live server-sent event stream | carries vault activity, so it is **gated** |
 | `/api/auth` | client-token minting and revocation | |
 | `/api/mode` | the operating mode | changes the attack surface |
-| `/api/exposure` | tunnel guidance, the public-URL self-test, the hardening checklist | |
+| `/api/exposure` | tunnel guidance, the public-URL self-test, the hardening checklist | the self-test fetches a caller-supplied address, so it fetches only `https` whose host resolves to public (or Tailscale) addresses — never loopback, private, link-local or metadata ones — connects to the address it checked, reads at most 64 KiB per answer and stops after 20 s in all (`modes/selftest.py`) |
 | `/api/gateway` | tool profiles: which vaults and tools a client sees | |
 | `/api/secrets` | upstream credentials — **write-only**, no read path exists | |
 | `/api/market` | the marketplace and its install/uninstall flows | runs containers |

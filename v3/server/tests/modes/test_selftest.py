@@ -14,7 +14,9 @@ against a mock of the forbidden admin route.
 
 from __future__ import annotations
 
+import asyncio
 import re
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import httpx
@@ -26,6 +28,9 @@ from palaia_hub.modes.selftest import check_public_url
 from palaia_hub.oauth import AuthorizationServer
 
 ISSUER = "https://hub.example.test"
+#: Where these tests pretend ISSUER's name leads: a public address. Nothing is
+#: ever sent there — every transport below is a mock or in-process.
+PUBLIC_ADDRESS = "93.184.215.14"
 DASHBOARD_HTML = '<!doctype html><title>palaia</title><div id="root"></div>'
 TEMPLATE = Path(__file__).resolve().parents[3] / "deploy" / "nginx.conf.template"
 
@@ -50,7 +55,19 @@ def _healthy(request: httpx.Request) -> httpx.Response:
     return httpx.Response(404)
 
 
+async def _public(host: str, port: int) -> list[str]:
+    return [PUBLIC_ADDRESS]
+
+
+def _resolving_to(*addresses: str):  # type: ignore[no-untyped-def]
+    async def resolve(host: str, port: int) -> list[str]:
+        return list(addresses)
+
+    return resolve
+
+
 async def _run(handler: object, **kwargs: object):  # type: ignore[no-untyped-def]
+    kwargs.setdefault("resolve", _public)
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:  # type: ignore[arg-type]
         return await check_public_url(ISSUER, issuer=ISSUER, client=client, **kwargs)  # type: ignore[arg-type]
 
@@ -168,11 +185,200 @@ async def test_nothing_listening_is_reported_once_with_the_reason() -> None:
 @pytest.mark.anyio
 async def test_without_an_issuer_the_ai_connection_alone_is_checked() -> None:
     async with httpx.AsyncClient(transport=httpx.MockTransport(_healthy)) as client:
-        result = await check_public_url(ISSUER + "/", issuer=None, client=client)
+        result = await check_public_url(ISSUER + "/", issuer=None, client=client, resolve=_public)
 
     assert result.reachable is True
     assert result.checked_url == ISSUER
     assert result.checks[0].id == "mcp"
+
+
+# ------------------------------------- "stays private" means refused, nothing else
+
+
+@pytest.mark.anyio
+async def test_a_sign_in_prompt_and_a_redirect_do_not_count_as_private() -> None:
+    """The AI connection works; the admin API asks for a sign-in and the
+    dashboard redirects elsewhere — both reachable from the internet, so
+    neither may be called private."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/info":
+            return httpx.Response(401, json={"detail": "Please sign in"})
+        if request.url.path == "/":
+            return httpx.Response(302, headers={"location": "https://dash.example.test/"})
+        return _healthy(request)
+
+    result = await _run(handler)
+
+    assert result.reachable is False
+    failed = {check.id: check.detail for check in result.checks if not check.passed}
+    assert set(failed) == {"admin_private", "dashboard_private"}
+    assert "a sign-in prompt" in failed["admin_private"]
+    assert "a redirect to https://dash.example.test/" in failed["dashboard_private"]
+
+
+@pytest.mark.parametrize("status", [200, 500, 502])
+@pytest.mark.anyio
+async def test_any_other_answer_on_the_admin_side_does_not_count_as_private(status: int) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path in ("/api/info", "/"):
+            return httpx.Response(status, text="something")
+        return _healthy(request)
+
+    result = await _run(handler)
+
+    assert result.reachable is False
+    assert {check.id for check in result.checks if not check.passed} == {
+        "admin_private",
+        "dashboard_private",
+    }
+    assert f"HTTP {status}" in result.error
+
+
+@pytest.mark.anyio
+async def test_no_answer_on_the_admin_side_is_not_proof_it_is_private() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path in ("/api/info", "/"):
+            raise httpx.ConnectError("connection reset", request=request)
+        return _healthy(request)
+
+    result = await _run(handler)
+
+    assert result.reachable is False
+    assert "could not confirm that the admin API stays private" in result.error
+
+
+@pytest.mark.parametrize("status", [403, 404])
+@pytest.mark.anyio
+async def test_a_refusal_counts_as_private(status: int) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path in ("/api/info", "/"):
+            return httpx.Response(status)
+        return _healthy(request)
+
+    assert (await _run(handler)).reachable is True
+
+
+# ------------------------------------------------ what the hub may fetch at all
+
+
+def _never_called(request: httpx.Request) -> httpx.Response:
+    raise AssertionError(f"the check fetched {request.url}")
+
+
+@pytest.mark.parametrize(
+    "url", ["http://127.0.0.1:8080", "http://hub.example.test", "ftp://hub.example.test", ""]
+)
+@pytest.mark.anyio
+async def test_only_an_https_address_is_fetched(url: str) -> None:
+    async with httpx.AsyncClient(transport=httpx.MockTransport(_never_called)) as client:
+        result = await check_public_url(url, issuer=ISSUER, client=client, resolve=_public)
+
+    assert result.reachable is False
+    assert "not an https:// address" in result.error
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "127.0.0.1",
+        "10.0.0.1",
+        "172.16.0.5",
+        "192.168.1.10",
+        "169.254.169.254",
+        "0.0.0.0",  # noqa: S104 - an address the check must refuse
+        "::1",
+        "::ffff:127.0.0.1",
+        "fe80::1",
+        "fc00::1",
+    ],
+)
+@pytest.mark.anyio
+async def test_a_name_that_leads_into_a_private_network_is_not_fetched(address: str) -> None:
+    async with httpx.AsyncClient(transport=httpx.MockTransport(_never_called)) as client:
+        result = await check_public_url(
+            ISSUER, issuer=ISSUER, client=client, resolve=_resolving_to(PUBLIC_ADDRESS, address)
+        )
+
+    assert result.reachable is False
+    assert "not a public address" in result.error
+
+
+@pytest.mark.parametrize("address", ["100.101.102.103", "fd7a:115c:a1e0::1"])
+@pytest.mark.anyio
+async def test_a_tailnet_address_is_fetched(address: str) -> None:
+    """MagicDNS answers a Funnel name with the node's own tailnet address."""
+    result = await _run(_healthy, resolve=_resolving_to(address))
+
+    assert result.reachable is True, result
+
+
+@pytest.mark.anyio
+async def test_a_name_that_does_not_resolve_yet_is_reported_plainly() -> None:
+    async def nowhere(host: str, port: int) -> list[str]:
+        raise OSError("Name or service not known")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(_never_called)) as client:
+        result = await check_public_url(ISSUER, issuer=ISSUER, client=client, resolve=nowhere)
+
+    assert result.reachable is False
+    assert "does not lead anywhere yet" in result.error
+
+
+@pytest.mark.anyio
+async def test_every_request_goes_to_the_checked_address_under_the_public_name() -> None:
+    """The connection is made to the address that was checked, so a name that
+    resolves elsewhere a moment later cannot redirect the check."""
+    seen: list[tuple[str, str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.host, request.headers["host"], request.url.path))
+        return _healthy(request)
+
+    result = await _run(handler)
+
+    assert result.reachable is True
+    assert {(host, header) for host, header, _path in seen} == {
+        (PUBLIC_ADDRESS, "hub.example.test")
+    }
+    assert [path for _host, _header, path in seen] == [
+        "/.well-known/oauth-authorization-server",
+        "/mcp/default/",
+        "/api/info",
+        "/",
+    ]
+
+
+@pytest.mark.anyio
+async def test_a_huge_answer_is_not_read_to_the_end() -> None:
+    """Each answer is a 10 MB stream; only its first 64 KiB are read."""
+    pulled: list[int] = []
+
+    async def huge() -> AsyncIterator[bytes]:
+        pulled.append(0)
+        for _ in range(10_000):
+            pulled[-1] += 1
+            yield b"x" * 1024
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=huge())
+
+    result = await _run(handler)
+
+    assert result.reachable is False
+    assert pulled and max(pulled) <= 64
+
+
+@pytest.mark.anyio
+async def test_the_whole_check_has_one_deadline() -> None:
+    async def slow(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.3)
+        return _healthy(request)
+
+    result = await _run(slow, overall_timeout=0.5)
+
+    assert result.reachable is False
+    assert "took longer than" in result.error
 
 
 # --------------------------------------------- the real hub behind the real rule
@@ -223,7 +429,9 @@ async def test_the_real_cloud_entry_passes_and_keeps_the_admin_side_private(
         async with httpx.AsyncClient(
             transport=_behind_the_cloud_entry(app), base_url=ISSUER
         ) as client:
-            result = await check_public_url(ISSUER, issuer=ISSUER, profile=None, client=client)
+            result = await check_public_url(
+                ISSUER, issuer=ISSUER, profile=None, client=client, resolve=_public
+            )
             # The hub's own lock, separately from nginx's: a header-marked
             # request for an admin route is refused even if a proxy let it by.
             direct = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=ISSUER)  # type: ignore[arg-type]
@@ -248,7 +456,9 @@ async def test_the_real_cloud_entry_is_closed_until_cloud_access_is_on(tmp_path:
         async with httpx.AsyncClient(
             transport=_behind_the_cloud_entry(app), base_url=ISSUER
         ) as client:
-            result = await check_public_url(ISSUER, issuer=ISSUER, profile=None, client=client)
+            result = await check_public_url(
+                ISSUER, issuer=ISSUER, profile=None, client=client, resolve=_public
+            )
     finally:
         server.store.close()
 
