@@ -14,7 +14,9 @@ from fastapi.testclient import TestClient
 
 from palaia_hub.app import create_app
 from palaia_hub.auth.store import TokenStore
-from palaia_hub.config import HubConfig, OAuthSettings
+from palaia_hub.config import ExposureSettings, HubConfig, OAuthSettings
+from palaia_hub.mcpb import routes as mcpb_routes
+from palaia_hub.mcpb.builder import BundleRequest
 from palaia_hub.mcpb.template import TemplateNotFoundError, mcpb_binary, template_dir
 from palaia_hub.vault import VaultRegistry
 
@@ -112,3 +114,39 @@ async def test_oauth_variant_contains_no_secret_at_all(tmp_path: Path) -> None:
     assert "default" not in uc["token"]
     assert "plt_" not in json.dumps(manifest)
     assert response.headers["content-disposition"] == 'attachment; filename="palaia.mcpb"'
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("mode", "hub_url"),
+    [
+        # Switched back to Private: the public address is kept for the next
+        # switch to Cloud, but the cloud entry refuses everything now.
+        ("locked", "http://testserver/mcp/default"),
+        ("cloud", "https://hub.example.com/mcp/default"),
+        ("open", "https://hub.example.com/mcp/default"),
+    ],
+)
+async def test_the_bundle_points_at_the_public_address_only_while_it_serves_mcp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str, hub_url: str
+) -> None:
+    seen: list[BundleRequest] = []
+
+    def capturing(request: BundleRequest, *, home: Path) -> bytes:
+        seen.append(request)
+        return b"not-really-a-bundle"
+
+    monkeypatch.setattr(mcpb_routes, "build_bundle", capturing)
+    registry = await _registry_with_a_vault(tmp_path)
+    token_store = TokenStore(home=tmp_path / "tokens-home")
+    config = HubConfig(
+        mode=mode,  # type: ignore[arg-type]
+        host="127.0.0.1",
+        exposure=ExposureSettings(public_url="https://hub.example.com"),
+    )
+    app = create_app(config, vault_registry=registry, token_store=token_store, home=tmp_path)
+
+    response = TestClient(app).get("/api/connect/mcpb", params={"profile": "default"})
+
+    assert response.status_code == 200
+    assert [request.hub_url for request in seen] == [hub_url]
