@@ -314,3 +314,13 @@ describe("Overview copy — no in-house words (system.md §3)", () => {
     expect(text).not.toMatch(/\b(vaults?|tokens?|clients?|hub)\b/i);
   });
 });
+
+describe("Overview — no answer at all is 'can't reach', not an error answer", () => {
+  it("says Can't reach palaia when the memory list gets no response", async () => {
+    mockApi({ vaults: new TypeError("Failed to fetch") });
+    mount();
+
+    expect(await screen.findByRole("heading", { name: "Can't reach palaia" })).toBeInTheDocument();
+    expect(screen.queryByText(/answered with an error/i)).toBeNull();
+  });
+});

@@ -108,6 +108,8 @@ export function Home() {
   const [vaults, setVaults] = useState<VaultSummary[] | null>(null);
   // Issue 378: a failed listing must never read as "nothing here yet".
   const [vaultsError, setVaultsError] = useState<string | null>(null);
+  // No answer at all (not an error answer): palaia itself is unreachable.
+  const [vaultsUnreachable, setVaultsUnreachable] = useState(false);
   const [toFile, setToFile] = useState<number | null>(null);
   const [index, setIndex] = useState<IndexProgress | null>(null);
   const [tokens, setTokens] = useState<TokenInfo[] | null>(null);
@@ -126,6 +128,7 @@ export function Home() {
       .then(async (list) => {
         if (cancelled) return;
         setVaultsError(null);
+        setVaultsUnreachable(false);
         setVaults(list);
         const inbox = await Promise.all(list.map((v) => api.inboxStatus(v.key).catch(() => null)));
         if (cancelled) return;
@@ -142,7 +145,9 @@ export function Home() {
         setIndex({ ready, pending });
       })
       .catch((err: unknown) => {
-        if (!cancelled) setVaultsError(describeApiError(err));
+        if (cancelled) return;
+        setVaultsUnreachable(!(err instanceof ApiError));
+        setVaultsError(describeApiError(err));
       });
     api
       .listTokens()
@@ -223,7 +228,8 @@ export function Home() {
     .sort((a, b) => (b.last_used_at ?? "").localeCompare(a.last_used_at ?? ""));
   const hasVaults = (vaults?.length ?? 0) > 0;
   const totalNotes = vaults?.reduce((sum, vault) => sum + vault.note_count, 0) ?? 0;
-  const unreachable = stream.connection === "reconnecting" || stream.connection === "closed";
+  const unreachable =
+    stream.connection === "reconnecting" || stream.connection === "closed" || vaultsUnreachable;
 
   // ---- the verdict ------------------------------------------------------
   let verdict: { tone: "ok" | "warn" | "error" | "info" | "neutral"; title: string; text?: ReactNode };
