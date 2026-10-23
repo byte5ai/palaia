@@ -10,7 +10,7 @@
  */
 import { useEffect, useState } from "react";
 
-import { api } from "./api/client";
+import { api, type ModeChangeRequest } from "./api/client";
 
 export type HubMode = "locked" | "cloud" | "open";
 
@@ -33,6 +33,36 @@ export const MODE_OUTCOME: Record<HubMode, string> = {
 
 export function isHubMode(value: unknown): value is HubMode {
   return typeof value === "string" && (MODES as readonly string[]).includes(value);
+}
+
+/**
+ * The change that makes palaia Private, sent alike by Settings › Access &
+ * sign-in and the first-run setup (issue 588).
+ *
+ * - `keepDashboardSignIn`: the dashboard asked for the owner's password
+ *   before. Private alone stops asking (`admin_session.sign_in_required` is
+ *   off in Private unless it is set), so the setting is written explicitly.
+ * - `signInServerOn`: palaia's sign-in server stays on. Its address
+ *   (`oauth.issuer`) is what AI apps and the Claude Desktop extension sign in
+ *   through and where a sign-in provider sends the browser back. In Private
+ *   the public address answers nothing (the cloud entry refuses every
+ *   request), so the address becomes the one this dashboard is open at, as
+ *   the first-run setup sets it for a private hub. The public address stays
+ *   saved (`public_url`), so switching back to Cloud offers it again.
+ */
+export function privateModeChange({
+  keepDashboardSignIn,
+  signInServerOn,
+  origin,
+}: {
+  keepDashboardSignIn: boolean;
+  signInServerOn: boolean;
+  origin: string;
+}): ModeChangeRequest {
+  const body: ModeChangeRequest = { mode: "locked" };
+  if (keepDashboardSignIn) body.dashboard_require_sign_in = true;
+  if (signInServerOn) body.oauth_issuer = origin;
+  return body;
 }
 
 const listeners = new Set<(mode: HubMode) => void>();

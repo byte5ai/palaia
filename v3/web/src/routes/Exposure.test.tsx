@@ -41,6 +41,13 @@ const OPEN: ModeStatus = {
   tunnel: "tailscale",
 };
 
+const CLOUD: ModeStatus = {
+  ...OPEN,
+  active_mode: "cloud",
+  configured_mode: "cloud",
+  host: "127.0.0.1",
+};
+
 const SETUP: SetupStatus = {
   completed: true,
   goal: "private",
@@ -249,18 +256,79 @@ describe("Access & sign-in: where palaia can be reached", () => {
     );
   });
 
-  it("asks before going back to Private", async () => {
+  it("asks before going back to Private, and keeps the dashboard's sign-in (issue 588)", async () => {
     vi.spyOn(api, "mode").mockResolvedValue(OPEN);
     const change = vi.spyOn(api, "changeMode").mockResolvedValue({ ...OPEN, configured_mode: "locked" });
     mount();
 
     fireEvent.click(await screen.findByRole("radio", { name: /^private/i }));
     fireEvent.click(screen.getByRole("button", { name: "Switch to Private" }));
-    expect(screen.getByRole("dialog", { name: "Switch to Private?" })).toHaveTextContent(
-      /claude\.ai, chatgpt/i,
+    const dialog = screen.getByRole("dialog", { name: "Switch to Private?" });
+    expect(dialog).toHaveTextContent(/claude\.ai, chatgpt/i);
+    expect(dialog).toHaveTextContent("This dashboard keeps asking for the owner account's password.");
+    expect(dialog).toHaveTextContent(
+      `Signing in to palaia moves from https://hub.example.com to this dashboard's address, ${window.location.origin}.`,
     );
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Switch to Private" }));
-    await waitFor(() => expect(change).toHaveBeenCalledWith({ mode: "locked" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Switch to Private" }));
+    // Private alone would stop asking for the password, and leave the
+    // sign-in server at a public address that answers nothing in Private.
+    await waitFor(() =>
+      expect(change).toHaveBeenCalledWith({
+        mode: "locked",
+        dashboard_require_sign_in: true,
+        oauth_issuer: window.location.origin,
+      }),
+    );
+  });
+
+  it("going Private from Cloud keeps the sign-in Cloud asked for, also before an owner account exists", async () => {
+    vi.spyOn(api, "mode").mockResolvedValue(CLOUD);
+    vi.spyOn(api, "ownerAccount").mockResolvedValue({ configured: false });
+    const change = vi.spyOn(api, "changeMode").mockResolvedValue({ ...CLOUD, configured_mode: "locked" });
+    mount();
+
+    fireEvent.click(await screen.findByRole("radio", { name: /^private/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Private" }));
+    const dialog = screen.getByRole("dialog", { name: "Switch to Private?" });
+    expect(dialog).toHaveTextContent("Sign-in for this dashboard stays on.");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Switch to Private" }));
+    await waitFor(() =>
+      expect(change).toHaveBeenCalledWith({
+        mode: "locked",
+        dashboard_require_sign_in: true,
+        oauth_issuer: window.location.origin,
+      }),
+    );
+  });
+
+  it("going Private leaves the dashboard's sign-in off where it was turned off", async () => {
+    vi.spyOn(api, "mode").mockResolvedValue({ ...CLOUD, dashboard_require_sign_in: false });
+    const change = vi.spyOn(api, "changeMode").mockResolvedValue({ ...CLOUD, configured_mode: "locked" });
+    mount();
+
+    fireEvent.click(await screen.findByRole("radio", { name: /^private/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Private" }));
+    const dialog = screen.getByRole("dialog", { name: "Switch to Private?" });
+    expect(dialog).not.toHaveTextContent(/keeps asking|stays on/i);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Switch to Private" }));
+    await waitFor(() =>
+      expect(change).toHaveBeenCalledWith({ mode: "locked", oauth_issuer: window.location.origin }),
+    );
+  });
+
+  it("going Private without a sign-in server sends no sign-in address", async () => {
+    vi.spyOn(api, "mode").mockResolvedValue({ ...CLOUD, oauth_enabled: false, oauth_issuer: null });
+    const change = vi.spyOn(api, "changeMode").mockResolvedValue({ ...CLOUD, configured_mode: "locked" });
+    mount();
+
+    fireEvent.click(await screen.findByRole("radio", { name: /^private/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Private" }));
+    const dialog = screen.getByRole("dialog", { name: "Switch to Private?" });
+    expect(dialog).not.toHaveTextContent(/signing in to palaia moves/i);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Switch to Private" }));
+    await waitFor(() =>
+      expect(change).toHaveBeenCalledWith({ mode: "locked", dashboard_require_sign_in: true }),
+    );
   });
 
   it("Public lists what palaia checked itself, in plain words, and needs an acknowledgement", async () => {
