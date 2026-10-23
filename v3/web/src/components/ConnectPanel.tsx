@@ -287,23 +287,40 @@ export function ConnectPanel({
     if (!token) return;
     setBusy(true);
     setError(null);
+    let result: CreatedToken;
     try {
-      const result: CreatedToken = await api.createToken(
+      result = await api.createToken(
         token.scopes.length > 0
           ? { name: client.name, profile: token.profile, scopes: token.scopes }
           : { name: client.name, profile: token.profile },
       );
-      const old = await liveKeysOfThisApp(result.info.id);
-      for (const id of old) await api.revokeToken(id);
-      setToken(result.info);
-      setPlaintext(result.token);
-      setTab("command");
-      onTokenIssued?.(result.info);
-      if (old.length > 0) onTokenRevoked?.(old);
-      toast.show("New access key created. Paste the new command into the app.");
     } catch (err) {
       setError(describeApiError(err));
+      setBusy(false);
+      setConfirm(null);
+      return;
+    }
+    // The new key works from here on, and this answer is the only place its
+    // plaintext exists: show it before anything else can fail.
+    setToken(result.info);
+    setPlaintext(result.token);
+    setTab("command");
+    onTokenIssued?.(result.info);
+    const revoked: string[] = [];
+    try {
+      const old = await liveKeysOfThisApp(result.info.id);
+      for (const id of old) {
+        await api.revokeToken(id);
+        revoked.push(id);
+      }
+      toast.show("New access key created. Paste the new command into the app.");
+    } catch (err) {
+      setError(
+        `New access key created, but the old one may still work. ${describeApiError(err)} ` +
+          "Replace the access key again to turn it off.",
+      );
     } finally {
+      if (revoked.length > 0) onTokenRevoked?.(revoked);
       setBusy(false);
       setConfirm(null);
     }

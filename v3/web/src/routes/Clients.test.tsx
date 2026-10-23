@@ -176,6 +176,53 @@ describe("Claude Desktop — the one-click extension (SPEC-306)", () => {
     await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
   });
 
+  /** A hub that makes a new access key for every extension download (no
+   * sign-in server: `mcpb/routes.py`), and revokes what it is told to. */
+  function desktopHub(initial: TokenInfo[]) {
+    const keys = initial.map((k) => ({ ...k }));
+    stub();
+    vi.spyOn(api, "listTokens").mockImplementation(async () => keys.map((k) => ({ ...k })));
+    vi.spyOn(api, "downloadFile").mockImplementation(async () => {
+      keys.push(key("Claude Desktop", { id: `t-download-${keys.length}` }));
+      return { blob: new Blob(["fake mcpb bytes"]), filename: "palaia.mcpb" };
+    });
+    const revoke = vi.spyOn(api, "revokeToken").mockImplementation(async (id: string) => {
+      const found = keys.find((k) => k.id === id);
+      if (found) found.revoked_at = new Date().toISOString();
+    });
+    vi.stubGlobal(
+      "URL",
+      Object.assign(URL, { createObjectURL: () => "blob:test", revokeObjectURL: () => {} }),
+    );
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    return { keys, revoke };
+  }
+
+  it("revoking stops every extension, also one downloaded after the page loaded", async () => {
+    const hub = desktopHub([key("Claude Desktop", { id: "t-old" })]);
+
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: /^claude desktop/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /download extension/i }));
+    await waitFor(() => expect(hub.keys).toHaveLength(2));
+    fireEvent.click(await screen.findByRole("button", { name: "Revoke access" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Revoke access" }));
+
+    await waitFor(() => expect(hub.keys.every((k) => k.revoked_at !== null)).toBe(true));
+    expect(hub.revoke).toHaveBeenCalledWith("t-download-1");
+  });
+
+  it("offers Revoke access right after the first download", async () => {
+    desktopHub([]);
+
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: /^claude desktop/i }));
+    expect(screen.queryByRole("button", { name: "Revoke access" })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: /download extension/i }));
+
+    expect(await screen.findByRole("button", { name: "Revoke access" })).toBeInTheDocument();
+  });
+
   it("shows palaia's own reason when it cannot build one", async () => {
     stub();
     vi.spyOn(api, "downloadFile").mockRejectedValue(

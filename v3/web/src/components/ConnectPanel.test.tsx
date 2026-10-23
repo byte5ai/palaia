@@ -277,4 +277,40 @@ describe("revoking and replacing (report §5.5)", () => {
     expect(revoke).not.toHaveBeenCalledWith("tok_new");
     expect(await screen.findByText(/--token plt_new$/)).toBeInTheDocument();
   });
+
+  it("keeps the new key on screen when palaia then can't list the old ones", async () => {
+    vi.spyOn(api, "listTokens")
+      .mockResolvedValueOnce([KEY])
+      .mockRejectedValue(new Error("connection dropped"));
+    vi.spyOn(api, "listGatewayProfiles").mockRejectedValue(new Error("no gateway"));
+    vi.spyOn(api, "createToken").mockResolvedValue({ info: { ...KEY, id: "tok_new" }, token: "plt_new" });
+    vi.spyOn(api, "revokeToken").mockResolvedValue(undefined);
+
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Replace access key" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Replace access key" }));
+
+    expect(await screen.findByText(/--token plt_new$/)).toBeInTheDocument();
+    expect(screen.getByText("plt_new")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(/the old one may still work/i);
+  });
+
+  it("reports the old keys it did turn off when a later one fails", async () => {
+    const second = { ...KEY, id: "tok_2" };
+    vi.spyOn(api, "listTokens").mockResolvedValue([KEY, second]);
+    vi.spyOn(api, "listGatewayProfiles").mockRejectedValue(new Error("no gateway"));
+    vi.spyOn(api, "createToken").mockResolvedValue({ info: { ...KEY, id: "tok_new" }, token: "plt_new" });
+    vi.spyOn(api, "revokeToken").mockImplementation(async (id: string) => {
+      if (id === "tok_2") throw new Error("connection dropped");
+    });
+    const onTokenRevoked = vi.fn();
+
+    mount({ onTokenRevoked });
+    fireEvent.click(await screen.findByRole("button", { name: "Replace access key" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Replace access key" }));
+
+    expect(await screen.findByText(/--token plt_new$/)).toBeInTheDocument();
+    await waitFor(() => expect(onTokenRevoked).toHaveBeenCalledWith(["tok_1"]));
+    expect(screen.getByRole("alert")).toHaveTextContent(/the old one may still work/i);
+  });
 });
