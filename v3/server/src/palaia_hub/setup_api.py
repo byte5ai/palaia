@@ -23,7 +23,8 @@ into the wizard.
 restart. It ends the hub process gracefully; whatever runs it starts it
 again — the packaged container's restart policy. It is offered only where
 the installer says such a supervisor exists (``PALAIA_SELF_RESTART=1``),
-because elsewhere it would just stop the hub.
+because elsewhere it would just stop the hub, and it answers only the
+dashboard's own JSON request, never another site's form.
 """
 
 from __future__ import annotations
@@ -33,11 +34,12 @@ import json
 import logging
 import os
 import signal
+import threading
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
 from .admin_session import owner_account_exists
@@ -45,6 +47,7 @@ from .config import HubConfig, config_file_path
 from .events import EventBus, publish_event
 from .funnel import FunnelStore
 from .security.files import harden_file
+from .vault import VaultRegistry
 from .vault.atomic import atomic_write_text
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -136,6 +139,32 @@ def _write_choices(home: Path, choices: dict[str, object]) -> None:
     harden_file(path)
 
 
+#: Every read-modify-write of ``setup.json`` — the wizard's choices and the
+#: self-test's result — holds this, so neither overwrites what the other
+#: stored a moment before.
+_CHOICES_LOCK = threading.Lock()
+
+
+def _update_choices(
+    home: Path,
+    change: Callable[[dict[str, object]], None],
+    *,
+    has_memories: Callable[[], bool],
+) -> None:
+    """Read ``setup.json``, apply ``change`` and write it back, as one step.
+
+    A hub installed before the file existed counts as set up when it has
+    memories; the write that first creates the file keeps that answer
+    instead of turning it into "not set up".
+    """
+    with _CHOICES_LOCK:
+        choices = _read_choices(home)
+        if choices is None:
+            choices = {"completed": has_memories()}
+        change(choices)
+        _write_choices(home, choices)
+
+
 def record_cloud_check(home: Path, url: str, passed: bool) -> None:
     """Remember the last public-address self-test (``/api/exposure/selftest``).
 
@@ -143,9 +172,35 @@ def record_cloud_check(home: Path, url: str, passed: bool) -> None:
     public address and found every check passing — configuration alone does
     not prove a tunnel leads here (issue #561).
     """
-    choices = _read_choices(home) or {}
-    choices["cloud_check"] = {"url": url.rstrip("/"), "passed": passed}
-    _write_choices(home, choices)
+
+    def change(choices: dict[str, object]) -> None:
+        choices["cloud_check"] = {"url": url.rstrip("/"), "passed": passed}
+
+    _update_choices(home, change, has_memories=lambda: bool(VaultRegistry(home).names()))
+
+
+def _refuse_unless_sent_by_this_hubs_pages(request: Request) -> None:
+    """Refuse a request that another site's page could have sent.
+
+    The restart takes no input and is reachable on hubs without the admin
+    session gate (``locked`` mode by default), so a plain form on another
+    site could otherwise trigger it through the owner's browser. The
+    dashboard sends JSON; another site's page cannot send that content type
+    without a CORS preflight, which this hub never grants. Where a browser
+    says where a request came from (``Sec-Fetch-Site``, over https), anything
+    but this hub's own pages is refused as well.
+    """
+    content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
+    if content_type != "application/json":
+        raise HTTPException(
+            status_code=415,
+            detail="the hub restarts only on its dashboard's own request (JSON).",
+        )
+    if request.headers.get("sec-fetch-site", "same-origin").lower() != "same-origin":
+        raise HTTPException(
+            status_code=403,
+            detail="the hub can only be restarted from its own dashboard.",
+        )
 
 
 def build_setup_router(
@@ -168,7 +223,6 @@ def build_setup_router(
             sign-in server that could not start).
     """
     router = APIRouter(tags=["setup"])
-    lock = asyncio.Lock()
     # Polled by the wizard: re-read config.yaml only when it changed (#348).
     from .modes.api import _ConfiguredConfig
 
@@ -269,19 +323,22 @@ def build_setup_router(
 
     @router.put("/api/setup", response_model=SetupStatus)
     async def put_setup(body: SetupUpdate) -> SetupStatus:
-        async with lock:
-            choices = _read_choices(home) or {}
+        def change(choices: dict[str, object]) -> None:
             if body.goal is not None:
                 choices["goal"] = body.goal
             if body.completed is not None:
                 choices["completed"] = body.completed
             if body.skipped is not None:
                 choices["skipped"] = sorted(set(body.skipped))
-            await asyncio.to_thread(_write_choices, home, choices)
+
+        await asyncio.to_thread(
+            _update_choices, home, change, has_memories=lambda: bool(vault_keys())
+        )
         return await asyncio.to_thread(_status)
 
     @router.post("/api/hub/restart", response_model=RestartOut, status_code=202)
-    async def restart() -> RestartOut:
+    async def restart(request: Request) -> RestartOut:
+        _refuse_unless_sent_by_this_hubs_pages(request)
         if os.environ.get(SELF_RESTART_ENV) != "1":
             raise HTTPException(
                 status_code=409,

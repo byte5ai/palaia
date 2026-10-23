@@ -10,6 +10,7 @@ router needs no opt-in parameter). Every route is thin: it calls into
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -474,7 +475,7 @@ def build_modes_router(
         # configuration alone (issue #561).
         from ..setup_api import record_cloud_check  # lazy: setup_api imports this module
 
-        record_cloud_check(home, body.public_url, result.reachable)
+        await asyncio.to_thread(record_cloud_check, home, body.public_url, result.reachable)
         return SelfTestOut(
             checked_url=result.checked_url,
             reachable=result.reachable,

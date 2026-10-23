@@ -120,11 +120,21 @@ config at all — just the same path-scoping rule stated in prose.
 ## 4. The public-URL self-test — no fake green
 
 `POST /api/exposure/selftest` with `{"public_url": "..."}` makes the hub
-fetch `<public_url>/api/info` **itself** and reports exactly what
-happened: reachable with a real latency, or unreachable with the real
-reason (a non-2xx status, a connection error, a timeout — never a generic
-"failed"). Nothing in the wizard claims a public URL works without this
-check actually having passed.
+fetch its public address **itself**, the way a cloud AI app does, and
+reports each check with the real reason when one fails
+(`palaia_hub.modes.selftest`): the sign-in discovery document names this
+hub's issuer, the MCP endpoint asks for a token, and — outside `open` mode —
+`/api/info` and `/` are refused (404 or 403, as the cloud entry answers
+them; a redirect, a sign-in prompt, an error or no answer does not count as
+private). Nothing in the wizard claims a public URL works without this check
+actually having passed.
+
+The address comes from the request, so the hub fetches only an `https` URL
+whose host resolves to public addresses — or to Tailscale's, where MagicDNS
+answers a Funnel name with the node's own — and connects to the address it
+checked. Loopback, private, link-local (cloud metadata) and reserved
+addresses are refused before anything is sent; each answer is read up to
+64 KiB, and the whole check stops after 20 s.
 
 ## 5. Auth-endpoint rate limiting
 

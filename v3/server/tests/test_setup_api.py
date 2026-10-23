@@ -11,6 +11,7 @@ import asyncio
 import json
 import os
 import signal
+import threading
 from pathlib import Path
 
 import pytest
@@ -156,7 +157,7 @@ def test_restart_is_refused_where_nothing_would_start_the_hub_again(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv("PALAIA_SELF_RESTART", raising=False)
-    response = _client(tmp_path).post("/api/hub/restart")
+    response = _client(tmp_path).post("/api/hub/restart", json={})
     assert response.status_code == 409
     assert "docker restart" in response.json()["detail"]
 
@@ -168,7 +169,10 @@ def test_restart_ends_the_process_gracefully_when_a_supervisor_restarts_it(
     sent: list[tuple[int, int]] = []
     monkeypatch.setattr(os, "kill", lambda pid, sig: sent.append((pid, sig)))
     with _client(tmp_path) as client:
-        response = client.post("/api/hub/restart")
+        # As the dashboard sends it (`restartHub` in web/src/lib/api/client.ts).
+        response = client.post(
+            "/api/hub/restart", json={}, headers={"sec-fetch-site": "same-origin"}
+        )
         assert response.status_code == 202
         assert response.json() == {"restarting": True}
         assert client.get("/api/setup").json()["restart_supported"] is True
@@ -176,6 +180,37 @@ def test_restart_ends_the_process_gracefully_when_a_supervisor_restarts_it(
         deadline = asyncio.run(asyncio.sleep(0.8, result=True))
         assert deadline
     assert sent == [(os.getpid(), signal.SIGTERM)]
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "headers", "status"),
+    [
+        # What a plain form or a no-cors fetch on another site can send.
+        ({"data": {"x": "1"}}, {"origin": "https://evil.example"}, 415),
+        ({"content": b"{}"}, {"content-type": "text/plain"}, 415),
+        ({}, {}, 415),
+        # A browser that says the request came from another site.
+        ({"json": {}}, {"sec-fetch-site": "cross-site"}, 403),
+        ({"json": {}}, {"sec-fetch-site": "same-site"}, 403),
+    ],
+)
+def test_restart_refuses_what_another_sites_page_can_send(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kwargs: dict[str, object],
+    headers: dict[str, str],
+    status: int,
+) -> None:
+    """A locked-mode hub has no admin session gate, so the route itself must
+    refuse a cross-site request that a browser sends without asking."""
+    monkeypatch.setenv("PALAIA_SELF_RESTART", "1")
+    sent: list[tuple[int, int]] = []
+    monkeypatch.setattr(os, "kill", lambda pid, sig: sent.append((pid, sig)))
+    with _client(tmp_path) as client:
+        response = client.post("/api/hub/restart", headers=headers, **kwargs)  # type: ignore[arg-type]
+        assert response.status_code == status
+        asyncio.run(asyncio.sleep(0.8))
+    assert sent == []
 
 
 def test_skipped_steps_are_remembered(tmp_path: Path) -> None:
@@ -206,3 +241,61 @@ def test_the_self_test_endpoint_records_its_result(tmp_path: Path) -> None:
     assert body["reachable"] is False
     stored = json.loads((tmp_path / "setup.json").read_text())
     assert stored["cloud_check"] == {"url": "http://127.0.0.1:1", "passed": False}
+
+
+def test_a_self_test_keeps_an_installed_hub_set_up(tmp_path: Path) -> None:
+    """A hub from before setup.json existed counts as set up; the self-test
+    that first creates the file must not turn that into "not set up" and
+    send the owner back into the wizard — whatever the test found."""
+    _vault(tmp_path)
+    client = _client(tmp_path)
+    assert client.get("/api/setup").json()["completed"] is True
+    client.post("/api/exposure/selftest", json={"public_url": "http://127.0.0.1:1"})
+    assert (tmp_path / "setup.json").exists()
+    assert client.get("/api/setup").json()["completed"] is True
+
+
+def test_a_fresh_hub_stays_ahead_of_setup_after_a_self_test(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    client.post("/api/exposure/selftest", json={"public_url": "http://127.0.0.1:1"})
+    assert client.get("/api/setup").json()["completed"] is False
+
+
+def test_a_choice_and_a_self_test_at_the_same_time_both_stay_stored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two tabs: one stores the goal while the other's self-test result comes
+    in. The goal's write is held up between reading and writing the file;
+    the self-test result must not be lost when it goes through."""
+    from palaia_hub import setup_api
+
+    write = setup_api._write_choices
+    calls = 0
+    goal_read = threading.Event()
+    check_stored = threading.Event()
+
+    def slow_first_write(home: Path, choices: dict[str, object]) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            goal_read.set()
+            # Without one lock the self-test writes in this gap; with it, it
+            # waits for this write and the wait here simply runs out.
+            check_stored.wait(timeout=1.0)
+        write(home, choices)
+
+    monkeypatch.setattr(setup_api, "_write_choices", slow_first_write)
+
+    def self_test_result() -> None:
+        goal_read.wait(timeout=5.0)
+        setup_api.record_cloud_check(tmp_path, ISSUER, True)
+        check_stored.set()
+
+    other_tab = threading.Thread(target=self_test_result)
+    other_tab.start()
+    assert _client(tmp_path).put("/api/setup", json={"goal": "cloud"}).status_code == 200
+    other_tab.join(timeout=5.0)
+
+    stored = json.loads((tmp_path / "setup.json").read_text())
+    assert stored["goal"] == "cloud"
+    assert stored["cloud_check"] == {"url": ISSUER, "passed": True}

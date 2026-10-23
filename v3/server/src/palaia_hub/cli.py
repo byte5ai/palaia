@@ -439,14 +439,14 @@ def _gateway_profiles_for_oauth(
 def _maybe_oauth_server(config: HubConfig) -> AuthorizationServer | None:
     """Build the authorization server if config asks for one; else ``None``.
 
-    This is the CLI's own stricter boot-time guard (issue #273): it still
-    refuses to start with genuinely zero profiles, pending or real — that
-    part is unchanged. What #273 fixes is upstream of here, in
+    It also serves the owner's sign-in, which the admin session gate
+    (:mod:`palaia_hub.admin_session`) resolves every dashboard call against,
+    so it starts even with zero profiles: AI apps then have nothing to be
+    granted until the first memory exists and the hub restarts, but the
+    owner's sign-in — and with it the admin API's protection — never
+    depends on memories existing. Issue #273 still applies upstream, in
     ``_gateway_profiles_for_oauth``: a ``gateway.profiles`` entry that
-    pre-declares a vault the wizard has not created yet now makes
-    ``profiles`` below non-empty (its scopes are reserved), so this guard
-    only fires when the operator has not even said what this hub will
-    eventually serve.
+    pre-declares a vault the wizard has not created yet reserves its scopes.
     """
     if not config.oauth.enabled:
         return None
@@ -462,20 +462,19 @@ def _maybe_oauth_server(config: HubConfig) -> AuthorizationServer | None:
     if not profiles:
         # Issue #561: this used to exit — and in a container that restarts
         # into the same exit forever, taking the dashboard (the one place
-        # that could create the missing memory) down with it. The hub now
-        # starts without its sign-in server and says why.
+        # that could create the missing memory) down with it. Leaving the
+        # server out instead took the owner's sign-in with it, and with that
+        # the admin session gate, so the server starts with nothing to grant.
         message = (
-            "Sign-in is turned on, but this hub has no memory yet, so the sign-in "
-            "server has nothing to grant access to and did not start. Fix: create "
-            "your first memory, then restart the hub."
+            "Sign-in is turned on, but this hub has no memory yet, so AI apps have "
+            "nothing to connect to. Fix: create your first memory, then restart the hub."
         )
         print(f"palaia-hub: {message}", file=sys.stderr)
         report_problem(message)
-        return None
     server = AuthorizationServer.build(config, _profile_scopes(profiles))
     print(
         f"OAuth 2.1 authorization server enabled (issuer {server.issuer}); "
-        f"profiles: {', '.join(p.path for p in profiles)}"
+        f"profiles: {', '.join(p.path for p in profiles) or 'none yet'}"
     )
     return server
 

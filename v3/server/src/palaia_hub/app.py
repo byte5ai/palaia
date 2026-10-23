@@ -25,6 +25,7 @@ from . import __version__
 from .admin_session import (
     AdminSessionMiddleware,
     build_admin_session_middleware_kwargs,
+    sign_in_configured,
     sign_in_required,
     sign_in_url_for,
 )
@@ -466,10 +467,7 @@ def create_app(
     market_asgi_app = None
     if market_service is not None:
         market_app_deps = MarketAppDeps(
-            market_service=market_service,
-            dashboard_url=(
-                config.exposure.public_url.rstrip("/") if config.exposure.public_url else None
-            ),
+            market_service=market_service, dashboard_url=dashboard_link_base(config)
         )
         market_server = build_market_server(market_app_deps, auth=hub_auth)
         market_asgi_app = market_server.http_app(path="/")
@@ -485,9 +483,7 @@ def create_app(
         team_app_deps = TeamAppDeps(
             directory_service=directory_service,
             messenger_service=messenger_service,
-            dashboard_url=(
-                config.exposure.public_url.rstrip("/") if config.exposure.public_url else None
-            ),
+            dashboard_url=dashboard_link_base(config),
         )
         team_server = build_team_server(team_app_deps, auth=hub_auth)
         team_asgi_app = team_server.http_app(path="/")
@@ -748,14 +744,17 @@ def create_app(
     # `modes.rate_limit`'s docstring). The work the limiter does first is a
     # dictionary lookup and a list trim.
     #
-    # SPEC-401: the admin session gate. Mounted only when there is an
-    # authorization server to resolve a session against — without one there
-    # is no sign-in flow at all, and enforcing would lock the operator out
-    # of their own hub with nothing to unlock it (see
-    # `admin_session.sign_in_required` for the per-mode policy, and the
-    # middleware itself for the "only once an account exists" half).
-    admin_session_enforced = oauth_server is not None and sign_in_required(config)
-    if oauth_server is not None and admin_session_enforced:  # the None check narrows the type
+    # SPEC-401: the admin session gate (see `admin_session.sign_in_required`
+    # for the per-mode policy, and the middleware itself for the "only once
+    # an account exists" half). Without an authorization server it is
+    # mounted only if a way in is configured all the same — the owner
+    # cannot sign in then, so it refuses every admin call instead of
+    # leaving them open. With no way in configured at all, enforcing would
+    # lock the operator out with nothing to unlock it.
+    admin_session_enforced = sign_in_required(config) and (
+        oauth_server is not None or sign_in_configured(config, hub_home)
+    )
+    if admin_session_enforced:
         app.add_middleware(
             AdminSessionMiddleware,
             **build_admin_session_middleware_kwargs(oauth_server, config),
@@ -1129,6 +1128,20 @@ def create_app(
     mount_dashboard(app)
 
     return app
+
+
+def dashboard_link_base(config: HubConfig) -> str | None:
+    """The address the MCP apps link the dashboard under, if one is known.
+
+    The public address leads to the dashboard only in ``open`` mode. In
+    ``cloud`` it is the cloud entry, which refuses the dashboard (issues
+    #566/#567), and the hub does not know the private address the owner
+    opens it at — so there is no link, and the apps say where to find the
+    dashboard instead of linking to a page that answers 404.
+    """
+    if config.mode != "open" or not config.exposure.public_url:
+        return None
+    return config.exposure.public_url.rstrip("/")
 
 
 def _default_outbox_path() -> Path:

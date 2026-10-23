@@ -117,6 +117,39 @@ def test_the_proxy_forwards_the_host_header_with_its_port() -> None:
     assert "proxy_set_header Host $host;" not in text
 
 
+def _forwarded_proto_map() -> dict[str, str]:
+    """The `map` that picks the private door's `X-Forwarded-Proto`, as written."""
+    text = TEMPLATE.read_text(encoding="utf-8")
+    match = re.search(r"map \$http_x_forwarded_proto \$(\w+) \{([^}]*)\}", text)
+    assert match, "the private door no longer maps X-Forwarded-Proto"
+    _, locations = _blocks()
+    private = next(body for header, body in locations.items() if "api|mcp" in header)
+    assert f"proxy_set_header X-Forwarded-Proto ${match.group(1)};" in private
+    entries = (line.strip().rstrip(";").split() for line in match.group(2).splitlines())
+    return {entry[0]: entry[1] for entry in entries if len(entry) == 2}
+
+
+def _forwarded_proto(sent: str | None, scheme: str = "http") -> str:
+    """What the hub sees behind the private door, the way nginx's `map` picks it."""
+    table = _forwarded_proto_map()
+    value = table.get(sent or "", table["default"])
+    return scheme if value == "$scheme" else value
+
+
+def test_a_tls_tunnel_in_front_of_the_private_door_keeps_https() -> None:
+    """Open mode: a tunnel terminates TLS and forwards to port 8420 over http.
+    The hub must still learn the browser used https, or its sign-in cookies
+    lose `Secure` on the public address."""
+    assert _forwarded_proto("https") == "https"
+
+
+@pytest.mark.parametrize("sent", [None, "http", "ftp"])
+def test_a_plain_http_visit_on_the_private_door_stays_http(sent: str | None) -> None:
+    """The dashboard over the owner's own network: cookies without `Secure`,
+    which a browser keeps on plain http (issue #561)."""
+    assert _forwarded_proto(sent) == "http"
+
+
 # ------------------------------------------------ the cloud entry (#566, #567)
 
 
