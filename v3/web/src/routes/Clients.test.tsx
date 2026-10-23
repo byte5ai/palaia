@@ -92,7 +92,7 @@ describe("AI apps › Apps (report §3.5)", () => {
 
     expect(await screen.findByText(`1 of ${CLIENTS.length} connected`)).toBeInTheDocument();
     for (const client of CLIENTS) {
-      expect(screen.getByRole("button", { name: new RegExp(client.name.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")) })).toBeInTheDocument();
+      expect(screen.getByText(client.name, { selector: ".listrow__title" })).toBeInTheDocument();
     }
     expect(row(/^claude code cli/i)).toHaveTextContent("Connected");
     expect(row(/^claude code cli/i)).toHaveTextContent("Last request 2 min ago");
@@ -117,9 +117,11 @@ describe("AI apps › Apps (report §3.5)", () => {
     stub({ mode: "cloud", issuer: "https://palaia.example.com" });
     mount();
 
-    fireEvent.click(await screen.findByRole("button", { name: /^claude\.ai/i }));
+    // The Claude app and claude.ai share one cloud entry ("Claude", issue 565).
+    const claude = (await screen.findByText("Claude", { selector: ".listrow__title" })).closest("button")!;
+    fireEvent.click(claude);
 
-    expect(row(/^claude\.ai/i)).toHaveTextContent("Ready to connect");
+    expect(claude).toHaveTextContent("Ready to connect");
     expect(screen.getByText("https://palaia.example.com/mcp/default")).toBeInTheDocument();
   });
 

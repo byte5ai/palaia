@@ -58,6 +58,7 @@ const SETUP: SetupStatus = {
   restart_required: false,
   restart_supported: true,
   cloud_ready: false,
+  cloud_verified: false,
   client_connected: true,
   first_memory_saved: true,
   problems: [],
