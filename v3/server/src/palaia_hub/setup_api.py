@@ -23,7 +23,8 @@ into the wizard.
 restart. It ends the hub process gracefully; whatever runs it starts it
 again — the packaged container's restart policy. It is offered only where
 the installer says such a supervisor exists (``PALAIA_SELF_RESTART=1``),
-because elsewhere it would just stop the hub.
+because elsewhere it would just stop the hub, and it answers only the
+dashboard's own JSON request, never another site's form.
 """
 
 from __future__ import annotations
@@ -37,7 +38,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
 from .admin_session import owner_account_exists
@@ -146,6 +147,30 @@ def record_cloud_check(home: Path, url: str, passed: bool) -> None:
     choices = _read_choices(home) or {}
     choices["cloud_check"] = {"url": url.rstrip("/"), "passed": passed}
     _write_choices(home, choices)
+
+
+def _refuse_unless_sent_by_this_hubs_pages(request: Request) -> None:
+    """Refuse a request that another site's page could have sent.
+
+    The restart takes no input and is reachable on hubs without the admin
+    session gate (``locked`` mode by default), so a plain form on another
+    site could otherwise trigger it through the owner's browser. The
+    dashboard sends JSON; another site's page cannot send that content type
+    without a CORS preflight, which this hub never grants. Where a browser
+    says where a request came from (``Sec-Fetch-Site``, over https), anything
+    but this hub's own pages is refused as well.
+    """
+    content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
+    if content_type != "application/json":
+        raise HTTPException(
+            status_code=415,
+            detail="the hub restarts only on its dashboard's own request (JSON).",
+        )
+    if request.headers.get("sec-fetch-site", "same-origin").lower() != "same-origin":
+        raise HTTPException(
+            status_code=403,
+            detail="the hub can only be restarted from its own dashboard.",
+        )
 
 
 def build_setup_router(
@@ -281,7 +306,8 @@ def build_setup_router(
         return await asyncio.to_thread(_status)
 
     @router.post("/api/hub/restart", response_model=RestartOut, status_code=202)
-    async def restart() -> RestartOut:
+    async def restart(request: Request) -> RestartOut:
+        _refuse_unless_sent_by_this_hubs_pages(request)
         if os.environ.get(SELF_RESTART_ENV) != "1":
             raise HTTPException(
                 status_code=409,

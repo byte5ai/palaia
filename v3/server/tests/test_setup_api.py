@@ -156,7 +156,7 @@ def test_restart_is_refused_where_nothing_would_start_the_hub_again(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv("PALAIA_SELF_RESTART", raising=False)
-    response = _client(tmp_path).post("/api/hub/restart")
+    response = _client(tmp_path).post("/api/hub/restart", json={})
     assert response.status_code == 409
     assert "docker restart" in response.json()["detail"]
 
@@ -168,7 +168,10 @@ def test_restart_ends_the_process_gracefully_when_a_supervisor_restarts_it(
     sent: list[tuple[int, int]] = []
     monkeypatch.setattr(os, "kill", lambda pid, sig: sent.append((pid, sig)))
     with _client(tmp_path) as client:
-        response = client.post("/api/hub/restart")
+        # As the dashboard sends it (`restartHub` in web/src/lib/api/client.ts).
+        response = client.post(
+            "/api/hub/restart", json={}, headers={"sec-fetch-site": "same-origin"}
+        )
         assert response.status_code == 202
         assert response.json() == {"restarting": True}
         assert client.get("/api/setup").json()["restart_supported"] is True
@@ -176,6 +179,37 @@ def test_restart_ends_the_process_gracefully_when_a_supervisor_restarts_it(
         deadline = asyncio.run(asyncio.sleep(0.8, result=True))
         assert deadline
     assert sent == [(os.getpid(), signal.SIGTERM)]
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "headers", "status"),
+    [
+        # What a plain form or a no-cors fetch on another site can send.
+        ({"data": {"x": "1"}}, {"origin": "https://evil.example"}, 415),
+        ({"content": b"{}"}, {"content-type": "text/plain"}, 415),
+        ({}, {}, 415),
+        # A browser that says the request came from another site.
+        ({"json": {}}, {"sec-fetch-site": "cross-site"}, 403),
+        ({"json": {}}, {"sec-fetch-site": "same-site"}, 403),
+    ],
+)
+def test_restart_refuses_what_another_sites_page_can_send(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kwargs: dict[str, object],
+    headers: dict[str, str],
+    status: int,
+) -> None:
+    """A locked-mode hub has no admin session gate, so the route itself must
+    refuse a cross-site request that a browser sends without asking."""
+    monkeypatch.setenv("PALAIA_SELF_RESTART", "1")
+    sent: list[tuple[int, int]] = []
+    monkeypatch.setattr(os, "kill", lambda pid, sig: sent.append((pid, sig)))
+    with _client(tmp_path) as client:
+        response = client.post("/api/hub/restart", headers=headers, **kwargs)  # type: ignore[arg-type]
+        assert response.status_code == status
+        asyncio.run(asyncio.sleep(0.8))
+    assert sent == []
 
 
 def test_skipped_steps_are_remembered(tmp_path: Path) -> None:
