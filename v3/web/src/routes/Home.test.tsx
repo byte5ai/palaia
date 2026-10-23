@@ -324,3 +324,12 @@ describe("Overview — no answer at all is 'can't reach', not an error answer", 
     expect(screen.queryByText(/answered with an error/i)).toBeNull();
   });
 });
+
+describe("Overview — no empty feed when palaia can't be read", () => {
+  it("hides the activity feed behind an error instead of saying nothing happened", async () => {
+    mockApi({ vaults: new ApiError("/api/vaults", 500, {}) });
+    mount();
+    await screen.findByRole("heading", { name: "Couldn't load your memories" });
+    expect(screen.queryByText(/no activity yet/i)).toBeNull();
+  });
+});

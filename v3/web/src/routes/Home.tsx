@@ -461,39 +461,43 @@ export function Home() {
         </div>
       ) : null}
 
-      <Card>
-        <CardHeader
-          title="Activity"
-          actions={
-            stream.connection === "open" ? (
-              <StatusPill tone="ok" title="New and changed notes appear here as they happen">
-                Live
-              </StatusPill>
-            ) : undefined
-          }
-        />
-        {feed.length === 0 ? (
-          <InlineEmpty>No activity yet. New and changed notes appear here.</InlineEmpty>
-        ) : (
-          <ul className="feed" aria-label="Recent activity">
-            {feed.map((item) => (
-              <li className="feed__item" key={item.key}>
-                <span className="feed__mark" aria-hidden="true">
-                  <ExplorerIcon className="icon" />
-                </span>
-                <div className="grow">
-                  <p className="feed__text">
-                    {item.verb} <strong>{item.title}</strong>
-                  </p>
-                  <p className="feed__meta t-meta">
-                    {[item.vault, item.at !== null ? timeAgo(item.at) : null].filter(Boolean).join(" · ")}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+      {/* Nothing to say about activity while palaia can't be read: an
+          empty feed there would claim "nothing happened". */}
+      {unreachable || vaultsError ? null : (
+        <Card>
+          <CardHeader
+            title="Activity"
+            actions={
+              stream.connection === "open" ? (
+                <StatusPill tone="ok" title="New and changed notes appear here as they happen">
+                  Live
+                </StatusPill>
+              ) : undefined
+            }
+          />
+          {feed.length === 0 ? (
+            <InlineEmpty>No activity yet. New and changed notes appear here.</InlineEmpty>
+          ) : (
+            <ul className="feed" aria-label="Recent activity">
+              {feed.map((item) => (
+                <li className="feed__item" key={item.key}>
+                  <span className="feed__mark" aria-hidden="true">
+                    <ExplorerIcon className="icon" />
+                  </span>
+                  <div className="grow">
+                    <p className="feed__text">
+                      {item.verb} <strong>{item.title}</strong>
+                    </p>
+                    <p className="feed__meta t-meta">
+                      {[item.vault, item.at !== null ? timeAgo(item.at) : null].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
     </div>
   );
 }
