@@ -1,16 +1,20 @@
 #!/usr/bin/env node
 /**
- * "Nothing in the UI may hardcode a colour, radius, duration or type
- * size" (system.md §1) — the lint rule this SPEC's acceptance criteria
- * name. `eslint` catches JS/TS syntax issues; it has no opinion on CSS
- * literals or on `style={{ color: "#..." }}` in JSX, so this script
- * scans both source trees directly.
+ * Design-token lint (v3/docs/design/system.md §1): every colour and every
+ * transition duration in the dashboard comes from a custom property, and
+ * every custom property the code reads exists.
  *
- * Every color/radius/duration/size value in the product must be a Lume
- * custom property (`var(--...)`) or a component class already bound to
- * one — never a literal hex/rgb color, and never a literal duration in
- * a transition/animation. The two files that DEFINE the tokens
- * (styles/tokens.css, styles/fonts.css) are the only allowed exception.
+ * eslint has no opinion on CSS literals or on `style={{ color: "#..." }}`
+ * in JSX, so this script scans the source tree directly:
+ *
+ *   1. No literal hex/rgb()/hsl() colour outside a custom-property
+ *      definition (`--name: …;`). tokens.css is generated from
+ *      v3/design/tokens.json and is the only file that defines palette
+ *      colours; components.css names a handful of component constants.
+ *   2. No literal duration in a `transition:` outside var(--duration-*).
+ *   3. Every `var(--name)` used in a .css/.ts/.tsx file is defined in one of
+ *      the stylesheets — so a token that was renamed or removed fails here
+ *      instead of silently rendering nothing.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { extname, join, relative } from "node:path";
@@ -22,9 +26,9 @@ const SCAN_EXTENSIONS = new Set([".css", ".ts", ".tsx"]);
 const HEX_COLOR = /#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g;
 const RGB_FUNC = /\brgba?\(/g;
 const HSL_FUNC = /\bhsla?\(/g;
-// A bare millisecond/second duration next to transition/animation-shaped
-// properties — var(--duration-...) is the only allowed source of these.
 const RAW_DURATION = /\b\d+(?:\.\d+)?(?:ms|s)\b/g;
+const VAR_USE = /var\(\s*(--[a-zA-Z0-9_-]+)/g;
+const VAR_DEF = /(?:^|[{;\s])(--[a-zA-Z0-9_-]+)\s*:/g;
 
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
@@ -39,11 +43,8 @@ function walk(dir, out = []) {
   return out;
 }
 
-/** True if `index` falls inside the *value* of a custom-property
- * declaration (`--something: ...;`) rather than a normal CSS property.
- * Token definitions (tokens.css §2-4b) are literal by construction —
- * the rule this script enforces is about *usage* sites needing
- * `var(--...)`, not about banning the one place values are named. */
+/** True if `index` falls inside the value of a custom-property declaration
+ * (`--something: ...;`) rather than a normal CSS property. */
 function isInsideCustomPropertyValue(text, index) {
   const declStart = Math.max(
     text.lastIndexOf("{", index),
@@ -56,10 +57,13 @@ function isInsideCustomPropertyValue(text, index) {
   return propertyName.startsWith("--");
 }
 
-function checkFile(path) {
+function isSkipped(rel) {
+  return rel.endsWith(".gen.ts") || rel.endsWith(".test.ts") || rel.endsWith(".test.tsx");
+}
+
+function checkLiterals(path) {
   const rel = relative(ROOT, path);
-  if (ALLOWED_FILES.has(rel)) return [];
-  if (rel.endsWith(".gen.ts") || rel.endsWith(".test.ts") || rel.endsWith(".test.tsx")) return [];
+  if (ALLOWED_FILES.has(rel) || isSkipped(rel)) return [];
 
   const text = readFileSync(path, "utf-8");
   const violations = [];
@@ -72,24 +76,17 @@ function checkFile(path) {
   for (const pattern of [RGB_FUNC, HSL_FUNC]) {
     for (const match of text.matchAll(pattern)) {
       if (isCss && isInsideCustomPropertyValue(text, match.index)) continue;
-      // color-mix(in srgb, ...) is a token-derived expression, not a
-      // literal color, and is explicitly allowed (system.md §1: derived
-      // values like --selection-wash are mechanically derived from
-      // tokens, not invented).
       const context = text.slice(Math.max(0, match.index - 20), match.index);
       if (!context.includes("color-mix")) {
         violations.push(`${rel}: hardcoded ${match[0]}...) colour function`);
       }
     }
   }
-  if (extname(path) === ".css") {
+  if (isCss) {
     for (const match of text.matchAll(RAW_DURATION)) {
-      // Only `transition` is flagged: an interactive state change must
-      // route through --duration-quick/-smooth/-condense. A looping
-      // `animation`/`animation-delay` (the skeleton pulse, the live dot,
-      // the waiting-indicator bounce) is its own recipe with its own
-      // timing, and colors_and_type.css sets this precedent itself —
-      // `.lume-skeleton` animates at a literal `1400ms`, not a token.
+      // Only `transition` is checked: a state change routes through
+      // --duration-quick/-smooth. Looping animations (skeleton pulse, the
+      // live dot, the spinner) carry their own timing.
       const lineStart = text.lastIndexOf("\n", match.index);
       const line = text.slice(lineStart, text.indexOf("\n", match.index));
       if (/\btransition\s*:/.test(line) && !line.includes("var(--duration")) {
@@ -97,20 +94,32 @@ function checkFile(path) {
       }
     }
   }
-
   return violations;
 }
 
 const files = walk(ROOT);
-const violations = files.flatMap(checkFile);
+const violations = files.flatMap(checkLiterals);
+
+const defined = new Set();
+for (const path of files.filter((file) => extname(file) === ".css")) {
+  for (const match of readFileSync(path, "utf-8").matchAll(VAR_DEF)) defined.add(match[1]);
+}
+for (const path of files) {
+  const rel = relative(ROOT, path);
+  if (isSkipped(rel)) continue;
+  const text = readFileSync(path, "utf-8");
+  for (const match of text.matchAll(VAR_USE)) {
+    if (!defined.has(match[1])) violations.push(`${rel}: var(${match[1]}) is not defined anywhere`);
+  }
+}
 
 if (violations.length > 0) {
-  console.error("lint-tokens: hardcoded design values found outside styles/tokens.css:\n");
+  console.error("lint-tokens: design values that bypass the tokens:\n");
   for (const violation of violations) {
     console.error(`  ${violation}`);
   }
-  console.error(`\n${violations.length} violation(s). Use a var(--...) token instead.`);
+  console.error(`\n${violations.length} violation(s). Use a var(--...) token from tokens.css.`);
   process.exit(1);
 }
 
-console.log("lint-tokens: no hardcoded colours/durations outside the token files.");
+console.log("lint-tokens: every colour, duration and custom property resolves to a token.");

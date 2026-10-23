@@ -87,7 +87,7 @@ gateway/OAuth wiring once, at startup). A change to only
 startup depends on either; they exist purely to back the wizard's own UI
 (the connect-a-client page's filled-in address, the self-test's target).
 
-**Deviation, stated plainly:** the dashboard's Access mode page changes
+**Deviation, stated plainly:** the dashboard's Settings › Access & sign-in page changes
 `mode` and the sign-in requirement only. `host`, `oauth.enabled` and
 `oauth.issuer` are accepted by the API (so a future page, or `curl`, can
 set them) but are not yet exposed as form fields in the wizard itself —

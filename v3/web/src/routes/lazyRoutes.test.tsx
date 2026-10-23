@@ -9,7 +9,7 @@ import { routes } from "./index";
 describe("screens load on demand (issue 406)", () => {
   it("shows the shell at once and the screen once its code arrived", async () => {
     const router = createMemoryRouter(routes, {
-      initialEntries: ["/settings"],
+      initialEntries: ["/settings/about"],
     });
     render(
       <ThemeProvider>
@@ -21,7 +21,7 @@ describe("screens load on demand (issue 406)", () => {
     // The navigation is part of the entry chunk and renders immediately,
     // with the placeholder where the screen will be…
     expect(
-      screen.getByRole("link", { name: /^explorer$/i }),
+      screen.getByRole("link", { name: /^memories$/i }),
     ).toBeInTheDocument();
     expect(screen.getByText(/loading this screen/i)).toBeInTheDocument();
     // …until the screen's own chunk arrives and replaces it.

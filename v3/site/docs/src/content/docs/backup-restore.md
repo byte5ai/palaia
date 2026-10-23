@@ -56,8 +56,7 @@ own older files in that folder once there are more than that many — files
 palaia didn't write are never touched. Write `keep_last: null` to keep
 every one of them.
 
-Restart palaia. The dashboard's **Backups** screen (also linked from the
-backup card on the home screen) now lists that folder, when palaia last
+Restart palaia. The dashboard's **Settings › Backups** page now lists that folder, when palaia last
 backed up into it and whether that worked, with a **Back up now** button
 next to it. The file goes straight from palaia into the folder, never
 through your browser.
@@ -91,7 +90,7 @@ backup:
 After a restart, palaia writes a backup into every folder you've listed
 once a day — `24` hours apart; the shortest you can set is `1`. Together
 with `keep_last`, that is a rolling week of daily backups that looks after
-itself. The Backups screen shows when the next one is due.
+itself. Settings › Backups shows when the next one is due.
 
 A few things it takes care of for you:
 
@@ -116,14 +115,14 @@ saved data is refused outright: every backup would contain every earlier
 one, and losing that disk would take all of them at once.
 
 If a backup fails — the drive isn't mounted, the share is full — you'll
-hear about it rather than find out later: the Backups screen shows what
+hear about it rather than find out later: Settings › Backups shows what
 went wrong next to that folder, and the command says exactly what went
 wrong and exits with an error. Every backup palaia writes by itself or from
 the dashboard also raises an event, which you can route to a notification
 like any other — including telling a scheduled one apart from one you
 started.
 
-<!-- screenshot: the Backups screen — the configured folders, each with its
+<!-- screenshot: Settings › Backups — the configured folders, each with its
      last backup and a "Back up now" action, and the schedule below -->
 
 ## Push a memory to a git repository

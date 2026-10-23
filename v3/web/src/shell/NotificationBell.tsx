@@ -1,18 +1,23 @@
 /**
- * SPEC-307 deliverable #1's dashboard notification center: a small bell in
- * the shell, backed by `/api/notifications`. No email/push in v1 — the
- * bell itself is the whole surface, so it polls for a fresh unread count
- * rather than needing a dedicated live-push wire.
+ * SPEC-307's notification center: a 36 px bell with an unread count, backed
+ * by `/api/notifications`. It polls for the count; the list loads when the
+ * panel opens. The panel is positioned against the viewport, so it is never
+ * clipped by the sidebar it sits in.
  */
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
-import { Button, Card, CardBody, CardHead, EmptyState } from "../components";
+import { Button } from "../components/Button";
+import { InlineEmpty } from "../components/EmptyState";
 import type { NotificationRecord } from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
 import { describeApiError } from "../lib/errors";
 import { BellIcon } from "./icons";
 
 const POLL_INTERVAL_MS = 20_000;
+const PANEL_GAP = 8;
+const EDGE = 16;
+const PANEL_WIDTH = 360;
 
 function relativeTime(iso: string): string {
   const then = new Date(iso).getTime();
@@ -21,9 +26,9 @@ function relativeTime(iso: string): string {
   const minutes = Math.round(seconds / 60);
   if (minutes < 60) return `${minutes} min ago`;
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return `${hours} h ago`;
   const days = Math.round(hours / 24);
-  return `${days}d ago`;
+  return `${days} d ago`;
 }
 
 export function NotificationBell() {
@@ -31,7 +36,9 @@ export function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<NotificationRecord[] | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   function refreshUnreadCount() {
     api
@@ -53,20 +60,33 @@ export function NotificationBell() {
 
   useEffect(() => {
     if (!open) return;
-    function onClickOutside(event: MouseEvent) {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
-      ) {
+    function onPointerDown(event: MouseEvent) {
+      const target = event.target as Node;
+      if (panelRef.current?.contains(target) || buttonRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
         setOpen(false);
+        buttonRef.current?.focus();
       }
     }
-    document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [open]);
 
   function toggleOpen() {
     const next = !open;
+    if (next && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const width = Math.min(PANEL_WIDTH, window.innerWidth - 2 * EDGE);
+      const left = Math.max(EDGE, Math.min(rect.left, window.innerWidth - width - EDGE));
+      setPosition({ top: rect.bottom + PANEL_GAP, left });
+    }
     setOpen(next);
     if (next) {
       api
@@ -88,10 +108,7 @@ export function NotificationBell() {
       setActionError(describeApiError(err));
       return;
     }
-    setEntries(
-      (prev) =>
-        prev?.map((n) => (n.id === id ? { ...n, read: true } : n)) ?? prev,
-    );
+    setEntries((prev) => prev?.map((n) => (n.id === id ? { ...n, read: true } : n)) ?? prev);
     refreshUnreadCount();
   }
 
@@ -110,92 +127,76 @@ export function NotificationBell() {
   if (!available) return null;
 
   return (
-    <div ref={containerRef} style={{ position: "relative" }}>
+    <>
       <button
+        ref={buttonRef}
         type="button"
-        className="cmdk"
-        style={{ width: 36, justifyContent: "center", position: "relative" }}
+        className="iconbtn"
         onClick={toggleOpen}
-        aria-label={
-          unreadCount > 0
-            ? `${unreadCount} unread notifications`
-            : "Notifications"
-        }
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        title="Notifications"
+        aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
       >
-        <BellIcon className="icon--sm" />
+        <BellIcon className="icon" />
         {unreadCount > 0 ? (
-          <span
-            className="dot dot--live"
-            style={{
-              position: "absolute",
-              top: 4,
-              right: 4,
-              width: 6,
-              height: 6,
-            }}
-          />
+          <span className="iconbtn__badge" aria-hidden="true">
+            {unreadCount > 9 ? "9+" : unreadCount}
+          </span>
         ) : null}
       </button>
-      {open ? (
-        <Card
-          variant="raised"
-          style={{
-            position: "absolute",
-            right: 0,
-            top: "calc(100% + 8px)",
-            width: 340,
-            zIndex: 20,
-          }}
-        >
-          <CardHead title="notifications">
-            {entries && entries.some((n) => !n.read) ? (
-              <Button variant="quiet" size="sm" onClick={markAllRead}>
-                Mark all read
-              </Button>
-            ) : null}
-          </CardHead>
-          <CardBody
-            className="stack stack--2"
-            style={{ maxHeight: 360, overflowY: "auto" }}
-          >
-            {actionError ? <p className="field__error">{actionError}</p> : null}
-            {entries === null ? (
-              <p className="t-sm t-subtle">Loading…</p>
-            ) : entries.length === 0 ? (
-              <EmptyState
-                mark={<BellIcon className="icon--lg" />}
-                title="Nothing here yet."
-              >
-                An automation with a notify action will show up here.
-              </EmptyState>
-            ) : (
-              entries.map((entry) => (
-                <button
-                  key={entry.id}
-                  type="button"
-                  className="listrow"
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    opacity: entry.read ? 0.6 : 1,
-                  }}
-                  onClick={() => markRead(entry.id)}
-                >
-                  <div className="stack stack--1">
-                    <span className="t-sm">{entry.title}</span>
-                    {entry.body ? (
-                      <span className="t-xs t-subtle">{entry.body}</span>
-                    ) : null}
-                    <span className="t-xs t-subtle" title={entry.created_at}>
-                      {relativeTime(entry.created_at)}
-                    </span>
-                  </div>
-                </button>
-              ))
-            )}
-          </CardBody>
-        </Card>
-      ) : null}
-    </div>
+      {open
+        ? createPortal(
+            <div
+              ref={panelRef}
+              className="popover"
+              role="dialog"
+              aria-label="Notifications"
+              style={{ top: position.top, left: position.left }}
+            >
+              <div className="popover__head">
+                <span className="popover__title">Notifications</span>
+                {entries && entries.some((n) => !n.read) ? (
+                  <Button variant="plain" size="sm" onClick={markAllRead}>
+                    Mark all as read
+                  </Button>
+                ) : null}
+              </div>
+              <div className="popover__body">
+                {actionError ? (
+                  <p className="field__error" style={{ padding: "var(--space-3) var(--space-4)" }}>
+                    {actionError}
+                  </p>
+                ) : null}
+                {entries === null ? (
+                  <InlineEmpty>Loading…</InlineEmpty>
+                ) : entries.length === 0 ? (
+                  <InlineEmpty>No notifications. Automations can send them here.</InlineEmpty>
+                ) : (
+                  entries.map((entry) => (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      className="listrow"
+                      onClick={() => markRead(entry.id)}
+                      title={entry.read ? undefined : "Mark as read"}
+                    >
+                      {entry.read ? null : <span className="dot dot--info" aria-label="Unread" />}
+                      <span className="listrow__main">
+                        <span className="listrow__title">{entry.title}</span>
+                        {entry.body ? <span className="listrow__desc">{entry.body}</span> : null}
+                        <span className="listrow__meta" title={entry.created_at}>
+                          {relativeTime(entry.created_at)}
+                        </span>
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }

@@ -1,8 +1,8 @@
 /**
  * Ladle config — the living style guide for the component library
  * (SPEC-109 deliverable #1). Ladle over Storybook: same Vite pipeline
- * as the app itself (so Tailwind v4's `@theme inline` binding to the
- * Lume tokens behaves identically here and in the real build), far
+ * as the app itself (so tokens.css and the `@theme inline` binding
+ * behave identically here and in the real build), far
  * fewer dependencies, and no separate webpack/vite config to keep in
  * sync.
  */

@@ -305,7 +305,7 @@ export function Home() {
           {liveClients.length === 0 ? (
             <>
               <span className="t-over">Next step</span>
-              <Link className="btn btn--primary btn--lg" to="/clients">
+              <Link className="btn btn--primary btn--lg" to="/apps">
                 <ClientsIcon className="icon--sm" />
                 Connect your first client
               </Link>
@@ -410,7 +410,7 @@ export function Home() {
               // Issue 375: this used to lead to a "not built yet" page.
               // Captures wait in the vault's inbox folder, which the
               // explorer shows.
-              <Link className="btn btn--sm" to="/explorer">
+              <Link className="btn btn--sm" to="/memories">
                 See in explorer
               </Link>
             ) : undefined
@@ -505,7 +505,7 @@ export function Home() {
             )}
           </div>
           <CardFoot>
-            <Link className="btn btn--primary btn--sm" to="/clients">
+            <Link className="btn btn--primary btn--sm" to="/apps">
               <ClientsIcon className="icon--sm" />
               Connect a client
             </Link>
@@ -564,7 +564,7 @@ export function Home() {
           )}
           <span className="t-meta">
             {/* Issue 438: the folders the hub backs up into by itself. */}
-            <Link to="/backups">Backup folders &amp; schedule</Link>
+            <Link to="/settings/backups">Backup folders &amp; schedule</Link>
           </span>
           <span className="t-meta">
             <a

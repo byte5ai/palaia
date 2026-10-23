@@ -26,13 +26,13 @@ export default {
 
 export const Default: Story = () => (
   <Table<ClientRow>
-    caption="Connected clients"
+    caption="Connected AI apps"
     columns={[
-      { key: "name", header: "client", render: (row) => row.name },
-      { key: "profile", header: "profile", render: (row) => row.profile },
+      { key: "name", header: "AI app", render: (row) => row.name },
+      { key: "profile", header: "Tool set", render: (row) => row.profile },
       {
         key: "lastSeen",
-        header: "last seen",
+        header: "Last request",
         render: (row) => <span className="t-meta">{row.lastSeen}</span>,
       },
     ]}

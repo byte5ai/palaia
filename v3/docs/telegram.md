@@ -144,7 +144,7 @@ configured — is refused when the hub loads the file, not silently ignored.
 A rule that can never match is the worst thing a routing table can contain.
 
 **Changes made on the dashboard apply at once; hand edits on restart.** The
-Telegram screen writes each change to this section and hands it to the
+Settings › Telegram page writes each change to this section and hands it to the
 running connector in the same step (§8): a new polling bot starts polling, a
 removed or switched-off one stops, and the next message meets the new rules.
 Editing `config.yaml` by hand is still possible, but the hub reads the file
@@ -272,8 +272,10 @@ unverified update.
 
 Reaching the route from the internet:
 
-- **The packaged image** proxies `/telegram/` to the hub, next to `/api`,
-  `/mcp` and `/oauth` — the dashboard's static files never answer it.
+- **The packaged image** proxies `/telegram/webhook` to the hub, next to
+  `/api`, `/mcp` and `/oauth` — the dashboard's static files never answer
+  it. `/telegram` itself is a dashboard address (it opens Settings ›
+  Telegram), so only the webhook path is proxied.
 - **`cloud` mode** keeps everything but the MCP endpoint and its sign-in
   pages off the tunnel. Once `config.yaml` has an enabled webhook bot, the
   exposure wizard's tunnel guidance (Tailscale and cloudflared) forwards

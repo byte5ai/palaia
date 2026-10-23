@@ -236,7 +236,7 @@ describe("Automations screen copy — no jargon in the surface (system.md §3 ru
       ...screen.queryAllByRole("button"),
       ...screen.queryAllByRole("option"),
       ...Array.from(
-        document.querySelectorAll(".badge, .card__title, .card__subject, .field__label"),
+        document.querySelectorAll(".pill, .badge, .card__title, .card__subject, .field__label"),
       ),
     ];
 

@@ -202,7 +202,7 @@ owner-only writes land. What SPEC-405 actually adds:
   ends a conversation). None of the three is exposed as an MCP tool —
   MASTERPLAN §5.7's rule that destructive administration stays
   dashboard-only.
-* **The dashboard's Agents screen**, reading the directory and message
+* **The dashboard's Live sessions tab** (AI apps), reading the directory and message
   flows live off this same SSE bus (`session.*`/`message.*` — no polling
   loop) and driving the three writes above.
 * **Two MCP Apps** on the SPEC-208 shell: the session-monitor app

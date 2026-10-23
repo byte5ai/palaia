@@ -25,6 +25,7 @@ const OPEN_MODE_STATUS: ModeStatus = {
   auth_enabled: true,
   oauth_enabled: false,
   oauth_issuer: null,
+  dashboard_require_sign_in: null,
   public_url: "https://hub.example.com",
   tunnel: "tailscale",
 };
@@ -203,7 +204,7 @@ describe("Exposure wizard copy — no jargon in the surface (system.md §3 rule 
       ...screen.queryAllByRole("radio"),
       ...Array.from(
         document.querySelectorAll(
-          ".badge, .card__title, .card__subject, .field__label",
+          ".pill, .badge, .card__title, .card__subject, .field__label",
         ),
       ),
     ];

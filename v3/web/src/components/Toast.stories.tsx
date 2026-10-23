@@ -9,14 +9,14 @@ function Demo() {
     <div className="row row--wrap">
       <Button
         onClick={() =>
-          toast.show("Profile updated — Codex now sees 6 tools.")
+          toast.show("Tool set saved. Codex now sees 6 tools.")
         }
       >
         Show a toast
       </Button>
       <Button
         onClick={() =>
-          toast.show("Claude Code CLI wrote Billing service.", {
+          toast.show("Claude Code CLI saved Billing service.", {
             action: { label: "Undo", onClick: () => {} },
           })
         }

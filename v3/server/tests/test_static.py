@@ -161,6 +161,23 @@ def test_unregistered_telegram_path_404s_even_with_a_build_mounted(
         assert "palaia" not in response.text
 
 
+def test_the_dashboards_own_telegram_address_gets_the_spa(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Issue #570: ``/telegram`` is a dashboard address (it redirects to
+    Settings › Telegram in the SPA). Only ``/telegram/webhook`` belongs to the
+    hub; a reload or a bookmark of ``/telegram`` used to be a blank 404."""
+    dist = _make_fake_build(tmp_path)
+    monkeypatch.setenv(WEB_DIST_ENV, str(dist))
+    app = create_app(HubConfig())
+    client = TestClient(app)
+
+    for path in ("/telegram", "/telegram/", "/settings/telegram"):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        assert "<div id='root'>" in response.text, path
+
+
 def test_api_routes_are_never_shadowed_by_the_spa_fallback(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

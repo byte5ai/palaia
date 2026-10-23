@@ -298,7 +298,7 @@ they apply:
    carries no browser session) — the header check is its gate, and a signed-in
    session does not stand in for it (*proven by*
    `server/tests/telegram/test_webhook_exposure.py`). The packaged nginx
-   proxies `/telegram/` to the hub (`deploy/nginx.conf.template`,
+   proxies `/telegram/webhook` to the hub (`deploy/nginx.conf.template`,
    `server/tests/deploy/test_nginx_template.py`). In `cloud` mode the tunnel
    guidance forwards `/telegram/webhook` **only** when an enabled webhook bot
    is configured, so a polling-only hub puts nothing new on the internet

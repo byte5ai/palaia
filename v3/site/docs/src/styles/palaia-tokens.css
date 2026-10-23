@@ -1,0 +1,39 @@
+/* =============================================================
+   GENERATED FILE. Do not edit by hand.
+   Source: v3/design/tokens.json · generator: v3/design/gen-tokens.mjs
+   Regenerate with `node v3/design/gen-tokens.mjs`; CI fails when this
+   file and tokens.json disagree.
+   Target: the docs site (Starlight). Bare :root is dark, [data-theme='light'] light.
+   ============================================================= */
+
+:root {
+  --sl-font: "Nunito Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --sl-font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  --palaia-font-display: "Days One", "Nunito Sans", system-ui, sans-serif;
+  --sl-color-white: #E8ECF1;
+  --sl-color-gray-1: #E8ECF1;
+  --sl-color-gray-2: #E8ECF1;
+  --sl-color-gray-3: #AEB6C2;
+  --sl-color-gray-4: #8B95A3;
+  --sl-color-gray-5: #263043;
+  --sl-color-gray-6: #161D2A;
+  --sl-color-black: #0F1520;
+  --sl-color-accent-low: #1B374B;
+  --sl-color-accent: #009FE3;
+  --sl-color-accent-high: #38BDF8;
+}
+
+:root[data-theme='light'] {
+  --sl-color-white: #1D232C;
+  --sl-color-gray-1: #1D232C;
+  --sl-color-gray-2: #1D232C;
+  --sl-color-gray-3: #4B5563;
+  --sl-color-gray-4: #667080;
+  --sl-color-gray-5: #E3E7ED;
+  --sl-color-gray-6: #EEF1F5;
+  --sl-color-gray-7: #F5F7FA;
+  --sl-color-black: #FFFFFF;
+  --sl-color-accent-low: #E6F0F6;
+  --sl-color-accent: #0369A1;
+  --sl-color-accent-high: #04618F;
+}

@@ -1,45 +1,43 @@
-import { Suspense, useCallback, useEffect } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { Outlet, useLocation, useMatches, useNavigate } from "react-router-dom";
 
+import { PageHeader } from "../components/PageHeader";
 import { useEventStream } from "../lib/events";
+import { hubHealth } from "../lib/health";
 import { useHubMode } from "../lib/mode";
-import { initialsFor, useSession } from "../lib/session";
+import { useSession } from "../lib/session";
+import { PHONE_QUERY, useMediaQuery } from "../lib/useMediaQuery";
 import { ScreenLoading } from "../routes/ScreenLoading";
-import { NAV_GROUPS } from "./navConfig";
-import { Sidebar } from "./Sidebar";
-import { type HealthState, Topbar } from "./Topbar";
+import { MenuIcon } from "./icons";
+import { NotificationBell } from "./NotificationBell";
+import { Brand, Sidebar } from "./Sidebar";
 import { UpdateBanner } from "./UpdateBanner";
 
-/** Where the topbar's search lands: the explorer, search box focused. */
-export const EXPLORER_SEARCH_PATH = "/explorer?focus=search";
+/** Where ⌘K / Ctrl+K lands: Memories, search box focused. */
+export const MEMORY_SEARCH_PATH = "/memories?focus=search";
 
-function currentPageTitle(pathname: string): string {
-  for (const group of NAV_GROUPS) {
-    for (const item of group.items) {
-      if (item.path === pathname) return item.label;
-    }
-  }
-  return "palaia";
+/**
+ * What a route tells the shell about its page (`handle` in the route table):
+ * the title and one-line description for the page header, and for a
+ * sub-page the parent it belongs to. A page that needs its own header (one
+ * with a primary action) sets `ownHeader` and renders `PageHeader` itself.
+ */
+export interface PageHandle {
+  title: string;
+  description?: string;
+  back?: { to: string; label: string };
+  ownHeader?: boolean;
 }
 
-function healthStateFrom(
-  status: string | undefined,
-  connection: string,
-): HealthState {
-  if (connection !== "open") return "connecting";
-  if (status === "ok") return "ok";
-  if (status === "degraded") return "warn";
-  if (status === "error") return "risk";
-  return "connecting";
+function isPageHandle(value: unknown): value is PageHandle {
+  return typeof value === "object" && value !== null && typeof (value as PageHandle).title === "string";
 }
 
-/** The app shell: sidebar navigation, health-aware topbar, and the
- * content outlet — SPEC-109's deliverable #2. Feature screens (SPEC-110)
- * render inside `<Outlet />`; this SPEC's own routes are placeholders
- * that prove the shell, live-state layer and component library compose
- * (system.md's non-goal: "no React implementation" was SPEC-005's;
- * SPEC-110's non-goal here is "feature screens", not "no shell content
- * at all"). */
+/**
+ * The app shell: sidebar (≥ 1024 px), icon rail (768–1023 px), or app bar
+ * plus drawer (< 768 px); the page header from the route's handle; the
+ * update banner; and the screen itself.
+ */
 export function AppShell() {
   const stream = useEventStream();
   const mode = useHubMode();
@@ -47,16 +45,34 @@ export function AppShell() {
   const location = useLocation();
   const matches = useMatches();
   const navigate = useNavigate();
-  const title = currentPageTitle(location.pathname);
-  const subtitle = matches.at(-1)?.handle as string | undefined;
-
-  // Issue 380: the topbar's search used to be a button with no handler.
-  // It, and ⌘K / Ctrl+K anywhere in the shell, open the explorer with its
-  // search box focused — the one full-text search the dashboard has.
-  const openSearch = useCallback(
-    () => navigate(EXPLORER_SEARCH_PATH),
-    [navigate],
+  const isPhone = useMediaQuery(PHONE_QUERY);
+  // The drawer remembers the page it was opened on, so it is closed again
+  // as soon as the page changes (a link, Back, a redirect).
+  const [drawerPath, setDrawerPath] = useState<string | null>(null);
+  const drawerOpen = drawerPath === location.pathname;
+  const setDrawerOpen = useCallback(
+    (open: boolean) => setDrawerPath(open ? location.pathname : null),
+    [location.pathname],
   );
+  const health = hubHealth(stream);
+
+  const handle = [...matches].reverse().map((match) => match.handle).find(isPageHandle);
+
+  useEffect(() => {
+    document.title = handle ? `${handle.title} · palaia` : "palaia";
+  }, [handle]);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setDrawerOpen(false);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [drawerOpen, setDrawerOpen]);
+
+  // Issue 380: ⌘K / Ctrl+K anywhere opens the memory search.
+  const openSearch = useCallback(() => navigate(MEMORY_SEARCH_PATH), [navigate]);
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -68,26 +84,53 @@ export function AppShell() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [openSearch]);
 
+  const signedInAs = session?.signed_in ? session.username : null;
+  const bell = <NotificationBell />;
+
   return (
-    <div className="app">
-      <Sidebar mode={mode} vaultChangeCount={stream.vaultChangeCount} />
+    <div className={["app", drawerOpen ? "app--drawer-open" : ""].filter(Boolean).join(" ")}>
+      <a className="skiplink" href="#content">
+        Skip to content
+      </a>
+      <Sidebar
+        id="app-sidebar"
+        mode={mode}
+        health={health}
+        vaultChangeCount={stream.vaultChangeCount}
+        topEnd={isPhone ? null : bell}
+        signedInAs={signedInAs}
+        onSignOut={signOut}
+        onNavigate={() => setDrawerOpen(false)}
+      />
+      <div className="drawer-scrim" onClick={() => setDrawerOpen(false)} aria-hidden="true" />
       <div className="main">
-        <Topbar
-          title={title}
-          subtitle={subtitle}
-          health={healthStateFrom(stream.health?.status, stream.connection)}
-          userInitials={initialsFor(session?.username ?? null)}
-          signedInAs={session?.signed_in ? session.username : null}
-          onSignOut={signOut}
-          onSearch={openSearch}
-        />
-        <div className="content">
+        {isPhone ? (
+          <header className="appbar">
+            <button
+              type="button"
+              className="iconbtn"
+              aria-label="Menu"
+              title="Menu"
+              aria-expanded={drawerOpen}
+              aria-controls="app-sidebar"
+              onClick={() => setDrawerOpen(!drawerOpen)}
+            >
+              <MenuIcon className="icon" />
+            </button>
+            <Brand />
+            {bell}
+          </header>
+        ) : null}
+        <main className="content" id="content" tabIndex={-1}>
           <UpdateBanner />
+          {handle && !handle.ownHeader ? (
+            <PageHeader title={handle.title} description={handle.description} back={handle.back} />
+          ) : null}
           {/* Screens load lazily (issue 406); the shell stays put meanwhile. */}
           <Suspense fallback={<ScreenLoading />}>
             <Outlet context={stream} />
           </Suspense>
-        </div>
+        </main>
       </div>
     </div>
   );

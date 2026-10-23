@@ -73,11 +73,21 @@ class SPAStaticFiles(StaticFiles):
     #: absent — without this prefix here, an unregistered `/oauth/login`
     #: would instead fall through to this mount and get the dashboard shell
     #: back with a 200, silently hiding that the route does not exist.
-    #: "telegram" is the connector's webhook surface (issue #439,
+    #: "telegram/webhook" is the connector's webhook surface (issue #439,
     #: ``/telegram/webhook/<bot>``), mounted only on a hub with a
     #: ``telegram:`` section — on any other hub, or at any other path under
-    #: it, the answer is a plain 404, never the dashboard shell.
-    _BACKEND_PREFIXES = ("api", "mcp", "oauth", "telegram")
+    #: it, the answer is a plain 404, never the dashboard shell. Only that
+    #: path, not all of ``/telegram``: ``/telegram`` itself is a dashboard
+    #: address (issue #570, it redirects to Settings › Telegram), and a
+    #: reload or bookmark of it must get the SPA, not a blank 404.
+    _BACKEND_PREFIXES = ("api", "mcp", "oauth", "telegram/webhook")
+
+    @classmethod
+    def is_backend_path(cls, path: str) -> bool:
+        """Whether ``path`` (no leading slash) belongs to a backend surface."""
+        return any(
+            path == prefix or path.startswith(prefix + "/") for prefix in cls._BACKEND_PREFIXES
+        )
 
     #: Exact paths of backend ASGI mounts registered on the app this
     #: instance serves under (e.g. "/mcp", "/mcp/hub", "/mcp/stash") —
@@ -96,8 +106,7 @@ class SPAStaticFiles(StaticFiles):
         # stopped an *unregistered* one from falling through to here and
         # getting index.html back with a 200 — silently turning a disabled
         # or absent feature into what looks like a successful response.
-        first_segment = path.split("/", 1)[0]
-        if first_segment in self._BACKEND_PREFIXES:
+        if self.is_backend_path(path):
             # Restore the slash redirect this catch-all mount otherwise
             # defeats for a *registered* backend mount root: Starlette's own
             # redirect_slashes only fires when NO route matches, and this
@@ -147,8 +156,7 @@ def mount_dashboard(app: FastAPI, dist_dir: Path | None = None) -> bool:
     static._mount_roots = frozenset(
         route.path
         for route in app.routes
-        if isinstance(route, Mount)
-        and route.path.lstrip("/").split("/", 1)[0] in SPAStaticFiles._BACKEND_PREFIXES
+        if isinstance(route, Mount) and SPAStaticFiles.is_backend_path(route.path.lstrip("/"))
     )
     app.mount("/", static, name="dashboard")
     return True

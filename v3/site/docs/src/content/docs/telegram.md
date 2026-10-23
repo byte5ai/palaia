@@ -6,7 +6,7 @@ description: Talk to your AI tools through your own Telegram bots, with the hub 
 palaia can run your Telegram bots. A message someone sends one of them
 reaches the right place on your hub, and your AI tools can answer through
 the bot, but only in the chats you allowed. Everything is set up on the
-dashboard's **Telegram** screen; you never edit a file or restart the hub
+dashboard under **Settings › Telegram**; you never edit a file or restart palaia
 for it.
 
 ## What happens to a message
@@ -60,7 +60,7 @@ exactly those chats, and nowhere else.
 
 ## Keep an eye on it
 
-The Telegram screen shows each bot's state (connected, failing with the
+Settings › Telegram shows each bot's state (connected, failing with the
 last error, switched off, or missing its token), when it last received a
 message, and the last 50 messages across all bots: where each one went, or
 why it was not delivered. It never stores or shows the text of a message,

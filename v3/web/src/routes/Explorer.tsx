@@ -381,7 +381,7 @@ function VaultView({
                 <p className="t-xs t-subtle">
                   {vault?.note_count ?? 0} notes on disk.
                 </p>
-                <Link className="btn btn--sm btn--primary" to="/clients">
+                <Link className="btn btn--sm btn--primary" to="/apps">
                   <VaultsIcon className="icon--sm" />
                   Connect a client
                 </Link>

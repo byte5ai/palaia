@@ -57,7 +57,7 @@ export default defineConfig({
       // reads "dark" instead of falling back to the OS preference, the theme
       // picker stays consistent ("Dark", not "Auto"), and there is no flash.
       // A later explicit Light/Auto choice overwrites this and is respected.
-      // (custom.css's dark palette is the palaia.ai key.)
+      // (palaia-tokens.css's dark palette is the palaia.ai key.)
       head: [
         {
           tag: "script",
@@ -68,7 +68,10 @@ export default defineConfig({
       social: [
         { icon: "github", label: "GitHub", href: "https://github.com/byte5ai/palaia" },
       ],
-      customCss: ["./src/styles/custom.css"],
+      // palaia-tokens.css is generated from v3/design/tokens.json (the
+      // dashboard's tokens.css comes from the same file); custom.css holds
+      // the fonts and the few typographic rules on top.
+      customCss: ["./src/styles/palaia-tokens.css", "./src/styles/custom.css"],
       editLink: {
         baseUrl: "https://github.com/byte5ai/palaia/edit/main/v3/site/docs/",
       },

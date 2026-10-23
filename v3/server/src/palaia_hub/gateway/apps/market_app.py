@@ -114,9 +114,9 @@ def _text_summary(result: MarketBrowseResult) -> str:
         mark = "verified" if entry.verified else "unverified"
         lines.append(f"- {entry.name} ({entry.kind}, {mark}) — {entry.one_liner}")
     if result.dashboard_url:
-        lines.append(f"Install any of these from the dashboard: {result.dashboard_url}/marketplace")
+        lines.append(f"Install any of these from the dashboard: {result.dashboard_url}/add-ons")
     else:
-        lines.append("Install from this hub's dashboard, under Marketplace.")
+        lines.append("Install from palaia's dashboard, under Add-ons.")
     return "\n".join(lines)
 
 
@@ -138,7 +138,7 @@ _SCRIPT_JS = r"""
   function installHref(id) {
     if (!state.dashboardUrl) return null;
     var base = state.dashboardUrl.replace(/\/+$/, "");
-    return base + "/marketplace?install=" + encodeURIComponent(id);
+    return base + "/add-ons?install=" + encodeURIComponent(id);
   }
 
   function render() {
@@ -170,7 +170,7 @@ _SCRIPT_JS = r"""
           html += '<a class="btn btn--primary" href="' + escapeHtml(href) + '"'
             + ' target="_blank" rel="noopener">' + 'Install and connect' + '</a>';
         } else {
-          html += '<p class="t-xs t-muted">Open this hub&rsquo;s dashboard, then Marketplace, '
+          html += '<p class="t-xs t-muted">Open palaia&rsquo;s dashboard, then Add-ons, '
             + 'to install.</p>';
         }
         html += '</div>';

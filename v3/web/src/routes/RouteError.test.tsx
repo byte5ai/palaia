@@ -23,12 +23,12 @@ afterEach(() => {
 describe("routing errors (issue 379)", () => {
   it("shows a branded not-found page inside the shell for a URL nothing matches", async () => {
     vi.spyOn(api, "info").mockRejectedValue(new Error("no hub"));
-    mountAt("/explorer/typo");
+    mountAt("/memories/typo");
 
     expect(await screen.findByText(/that page doesn't exist/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /back to home/i })).toHaveAttribute("href", "/");
     // Still inside the shell: the navigation is there to leave by.
-    expect(screen.getByRole("link", { name: /^explorer$/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^memories$/i })).toBeInTheDocument();
     expect(screen.queryByText(/unexpected application error/i)).not.toBeInTheDocument();
   });
 

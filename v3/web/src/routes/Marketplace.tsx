@@ -281,7 +281,7 @@ function EntryCard({
                 Set this one up from the Clients page — it is delivered straight
                 to the client you connect, not through this hub.
               </p>
-              <Link className="btn btn--primary" to="/clients">
+              <Link className="btn btn--primary" to="/apps">
                 Go to Clients
               </Link>
             </div>

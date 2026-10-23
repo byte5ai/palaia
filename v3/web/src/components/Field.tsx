@@ -20,8 +20,10 @@ function isControl(node: unknown): node is ReactElement<{ id?: string }> {
   );
 }
 
-/** label + control + hint — hints explain *why*, not *what*
- * (system.md §2, Forms).
+/** Label above, control, helper below; an error replaces the helper
+ * (system.md §2, Forms). Mark a field `optional` and its label says so;
+ * required fields carry no marker, so the form reads as "everything is
+ * needed except what says Optional".
  *
  * The label is a real `<label htmlFor>` (issue 383): the first form control
  * among `children` gets a generated id when it has none, so a screen
@@ -32,12 +34,14 @@ export function Field({
   label,
   hint,
   error,
+  optional = false,
   children,
   controlId,
 }: {
   label: ReactNode;
   hint?: ReactNode;
   error?: ReactNode;
+  optional?: boolean;
   children: ReactNode;
   controlId?: string;
 }) {
@@ -59,14 +63,20 @@ export function Field({
             : item,
         )
       : items;
+  const labelContent = (
+    <>
+      {label}
+      {optional ? <span className="field__optional">Optional</span> : null}
+    </>
+  );
   return (
     <div className="field">
       {htmlFor ? (
         <label className="field__label" htmlFor={htmlFor}>
-          {label}
+          {labelContent}
         </label>
       ) : (
-        <span className="field__label">{label}</span>
+        <span className="field__label">{labelContent}</span>
       )}
       {content}
       {error ? (
@@ -108,18 +118,48 @@ export function LabeledInput({
   label,
   hint,
   error,
+  optional,
   ...inputProps
-}: { label: ReactNode; hint?: ReactNode; error?: ReactNode } & InputProps) {
+}: { label: ReactNode; hint?: ReactNode; error?: ReactNode; optional?: boolean } & InputProps) {
   const id = useId();
   return (
-    <Field label={label} hint={hint} error={error} controlId={id}>
+    <Field label={label} hint={hint} error={error} optional={optional} controlId={id}>
       <Input id={id} {...inputProps} />
     </Field>
   );
 }
 
-/** A switch is one of the few places the accent is allowed to be a fill
- * (system.md §2, Forms). */
+/** An on/off switch. Give it a visible label through `labelledBy` (the id
+ * of the row title next to it) or an `ariaLabel`. */
+export function Switch({
+  checked,
+  onChange,
+  disabled,
+  labelledBy,
+  ariaLabel,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+  labelledBy?: string;
+  ariaLabel?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-labelledby={labelledBy}
+      aria-label={labelledBy ? undefined : ariaLabel}
+      disabled={disabled}
+      className={["switch", checked ? "switch--on" : ""].filter(Boolean).join(" ")}
+      onClick={() => onChange(!checked)}
+    />
+  );
+}
+
+/** A switch with its label and consequence in a bordered box (the earlier
+ * form; settings lists use `ListRow setting` with a `Switch`). */
 export function SwitchRow({
   label,
   consequence,
