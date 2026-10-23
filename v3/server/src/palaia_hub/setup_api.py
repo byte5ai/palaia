@@ -62,6 +62,9 @@ SELF_RESTART_ENV = "PALAIA_SELF_RESTART"
 CLOUD_URL_HINT_ENV = "PALAIA_CLOUD_URL_HINT"
 
 Goal = Literal["cloud", "private"]
+#: Wizard steps the owner may leave out on purpose: an account on a private
+#: hub, cloud access, connecting an AI app now.
+SkippableStep = Literal["account", "cloud", "client"]
 
 
 class SetupStatus(BaseModel):
@@ -70,6 +73,8 @@ class SetupStatus(BaseModel):
     #: Finished or skipped — the dashboard then opens on Home.
     completed: bool
     goal: Goal | None
+    #: Steps the owner chose to leave out (so the wizard does not ask again).
+    skipped: list[SkippableStep]
     owner_configured: bool
     vaults: list[str]
     profiles: list[str]
@@ -101,6 +106,7 @@ class SetupUpdate(BaseModel):
 
     goal: Goal | None = None
     completed: bool | None = None
+    skipped: list[SkippableStep] | None = None
 
 
 class RestartOut(BaseModel):
@@ -183,10 +189,14 @@ def build_setup_router(
         configured = configured_cache.get() if config_file_path(home).exists() else config
         keys = sorted(vault_keys())
         choices = _read_choices(home)
+        skipped: list[SkippableStep] = []
         if choices is None:
             completed = bool(keys)
             goal: Goal | None = None
         else:
+            raw_skipped = choices.get("skipped")
+            if isinstance(raw_skipped, list):
+                skipped = [step for step in ("account", "cloud", "client") if step in raw_skipped]
             completed = bool(choices.get("completed", False))
             raw_goal = choices.get("goal")
             goal = "cloud" if raw_goal == "cloud" else "private" if raw_goal == "private" else None
@@ -201,6 +211,7 @@ def build_setup_router(
         return SetupStatus(
             completed=completed,
             goal=goal,
+            skipped=skipped,
             owner_configured=owner,
             vaults=keys,
             profiles=profiles,
@@ -240,6 +251,8 @@ def build_setup_router(
                 choices["goal"] = body.goal
             if body.completed is not None:
                 choices["completed"] = body.completed
+            if body.skipped is not None:
+                choices["skipped"] = sorted(set(body.skipped))
             await asyncio.to_thread(_write_choices, home, choices)
         return await asyncio.to_thread(_status)
 

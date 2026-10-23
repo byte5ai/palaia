@@ -1,236 +1,406 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+/**
+ * The first-run setup against a fake hub that keeps real state: the wizard's
+ * position and ticks must come from `/api/setup`, a reload must resume where
+ * the hub stands, and the cloud path must use the public address, never the
+ * dashboard's own origin (issues 559, 561, 562, 563, 565).
+ */
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ToastProvider } from "../../components/Toast";
+import type { SetupStatus } from "../../lib/api/client";
 import { Onboarding } from "./Onboarding";
 
-/** Step 1 asks the hub how it signs in before it offers anything (issue
- * issue 342); with no hub at all it settles on "sign-in server off", whose
- * Continue is enabled. */
-async function continueButton() {
-  const button = await screen.findByRole("button", { name: /^continue$/i });
-  await waitFor(() => expect(button).toBeEnabled());
-  return button;
+const PUBLIC = "https://palaia-hub.tail1234.ts.net";
+
+function freshStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
+  return {
+    completed: false,
+    goal: null,
+    skipped: [],
+    owner_configured: false,
+    vaults: [],
+    profiles: [],
+    mode: "locked",
+    sign_in_active: false,
+    issuer: null,
+    configured_mode: "locked",
+    configured_sign_in: false,
+    configured_issuer: null,
+    public_url: null,
+    cloud_url_hint: PUBLIC,
+    restart_required: false,
+    restart_supported: true,
+    cloud_ready: false,
+    client_connected: false,
+    first_memory_saved: false,
+    problems: [],
+    ...overrides,
+  };
 }
 
-describe("Onboarding wizard", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
+interface Call {
+  method: string;
+  path: string;
+  body: unknown;
+}
 
-  it("walks all four steps: account → mode → vault → client", async () => {
-    render(
-      <MemoryRouter>
-        <Onboarding />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByRole("heading", { name: /let's set up your hub/i })).toBeInTheDocument();
-
-    fireEvent.click(await continueButton());
-    expect(screen.getByRole("heading", { name: /who should be able to reach palaia/i })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /continue with/i }));
-    expect(screen.getByRole("heading", { name: /your first vault/i })).toBeInTheDocument();
-
-    // Step 3's "Create vault" is disabled while there is no key, and
-    // otherwise calls the real POST /api/vaults endpoint — no hub is
-    // running in this test, so it is enough to see the step rendered
-    // with its default key already filled in.
-    expect(screen.getByDisplayValue("work")).toBeInTheDocument();
-  });
-
-  it("step 2 sends the real mode change to the Access page instead of calling it unbuilt", async () => {
-    render(
-      <MemoryRouter>
-        <Onboarding />
-      </MemoryRouter>,
-    );
-
-    fireEvent.click(await continueButton());
-
-    expect(screen.getByRole("link", { name: /access page/i })).toHaveAttribute("href", "/exposure");
-    expect(screen.queryByText(/not this wizard, yet/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/changeable later in Settings/i)).not.toBeInTheDocument();
-  });
-
-  it("Back returns to the previous step without losing its own state", async () => {
-    render(
-      <MemoryRouter>
-        <Onboarding />
-      </MemoryRouter>,
-    );
-
-    fireEvent.click(await continueButton());
-    expect(screen.getByRole("heading", { name: /who should be able to reach palaia/i })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /^back$/i }));
-    expect(screen.getByRole("heading", { name: /let's set up your hub/i })).toBeInTheDocument();
-  });
-
-  it("reaches step 4 and renders a real connect flow once the vault is created", async () => {
-    // The only step in this test that talks to a hub: mock just enough of
-    // fetch's success shape for POST /api/vaults so the wizard advances
-    // exactly the way it would against a real one.
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string) => {
-        if (String(url).includes("/api/vaults") && !String(url).includes("/notes")) {
-          return Promise.resolve(
-            new Response(JSON.stringify({ key: "work", purpose: null, path: "/x", writable: true, note_count: 1 }), {
-              status: 200,
-            }),
-          );
-        }
-        return Promise.reject(new Error("network disabled in this test"));
+/** A hub in memory: the endpoints the wizard uses change `state` the way the
+ * real ones change the hub. */
+function fakeHub(initial: SetupStatus) {
+  const state = { status: initial };
+  const calls: Call[] = [];
+  const json = (body: unknown, status = 200) =>
+    Promise.resolve(
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { "content-type": "application/json" },
       }),
     );
-
-    render(
-      <MemoryRouter>
-        <ToastProvider>
-          <Onboarding />
-        </ToastProvider>
-      </MemoryRouter>,
-    );
-
-    fireEvent.click(await continueButton());
-    fireEvent.click(screen.getByRole("button", { name: /continue with/i }));
-    fireEvent.click(screen.getByRole("button", { name: /create vault/i }));
-
-    expect(await screen.findByRole("heading", { name: /connect your first client/i })).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole("button", { name: /issue token/i })).toBeInTheDocument());
-
-    // SPEC-504 deliverable #4: the wizard's final step links the exact
-    // next actions — connect a second AI, install a tool, read the docs.
-    expect(screen.getByRole("link", { name: /connect a second ai/i })).toHaveAttribute(
-      "href",
-      "/clients",
-    );
-    expect(screen.getByRole("link", { name: /install a tool/i })).toHaveAttribute(
-      "href",
-      "/marketplace",
-    );
-    const docsLink = screen.getByRole("link", { name: /read the docs/i });
-    expect(docsLink).toHaveAttribute("target", "_blank");
-    // Issue 322: the real docs origin (astro.config.mjs's site + base),
-    // never the retired placeholder domain — see lib/docs.test.ts.
-    expect(docsLink.getAttribute("href")).toMatch(/^https:\/\/palaia\.byte5\.ai\/docs\//);
+  const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input), "http://100.64.0.1:8420");
+    const method = (init?.method ?? "GET").toUpperCase();
+    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    calls.push({ method, path: url.pathname, body });
+    const s = state.status;
+    switch (`${method} ${url.pathname}`) {
+      case "GET /api/setup":
+        return json(s);
+      case "PUT /api/setup":
+        state.status = { ...s, ...body };
+        return json(state.status);
+      case "POST /api/vaults":
+        state.status = { ...s, vaults: [body.key], profiles: ["default"] };
+        return json({ key: body.key }, 201);
+      case "POST /api/auth/owner":
+        state.status = { ...s, owner_configured: true };
+        return json({ configured: true }, 201);
+      case "POST /api/mode":
+        state.status = {
+          ...s,
+          configured_mode: body.mode ?? s.configured_mode,
+          configured_sign_in: body.oauth_enabled ?? s.configured_sign_in,
+          configured_issuer: body.oauth_issuer ?? s.configured_issuer,
+          public_url: body.public_url ?? s.public_url,
+          restart_required: true,
+        };
+        return json({ restart_required: true });
+      case "POST /api/hub/restart":
+        return json({ restarting: true }, 202);
+      case "POST /api/exposure/selftest":
+        return json({
+          checked_url: body.public_url,
+          reachable: true,
+          status_code: 200,
+          latency_ms: 80,
+          error: "",
+          checks: [
+            { id: "discovery", passed: true, detail: "sign-in details found." },
+            {
+              id: "mcp",
+              passed: true,
+              detail: "the AI connection answers and asks for sign-in.",
+            },
+            {
+              id: "admin_private",
+              passed: true,
+              detail: "the admin API stays private.",
+            },
+            {
+              id: "dashboard_private",
+              passed: true,
+              detail: "the dashboard stays private.",
+            },
+          ],
+        });
+      default:
+        return json({ detail: "not in this fake" }, 404);
+    }
   });
-});
+  vi.stubGlobal("fetch", fetchMock);
+  return { state, calls };
+}
 
-function stubHub(routes: Record<string, (init?: RequestInit) => Response>) {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((url: string, init?: RequestInit) => {
-      const path = new URL(String(url), "http://hub.test").pathname;
-      const handler = routes[`${(init?.method ?? "GET").toUpperCase()} ${path}`];
-      if (handler) return Promise.resolve(handler(init));
-      return Promise.reject(new Error(`unexpected ${init?.method ?? "GET"} ${path}`));
-    }),
+function renderWizard() {
+  return render(
+    <MemoryRouter initialEntries={["/onboarding"]}>
+      <ToastProvider>
+        <Onboarding />
+      </ToastProvider>
+    </MemoryRouter>,
   );
 }
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+function rail() {
+  return within(screen.getByRole("complementary", { name: /setup steps/i }));
+}
 
-describe("Onboarding step 1: the owner account (issue 342)", () => {
+describe("first-run setup", () => {
+  beforeEach(() => {
+    vi.useRealTimers();
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("creates the owner account on a hub with password sign-in and no owner yet", async () => {
-    const posted: unknown[] = [];
-    stubHub({
-      "GET /api/info": () => json({ mode: "locked", sign_in: { method: "password", provider_name: null } }),
-      "GET /api/auth/owner": () => json({ configured: false }),
-      "POST /api/auth/owner": (init) => {
-        posted.push(JSON.parse(String(init?.body)));
-        return json({ configured: true }, 201);
-      },
+  it("starts with the goal, recommends cloud access, and stores the choice on the hub", async () => {
+    const hub = fakeHub(freshStatus());
+    renderWizard();
+
+    expect(
+      await screen.findByRole("heading", {
+        name: /how do you want to use palaia/i,
+      }),
+    ).toBeInTheDocument();
+    const cloud = screen.getByRole("radio", {
+      name: /with chatgpt and claude/i,
     });
-    render(
-      <MemoryRouter>
-        <Onboarding />
-      </MemoryRouter>,
-    );
+    expect(cloud).toHaveAttribute("aria-checked", "true");
+    expect(within(cloud).getByText(/recommended/i)).toBeInTheDocument();
 
-    const username = await screen.findByPlaceholderText("owner");
-    const create = screen.getByRole("button", { name: /create account/i });
-    expect(create).toBeDisabled();
-
-    fireEvent.change(username, { target: { value: "ada" } });
-    const [password, confirm] = Array.from(
-      document.querySelectorAll<HTMLInputElement>('input[type="password"]'),
-    );
-    fireEvent.change(password, { target: { value: "correct horse battery staple" } });
-    fireEvent.change(confirm, { target: { value: "correct horse battery" } });
-    expect(create).toBeDisabled();
-    expect(screen.getByText(/the two passwords differ/i)).toBeInTheDocument();
-    fireEvent.change(confirm, { target: { value: "correct horse battery staple" } });
-    expect(create).toBeEnabled();
-
-    fireEvent.click(create);
-
-    expect(await screen.findByRole("heading", { name: /who should be able to reach palaia/i })).toBeInTheDocument();
-    expect(posted).toEqual([{ username: "ada", password: "correct horse battery staple" }]);
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+    expect(
+      await screen.findByRole("heading", { name: /create your first memory/i }),
+    ).toBeInTheDocument();
+    expect(hub.calls).toContainEqual({
+      method: "PUT",
+      path: "/api/setup",
+      body: { goal: "cloud" },
+    });
   });
 
-  it("says so when the account already exists and simply continues", async () => {
-    stubHub({
-      "GET /api/info": () => json({ mode: "cloud", sign_in: { method: "password", provider_name: null } }),
-      "GET /api/auth/owner": () => json({ configured: true }),
-    });
-    render(
-      <MemoryRouter>
-        <Onboarding />
-      </MemoryRouter>,
-    );
+  it("marks the optional fields, uses a neutral example and sends no empty description", async () => {
+    const hub = fakeHub(freshStatus({ goal: "cloud" }));
+    renderWizard();
 
-    expect(await screen.findByText(/already has its owner account/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /create account/i })).not.toBeInTheDocument();
-    fireEvent.click(await continueButton());
-    expect(screen.getByRole("heading", { name: /who should be able to reach palaia/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: /create your first memory/i }),
+    ).toBeInTheDocument();
+    const purpose = screen.getByLabelText(/what it's for/i);
+    expect(screen.getAllByText("Optional").length).toBeGreaterThanOrEqual(1);
+    expect(purpose).toHaveAttribute(
+      "placeholder",
+      "Projects, decisions and notes",
+    );
+    expect(document.body.textContent).not.toMatch(/byte5/i);
+
+    fireEvent.click(screen.getByRole("button", { name: /create memory/i }));
+    expect(
+      await screen.findByRole("heading", { name: /create your account/i }),
+    ).toBeInTheDocument();
+    const create = hub.calls.find((c) => c.path === "/api/vaults");
+    expect(create?.body).toEqual({ key: "work", template: false });
   });
 
-  it("offers to turn the sign-in server on when the hub runs without one, and asks for a restart", async () => {
-    const modeChanges: unknown[] = [];
-    stubHub({
-      "GET /api/info": () => json({ mode: "locked", sign_in: { method: "none", provider_name: null } }),
-      "GET /api/auth/owner": () => json({ detail: "Not Found" }, 404),
-      "POST /api/mode": (init) => {
-        modeChanges.push(JSON.parse(String(init?.body)));
-        return json({ active_mode: "locked", configured_mode: "locked", restart_required: true, oauth_enabled: true });
-      },
-    });
-    render(
-      <MemoryRouter>
-        <Onboarding />
-      </MemoryRouter>,
+  it("ticks a step only when the hub has it, and resumes there after a reload", async () => {
+    fakeHub(
+      freshStatus({ goal: "cloud", vaults: ["work"], profiles: ["default"] }),
     );
+    const first = renderWizard();
 
-    fireEvent.click(await screen.findByRole("button", { name: /turn on sign-in/i }));
+    // The memory exists, the account does not: the wizard opens at the
+    // account, with the memory ticked and the account not.
+    expect(
+      await screen.findByRole("heading", { name: /create your account/i }),
+    ).toBeInTheDocument();
+    expect(
+      rail().getByRole("button", { name: /your first memory \(done\)/i }),
+    ).toBeInTheDocument();
+    expect(
+      rail().queryByRole("button", { name: /your account \(done\)/i }),
+    ).not.toBeInTheDocument();
 
-    expect(await screen.findByText(/one restart applies it/i)).toBeInTheDocument();
-    expect(modeChanges).toEqual([{ oauth_enabled: true, oauth_issuer: window.location.origin }]);
-    // Nothing else in the wizard is blocked on the restart.
-    fireEvent.click(await continueButton());
-    expect(screen.getByRole("heading", { name: /who should be able to reach palaia/i })).toBeInTheDocument();
+    first.unmount();
+    renderWizard();
+    expect(
+      await screen.findByRole("heading", { name: /create your account/i }),
+    ).toBeInTheDocument();
   });
 
-  it("has nothing to set up when the hub signs in through a provider", async () => {
-    stubHub({
-      "GET /api/info": () => json({ mode: "cloud", sign_in: { method: "idp", provider_name: "GitHub" } }),
-      "GET /api/auth/owner": () => json({ configured: false }),
-    });
-    render(
-      <MemoryRouter>
-        <Onboarding />
-      </MemoryRouter>,
+  it("creates the account before cloud access, then turns cloud on with the public address", async () => {
+    const hub = fakeHub(
+      freshStatus({ goal: "cloud", vaults: ["work"], profiles: ["default"] }),
     );
+    renderWizard();
 
-    expect(await screen.findByText(/signs you in through GitHub/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /create account/i })).not.toBeInTheDocument();
+    await screen.findByRole("heading", { name: /create your account/i });
+    fireEvent.change(screen.getByLabelText(/^username/i), {
+      target: { value: "owner" },
+    });
+    fireEvent.change(screen.getByLabelText(/^password/i), {
+      target: { value: "a-long-passphrase" },
+    });
+    fireEvent.change(screen.getByLabelText(/repeat the password/i), {
+      target: { value: "a-long-passphrase" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /create account/i }));
+
+    expect(
+      await screen.findByRole("heading", { name: /turn on cloud access/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/public address/i)).toHaveValue(PUBLIC);
+    // The account was created without turning the sign-in server on first:
+    // no restart, no trip back to an earlier step.
+    expect(hub.calls.filter((c) => c.path === "/api/mode")).toHaveLength(0);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /turn on cloud access/i }),
+    );
+    expect(
+      await screen.findByRole("heading", {
+        name: /restart palaia to turn on cloud access/i,
+      }),
+    ).toBeInTheDocument();
+    const mode = hub.calls.find((c) => c.path === "/api/mode");
+    expect(mode?.body).toEqual({
+      mode: "cloud",
+      oauth_enabled: true,
+      oauth_issuer: PUBLIC,
+      public_url: PUBLIC,
+      tunnel: "tailscale",
+    });
+    expect(JSON.stringify(mode?.body)).not.toContain(window.location.origin);
+    expect(
+      screen.getByRole("button", { name: /restart palaia/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("refuses a plain http address before sending anything", async () => {
+    const hub = fakeHub(
+      freshStatus({
+        goal: "cloud",
+        vaults: ["work"],
+        profiles: ["default"],
+        owner_configured: true,
+        cloud_url_hint: null,
+      }),
+    );
+    renderWizard();
+
+    const field = await screen.findByLabelText(/public address/i);
+    fireEvent.change(field, { target: { value: "http://100.64.0.1:8420" } });
+    expect(
+      screen.getByText(/use the https:\/\/ address only/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /turn on cloud access/i }),
+    ).toBeDisabled();
+    expect(hub.calls.some((c) => c.path === "/api/mode")).toBe(false);
+  });
+
+  it("after the restart, checks the public address and then offers the Claude app", async () => {
+    fakeHub(
+      freshStatus({
+        goal: "cloud",
+        vaults: ["work"],
+        profiles: ["default"],
+        owner_configured: true,
+        mode: "cloud",
+        configured_mode: "cloud",
+        sign_in_active: true,
+        configured_sign_in: true,
+        issuer: PUBLIC,
+        configured_issuer: PUBLIC,
+        public_url: PUBLIC,
+        cloud_ready: false,
+      }),
+    );
+    renderWizard();
+
+    expect(
+      await screen.findByRole("heading", { name: /cloud access works/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Dashboard stays private")).toBeInTheDocument();
+  });
+
+  it("offers the Claude app and ChatGPT first for the cloud goal, ready with the public address", async () => {
+    fakeHub(
+      freshStatus({
+        goal: "cloud",
+        vaults: ["work"],
+        profiles: ["default"],
+        owner_configured: true,
+        mode: "cloud",
+        configured_mode: "cloud",
+        sign_in_active: true,
+        configured_sign_in: true,
+        issuer: PUBLIC,
+        configured_issuer: PUBLIC,
+        public_url: PUBLIC,
+        cloud_ready: true,
+      }),
+    );
+    renderWizard();
+
+    expect(
+      await screen.findByRole("heading", { name: /connect your ai app/i }),
+    ).toBeInTheDocument();
+    const apps = screen.getAllByRole("radio").map((r) => r.textContent ?? "");
+    expect(apps[0]).toMatch(/^Claude/);
+    expect(apps[1]).toMatch(/^ChatGPT/);
+    expect(apps.some((a) => /Claude Code CLI/.test(a))).toBe(true);
+    expect(screen.getByText(`${PUBLIC}/mcp/default`)).toBeInTheDocument();
+    expect(screen.getByText(/settings → connectors/i)).toBeInTheDocument();
+  });
+
+  it("keeps a private hub's cloud apps visible but says what they need", async () => {
+    fakeHub(
+      freshStatus({
+        goal: "private",
+        vaults: ["work"],
+        profiles: ["default"],
+        skipped: ["account"],
+      }),
+    );
+    renderWizard();
+
+    expect(
+      await screen.findByRole("heading", { name: /connect your ai app/i }),
+    ).toBeInTheDocument();
+    const claude = screen
+      .getAllByRole("radio")
+      .find((r) => /^Claude(?! Desktop| Code)/.test(r.textContent ?? ""));
+    expect(claude).toHaveTextContent(/needs cloud access/i);
+    fireEvent.click(claude!);
+    expect(
+      screen.getByRole("button", { name: /turn on cloud access/i }),
+    ).toBeInTheDocument();
+    expect(
+      rail().getByRole("button", { name: /your account \(skipped\)/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("finishes into Home and remembers it on the hub", async () => {
+    const hub = fakeHub(
+      freshStatus({
+        goal: "private",
+        vaults: ["work"],
+        profiles: ["default"],
+        owner_configured: true,
+        sign_in_active: true,
+        configured_sign_in: true,
+        client_connected: true,
+      }),
+    );
+    renderWizard();
+
+    expect(
+      await screen.findByRole("heading", { name: /you're set up/i }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /open palaia/i }));
+    await waitFor(() =>
+      expect(hub.calls).toContainEqual({
+        method: "PUT",
+        path: "/api/setup",
+        body: { completed: true },
+      }),
+    );
   });
 });

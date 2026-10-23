@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "palaia-hub",
-    "version": "0.1.0"
+    "version": "3.0.0-rc4"
   },
   "paths": {
     "/api/health": {
@@ -288,6 +288,257 @@
           }
         }
       }
+    },
+    "/api/funnel/status": {
+      "get": {
+        "tags": [
+          "funnel"
+        ],
+        "summary": "Funnel Status",
+        "operationId": "funnel_status_api_funnel_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FunnelStatusOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/setup": {
+      "get": {
+        "tags": [
+          "setup"
+        ],
+        "summary": "Get Setup",
+        "operationId": "get_setup_api_setup_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStatus"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "setup"
+        ],
+        "summary": "Put Setup",
+        "operationId": "put_setup_api_setup_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/hub/restart": {
+      "post": {
+        "tags": [
+          "setup"
+        ],
+        "summary": "Restart",
+        "operationId": "restart_api_hub_restart_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestartOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/backup": {
+      "get": {
+        "tags": [
+          "backup"
+        ],
+        "summary": "Download Backup",
+        "operationId": "download_backup_api_backup_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/backup/targets": {
+      "get": {
+        "tags": [
+          "backup"
+        ],
+        "summary": "List Targets",
+        "description": "Every configured destination, in ``config.yaml`` order, with how\nits last run went \u2014 and the schedule, when there is one (issue\n#438: \"surfaced in the dashboard\").",
+        "operationId": "list_targets_api_backup_targets_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response List Targets Api Backup Targets Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/backup/targets/{name}/run": {
+      "post": {
+        "tags": [
+          "backup"
+        ],
+        "summary": "Run Backup Target",
+        "description": "Write a backup to one target, now.\n\nRuns in a worker thread: building the archive is minutes of\nblocking filesystem and SQLite work, and this route must not hold\nthe event loop for the rest of the hub while it happens.",
+        "operationId": "run_backup_target_api_backup_targets__name__run_post",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Run Backup Target Api Backup Targets  Name  Run Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/owner": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Owner State",
+        "operationId": "owner_state_api_auth_owner_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerAccountState"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Create Owner",
+        "description": "Create the one owner account and sign this browser in.\n\n409 once an account exists; 403 for a request another site's page\nmade through this browser.",
+        "operationId": "create_owner_api_auth_owner_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOwnerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerAccountState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -333,6 +584,29 @@
         ],
         "title": "ChecklistItemOut"
       },
+      "CreateOwnerRequest": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Username"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Password"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "CreateOwnerRequest"
+      },
       "DetectionOut": {
         "properties": {
           "tailscale": {
@@ -376,6 +650,88 @@
           "checklist"
         ],
         "title": "ExposureOut"
+      },
+      "FunnelStatusOut": {
+        "properties": {
+          "hub_started_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hub Started At"
+          },
+          "vault_created_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vault Created At"
+          },
+          "client_connected_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Connected At"
+          },
+          "first_memory_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Memory At"
+          },
+          "time_to_first_memory_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time To First Memory Seconds"
+          },
+          "time_to_first_memory_display": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time To First Memory Display"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "hub_started_at",
+          "vault_created_at",
+          "client_connected_at",
+          "first_memory_at",
+          "time_to_first_memory_seconds",
+          "time_to_first_memory_display"
+        ],
+        "title": "FunnelStatusOut",
+        "description": "The wizard-step timestamps plus the derived time-to-first-memory.\n\nEvery ``*_at`` field is a Unix timestamp (seconds) or ``null`` when\nthat step has not happened yet on this hub. ``time_to_first_memory_\nseconds``/``_display`` are ``null`` until both ``hub_started_at`` and\n``first_memory_at`` are set."
       },
       "HTTPValidationError": {
         "properties": {
@@ -451,6 +807,17 @@
               }
             ],
             "title": "Oauth Issuer"
+          },
+          "dashboard_require_sign_in": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dashboard Require Sign In"
           },
           "public_url": {
             "anyOf": [
@@ -532,6 +899,17 @@
             ],
             "title": "Oauth Issuer"
           },
+          "dashboard_require_sign_in": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dashboard Require Sign In"
+          },
           "public_url": {
             "anyOf": [
               {
@@ -565,10 +943,70 @@
           "auth_enabled",
           "oauth_enabled",
           "oauth_issuer",
+          "dashboard_require_sign_in",
           "public_url",
           "tunnel"
         ],
         "title": "ModeStatusOut"
+      },
+      "OwnerAccountState": {
+        "properties": {
+          "configured": {
+            "type": "boolean",
+            "title": "Configured"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "configured"
+        ],
+        "title": "OwnerAccountState",
+        "description": "Whether the hub has an owner account. Deliberately nothing more."
+      },
+      "RestartOut": {
+        "properties": {
+          "restarting": {
+            "type": "boolean",
+            "title": "Restarting"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "restarting"
+        ],
+        "title": "RestartOut"
+      },
+      "SelfTestCheckOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "discovery",
+              "mcp",
+              "admin_private",
+              "dashboard_private"
+            ],
+            "title": "Id"
+          },
+          "passed": {
+            "type": "boolean",
+            "title": "Passed"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "passed",
+          "detail"
+        ],
+        "title": "SelfTestCheckOut"
       },
       "SelfTestOut": {
         "properties": {
@@ -605,6 +1043,13 @@
           "error": {
             "type": "string",
             "title": "Error"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/SelfTestCheckOut"
+            },
+            "type": "array",
+            "title": "Checks"
           }
         },
         "additionalProperties": false,
@@ -614,7 +1059,8 @@
           "reachable",
           "status_code",
           "latency_ms",
-          "error"
+          "error",
+          "checks"
         ],
         "title": "SelfTestOut"
       },
@@ -623,6 +1069,17 @@
           "public_url": {
             "type": "string",
             "title": "Public Url"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile"
           }
         },
         "additionalProperties": false,
@@ -631,6 +1088,233 @@
           "public_url"
         ],
         "title": "SelfTestRequest"
+      },
+      "SetupStatus": {
+        "properties": {
+          "completed": {
+            "type": "boolean",
+            "title": "Completed"
+          },
+          "goal": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "cloud",
+                  "private"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal"
+          },
+          "skipped": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "account",
+                "cloud",
+                "client"
+              ]
+            },
+            "type": "array",
+            "title": "Skipped"
+          },
+          "owner_configured": {
+            "type": "boolean",
+            "title": "Owner Configured"
+          },
+          "vaults": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Vaults"
+          },
+          "profiles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Profiles"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "locked",
+              "cloud",
+              "open"
+            ],
+            "title": "Mode"
+          },
+          "sign_in_active": {
+            "type": "boolean",
+            "title": "Sign In Active"
+          },
+          "issuer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer"
+          },
+          "configured_mode": {
+            "type": "string",
+            "enum": [
+              "locked",
+              "cloud",
+              "open"
+            ],
+            "title": "Configured Mode"
+          },
+          "configured_sign_in": {
+            "type": "boolean",
+            "title": "Configured Sign In"
+          },
+          "configured_issuer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configured Issuer"
+          },
+          "public_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Url"
+          },
+          "cloud_url_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cloud Url Hint"
+          },
+          "restart_required": {
+            "type": "boolean",
+            "title": "Restart Required"
+          },
+          "restart_supported": {
+            "type": "boolean",
+            "title": "Restart Supported"
+          },
+          "cloud_ready": {
+            "type": "boolean",
+            "title": "Cloud Ready"
+          },
+          "client_connected": {
+            "type": "boolean",
+            "title": "Client Connected"
+          },
+          "first_memory_saved": {
+            "type": "boolean",
+            "title": "First Memory Saved"
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Problems"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "completed",
+          "goal",
+          "skipped",
+          "owner_configured",
+          "vaults",
+          "profiles",
+          "mode",
+          "sign_in_active",
+          "issuer",
+          "configured_mode",
+          "configured_sign_in",
+          "configured_issuer",
+          "public_url",
+          "cloud_url_hint",
+          "restart_required",
+          "restart_supported",
+          "cloud_ready",
+          "client_connected",
+          "first_memory_saved",
+          "problems"
+        ],
+        "title": "SetupStatus"
+      },
+      "SetupUpdate": {
+        "properties": {
+          "goal": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "cloud",
+                  "private"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal"
+          },
+          "completed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed"
+          },
+          "skipped": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "account",
+                    "cloud",
+                    "client"
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skipped"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SetupUpdate"
       },
       "TunnelGuidanceOut": {
         "properties": {

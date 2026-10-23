@@ -176,3 +176,11 @@ def test_restart_ends_the_process_gracefully_when_a_supervisor_restarts_it(
         deadline = asyncio.run(asyncio.sleep(0.8, result=True))
         assert deadline
     assert sent == [(os.getpid(), signal.SIGTERM)]
+
+
+def test_skipped_steps_are_remembered(tmp_path: Path) -> None:
+    with _client(tmp_path) as client:
+        body = client.put("/api/setup", json={"skipped": ["account", "account"]}).json()
+        assert body["skipped"] == ["account"]
+    assert _client(tmp_path).get("/api/setup").json()["skipped"] == ["account"]
+    assert _client(tmp_path).put("/api/setup", json={"skipped": ["nope"]}).status_code == 422

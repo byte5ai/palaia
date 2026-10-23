@@ -74,6 +74,6 @@
   },
   "wizard": {
     "h2": "The wizard takes over",
-    "body": "From there a short setup wizard runs in the browser: an administrator sign-in, your first memory, and connecting the first AI tool you use — no file editing, no extra commands. See <a href=\"%BASE%/first-shared-memory/\">Your first shared memory</a> for what that looks like end to end, or <a href=\"%BASE%/install/\">Install it</a> for the longer version of everything on this page."
+    "body": "From there palaia's setup opens in the browser by itself: how you'll use palaia, your first memory, your account, cloud access for ChatGPT and Claude if you want it, and your first AI app — no file editing, no extra commands. See <a href=\"%BASE%/first-shared-memory/\">Your first shared memory</a> for what that looks like end to end, or <a href=\"%BASE%/install/\">Install it</a> for the longer version of everything on this page."
   }
 }

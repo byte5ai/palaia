@@ -5,6 +5,7 @@ import {
   CODEX_TOKEN_ENV,
   TOKEN_PLACEHOLDER,
   guidedClients,
+  wizardClients,
 } from "./clients";
 
 describe("client integration catalog", () => {
@@ -14,7 +15,7 @@ describe("client integration catalog", () => {
       "Claude Code CLI",
       "Codex",
       "Claude Desktop",
-      "claude.ai",
+      "Claude",
       "ChatGPT",
       "Antigravity / Gemini CLI",
       "Grok",
@@ -127,16 +128,14 @@ describe("client integration catalog", () => {
     expect(claudeAi?.kind).toBe("notYet");
     if (claudeAi?.kind !== "notYet") throw new Error("expected notYet");
 
+    // issues 565/571: the reason names what is missing in the owner's words
+    // (cloud access, sign-in) and where to fix it, never a mode name alone.
     const lockedReason = claudeAi.reason("locked");
-    expect(lockedReason).toMatch(/locked mode/i);
-    expect(lockedReason).toMatch(/cloud|open/i);
+    expect(lockedReason).toMatch(/needs cloud access/i);
+    expect(lockedReason).toMatch(/dashboard stays on your private network/i);
 
-    // SPEC-205: sign-in now genuinely exists (the OAuth server, SPEC-203)
-    // — what remains is turning it on, which this reason must say plainly
-    // rather than claiming the whole feature is unbuilt.
     const cloudReason = claudeAi.reason("cloud");
-    expect(cloudReason).toMatch(/sign-in/i);
-    expect(cloudReason).toMatch(/access mode/i);
+    expect(cloudReason).toMatch(/sign-in is not on yet/i);
     expect(cloudReason).not.toMatch(/phase 2/i);
     expect(cloudReason).not.toBe(lockedReason);
   });
@@ -268,5 +267,14 @@ describe("Claude Desktop naming (issue 385)", () => {
     expect(CLIENTS.filter((c) => c.name.includes("Claude Code"))).toHaveLength(
       1,
     );
+  });
+});
+
+describe("wizardClients (issue 565)", () => {
+  it("offers the Claude app and ChatGPT as cloud connectors and the extension first locally", () => {
+    const { cloud, local } = wizardClients();
+    expect(cloud.map((c) => c.id)).toEqual(["claude-ai", "chatgpt"]);
+    expect(local[0]?.id).toBe("claude-desktop");
+    expect(local.map((c) => c.id)).toContain("claude-code-cli");
   });
 });

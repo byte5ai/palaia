@@ -25,6 +25,7 @@ const OPEN_MODE_STATUS: ModeStatus = {
   auth_enabled: true,
   oauth_enabled: false,
   oauth_issuer: null,
+  dashboard_require_sign_in: null,
   public_url: "https://hub.example.com",
   tunnel: "tailscale",
 };

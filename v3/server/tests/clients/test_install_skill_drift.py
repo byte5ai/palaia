@@ -116,6 +116,11 @@ _NOT_FROM_DEPLOY: dict[str, str] = {
     ),
     "rm -rf ~/.palaia-setup": "deletes the saved password or key when setup is done",
     "ssh-keygen -R <address>": "forgets a reset server's old host key",
+    # The hub's own tunnel guidance generates this line for the cloud entry the
+    # installer publishes; test_the_funnel_line_is_the_hubs_own_guidance pins it.
+    "sudo tailscale funnel --bg http://127.0.0.1:8422": (
+        "the hub's tunnel guidance for the published cloud entry (palaia_hub.modes.tunnel)"
+    ),
     "ssh -o StrictHostKeyChecking=accept-new root@<address>": (
         "interactive first login, for a provider that forces a password change"
     ),
@@ -340,3 +345,14 @@ def test_the_guard_passes_the_substituted_code_and_stops_the_unedited_file(tmp_p
             ["sh", str(path)], capture_output=True, text=True, timeout=30, check=False
         )
         assert result.returncode == expected, (label, result.stdout, result.stderr)
+
+
+def test_the_funnel_line_is_the_hubs_own_guidance() -> None:
+    """The skill's Funnel command is what the dashboard's tunnel guidance
+    shows for the cloud entry, and the port is the one the installer
+    publishes on loopback."""
+    from palaia_hub.modes.tunnel import DEFAULT_CLOUD_HOST_PORT, tailscale_guidance
+
+    guidance = tailscale_guidance(mode="cloud", local_port=DEFAULT_CLOUD_HOST_PORT)
+    assert guidance.commands == ("sudo tailscale funnel --bg http://127.0.0.1:8422",)
+    assert 'CLOUD_PORT="${PALAIA_CLOUD_PORT:-8422}"' in GET_PALAIA_PATH.read_text(encoding="utf-8")

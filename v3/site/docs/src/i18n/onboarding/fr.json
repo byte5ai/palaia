@@ -74,6 +74,6 @@
   },
   "wizard": {
     "h2": "L'assistant prend le relais",
-    "body": "À partir de là, un court assistant de configuration s'exécute dans le navigateur : une connexion administrateur, votre première mémoire, et la connexion du premier outil IA que vous utilisez — aucune modification de fichier, aucune commande supplémentaire. Consultez <a href=\"%BASE%/first-shared-memory/\">Votre première mémoire partagée</a> pour voir à quoi cela ressemble de bout en bout, ou <a href=\"%BASE%/install/\">Installez-le</a> pour la version détaillée de tout ce qui figure sur cette page."
+    "body": "À partir de là, la configuration de palaia s'ouvre d'elle-même dans le navigateur : comment vous utiliserez palaia, votre première mémoire, votre compte, l'accès cloud pour ChatGPT et Claude si vous le souhaitez, et votre première app d'IA — aucune modification de fichier, aucune commande supplémentaire. Consultez <a href=\"%BASE%/first-shared-memory/\">Votre première mémoire partagée</a> pour voir à quoi cela ressemble de bout en bout, ou <a href=\"%BASE%/install/\">Installez-le</a> pour la version détaillée de tout ce qui figure sur cette page."
   }
 }

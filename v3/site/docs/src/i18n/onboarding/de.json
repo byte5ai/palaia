@@ -74,6 +74,6 @@
   },
   "wizard": {
     "h2": "Der Assistent übernimmt",
-    "body": "Von da an läuft ein kurzer Einrichtungs-Assistent im Browser: eine Administrator-Anmeldung, Deine erste Erinnerung und das Verbinden des ersten KI-Tools, das Du nutzt — kein Bearbeiten von Dateien, keine zusätzlichen Befehle. Siehe <a href=\"%BASE%/first-shared-memory/\">Deine erste geteilte Erinnerung</a>, wie das von Anfang bis Ende aussieht, oder <a href=\"%BASE%/install/\">Installieren</a> für die ausführliche Fassung von allem auf dieser Seite."
+    "body": "Von da an öffnet sich palaias Einrichtung von selbst im Browser: wie Du palaia nutzt, Deine erste Erinnerung, Dein Konto, auf Wunsch der Cloud-Zugang für ChatGPT und Claude, und Deine erste KI-App — kein Bearbeiten von Dateien, keine zusätzlichen Befehle. Siehe <a href=\"%BASE%/first-shared-memory/\">Deine erste geteilte Erinnerung</a>, wie das von Anfang bis Ende aussieht, oder <a href=\"%BASE%/install/\">Installieren</a> für die ausführliche Fassung von allem auf dieser Seite."
   }
 }

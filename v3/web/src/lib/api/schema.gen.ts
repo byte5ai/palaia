@@ -186,6 +186,145 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/funnel/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Funnel Status */
+        get: operations["funnel_status_api_funnel_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Setup */
+        get: operations["get_setup_api_setup_get"];
+        /** Put Setup */
+        put: operations["put_setup_api_setup_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/hub/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restart */
+        post: operations["restart_api_hub_restart_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/backup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Backup */
+        get: operations["download_backup_api_backup_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/backup/targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Targets
+         * @description Every configured destination, in ``config.yaml`` order, with how
+         *     its last run went — and the schedule, when there is one (issue
+         *     #438: "surfaced in the dashboard").
+         */
+        get: operations["list_targets_api_backup_targets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/backup/targets/{name}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Backup Target
+         * @description Write a backup to one target, now.
+         *
+         *     Runs in a worker thread: building the archive is minutes of
+         *     blocking filesystem and SQLite work, and this route must not hold
+         *     the event loop for the rest of the hub while it happens.
+         */
+        post: operations["run_backup_target_api_backup_targets__name__run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/owner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Owner State */
+        get: operations["owner_state_api_auth_owner_get"];
+        put?: never;
+        /**
+         * Create Owner
+         * @description Create the one owner account and sign this browser in.
+         *
+         *     409 once an account exists; 403 for a request another site's page
+         *     made through this browser.
+         */
+        post: operations["create_owner_api_auth_owner_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -203,6 +342,13 @@ export interface components {
             /** Passed */
             passed: boolean | null;
         };
+        /** CreateOwnerRequest */
+        CreateOwnerRequest: {
+            /** Username */
+            username: string;
+            /** Password */
+            password: string;
+        };
         /** DetectionOut */
         DetectionOut: {
             /** Tailscale */
@@ -216,6 +362,29 @@ export interface components {
             detected: components["schemas"]["DetectionOut"];
             /** Checklist */
             checklist: components["schemas"]["ChecklistItemOut"][];
+        };
+        /**
+         * FunnelStatusOut
+         * @description The wizard-step timestamps plus the derived time-to-first-memory.
+         *
+         *     Every ``*_at`` field is a Unix timestamp (seconds) or ``null`` when
+         *     that step has not happened yet on this hub. ``time_to_first_memory_
+         *     seconds``/``_display`` are ``null`` until both ``hub_started_at`` and
+         *     ``first_memory_at`` are set.
+         */
+        FunnelStatusOut: {
+            /** Hub Started At */
+            hub_started_at: number | null;
+            /** Vault Created At */
+            vault_created_at: number | null;
+            /** Client Connected At */
+            client_connected_at: number | null;
+            /** First Memory At */
+            first_memory_at: number | null;
+            /** Time To First Memory Seconds */
+            time_to_first_memory_seconds: number | null;
+            /** Time To First Memory Display */
+            time_to_first_memory_display: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -238,6 +407,8 @@ export interface components {
             oauth_enabled?: boolean | null;
             /** Oauth Issuer */
             oauth_issuer?: string | null;
+            /** Dashboard Require Sign In */
+            dashboard_require_sign_in?: boolean | null;
             /** Public Url */
             public_url?: string | null;
             /** Tunnel */
@@ -265,10 +436,37 @@ export interface components {
             oauth_enabled: boolean;
             /** Oauth Issuer */
             oauth_issuer: string | null;
+            /** Dashboard Require Sign In */
+            dashboard_require_sign_in: boolean | null;
             /** Public Url */
             public_url: string | null;
             /** Tunnel */
             tunnel: string | null;
+        };
+        /**
+         * OwnerAccountState
+         * @description Whether the hub has an owner account. Deliberately nothing more.
+         */
+        OwnerAccountState: {
+            /** Configured */
+            configured: boolean;
+        };
+        /** RestartOut */
+        RestartOut: {
+            /** Restarting */
+            restarting: boolean;
+        };
+        /** SelfTestCheckOut */
+        SelfTestCheckOut: {
+            /**
+             * Id
+             * @enum {string}
+             */
+            id: "discovery" | "mcp" | "admin_private" | "dashboard_private";
+            /** Passed */
+            passed: boolean;
+            /** Detail */
+            detail: string;
         };
         /** SelfTestOut */
         SelfTestOut: {
@@ -282,11 +480,73 @@ export interface components {
             latency_ms: number | null;
             /** Error */
             error: string;
+            /** Checks */
+            checks: components["schemas"]["SelfTestCheckOut"][];
         };
         /** SelfTestRequest */
         SelfTestRequest: {
             /** Public Url */
             public_url: string;
+            /** Profile */
+            profile?: string | null;
+        };
+        /** SetupStatus */
+        SetupStatus: {
+            /** Completed */
+            completed: boolean;
+            /** Goal */
+            goal: ("cloud" | "private") | null;
+            /** Skipped */
+            skipped: ("account" | "cloud" | "client")[];
+            /** Owner Configured */
+            owner_configured: boolean;
+            /** Vaults */
+            vaults: string[];
+            /** Profiles */
+            profiles: string[];
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "locked" | "cloud" | "open";
+            /** Sign In Active */
+            sign_in_active: boolean;
+            /** Issuer */
+            issuer: string | null;
+            /**
+             * Configured Mode
+             * @enum {string}
+             */
+            configured_mode: "locked" | "cloud" | "open";
+            /** Configured Sign In */
+            configured_sign_in: boolean;
+            /** Configured Issuer */
+            configured_issuer: string | null;
+            /** Public Url */
+            public_url: string | null;
+            /** Cloud Url Hint */
+            cloud_url_hint: string | null;
+            /** Restart Required */
+            restart_required: boolean;
+            /** Restart Supported */
+            restart_supported: boolean;
+            /** Cloud Ready */
+            cloud_ready: boolean;
+            /** Client Connected */
+            client_connected: boolean;
+            /** First Memory Saved */
+            first_memory_saved: boolean;
+            /** Problems */
+            problems: string[];
+        };
+        /** SetupUpdate */
+        SetupUpdate: {
+            /** Goal */
+            goal?: ("cloud" | "private") | null;
+            /** Completed */
+            completed?: boolean | null;
+            /** Skipped */
+            skipped?: ("account" | "cloud" | "client")[] | null;
         };
         /** TunnelGuidanceOut */
         TunnelGuidanceOut: {
@@ -578,6 +838,227 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SelfTestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    funnel_status_api_funnel_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FunnelStatusOut"];
+                };
+            };
+        };
+    };
+    get_setup_api_setup_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStatus"];
+                };
+            };
+        };
+    };
+    put_setup_api_setup_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restart_api_hub_restart_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestartOut"];
+                };
+            };
+        };
+    };
+    download_backup_api_backup_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    list_targets_api_backup_targets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    run_backup_target_api_backup_targets__name__run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    owner_state_api_auth_owner_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerAccountState"];
+                };
+            };
+        };
+    };
+    create_owner_api_auth_owner_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOwnerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerAccountState"];
                 };
             };
             /** @description Validation Error */
