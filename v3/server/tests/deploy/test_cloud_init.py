@@ -7,14 +7,14 @@ criteria:
    (``cloud-init schema --config-file``, run in CI — see
    :func:`test_cloud_init_schema_validates`'s own docstring for why that
    needs ``uvx`` rather than a plain ``pip install``).
-2. Its ``docker run`` command never forks ``install.sh``'s hardening flag
-   list — the same "extract, don't hand-copy" drift-test pattern
-   ``v3/site/docs/tests/onboarding.test.ts`` already applies to the
-   onboarding page's snippets, and
-   ``server/tests/e2e/test_docker_one_liner_smoke.py`` already applies to
-   its own smoke-test invocation.
+2. It runs palaia's own installer (``get-palaia.sh``) instead of a second,
+   hand-copied install procedure, and that installer's ``docker run`` never
+   forks ``install.sh``'s hardening flag list — the same "extract, don't
+   hand-copy" drift-test pattern ``v3/site/docs/tests/onboarding.test.ts``
+   already applies to the onboarding page's snippets.
 3. The only thing to fill in is the setup code (SPEC-605) or, instead, a
-   Tailscale auth key — the guard picks the right path for each — and the
+   Tailscale auth key — the guard picks the right path for each, and a key
+   reaches the installer as a root-only file, never as an argument — and the
    hub port is bound so it is reachable over the tailnet only, never the
    public internet.
 """
@@ -31,6 +31,7 @@ import pytest
 # v3/server/tests/deploy -> v3/server/tests -> v3/server -> v3 -> v3/deploy
 DEPLOY_ROOT = Path(__file__).resolve().parents[3] / "deploy"
 CLOUD_INIT_PATH = DEPLOY_ROOT / "cloud-init.yaml"
+GET_PALAIA_PATH = DEPLOY_ROOT / "get-palaia.sh"
 
 # The exact pinned tag `test_cloud_init_schema_validates` installs cloud-init
 # from. 24.1.3 is the last tagged release still shipping a setuptools
@@ -69,18 +70,26 @@ def test_cloud_init_yaml_exists() -> None:
 
 
 def test_hardening_flags_match_install_sh_verbatim() -> None:
-    """Drift test: cloud-init.yaml's docker run must reuse install.sh's own
-    hardening flags verbatim, never a second, separately-maintained copy."""
+    """Drift test: the installer's docker run (which cloud-init.yaml runs)
+    must reuse install.sh's own hardening flags verbatim, never a second,
+    separately-maintained copy."""
     install_sh = (DEPLOY_ROOT / "install.sh").read_text(encoding="utf-8")
-    cloud_init = CLOUD_INIT_PATH.read_text(encoding="utf-8")
+    installer = GET_PALAIA_PATH.read_text(encoding="utf-8")
 
     flags = _extract_hardening_flags(install_sh)
     assert flags, "no hardening flags extracted from install.sh"
     for flag in flags:
-        assert flag in cloud_init, (
-            f"cloud-init.yaml's docker run command is missing install.sh's own {flag!r} "
+        assert flag in installer, (
+            f"get-palaia.sh's docker run command is missing install.sh's own {flag!r} "
             "flag — the two must never fork this list"
         )
+
+
+def test_cloud_init_runs_the_installer_rather_than_its_own_copy() -> None:
+    script = _setup_script()
+    assert 'INSTALLER_URL="https://get.palaia.ai/install"' in script
+    assert "sh /opt/palaia/get-palaia.sh" in script
+    assert "docker run" not in CLOUD_INIT_PATH.read_text(encoding="utf-8")
 
 
 #: The two values a person may fill in (SPEC-605: the setup code is the
@@ -114,7 +123,7 @@ def test_the_setup_code_and_the_key_are_the_only_placeholders() -> None:
 
 def _guard(script: str) -> str:
     """The setup script from its start up to the Docker step: variables + guard."""
-    return script[: script.index("# --- Docker")] + 'echo "USE_KEY=${USE_KEY}"\n'
+    return script[: script.index("# --- Run the installer")] + 'echo "USE_KEY=${USE_KEY}"\n'
 
 
 def _setup_script() -> str:
@@ -125,7 +134,7 @@ def _setup_script() -> str:
     return str(files["/opt/palaia/cloud-init-setup.sh"])
 
 
-@pytest.mark.skipif(shutil.which("bash") is None, reason="bash not on PATH")
+@pytest.mark.skipif(shutil.which("sh") is None, reason="sh not on PATH")
 @pytest.mark.parametrize(
     ("edit", "exit_code", "use_key"),
     [
@@ -156,7 +165,7 @@ def test_the_guard_picks_the_setup_page_or_the_key(
     path = tmp_path / "guard.sh"
     path.write_text(_guard(script), encoding="utf-8")
     result = subprocess.run(
-        ["bash", str(path)], capture_output=True, text=True, timeout=30, check=False
+        ["sh", str(path)], capture_output=True, text=True, timeout=30, check=False
     )
     assert result.returncode == exit_code, (result.stdout, result.stderr)
     if use_key is not None:
@@ -165,21 +174,34 @@ def test_the_guard_picks_the_setup_page_or_the_key(
         assert "PALAIA_SETUP_CODE" in result.stdout
 
 
+def test_the_key_reaches_the_installer_as_a_root_only_file() -> None:
+    """Issue #564: never `--auth-key="$KEY"` (argv) — a 0600 file, read by
+    Tailscale itself through `file:`."""
+    script = _setup_script()
+    assert "umask 077 && printf '%s' \"${TAILSCALE_AUTH_KEY}\" > /root/.palaia-tskey" in script
+    assert "export PALAIA_TSKEY_FILE=/root/.palaia-tskey" in script
+    installer = GET_PALAIA_PATH.read_text(encoding="utf-8")
+    assert '--auth-key="file:${KEYFILE}"' in installer
+    assert not re.search(r"--auth-key=\"?\$(TSKEY|PALAIA_TSKEY|TAILSCALE_AUTH_KEY)", installer)
+
+
 def test_hub_port_is_bound_to_the_tailnet_address_only() -> None:
     """SPEC-601: 'firewalls the hub port so it is reachable via the tailnet
-    only' — checked two ways, matching the file's own two layers."""
-    cloud_init = CLOUD_INIT_PATH.read_text(encoding="utf-8")
-
-    # Layer 1: the docker publish itself binds to the tailnet address, not
-    # every interface (`-p 8420:8420` / `-p 0.0.0.0:8420:8420` would expose
-    # it publicly).
-    assert '-p "${TAILSCALE_IP}:${PORT}:8420"' in cloud_init
-    assert "-p 0.0.0.0" not in cloud_init
-    assert '-p "${PORT}:8420"' not in cloud_init
-
-    # Layer 2: a firewall rule scoped to the tailscale interface.
-    assert "tailscale0" in cloud_init
-    assert "ufw allow in on tailscale0" in cloud_init
+    only' — the installer's docker publish binds to the tailnet address, and
+    its other two ports to loopback only (for a tunnel on the server)."""
+    installer = GET_PALAIA_PATH.read_text(encoding="utf-8")
+    assert '-p "${BIND_ADDR}:${PORT}:8420"' in installer
+    assert 'LOOPBACK_PUBLISH="-p 127.0.0.1:${PORT}:8420"' in installer
+    assert '-p "127.0.0.1:${CLOUD_PORT}:8422"' in installer
+    assert '-p "${PORT}:8420"' not in installer
+    published = re.findall(r'-p "?([^\s"]+:84\d\d)\b', installer)
+    assert len(published) == 3, published
+    for spec in published:
+        assert spec.startswith(("${BIND_ADDR}:", "127.0.0.1:")), spec
+    # The firewall rule is scoped to the tailscale interface, and the file
+    # created for palaia asks for ufw to be switched on.
+    assert "ufw allow in on tailscale0" in installer
+    assert "export PALAIA_FIREWALL=on" in _setup_script()
 
 
 def test_cloud_init_schema_validates() -> None:
@@ -215,6 +237,6 @@ def test_cloud_init_schema_validates() -> None:
 
 
 def test_cloud_init_fits_the_user_data_limits() -> None:
-    """Hetzner Cloud takes 32 KiB of user data (DigitalOcean 64 KiB). The
-    embedded setup page (SPEC-605) made the file bigger — keep it inside."""
-    assert len(CLOUD_INIT_PATH.read_bytes()) <= 32 * 1024
+    """Hetzner Cloud takes 32 KiB of user data (DigitalOcean 64 KiB, AWS
+    16 KB). Running the installer keeps the file far below all three."""
+    assert len(CLOUD_INIT_PATH.read_bytes()) <= 16 * 1000

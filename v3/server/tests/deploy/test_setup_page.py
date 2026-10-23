@@ -12,8 +12,8 @@ promises the SPEC makes:
 - once the server has its tailnet address the page says done and the
   program exits 0, so the installer can continue;
 - on timeout it exits 1 and the port is closed;
-- the copies embedded in ``get-palaia.sh`` and ``cloud-init.yaml`` are the
-  same file, byte for byte (one source of truth).
+- the copy embedded in ``get-palaia.sh`` is the same file, byte for byte
+  (one source of truth; cloud-init.yaml runs that installer).
 """
 
 from __future__ import annotations
@@ -283,9 +283,3 @@ def test_get_palaia_embeds_the_setup_page_verbatim() -> None:
     match = re.search(r"<<'PALAIA_SETUP_PAGE'\n(.*?)^PALAIA_SETUP_PAGE$", script, re.S | re.M)
     assert match, "get-palaia.sh no longer embeds setup-page.py in a 'PALAIA_SETUP_PAGE' heredoc"
     assert match.group(1) == _source()
-
-
-def test_cloud_init_embeds_the_setup_page_verbatim() -> None:
-    document = yaml.safe_load((DEPLOY_ROOT / "cloud-init.yaml").read_text(encoding="utf-8"))
-    files = {entry["path"]: entry["content"] for entry in document["write_files"]}
-    assert files.get("/opt/palaia/setup-page.py") == _source()
