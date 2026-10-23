@@ -19,13 +19,14 @@ from pydantic import BaseModel, ConfigDict
 from ..admin_session import owner_account_exists
 from ..config import HubConfig, config_file_path, load_config
 from ..events import EventBus, publish_event
+from ..vault import VaultRegistry
 from .audit import ModeAuditLog
 from .detect import detect_tunnels
 from .hardening import build_checklist
 from .patch import patch_config_values
 from .policy import ModeChangeError, build_candidate_config
 from .selftest import SelfTestResult, check_public_url
-from .tunnel import cloudflared_guidance, tailscale_guidance
+from .tunnel import cloudflared_guidance, default_local_port, tailscale_guidance
 
 if TYPE_CHECKING:
     from ..oauth import OAuthStore
@@ -46,16 +47,6 @@ def _field(config: HubConfig, dotted: str) -> Any:
         return getattr(config, dotted)
     section, key = dotted.split(".", 1)
     return getattr(getattr(config, section), key)
-
-
-def _has_telegram_webhook(config: HubConfig) -> bool:
-    """Whether ``config`` has an enabled Telegram bot on ``transport:
-    webhook`` — the one case in which 'cloud'-mode tunnel guidance must
-    forward the webhook route too (issue #439)."""
-    telegram = config.telegram
-    return telegram is not None and any(
-        bot.enabled and bot.transport == "webhook" for bot in telegram.bots
-    )
 
 
 def _restart_required(active: HubConfig, configured: HubConfig) -> bool:
@@ -128,6 +119,21 @@ def _sign_in_configured(
     if oauth_store is not None:
         return oauth_store.get_owner() is not None
     return owner_account_exists(home)
+
+
+def _serves_no_profile(candidate: HubConfig, *, home: Path) -> bool:
+    """Would ``candidate``'s sign-in server start with nothing to grant?
+
+    The same resolution the hub's start-up uses (``palaia_hub.cli``), against
+    the memories that exist right now.
+    """
+    from ..cli import _gateway_profiles_for_oauth  # lazy: cli imports the app
+
+    keys = VaultRegistry(home).names()
+    try:
+        return not _gateway_profiles_for_oauth(candidate, keys)
+    except SystemExit:  # a gateway configuration error, refused on its own
+        return False
 
 
 def _nested_overrides(updates: dict[str, Any]) -> dict[str, Any]:
@@ -213,6 +219,16 @@ class SelfTestRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     public_url: str
+    #: The profile whose AI connection to probe; ``default`` when omitted.
+    profile: str | None = None
+
+
+class SelfTestCheckOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: Literal["discovery", "mcp", "admin_private", "dashboard_private"]
+    passed: bool
+    detail: str
 
 
 class SelfTestOut(BaseModel):
@@ -223,6 +239,7 @@ class SelfTestOut(BaseModel):
     status_code: int | None
     latency_ms: float | None
     error: str
+    checks: list[SelfTestCheckOut]
 
 
 class DetectionOut(BaseModel):
@@ -308,6 +325,19 @@ def build_modes_router(
             # would refuse to load on its next start. Same rule as
             # `load_config`, in plain language for the person in the
             # dashboard.
+            # Issue #561: turning the sign-in server on before a memory
+            # exists used to be accepted, and the next start then failed —
+            # the server issues access to memories and had none. Refused
+            # here, before anything is written.
+            if (
+                candidate.oauth.enabled
+                and not current.oauth.enabled
+                and _serves_no_profile(candidate, home=home)
+            ):
+                raise ModeChangeError(
+                    "Create your first memory before turning on sign-in. The sign-in "
+                    "server gives AI apps access to a memory, and this hub has none yet."
+                )
             if candidate.mode == "open" and not _sign_in_configured(
                 candidate, home=home, oauth_store=oauth_store
             ):
@@ -382,24 +412,21 @@ def build_modes_router(
     async def post_tunnel_guidance(body: TunnelRequest) -> TunnelGuidanceOut:
         configured = _configured()
         tunnel_mode: Literal["cloud", "open"] = "open" if configured.mode == "open" else "cloud"
-        port = body.local_port or configured.port
-        # Read from the configured file, like the mode above: the guidance
-        # is for the hub this config.yaml describes, which is the one that
-        # runs after the restart a Telegram change needs anyway.
-        telegram_webhook = _has_telegram_webhook(configured)
+        # Issue #567: the port the tunnel can actually reach on the server —
+        # the loopback publish the installer made — never `config.port`,
+        # which inside the image is the hub's own internal port.
+        port = body.local_port or default_local_port(tunnel_mode)
         if body.kind == "tailscale":
             guidance = tailscale_guidance(
                 mode=tunnel_mode,
                 local_port=port,
-                hostname=body.hostname or "<your-tailnet-name>",
-                telegram_webhook=telegram_webhook,
+                hostname=body.hostname or "<this server's tailnet name>",
             )
         else:
             guidance = cloudflared_guidance(
                 mode=tunnel_mode,
                 local_port=port,
                 hostname=body.hostname or "hub.example.com",
-                telegram_webhook=telegram_webhook,
             )
         return TunnelGuidanceOut(
             label=guidance.label,
@@ -410,13 +437,27 @@ def build_modes_router(
 
     @router.post("/api/exposure/selftest", response_model=SelfTestOut)
     async def post_selftest(body: SelfTestRequest) -> SelfTestOut:
-        result: SelfTestResult = await check_public_url(body.public_url)
+        # Checked against what the running hub serves: its sign-in address
+        # (the issuer it signs tokens for) and one of its profiles.
+        issuer = config.oauth.issuer if config.oauth.enabled else None
+        result: SelfTestResult = await check_public_url(
+            body.public_url,
+            issuer=issuer,
+            profile=body.profile or "default",
+            mode=config.mode,
+        )
         return SelfTestOut(
             checked_url=result.checked_url,
             reachable=result.reachable,
             status_code=result.status_code,
             latency_ms=result.latency_ms,
             error=result.error,
+            checks=[
+                SelfTestCheckOut.model_validate(
+                    {"id": check.id, "passed": check.passed, "detail": check.detail}
+                )
+                for check in result.checks
+            ],
         )
 
     return router

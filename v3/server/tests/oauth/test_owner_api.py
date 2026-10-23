@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 from palaia_hub.app import create_app
 from palaia_hub.auth.store import TokenStore
 from palaia_hub.config import HubConfig, OAuthSettings
-from palaia_hub.oauth import AuthorizationServer
+from palaia_hub.oauth import AuthorizationServer, OAuthStore
 from palaia_hub.oauth.login import CSRF_COOKIE, SESSION_COOKIE
 from palaia_hub.vault import VaultRegistry
 
@@ -152,14 +152,27 @@ def test_the_password_rules_are_the_same_as_the_terminal_command(
         server.store.close()
 
 
-def test_the_route_is_absent_on_a_hub_with_no_sign_in_server(tmp_path: Path) -> None:
-    """No authorization server, nothing to create an account for: the
-    wizard's step reads the 404 as 'nothing to set up here'."""
+def test_without_a_sign_in_server_the_account_goes_straight_into_the_store(
+    tmp_path: Path,
+) -> None:
+    """Issue #561: the wizard creates the account before cloud access turns
+    the sign-in server on. Without a server there is no session to open —
+    but the account is in the store the server reads once it starts, and the
+    same 'only while none exists' rule holds."""
     config = HubConfig(mode="locked", host="127.0.0.1")
     app = create_app(config, home=tmp_path, vault_registry=VaultRegistry(tmp_path / "vaults"))
     with TestClient(app) as client:
-        assert client.get("/api/auth/owner").status_code == 404
-        assert (
-            client.post("/api/auth/owner", json={"username": "a", "password": PASSWORD}).status_code
-            == 404
-        )
+        assert client.get("/api/auth/owner").json() == {"configured": False}
+        created = client.post("/api/auth/owner", json={"username": "owner", "password": PASSWORD})
+        assert created.status_code == 201, created.text
+        assert "palaia_oauth_session" not in created.cookies
+        assert client.get("/api/auth/owner").json() == {"configured": True}
+        again = client.post("/api/auth/owner", json={"username": "x", "password": PASSWORD})
+        assert again.status_code == 409
+    store = OAuthStore(tmp_path)
+    store.open()
+    try:
+        owner = store.get_owner()
+        assert owner is not None and owner[0] == "owner"
+    finally:
+        store.close()

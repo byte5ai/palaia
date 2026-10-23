@@ -1,86 +1,81 @@
-"""Tunnel configs for the exposure wizard (SPEC-205 deliverable #2).
+"""Tunnel guidance for cloud access (SPEC-205 deliverable #2, issue #567).
 
-Two providers, each with two flavors, chosen by the hub's own operating
-mode (MASTERPLAN §5.5's mode table):
+Two providers, each pointed at one of the packaged image's two doors, chosen
+by the hub's operating mode (MASTERPLAN §5.5's mode table):
 
-- **cloud**: only the MCP surface and its own auth doorway need to be
-  public — the admin dashboard stays VPN/tailnet-only *even when a tunnel
-  makes the box reachable from the internet*, so the tunnel config only
-  forwards :data:`CLOUD_PUBLIC_PATH_PREFIXES` (the gateway, the OAuth
-  authorize/login/token endpoints a remote browser must reach to sign in,
-  and the ``.well-known`` discovery documents every client probes first).
-- **open**: the dashboard is deliberately public too, so the tunnel
-  forwards everything.
+- **cloud**: the tunnel forwards to the *cloud entry*
+  (``deploy/nginx.conf.template``), which answers only the AI-connection
+  routes — :data:`CLOUD_PUBLIC_PATH_PREFIXES` — and 404 for the dashboard and
+  every ``/api`` route. The tunnel itself therefore needs no path list: the
+  boundary lives in palaia, where a tunnel's configuration cannot get it
+  wrong.
+- **open**: the dashboard is deliberately public too, so the tunnel forwards
+  to the whole hub.
 
-One conditional addition to the 'cloud' list (issue #439): a hub with a
-Telegram bot on ``transport: webhook`` also needs Telegram's servers to reach
-:data:`TELEGRAM_WEBHOOK_PATH_PREFIX`, so the caller passes
-``telegram_webhook=True`` and the route joins the forwarded prefixes. Only
-then — a hub with no webhook bot gets byte-for-byte the config it always
-did, and does not put a route on the internet that nothing uses.
+Both targets are the loopback ports the installer publishes on the server
+(``127.0.0.1:8422`` for the cloud entry, ``127.0.0.1:<install port>`` for the
+whole hub) — Tailscale Funnel only proxies to localhost, and loopback keeps
+both off every other interface. The hub reads the published port numbers
+from the environment the installer sets; an operator with a different setup
+passes ``local_port``.
 
-Every function here is pure (a port/hostname in, a config out) so the
-golden-file test (this SPEC's acceptance criterion #3) can assert byte-for-
-byte output, and so generating a config never touches the filesystem or a
-running tunnel — this module never shells out to ``tailscale``/
-``cloudflared``; see :mod:`palaia_hub.modes.detect` for whether either
-binary is even installed.
+Every function here is pure (a port/hostname in, guidance out), so the
+golden tests can assert byte-for-byte output; nothing here touches a running
+tunnel — see :mod:`palaia_hub.modes.detect` for whether either binary is
+installed.
 """
 
 from __future__ import annotations
 
-import json
+import os
 from dataclasses import dataclass
 from typing import Literal
 
+from .cloud_entry import CLOUD_ENTRY_PREFIXES
+
 TunnelMode = Literal["cloud", "open"]
 
-#: Path prefixes that must stay reachable through a 'cloud'-mode tunnel:
-#: the MCP gateway itself, the OAuth doorway a remote browser is redirected
-#: through to sign in, and the discovery documents every client probes
-#: before either. Everything else (the dashboard, the REST admin API) is
-#: deliberately left off this list — MASTERPLAN §5.5's mode table keeps the
-#: dashboard VPN/tailnet-only in 'cloud' mode even once MCP is public.
-CLOUD_PUBLIC_PATH_PREFIXES: tuple[str, ...] = ("/mcp", "/oauth", "/.well-known")
+#: What the cloud entry lets through (see :mod:`palaia_hub.modes.cloud_entry`).
+CLOUD_PUBLIC_PATH_PREFIXES: tuple[str, ...] = CLOUD_ENTRY_PREFIXES
 
-#: The Telegram connector's webhook route (issue #439), forwarded in 'cloud'
-#: mode only when a webhook bot is configured. Its own credential is
-#: Telegram's secret-token header, checked by the hub. Kept as a literal so
-#: this module stays a pure generator with nothing heavier than ``json``
-#: behind it (importing :mod:`palaia_hub.telegram.webhook` drags FastAPI
-#: in); ``tests/modes/test_tunnel.py`` asserts the two agree.
-TELEGRAM_WEBHOOK_PATH_PREFIX = "/telegram/webhook"
+#: The cloud entry's port on the server, as the installer publishes it.
+CLOUD_HOST_PORT_ENV = "PALAIA_CLOUD_HOST_PORT"
+DEFAULT_CLOUD_HOST_PORT = 8422
+#: The whole hub's port on the server's loopback address ('open' mode).
+HUB_HOST_PORT_ENV = "PALAIA_HUB_HOST_PORT"
+DEFAULT_HUB_HOST_PORT = 8420
 
 
-def _public_prefixes(mode: TunnelMode, *, telegram_webhook: bool = False) -> tuple[str, ...]:
-    if mode != "cloud":
-        return ("/",)
-    if telegram_webhook:
-        return (*CLOUD_PUBLIC_PATH_PREFIXES, TELEGRAM_WEBHOOK_PATH_PREFIX)
-    return CLOUD_PUBLIC_PATH_PREFIXES
+def default_local_port(mode: TunnelMode) -> int:
+    """The server-side port a tunnel for ``mode`` should point at."""
+    name, default = (
+        (CLOUD_HOST_PORT_ENV, DEFAULT_CLOUD_HOST_PORT)
+        if mode == "cloud"
+        else (HUB_HOST_PORT_ENV, DEFAULT_HUB_HOST_PORT)
+    )
+    try:
+        return int(os.environ.get(name, "") or default)
+    except ValueError:
+        return default
 
 
-def _scope(mode: TunnelMode, *, telegram_webhook: bool = False) -> str:
-    """What the generated config exposes, for the guidance note."""
+def _scope(mode: TunnelMode) -> str:
     if mode != "cloud":
         return "the whole hub, including the dashboard"
-    if telegram_webhook:
-        return "only the MCP endpoint, its sign-in pages and the Telegram webhook"
-    return "only the MCP endpoint and its sign-in pages"
+    return "only palaia's AI connection (the dashboard and its API answer 404 there)"
 
 
 @dataclass(frozen=True, slots=True)
 class TunnelGuidance:
-    """One generated tunnel config, ready to copy-paste."""
+    """One tunnel setup, ready to copy."""
 
-    #: e.g. "tailscale serve (JSON config)", "cloudflared (ingress YAML)".
+    #: e.g. "Tailscale Funnel", "cloudflared".
     label: str
-    #: The config text itself.
+    #: A configuration file to save first, or "" when the commands suffice.
     config: str
-    #: The exact command(s) that apply/run it.
+    #: The exact command(s) to run on the server.
     commands: tuple[str, ...]
-    #: Plain-language note — what this exposes, and what it deliberately
-    #: does not (the dashboard, in 'cloud' mode).
+    #: What this exposes, and what it deliberately does not.
     note: str
 
 
@@ -88,44 +83,18 @@ def tailscale_guidance(
     *,
     mode: TunnelMode,
     local_port: int,
-    hostname: str = "<your-tailnet-name>",
-    telegram_webhook: bool = False,
+    hostname: str = "<this server's tailnet name>",
 ) -> TunnelGuidance:
-    """Tailscale Serve/Funnel guidance: a ``tailscale serve --set-raw`` JSON config.
-
-    Serve makes the hostname reachable on the tailnet; Funnel (a second,
-    explicit command — Tailscale never exposes a serve config to the
-    public internet without it) additionally opens it to the public
-    internet, which is what 'cloud'/'open' mode actually needs.
-
-    ``telegram_webhook``: forward the Telegram webhook route too, in 'cloud'
-    mode (see the module docstring). No effect in 'open' mode, which already
-    forwards everything.
-    """
-    origin = f"http://127.0.0.1:{local_port}"
-    handlers = {
-        prefix: {"Proxy": origin}
-        for prefix in _public_prefixes(mode, telegram_webhook=telegram_webhook)
-    }
-    raw_config = {
-        "TCP": {"443": {"HTTPS": True}},
-        "Web": {f"{hostname}:443": {"Handlers": handlers}},
-        "AllowFunnel": {f"{hostname}:443": True},
-    }
-    config_text = json.dumps(raw_config, indent=2) + "\n"
-    scope = _scope(mode, telegram_webhook=telegram_webhook)
+    """Tailscale Funnel: one command on the server, no configuration file."""
+    target = f"http://127.0.0.1:{local_port}"
     return TunnelGuidance(
-        label="Tailscale Serve + Funnel",
-        config=config_text,
-        commands=(
-            'tailscale serve --set-raw "$(cat tailscale-serve.json)"',
-            "tailscale funnel 443 on",
-        ),
+        label="Tailscale Funnel",
+        config="",
+        commands=(f"sudo tailscale funnel --bg {target}",),
         note=(
-            f"Exposes {scope} at https://{hostname}/ — "
-            f"'tailscale funnel 443 on' is what makes it reachable from "
-            f"the public internet, not just your tailnet; run "
-            f"'tailscale funnel status' to confirm."
+            f"Makes {_scope(mode)} reachable at https://{hostname}/. If Tailscale prints a "
+            f"link, open it and allow Funnel for your tailnet, then run the command again. "
+            f"'tailscale funnel status' shows what is shared."
         ),
     )
 
@@ -135,48 +104,37 @@ def cloudflared_guidance(
     mode: TunnelMode,
     local_port: int,
     hostname: str = "hub.example.com",
-    telegram_webhook: bool = False,
 ) -> TunnelGuidance:
-    """cloudflared guidance: an ``ingress`` config for ``cloudflared tunnel run``.
-
-    ``telegram_webhook``: as for :func:`tailscale_guidance`.
-    """
+    """cloudflared: an ``ingress`` config for ``cloudflared tunnel run``."""
     origin = f"http://127.0.0.1:{local_port}"
-    prefixes = _public_prefixes(mode, telegram_webhook=telegram_webhook)
-    lines = [
-        "tunnel: <your-tunnel-id>",
-        "credentials-file: /etc/cloudflared/<your-tunnel-id>.json",
-        "ingress:",
-    ]
-    if prefixes == ("/",):
-        lines.append(f"  - hostname: {hostname}")
-        lines.append(f"    service: {origin}")
-    else:
-        for prefix in prefixes:
-            lines.append(f"  - hostname: {hostname}")
-            lines.append(f"    path: ^{prefix}")
-            lines.append(f"    service: {origin}")
-    lines.append("  - service: http_status:404")
-    config_text = "\n".join(lines) + "\n"
-    scope = _scope(mode, telegram_webhook=telegram_webhook)
+    config_text = (
+        "tunnel: <your-tunnel-id>\n"
+        "credentials-file: /etc/cloudflared/<your-tunnel-id>.json\n"
+        "ingress:\n"
+        f"  - hostname: {hostname}\n"
+        f"    service: {origin}\n"
+        "  - service: http_status:404\n"
+    )
     return TunnelGuidance(
-        label="cloudflared (ingress rules)",
+        label="cloudflared",
         config=config_text,
         commands=(
             "cloudflared tunnel create palaia-hub",
-            "# save the printed tunnel id and credentials path into the ingress config above",
+            "# save the printed tunnel id and credentials path into the config above",
             "cloudflared tunnel route dns palaia-hub " + hostname,
             "cloudflared tunnel run --config config.yml palaia-hub",
         ),
-        note=f"Exposes {scope} at https://{hostname}/ once DNS + the tunnel are both up.",
+        note=(
+            f"Makes {_scope(mode)} reachable at https://{hostname}/ once DNS and the tunnel are up."
+        ),
     )
 
 
 __all__ = [
     "CLOUD_PUBLIC_PATH_PREFIXES",
-    "TELEGRAM_WEBHOOK_PATH_PREFIX",
     "TunnelGuidance",
     "TunnelMode",
     "cloudflared_guidance",
+    "default_local_port",
     "tailscale_guidance",
 ]

@@ -140,6 +140,20 @@ def _is_safe_next(next_url: str) -> bool:
     )
 
 
+def request_is_https(request: Request) -> bool:
+    """Did this request reach the hub over HTTPS?
+
+    Decides the cookies' ``Secure`` flag per request, not from the issuer: in
+    Cloud mode the issuer is the public https address, while the owner signs
+    in to the dashboard over the private network's plain http — and a browser
+    drops a ``Secure`` cookie set over http, which turned every dashboard
+    sign-in into a loop. Behind the packaged nginx (and any TLS-terminating
+    tunnel or proxy) the scheme arrives as ``X-Forwarded-Proto``.
+    """
+    forwarded = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
+    return forwarded == "https" or request.url.scheme == "https"
+
+
 def _set_cookie(
     response: Response, name: str, value: str, *, secure: bool, max_age: int, http_only: bool = True
 ) -> None:
@@ -184,7 +198,6 @@ def _start_session(target: str, *, session: str, max_age: int, secure: bool) -> 
 
 def build_oauth_router(server: AuthorizationServer) -> APIRouter:
     """Build the authorization server's router, backed by ``server``."""
-    secure_cookies = server.issuer.startswith("https://")
     router = APIRouter(tags=["oauth"])
 
     # ------------------------------------------------------------- discovery
@@ -381,7 +394,7 @@ def build_oauth_router(server: AuthorizationServer) -> APIRouter:
                 ),
                 headers=NO_STORE,
             )
-            _set_cookie(response, CSRF_COOKIE, csrf, secure=secure_cookies, max_age=600)
+            _set_cookie(response, CSRF_COOKIE, csrf, secure=request_is_https(request), max_age=600)
             return response
 
         @router.post(LOGIN_PATH)
@@ -396,7 +409,7 @@ def build_oauth_router(server: AuthorizationServer) -> APIRouter:
                 return _login_failure(
                     next_url,
                     "This sign-in form expired. Please try again.",
-                    secure=secure_cookies,
+                    secure=request_is_https(request),
                 )
             username = str(form.get("username", "") or "")
             password = str(form.get("password", "") or "")
@@ -406,7 +419,7 @@ def build_oauth_router(server: AuthorizationServer) -> APIRouter:
                 return _login_failure(
                     next_url,
                     "Sign-in failed. Check the username and password.",
-                    secure=secure_cookies,
+                    secure=request_is_https(request),
                 )
             target = next_url if _is_safe_next(next_url) else "/"
             # The login form's own short-lived CSRF cookie is replaced here
@@ -416,7 +429,7 @@ def build_oauth_router(server: AuthorizationServer) -> APIRouter:
                 target,
                 session=session,
                 max_age=max(0, expires_at - server.now()),
-                secure=secure_cookies,
+                secure=request_is_https(request),
             )
 
     # ------------------------------------------------------------- idp (204)
@@ -445,7 +458,7 @@ def build_oauth_router(server: AuthorizationServer) -> APIRouter:
                 response,
                 IDP_NONCE_COOKIE,
                 nonce,
-                secure=secure_cookies,
+                secure=request_is_https(request),
                 max_age=IDP_STATE_TTL_SECONDS,
             )
             return response
@@ -468,7 +481,7 @@ def build_oauth_router(server: AuthorizationServer) -> APIRouter:
                 target,
                 session=session,
                 max_age=max(0, expires_at - server.now()),
-                secure=secure_cookies,
+                secure=request_is_https(request),
             )
             response.delete_cookie(IDP_NONCE_COOKIE, path="/")
             return response

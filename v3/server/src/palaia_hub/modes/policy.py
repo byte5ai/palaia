@@ -83,6 +83,21 @@ def _check_wizard_level_preconditions(candidate: HubConfig) -> None:
             f"`oauth.enabled` off and rely on `auth_enabled` (per-client "
             f"tokens) instead."
         )
+    issuer = candidate.oauth.issuer
+    if (
+        candidate.mode in ("cloud", "open")
+        and candidate.oauth.enabled
+        and issuer
+        and not issuer.startswith("https://")
+    ):
+        # Issue #561: the dashboard used to pass its own address — the
+        # private http one — as the issuer, which no cloud AI app accepts.
+        raise ModeChangeError(
+            f"the sign-in address {issuer!r} must be an https:// URL in mode "
+            f"{candidate.mode!r} — ChatGPT and Claude sign in through it from the "
+            f"internet and refuse plain http. Fix: use the public https address "
+            f"of this hub's cloud access (for example from Tailscale Funnel)."
+        )
     public_url = candidate.exposure.public_url
     if public_url is not None and not public_url.startswith("https://"):
         raise ModeChangeError(

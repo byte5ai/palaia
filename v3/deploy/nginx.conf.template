@@ -61,6 +61,9 @@ http {
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+            # Requests through this door are never cloud-entry requests,
+            # whatever a client sends (an empty value drops the header).
+            proxy_set_header X-Palaia-Entry "";
             # MCP streaming responses (SSE-style) must not be buffered.
             proxy_buffering off;
             # The hub's /api/events stream sends a comment frame every 15 s
@@ -112,6 +115,38 @@ http {
             add_header X-Frame-Options "DENY" always;
             add_header Cross-Origin-Opener-Policy "same-origin" always;
             add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+        }
+    }
+    # The cloud entry (issues #566, #567): the one door a public tunnel —
+    # Tailscale Funnel, cloudflared, a reverse proxy — points at in Cloud
+    # mode. It answers only what a cloud AI app needs: the MCP endpoints,
+    # their sign-in pages, the discovery documents and the Telegram webhook.
+    # The dashboard and every /api route answer 404 here, so the tunnel can
+    # forward everything without a path list of its own, and the hub itself
+    # refuses this door entirely until cloud access is turned on (it sees
+    # `X-Palaia-Entry: cloud`, which the private door above always clears).
+    # The installer publishes it on the server's loopback address only.
+    server {
+        listen ${CLOUD_PORT};
+        server_name _;
+
+        location ~ ^/(mcp|oauth|\.well-known|telegram/webhook)(/|$) {
+            proxy_pass http://${PALAIA_HOST}:${PALAIA_PORT};
+            proxy_http_version 1.1;
+            proxy_set_header Host $http_host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            # Every tunnel in front of this door terminates HTTPS.
+            proxy_set_header X-Forwarded-Proto https;
+            proxy_set_header X-Palaia-Entry cloud;
+            proxy_buffering off;
+            proxy_read_timeout 300s;
+            client_max_body_size 16m;
+        }
+
+        location / {
+            default_type text/plain;
+            return 404 "Not found. This address serves palaia's AI connection only.\n";
         }
     }
 }

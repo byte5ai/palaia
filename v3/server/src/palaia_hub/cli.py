@@ -67,6 +67,7 @@ from .oauth import (
     set_owner_password,
 )
 from .serve import build_production_app
+from .startup import report_problem
 from .vault import EventBus, VaultConfigError, VaultNotFoundError, VaultRegistry
 from .vault.engine import VaultEngine
 
@@ -392,7 +393,9 @@ def _profile_scopes(profiles: Sequence[ProfileConfig]) -> dict[str, list[str]]:
     return {profile.path: scopes_for(profile) for profile in profiles}
 
 
-def _gateway_profiles_for_oauth(config: HubConfig) -> list[ProfileConfig]:
+def _gateway_profiles_for_oauth(
+    config: HubConfig, vault_keys: Sequence[str] | None = None
+) -> list[ProfileConfig]:
     """The profiles the OAuth server should issue tokens for — the *same*
     resolution ``palaia_hub.serve.build_production_app`` uses to build the
     real gateway (SPEC-301 deliverable #3's "one source of truth"), so the
@@ -420,10 +423,10 @@ def _gateway_profiles_for_oauth(config: HubConfig) -> list[ProfileConfig]:
     (or is pre-declared), the gateway's own ``default`` profile resolves
     and takes over, same as any other config.
     """
-    vault_keys = sorted(VaultRegistry().names())
+    keys = sorted(VaultRegistry().names()) if vault_keys is None else sorted(vault_keys)
     try:
         profiles = resolve_full_gateway_profiles(
-            config, vault_keys, default_profile=DEFAULT_GATEWAY_PROFILE, include_pending=True
+            config, keys, default_profile=DEFAULT_GATEWAY_PROFILE, include_pending=True
         )
     except GatewaySettingsError as exc:
         print(f"palaia-hub: {exc}", file=sys.stderr)
@@ -457,16 +460,18 @@ def _maybe_oauth_server(config: HubConfig) -> AuthorizationServer | None:
         raise SystemExit(1)
     profiles = _gateway_profiles_for_oauth(config)
     if not profiles:
-        print(
-            "palaia-hub: oauth.enabled is true but this hub serves no MCP profiles "
-            "yet, so no resource can be named in a token. Fix: create a vault first "
-            "(the wizard, or `palaia-hub import ...`), or pre-declare one in "
-            "config.yaml's `gateway.profiles[].vaults` before it exists (e.g. "
-            "`gateway:\\n  profiles:\\n    - path: default\\n      vaults: [work]`) "
-            "so OAuth scopes are reserved for it from the very first boot.",
-            file=sys.stderr,
+        # Issue #561: this used to exit — and in a container that restarts
+        # into the same exit forever, taking the dashboard (the one place
+        # that could create the missing memory) down with it. The hub now
+        # starts without its sign-in server and says why.
+        message = (
+            "Sign-in is turned on, but this hub has no memory yet, so the sign-in "
+            "server has nothing to grant access to and did not start. Fix: create "
+            "your first memory, then restart the hub."
         )
-        raise SystemExit(1)
+        print(f"palaia-hub: {message}", file=sys.stderr)
+        report_problem(message)
+        return None
     server = AuthorizationServer.build(config, _profile_scopes(profiles))
     print(
         f"OAuth 2.1 authorization server enabled (issuer {server.issuer}); "

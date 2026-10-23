@@ -141,6 +141,7 @@ ENV PALAIA_HOME=/data \
     PALAIA_HOST=127.0.0.1 \
     PALAIA_PORT=8421 \
     PUBLIC_PORT=8420 \
+    CLOUD_PORT=8422 \
     PALAIA_MDNS_ENABLED=1 \
     PALAIA_CHANNEL=${PALAIA_CHANNEL}
 
@@ -152,7 +153,9 @@ ENV PALAIA_HOME=/data \
 # only makes the *option* discoverable for operators who already use it.
 LABEL com.centurylinklabs.watchtower.enable="true"
 
-EXPOSE 8420
+# 8420: the dashboard and everything else (the private door). 8422: the
+# cloud entry, AI-connection routes only (nginx.conf.template), for a tunnel.
+EXPOSE 8420 8422
 VOLUME ["/data"]
 
 USER palaia

@@ -81,11 +81,14 @@ from .mcpb import build_mcpb_router
 from .messenger.service import MessengerService
 from .messenger_api import build_messenger_router
 from .modes import ADMIN_PREFIX, AuthRateLimitMiddleware, ModeAuditLog, build_modes_router
+from .modes.cloud_entry import CloudEntryMiddleware
 from .notifications import NotificationStore, build_notifications_router
 from .oauth import AuthorizationServer, build_oauth_router, build_owner_router
 from .oauth.login import SESSION_COOKIE
 from .oauth.verifier import build_hub_auth
 from .security import SecurityHeadersMiddleware
+from .setup_api import build_setup_router
+from .startup import PROBLEMS as STARTUP_PROBLEMS
 from .stash.service import StashService
 from .stash_api import build_stash_router
 from .static import mount_dashboard
@@ -769,6 +772,11 @@ def create_app(
             AuthRateLimitMiddleware,
             admin_prefix=ADMIN_PREFIX if admin_session_enforced else None,
         )
+    # Issues #566/#567: requests through the cloud entry (the tunnel's door)
+    # reach only the AI-connection routes, and nothing at all until cloud
+    # access is on. Outside the limiter and the gate: a refused cloud request
+    # needs neither.
+    app.add_middleware(CloudEntryMiddleware, mode=config.mode)
     # SPEC-502 deliverable #2: the browser-hardening headers, outermost so
     # they are on every response — including the ones the two middlewares
     # above generate themselves, which are exactly the responses an attacker
@@ -907,6 +915,24 @@ def create_app(
     # exists yet.
     app.include_router(build_funnel_router(funnel_store))
 
+    # Issues #559/#561: where first-run setup stands, from the hub's real
+    # state, and the restart the browser can trigger to apply a change.
+    def _vault_keys() -> list[str]:
+        registry = vault_registry if vault_registry is not None else VaultRegistry(hub_home)
+        return sorted(registry.names())
+
+    app.include_router(
+        build_setup_router(
+            config,
+            home=hub_home,
+            vault_keys=_vault_keys,
+            oauth_server=oauth_server,
+            funnel_store=funnel_store,
+            event_bus=event_bus,
+            problems=STARTUP_PROBLEMS,
+        )
+    )
+
     # SPEC-604: always mounted, same posture as the two routers just above —
     # every hub has a home directory to archive from its first boot. Issue
     # #317: the route is told whether the admin session gate (added above)
@@ -937,6 +963,10 @@ def create_app(
     # SPEC-203: the OAuth surface goes at the app root (RFC 8414/9728 fix the
     # `.well-known` paths there) and before the dashboard mount, which claims
     # "/" last.
+    if oauth_server is None:
+        # Issue #561: the account can be created before the sign-in server
+        # runs, straight into the store it reads once it is switched on.
+        app.include_router(build_owner_router(None, home=hub_home))
     if oauth_server is not None:
         app.include_router(build_oauth_router(oauth_server))
         # Issue #342: the wizard's owner-account step. Creates the one owner

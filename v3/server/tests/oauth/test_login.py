@@ -21,6 +21,7 @@ from palaia_hub.oauth.pkce import challenge_for
 from .harness import (
     CIMD_CLIENT_ID,
     CIMD_REDIRECT_URI,
+    ISSUER,
     OWNER_PASSWORD,
     OWNER_USERNAME,
     Harness,
@@ -233,6 +234,52 @@ async def test_the_cookie_is_not_marked_secure_on_a_plain_http_issuer(
 
     assert response.status_code == 303
     assert "Secure" not in response.headers["set-cookie"]
+
+
+@pytest.mark.anyio
+async def test_cloud_mode_sign_in_on_the_private_dashboard_gets_a_cookie_it_can_keep(
+    harness: Harness,
+) -> None:
+    """Issue #561: in Cloud mode the issuer is the public https address, but
+    the owner signs in to the dashboard over the private network's plain
+    http. A ``Secure`` cookie set over http is dropped by the browser, which
+    made every dashboard sign-in loop back to the form. The flag now follows
+    the request: plain http here, https (directly or as the proxy's
+    ``X-Forwarded-Proto``) on the public side."""
+
+    async def sign_in(base_url: str, headers: dict[str, str]) -> httpx.Response:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=harness.app),
+            base_url=base_url,
+            headers=headers,
+            follow_redirects=False,
+        ) as http:
+            await http.get("/oauth/login")
+            return await http.post(
+                "/oauth/login",
+                data={
+                    "username": OWNER_USERNAME,
+                    "password": OWNER_PASSWORD,
+                    "csrf_token": http.cookies["palaia_oauth_csrf"],
+                    "next": "",
+                },
+            )
+
+    async with harness.app.router.lifespan_context(harness.app):
+        private = await sign_in("http://100.64.0.1:8420", {"x-forwarded-proto": "http"})
+        # Behind the cloud entry the request reaches the hub over http with
+        # `X-Forwarded-Proto: https`; the form's cookie is marked Secure.
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=harness.app), base_url="http://testserver"
+        ) as http:
+            public = await http.get("/oauth/login", headers={"x-forwarded-proto": "https"})
+
+    assert ISSUER.startswith("https://")
+    assert private.status_code == 303
+    assert "palaia_oauth_session=" in private.headers["set-cookie"]
+    assert "Secure" not in private.headers["set-cookie"]
+    assert "palaia_oauth_csrf=" in public.headers["set-cookie"]
+    assert "Secure" in public.headers["set-cookie"]
 
 
 @pytest.mark.anyio
