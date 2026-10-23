@@ -1,8 +1,6 @@
 /**
- * Nav + chrome icons — inline SVG, 24-unit grid, 1.5px stroke,
- * currentColor, round caps (system.md §1.5). Paths lifted from the
- * SPEC-005 mockups (v3/docs/design/mockups/home.html) for visual parity,
- * not redrawn.
+ * Nav and chrome icons: inline SVG on a 24-unit grid, stroked in
+ * currentColor with round caps (system.md §1.5). One weight everywhere.
  */
 import type { SVGProps } from "react";
 
@@ -184,6 +182,16 @@ export function InfoIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** Error: the info circle with an exclamation mark. */
+export function ErrorIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="8.2" />
+      <path d="M12 7.8v5.2M12 16.1h.01" />
+    </Icon>
+  );
+}
+
 export function WarningIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Icon {...props}>
@@ -236,5 +244,139 @@ export function BackupIcon(props: SVGProps<SVGSVGElement>) {
       <path d="M3.5 6.5h17v3h-17z" />
       <path d="M12 3v7.5M9.5 8 12 10.5 14.5 8" />
     </Icon>
+  );
+}
+
+export function ChevronRightIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M9.5 6.5 15 12l-5.5 5.5" />
+    </Icon>
+  );
+}
+
+export function ChevronLeftIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M14.5 6.5 9 12l5.5 5.5" />
+    </Icon>
+  );
+}
+
+export function MenuIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M4 6h16M4 12h16M4 18h16" />
+    </Icon>
+  );
+}
+
+export function CloseIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M6 6l12 12M6 18L18 6" />
+    </Icon>
+  );
+}
+
+
+
+
+export function KeyIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <circle cx="8" cy="15" r="3.5" />
+      <path d="M10.5 12.5 19 4M15.5 7.5l2.5 2.5M13.5 9.5l2 2" />
+    </Icon>
+  );
+}
+
+export function LockIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <rect x="5" y="10.5" width="14" height="9.5" rx="2" />
+      <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" />
+    </Icon>
+  );
+}
+
+export function DownloadIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5" />
+      <path d="M5 19.5h14" />
+    </Icon>
+  );
+}
+
+export function RestartIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M19 12a7 7 0 1 1-2.05-4.95" />
+      <path d="M19 4.5V8h-3.5" />
+    </Icon>
+  );
+}
+
+/** Appearance: a half-filled circle. */
+export function AppearanceIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 4v16a8 8 0 0 0 0-16z" fill="currentColor" stroke="none" />
+    </Icon>
+  );
+}
+
+/** Advanced settings: sliders. */
+export function SlidersIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M5 7h9M18 7h1M5 17h1M10 17h9" />
+      <circle cx="16" cy="7" r="2" />
+      <circle cx="8" cy="17" r="2" />
+    </Icon>
+  );
+}
+
+export function SignOutIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M14 4.5H6.5a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1H14" />
+      <path d="M10.5 12H20M16.5 8.5 20 12l-3.5 3.5" />
+    </Icon>
+  );
+}
+
+/**
+ * The palaia star: a hub with five connected points. Geometry taken
+ * verbatim from the website header (palaia-homepage
+ * `components/Header.tsx`, `HubMark`), coloured with the brand token.
+ */
+export function PalaiaMark({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      {...props}
+    >
+      <circle cx="12" cy="12" r="3" fill="var(--brand)" />
+      <g stroke="var(--brand)" strokeOpacity="0.5" strokeWidth="1.3">
+        <line x1="12" y1="12" x2="12" y2="3" />
+        <line x1="12" y1="12" x2="20" y2="8" />
+        <line x1="12" y1="12" x2="19" y2="18" />
+        <line x1="12" y1="12" x2="5" y2="18" />
+        <line x1="12" y1="12" x2="4" y2="8" />
+      </g>
+      <g fill="var(--brand)" fillOpacity="0.85">
+        <circle cx="12" cy="3" r="1.7" />
+        <circle cx="20" cy="8" r="1.7" />
+        <circle cx="19" cy="18" r="1.7" />
+        <circle cx="5" cy="18" r="1.7" />
+        <circle cx="4" cy="8" r="1.7" />
+      </g>
+    </svg>
   );
 }

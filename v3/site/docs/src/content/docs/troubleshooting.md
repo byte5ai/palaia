@@ -63,7 +63,7 @@ always works.
 
 Ask the AI tool directly — a well-connected one tells you in one short
 line what it saved, right after saving it. To check independently, open
-your memory in the dashboard's explorer: brand-new saves show up in its
+your memory in the dashboard under **Memories**: brand-new saves show up in its
 `inbox` folder first (listed at the top of the tree), before a quiet
 background step files them into a proper note — see [Your memory](/memory/) for what that step does. If
 something you expected to be saved isn't showing up anywhere, the tool
@@ -75,7 +75,7 @@ tool is worth revisiting.
 
 Check that both are actually pointed at the *same* memory — if you kept
 more than one (work and personal, say), it's easy to connect one tool to
-each by mistake. The dashboard's connected-clients list shows exactly
+each by mistake. The dashboard's **AI apps** page shows exactly
 which memory each connection reaches.
 
 ## Still stuck?

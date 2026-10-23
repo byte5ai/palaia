@@ -11,7 +11,7 @@ way they all already share your memory.
 
 ## Browsing and installing
 
-The marketplace screen in the dashboard lists what's available, each entry
+The dashboard's **Add-ons** page lists what's available, each entry
 showing what it does, who published it, and whether it's been checked over
 ("verified" — palaia's own review, not a guarantee about what the tool
 itself does once running). Installing one of these never happens silently:

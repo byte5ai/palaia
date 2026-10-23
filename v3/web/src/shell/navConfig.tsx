@@ -1,69 +1,41 @@
 import type { ComponentType, SVGProps } from "react";
 
 import {
-  AgentsIcon,
   AutomationsIcon,
-  BackupIcon,
   ClientsIcon,
-  ExplorerIcon,
   HomeIcon,
-  LinkIcon,
   MarketplaceIcon,
-  ReviewIcon,
   SettingsIcon,
-  TelegramIcon,
-  ToolsIcon,
+  VaultsIcon,
 } from "./icons";
 
 export interface NavItemConfig {
   path: string;
   label: string;
   icon: ComponentType<SVGProps<SVGSVGElement>>;
-  /** Nav item id this SPEC's SSE-backed badge attaches to (SPEC-109
-   * acceptance criterion: a vault change updates the explorer badge
-   * without reload). Feature screens (SPEC-110) will bring their own
-   * counts for inbox/review — this SPEC only wires the one it can back
-   * with a real event. */
+  /** Match the path exactly (Overview), not as a prefix. */
+  end?: boolean;
+  /** A live count from the event stream next to the item: memory notes
+   * written since the page was opened (SPEC-109: a change on disk updates
+   * the count without a reload). */
   liveBadge?: "vaultChanges";
 }
 
-export interface NavGroupConfig {
-  label: string;
-  items: NavItemConfig[];
-}
-
-export const NAV_GROUPS: NavGroupConfig[] = [
-  {
-    label: "Overview",
-    items: [{ path: "/", label: "Home", icon: HomeIcon }],
-  },
-  {
-    label: "Memory",
-    items: [
-      // Issue 375: only destinations that exist. Captures waiting in the
-      // inbox are shown in the explorer's tree; vaults are picked there and
-      // counted on Home; health lives in the top bar's live status.
-      { path: "/explorer", label: "Explorer", icon: ExplorerIcon, liveBadge: "vaultChanges" },
-      { path: "/review-queue", label: "Review queue", icon: ReviewIcon },
-    ],
-  },
-  {
-    label: "Connections",
-    items: [
-      { path: "/clients", label: "Clients", icon: ClientsIcon },
-      { path: "/tools", label: "Tools & skills", icon: ToolsIcon },
-      { path: "/marketplace", label: "Marketplace", icon: MarketplaceIcon },
-      { path: "/agents", label: "Agents", icon: AgentsIcon },
-      { path: "/telegram", label: "Telegram", icon: TelegramIcon },
-    ],
-  },
-  {
-    label: "System",
-    items: [
-      { path: "/automations", label: "Automations", icon: AutomationsIcon },
-      { path: "/exposure", label: "Access mode", icon: LinkIcon },
-      { path: "/backups", label: "Backups", icon: BackupIcon },
-      { path: "/settings", label: "Settings", icon: SettingsIcon },
-    ],
-  },
+/**
+ * Five places, organised around what people do: see whether palaia is
+ * fine, find what it remembered, connect AI apps, add tools, automate.
+ * Everything about the server itself is under Settings, at the bottom.
+ */
+export const NAV_ITEMS: NavItemConfig[] = [
+  { path: "/", label: "Overview", icon: HomeIcon, end: true },
+  { path: "/memories", label: "Memories", icon: VaultsIcon, liveBadge: "vaultChanges" },
+  { path: "/apps", label: "AI apps", icon: ClientsIcon },
+  { path: "/add-ons", label: "Add-ons", icon: MarketplaceIcon },
+  { path: "/automations", label: "Automations", icon: AutomationsIcon },
 ];
+
+export const SETTINGS_ITEM: NavItemConfig = {
+  path: "/settings",
+  label: "Settings",
+  icon: SettingsIcon,
+};

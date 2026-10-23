@@ -304,7 +304,7 @@ Every vault is already a git repository. The owner can have the hub push it
 to a repository they own, for example a private GitHub repository: a copy
 of the notes, with their history, off this machine.
 
-- **Set up on the dashboard, not in `config.yaml`**: Backups screen, "memories
+- **Set up on the dashboard, not in `config.yaml`**: Settings › Backups, "memories
   in git", per vault: the repository's HTTPS address, a branch (default
   `main`), an optional user name and an access token. The token goes into
   the encrypted secret store as `vault-remote.<vault>` and is never shown
@@ -327,7 +327,7 @@ of the notes, with their history, off this machine.
   only this vault writes.
 - **The vault repository is not reconfigured.** No `git remote` is added, so
   nothing changes for someone who also opens the vault in Obsidian.
-- **When:** "Push now" on the Backups screen, and on every scheduled pass
+- **When:** "Push now" on Settings › Backups, and on every scheduled pass
   (§5.5) after the folder targets. Scheduling needs at least one folder
   target, because `interval_hours` without `targets` is refused at load.
 - **Surfaces:** `GET /api/backup/vault-remotes`,

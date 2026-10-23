@@ -12,7 +12,7 @@ real files.
 There are two ways to work with your memory by hand, and palaia is built for
 both:
 
-- **The default path — the dashboard.** The explorer in palaia's web UI
+- **The default path — the dashboard.** **Memories** in palaia's dashboard
   (`http://palaia.local`) reads and shows your notes in the browser, wherever
   the hub runs. Nothing to install. This is covered on [Your memory](/memory/).
 - **The power path — Obsidian + git.** Open your memory as an Obsidian library

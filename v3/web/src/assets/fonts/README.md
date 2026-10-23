@@ -1,19 +1,21 @@
 # Self-hosted fonts
 
-Geist, Geist Mono and Source Serif 4 — variable-weight WOFF2 files, latin +
-latin-ext subsets, normal and italic. Extracted from the `@fontsource-variable`
-npm packages (which repackage the upstream OFL font sources) and committed here
-so the dashboard build never requests `fonts.googleapis.com` or any other font
-CDN, per `v3/docs/design/lume/README.md` decision 3 and this SPEC's fonts note.
+The dashboard ships its two fonts as WOFF2 files so it never requests
+`fonts.googleapis.com` or any other font CDN.
 
-- **Geist** / **Geist Mono** — SIL Open Font License 1.1, © The Geist Project
-  Authors (`LICENSE-geist.txt`, `LICENSE-geist-mono.txt`).
-- **Source Serif 4** — SIL Open Font License 1.1, © Google Inc. / Source Serif
-  4 Project Authors (`LICENSE-source-serif-4.txt`).
+- **Nunito Sans** — the only UI and body font. Variable weight (200–1000),
+  latin + latin-ext subsets, normal and italic. SIL Open Font License 1.1,
+  © The Nunito Sans Project Authors (`LICENSE-nunito-sans.txt`).
+- **Days One** — the wordmark only. One weight, latin subset. SIL Open Font
+  License 1.1, © Jovanny Lemonad, Reserved Font Name "Days One"
+  (`LICENSE-days-one.txt`).
 
-Loaded by `../styles/fonts.css` via `@font-face`, matching the weight ranges
-and unicode-range subsets from the upstream packages. To refresh a font,
-reinstall the matching `@fontsource-variable/<name>` package temporarily,
-re-copy the files under `files/` for the `wght` axis (latin + latin-ext,
-normal + italic), then remove the npm dependency again — the files, not the
-package, are what ships.
+The files are byte-identical to the ones the palaia website self-hosts
+(`public/fonts/` in the palaia-homepage repository) and the docs site carries
+under `v3/site/docs/src/fonts/`, so all three surfaces render the same faces.
+The licence texts are the upstream `OFL.txt` files from the google/fonts
+repository. Code uses the system monospace stack; no mono font is bundled.
+
+Loaded by `../styles/fonts.css`. To refresh a font, copy the matching file from
+the website repository and keep the `unicode-range` in `fonts.css` in step with
+the website's `app/globals.css`.

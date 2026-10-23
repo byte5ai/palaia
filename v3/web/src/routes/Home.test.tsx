@@ -172,7 +172,7 @@ describe("Home — honest about loading and failure (issue 378)", () => {
     mount();
 
     const link = await screen.findByRole("link", { name: /see in explorer/i });
-    expect(link).toHaveAttribute("href", "/explorer");
+    expect(link).toHaveAttribute("href", "/memories");
   });
 });
 

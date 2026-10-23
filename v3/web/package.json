@@ -9,8 +9,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "eslint . && node scripts/lint-tokens.mjs",
+    "lint": "eslint . && node scripts/lint-tokens.mjs && node ../design/gen-tokens.mjs --check",
     "typecheck": "tsc -b",
+    "gen:tokens": "node ../design/gen-tokens.mjs",
     "test": "vitest run",
     "test:a11y": "vitest run src/a11y.test.tsx",
     "preview": "vite preview",

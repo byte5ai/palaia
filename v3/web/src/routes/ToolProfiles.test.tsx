@@ -274,7 +274,7 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     vi.spyOn(api, "listGatewayUpstreams").mockResolvedValue([]);
 
     mount();
-    expect(await screen.findByText("telegram", { selector: ".badge" })).toBeInTheDocument();
+    expect(await screen.findByText("telegram", { selector: ".pill" })).toBeInTheDocument();
   });
 
   it("assigns an already-connected tool to an existing profile through its checkbox", async () => {
@@ -377,7 +377,7 @@ describe("ToolProfiles screen copy — no jargon in the surface (system.md §3 r
       ...screen.queryAllByRole("button"),
       ...screen.queryAllByRole("option"),
       ...Array.from(
-        document.querySelectorAll(".badge, .card__title, .card__subject, .field__label"),
+        document.querySelectorAll(".pill, .badge, .card__title, .card__subject, .field__label"),
       ),
     ];
 

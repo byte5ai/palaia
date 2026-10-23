@@ -9,12 +9,12 @@ or shut any of it down at any point. This page covers both halves.
 
 ## Who's active right now
 
-The dashboard's "Agents" screen lists every AI session currently connected
+The dashboard's **AI apps › Live sessions** tab lists every AI session currently connected
 — which tool, which memory it's working in, and how long since it last did
 anything. A session that's gone quiet for a while is marked as gone stale
 rather than left looking active forever.
 
-<!-- screenshot: the Agents screen, live directory on the left, message
+<!-- screenshot: AI apps › Live sessions, live directory on the left, message
      flows on the right -->
 
 ## Letting sessions hand work to each other
@@ -27,7 +27,7 @@ itself; instead the message points at where the detail already lives in
 your memory, so the receiving session reads the full thing from the one
 place it's kept rather than from a copy that can drift out of date.
 
-You see this traffic in the same Agents screen, one thread per
+You see this traffic on the same Live sessions tab, one thread per
 conversation between two sessions, headline first and the full text
 available on request — this is an administrator-only view; the sessions
 themselves don't see each other's full history, only what was actually

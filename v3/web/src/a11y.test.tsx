@@ -89,17 +89,18 @@ describe("feature screens accessibility (issue 383)", () => {
   });
 
   it.each([
-    "/explorer",
-    "/clients",
+    "/memories",
+    "/memories/review",
+    "/apps",
+    "/apps/sessions",
+    "/add-ons",
     "/automations",
-    "/marketplace",
-    "/agents",
-    "/telegram",
-    "/tools",
-    "/exposure",
     "/settings",
-    "/review-queue",
-    "/backups",
+    "/settings/access",
+    "/settings/backups",
+    "/settings/telegram",
+    "/settings/advanced",
+    "/settings/about",
     "/onboarding",
     "/no-such-page",
   ])("has no critical or serious axe-core violations at %s", async (path) => {

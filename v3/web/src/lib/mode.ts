@@ -1,9 +1,9 @@
 /**
  * The hub's *running* access mode, shared across the shell (issue 343).
  *
- * The sidebar's footer used to be hard-coded to "Your network only" — an
- * operator who switched the hub to Open on the Access page kept reading
- * that on every screen. One tiny module-level store rather than a context
+ * The sidebar's footer used to be hard-coded to one mode — an operator who
+ * switched the hub to Public on the Access page kept reading the old name
+ * on every screen. One tiny module-level store rather than a context
  * provider: `GET /api/info` is asked once per shell mount, and the Access
  * page calls `notifyModeChanged` with what the hub reports after a change,
  * so every subscriber re-renders without a second round trip.
@@ -16,11 +16,19 @@ export type HubMode = "locked" | "cloud" | "open";
 
 const MODES: readonly HubMode[] = ["locked", "cloud", "open"];
 
-/** The footer's wording per mode — the same words the Access page uses. */
+/** The name of each mode, everywhere in the dashboard (the config values
+ * stay locked/cloud/open). */
 export const MODE_LABEL: Record<HubMode, string> = {
-  locked: "Your network only",
+  locked: "Private",
   cloud: "Cloud",
-  open: "Open",
+  open: "Public",
+};
+
+/** What each mode means for the person choosing it, in one line. */
+export const MODE_OUTCOME: Record<HubMode, string> = {
+  locked: "Only devices on your network or VPN. claude.ai and ChatGPT can't connect.",
+  cloud: "AI apps can connect from the internet. The dashboard stays private.",
+  open: "The dashboard is on the internet too. Requires sign-in and the security checklist.",
 };
 
 export function isHubMode(value: unknown): value is HubMode {

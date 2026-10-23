@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
-/** The default loading treatment everywhere — never a full-screen spinner
- * (system.md §2, Status; §0 "nothing blinks"). */
+/** A grey placeholder line while something loads. Prefer `LoadingState`,
+ * which waits 300 ms before showing any. */
 export function Skeleton({
   width = "100%",
   height = 14,
@@ -13,15 +13,15 @@ export function Skeleton({
 }) {
   return (
     <span
-      className={["lume-skeleton", className ?? ""].filter(Boolean).join(" ")}
-      style={{ display: "block", width, height }}
+      className={["skeleton", className ?? ""].filter(Boolean).join(" ")}
+      style={{ width, height }}
       aria-hidden="true"
     />
   );
 }
 
-/** Three-dot inline indicator with a sentence saying what is being waited
- * for — Lume's one sanctioned non-skeleton loading affordance. */
+/** Three dots and a sentence saying what is being waited for — for a wait
+ * on something outside the dashboard (an AI app's first request). */
 export function Waiting({ children }: { children: ReactNode }) {
   return (
     <span className="waiting" role="status">

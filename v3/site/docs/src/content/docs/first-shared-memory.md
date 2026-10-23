@@ -71,8 +71,8 @@ read from and wrote to it directly, over their own connection, at whatever
 moment each one needed to. Add a third tool tomorrow and it starts already
 knowing everything the first two taught it.
 
-<!-- screenshot: the memory explorer showing the Fieldnotes note, with both
-     tools' recent activity visible in the connected-clients list -->
+<!-- screenshot: Memories showing the Fieldnotes note, with both
+     apps' recent activity visible on the AI apps page -->
 
 From here:
 

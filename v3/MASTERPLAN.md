@@ -106,9 +106,10 @@ answers "is everything healthy, and what happened?" at a glance; task-oriented
 navigation instead of entity lists; progressive disclosure (advanced settings exist,
 but never in the way); live state everywhere (event-stream-driven UI, no reload
 buttons); and no config-file editing as a required path, ever. Beautiful, calm,
-legible. **The visual language is Lume** — the owner's light-as-material design
-system (`v3/docs/design/lume/`), with `atelier` as palaia's default accent and
-the Signal single-loud-element rule as binding doctrine. Prior art studied:
+legible. **The visual language is "Simplicity is king"** (owner decision,
+2026-10-23, replacing Lume): one font family, one brand colour, one primary
+action per view, status as word plus colour, the same tokens for dashboard,
+docs and website (`v3/docs/design/system.md`, `v3/design/tokens.json`). Prior art studied:
 samanhappy/MCPHub (group endpoints, per-group visibility, semantic tool routing)
 and ravitemer/mcp-hub (REST management API + unified endpoint, SSE live events,
 registry-backed marketplace — and no dashboard, which is exactly palaia's

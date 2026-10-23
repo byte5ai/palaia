@@ -204,7 +204,7 @@ describe("Exposure wizard copy — no jargon in the surface (system.md §3 rule 
       ...screen.queryAllByRole("radio"),
       ...Array.from(
         document.querySelectorAll(
-          ".badge, .card__title, .card__subject, .field__label",
+          ".pill, .badge, .card__title, .card__subject, .field__label",
         ),
       ),
     ];

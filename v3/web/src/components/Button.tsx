@@ -1,72 +1,69 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { Link, type LinkProps } from "react-router-dom";
 
-export type ButtonVariant = "secondary" | "primary" | "signal" | "ghost" | "quiet" | "risk";
-export type ButtonSize = "sm" | "md" | "lg";
+import { buttonClass, type ButtonSize, type ButtonVariant } from "./buttonClass";
+
+export type { ButtonSize, ButtonVariant } from "./buttonClass";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  /** "secondary" (the raised-surface default) unless the action really is
-   * the next step. `primary` is capped at one per screen and `signal` at
-   * one across the whole visible view (system.md §2, Actions). */
   variant?: ButtonVariant;
   size?: ButtonSize;
-  /** Full width — only where the container is genuinely one column wide
-   * *and* the action is not the primary (system.md: a full-width accent
-   * slab is the loudest object on any screen). */
+  /** Full width — for a one-column container, or the actions of a bottom sheet. */
   block?: boolean;
-  /** A keyboard shortcut cap rendered inside the button, e.g. "⌘K". */
+  /** Shows a spinner and disables the button. Pass the verb as children
+   * ("Saving…"), so the button says what it is doing. */
+  loading?: boolean;
+  /** A keyboard shortcut cap rendered inside the button, e.g. "Enter". */
   shortcut?: ReactNode;
   children?: ReactNode;
 }
-
-const VARIANT_CLASS: Record<ButtonVariant, string> = {
-  secondary: "",
-  primary: "btn--primary",
-  signal: "btn--signal",
-  ghost: "btn--ghost",
-  quiet: "btn--quiet",
-  risk: "btn--risk",
-};
-
-const SIZE_CLASS: Record<ButtonSize, string> = {
-  sm: "btn--sm",
-  md: "",
-  lg: "btn--lg",
-};
 
 export function Button({
   variant = "secondary",
   size = "md",
   block = false,
+  loading = false,
   shortcut,
   className,
   children,
   disabled,
   ...rest
 }: ButtonProps) {
-  const classes = [
-    "btn",
-    VARIANT_CLASS[variant],
-    SIZE_CLASS[size],
-    block ? "btn--block" : "",
-    className ?? "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
+  const isDisabled = disabled || loading;
   return (
     <button
       type="button"
-      className={classes}
-      aria-disabled={disabled ? "true" : undefined}
-      disabled={disabled}
+      className={buttonClass({ variant, size, block, className })}
+      aria-disabled={isDisabled ? "true" : undefined}
+      aria-busy={loading ? "true" : undefined}
+      disabled={isDisabled}
       {...rest}
     >
+      {loading ? <span className="btn__spinner" aria-hidden="true" /> : null}
       {children}
       {shortcut ? <span className="kbd">{shortcut}</span> : null}
     </button>
   );
 }
 
+/** A router link that looks like a button: navigation, styled as an action. */
+export function LinkButton({
+  variant = "secondary",
+  size = "md",
+  block = false,
+  className,
+  children,
+  ...rest
+}: LinkProps & { variant?: ButtonVariant; size?: ButtonSize; block?: boolean }) {
+  return (
+    <Link className={buttonClass({ variant, size, block, className })} {...rest}>
+      {children}
+    </Link>
+  );
+}
+
+/** A 36 px round icon button. `title` is required: it is the accessible
+ * name and the tooltip. */
 export function IconButton({
   className,
   children,

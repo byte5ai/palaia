@@ -1,3 +1,12 @@
+> **Retired on 2026-10-23.** Lume is no longer palaia's design system. The
+> owner replaced it with the "Simplicity is king" system described in
+> [`../system.md`](../system.md), whose tokens live in
+> [`v3/design/tokens.json`](../../../design/tokens.json). Nothing in this folder
+> is a reference for the dashboard, the docs site or the website any more; it
+> is kept as the history of versions 2–2.3 of the design. The decisions below
+> (atelier accent, `data-mode`, Geist and Source Serif 4, the Signal rule) no
+> longer apply.
+
 # Lume — palaia v3's design system
 
 **Provenance:** Lume is the owner's design system, authored in Claude Design

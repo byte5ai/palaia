@@ -10,8 +10,8 @@ once it's in.
 
 ## Where your hub can be reached from
 
-Set during the first-run setup, and changeable later from the dashboard's
-access page:
+Set during the first-run setup, and changeable later in the dashboard under
+**Settings › Access & sign-in**:
 
 - **Just this device or network.** Nothing outside your own network can
   reach it, full stop. This is the safe default, and the right choice if

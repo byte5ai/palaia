@@ -60,7 +60,8 @@ jobs:
         with:
           # Generous on purpose: over-running a fast lane is cheap, skipping a
           # lane that was actually affected is not. `clients/**` feeds both the
-          # dashboard and the docs-site generated "Connect your AI" pages.
+          # dashboard and the docs-site generated "Connect your AI" pages;
+          # `design/**` (tokens.json and its generator) feeds both stylesheets.
           filters: |
             v3:
               - 'v3/**'
@@ -68,10 +69,13 @@ jobs:
             web:
               - 'v3/web/**'
               - 'v3/clients/**'
+              - 'v3/design/**'
+              - 'v3/site/docs/src/styles/palaia-tokens.css'
               - '.github/workflows/v3-*.yml'
             docs_site:
               - 'v3/site/**'
               - 'v3/clients/**'
+              - 'v3/design/**'
               - '.github/workflows/v3-*.yml'
             mcpb:
               - 'v3/tools/build-mcpb/**'

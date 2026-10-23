@@ -43,7 +43,7 @@ ships in `3.0.0-rc4` unless it says it is planned; the full list is in
 - **A status check on every connection** (`memory_status`): an agent can see which
   memories it may read and write, and how search works, instead of guessing that
   its memory is unavailable.
-- **Know whether your tools actually use it.** The Clients page shows, per tool,
+- **Know whether your tools actually use it.** The AI apps page shows, per tool,
   how often it looked something up and saved something over the last seven days,
   and flags a tool that saves without looking anything up first. Only counts are
   kept.
@@ -101,7 +101,7 @@ ships in `3.0.0-rc4` unless it says it is planned; the full list is in
   explorer, review queue) cover the everyday checks without a browser tab.
 - **One-click backup** of the entire hub home, and a documented offline restore
   ([backup & restore](backup-restore.md)). Backups can also run **on a schedule**
-  into folders you name, shown on the Backups screen, and a memory can be
+  into folders you name, shown under Settings › Backups, and a memory can be
   **pushed to a git repository** you own (notes only, never keys).
 - **A health check for the whole hub.** `palaia-hub doctor` checks memories,
   search, connected tools, configuration and storage, says what to do about each

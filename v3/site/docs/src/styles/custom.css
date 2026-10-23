@@ -4,21 +4,20 @@
    The docs are served on the same domain as the marketing site
    (palaia.byte5.ai/docs — see the palaia-homepage repo's DOCS-HOSTING.md),
    so they use the same two brand fonts and the same cyan accent, and a dark
-   palette in the same near-black-navy key. Earlier this file only *named*
-   Geist and fell back to system-ui, which read as a different site entirely.
+   palette in the same near-black-navy key. The colours themselves come from
+   palaia-tokens.css (generated, see below), shared with the dashboard.
 
    The font files are the exact woff2 subsets the homepage self-hosts
    (app/globals.css there), copied into this project's own src/fonts/ so Vite
    bundles, fingerprints and base-prefixes them — a hand-written /fonts/ URL
-   would not resolve under the /docs base. Days One is the display face for
-   headings; Nunito Sans is the body face. Both carry the same unicode-range
+   would not resolve under the /docs base. Days One is the wordmark face (the
+   site title only); Nunito Sans is everything else. Both carry the same unicode-range
    subsetting the homepage uses, so the longer German/French/Cyrillic strings
    still render from the right file.
 
-   The Starlight token overrides below are deliberately UNLAYERED (a plain
-   :root, not @layer starlight.base) so they win over Starlight's own defaults
-   without depending on layer ordering — the accent in particular did not take
-   before because a layered override lost to Starlight's own unlayered base.
+   The Starlight token overrides in palaia-tokens.css are deliberately
+   UNLAYERED (a plain :root, not @layer starlight.base) so they win over
+   Starlight's own defaults without depending on layer ordering.
    ============================================================= */
 
 /* Days One - cyrillic */
@@ -142,49 +141,11 @@
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-/* ---- Fonts + colour tokens ------------------------------------------- */
-/* Bare :root is Starlight's dark scope. Dark is the palaia.ai key: a
-   near-black navy background (homepage --gray-950 #060A12) with a cyan accent
-   (homepage --cyan #009FE3). */
-:root {
-  --sl-font: 'Nunito Sans', 'Avenir Next', Avenir, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --sl-font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, 'Liberation Mono', monospace;
-
-  /* Exact homepage tokens: white text (--white), gray-100 secondary,
-     gray-900 surfaces, gray-950 page background. The mid greys are derived in
-     the same navy hue so the scale reads as one system. */
-  --sl-color-white: #ffffff;
-  --sl-color-gray-1: #eef1f5;
-  --sl-color-gray-2: #e8ecf1;
-  --sl-color-gray-3: #9aa3b1;
-  --sl-color-gray-4: #5a6474;
-  --sl-color-gray-5: #1b2431;
-  --sl-color-gray-6: #0a0f1a;
-  --sl-color-black: #060a12;
-
-  /* Exact homepage cyan: --cyan #009FE3 (accents/buttons) and
-     --cyan-light #00BDF2 (links, hover). */
-  --sl-color-accent-low: #0a2434;
-  --sl-color-accent: #009fe3;
-  --sl-color-accent-high: #00bdf2;
-}
-
-:root[data-theme='light'] {
-  --sl-color-white: #0a0f1a;
-  --sl-color-gray-1: #1f2733;
-  --sl-color-gray-2: #45505f;
-  --sl-color-gray-3: #6b7482;
-  --sl-color-gray-4: #c2c7cd;
-  --sl-color-gray-5: #dde1e6;
-  --sl-color-gray-6: #eef1f4;
-  --sl-color-gray-7: #f7f8fa;
-  --sl-color-black: #ffffff;
-
-  /* cyan accent, darkened where it must clear AA on white */
-  --sl-color-accent-low: #d5eefb;
-  --sl-color-accent: #009fe3;
-  --sl-color-accent-high: #04618f;
-}
+/* ---- Colour and font tokens ------------------------------------------ */
+/* Starlight's colour and font variables live in palaia-tokens.css, generated
+   from v3/design/tokens.json by v3/design/gen-tokens.mjs — the same source as
+   the dashboard's tokens.css, so the two surfaces cannot drift apart. Edit
+   tokens.json, never the generated file. */
 
 /* ---- Brand display face: logo only ----------------------------------- */
 /* Days One is the wordmark face. The homepage reserves it for the "palaia"
@@ -193,7 +154,7 @@
    (Nunito Sans), just heavier, so a page full of headings never reads as
    blocks of display type. */
 .site-title {
-  font-family: 'Days One', var(--sl-font);
+  font-family: var(--palaia-font-display);
   font-weight: 400;
   letter-spacing: 0.01em;
 }

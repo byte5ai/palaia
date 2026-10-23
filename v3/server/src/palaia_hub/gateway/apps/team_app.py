@@ -148,7 +148,7 @@ _SCRIPT_JS = r"""
 
   function manageHref() {
     if (!state.dashboardUrl) return null;
-    return state.dashboardUrl.replace(/\/+$/, "") + "/agents";
+    return state.dashboardUrl.replace(/\/+$/, "") + "/apps/sessions";
   }
 
   function statusBadgeClass(status) {

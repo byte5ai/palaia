@@ -1,45 +1,50 @@
 import type { Story } from "@ladle/react";
+import { MemoryRouter } from "react-router-dom";
 
+import { BackupIcon, LockIcon } from "../shell/icons";
 import { Button } from "./Button";
-import { Card, CardBody, CardFoot, CardHead, CardSubject } from "./Card";
+import { Card, CardBody, CardFoot, CardHeader } from "./Card";
+import { ListRow } from "./ListRow";
+import { StatusPill } from "./StatusPill";
 
 export default {
   title: "Surfaces / Card",
 };
 
-export const ContainerLabel: Story = () => (
-  <Card style={{ maxWidth: 420 }}>
-    <CardHead title="activity" meta="14 d" />
+export const StatusFirst: Story = () => (
+  <Card style={{ maxWidth: 560 }}>
+    <CardHeader
+      title="Backup"
+      description="Download a copy of your memories and settings."
+      actions={<StatusPill tone="ok">Backed up</StatusPill>}
+    />
     <CardBody>
-      <p className="t-sm t-muted">A container's own head is a quiet, lowercase label.</p>
+      <p className="t-sm t-muted">
+        Includes private data and access keys. Anyone with the file can use them, so store it
+        like a password.
+      </p>
     </CardBody>
     <CardFoot>
-      <Button size="sm">Reindex now</Button>
+      <Button variant="primary">Download backup</Button>
     </CardFoot>
   </Card>
 );
 
-export const SubjectHeading: Story = () => (
-  <Card style={{ maxWidth: 420 }}>
-    <CardHead meta="3f2a">
-      <CardSubject>Claude Code CLI</CardSubject>
-    </CardHead>
-    <CardBody>
-      <p className="t-sm t-muted">
-        A head that names a subject gets a real heading — 15px/600, ink, sans.
-      </p>
-    </CardBody>
-  </Card>
-);
-
-export const Elevation: Story = () => (
-  <div className="row row--wrap" style={{ alignItems: "flex-start" }}>
-    <Card variant="flat" style={{ width: 200, padding: 16 }}>
-      flat
+export const GroupedRows: Story = () => (
+  <MemoryRouter>
+    <Card style={{ maxWidth: 560 }}>
+      <ListRow
+        to="/settings/access"
+        icon={<LockIcon className="icon" />}
+        title="Access & sign-in"
+        description="Private · Dashboard sign-in off"
+      />
+      <ListRow
+        to="/settings/backups"
+        icon={<BackupIcon className="icon" />}
+        title="Backups"
+        description="Last backup 2 days ago"
+      />
     </Card>
-    <Card style={{ width: 200, padding: 16 }}>default (raised shadow)</Card>
-    <Card variant="raised" style={{ width: 200, padding: 16 }}>
-      raised (popover shadow)
-    </Card>
-  </div>
+  </MemoryRouter>
 );

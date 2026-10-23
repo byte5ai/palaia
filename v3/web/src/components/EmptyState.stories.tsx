@@ -1,58 +1,45 @@
 import type { Story } from "@ladle/react";
 
+import { VaultsIcon } from "../shell/icons";
 import { Button } from "./Button";
-import { DoneState, EmptyState } from "./EmptyState";
-
-function InboxGlyph() {
-  return (
-    <svg className="icon--lg" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4 13.5h4l1.2 2.5h5.6l1.2-2.5h4" />
-      <path d="M4 13.5 6.7 5h10.6L20 13.5V20H4z" />
-    </svg>
-  );
-}
-
-function DoneGlyph() {
-  return (
-    <svg className="donemark" viewBox="0 0 48 48" aria-hidden="true">
-      <circle cx="24" cy="24" r="20" />
-      <path d="M15.5 24.6 21.5 31.2 33.2 17.4" />
-    </svg>
-  );
-}
+import { Card, CardHeader } from "./Card";
+import { EmptyState, ErrorState, InlineEmpty, LoadingState } from "./EmptyState";
 
 export default {
-  title: "Empty & first-run / EmptyState",
+  title: "Feedback / Empty, loading, error",
 };
 
-export const FirstRun: Story = () => (
+export const EmptyPage: Story = () => (
   <EmptyState
-    mark={<InboxGlyph />}
-    title="Nothing captured yet."
-    actions={<Button variant="primary">Connect a client</Button>}
+    mark={<VaultsIcon className="icon icon--xl" />}
+    title="No memories yet"
+    actions={<Button variant="primary">Create memory</Button>}
   >
-    Connect a client and ask it to remember something — captures land here first.
+    Create one to start saving notes.
   </EmptyState>
 );
 
-export const Done: Story = () => (
-  <DoneState
-    mark={<DoneGlyph />}
-    title="The queue is clear."
-    recapLabel="since monday"
-    recap={
-      <ul className="factline">
-        <li>
-          <span className="fact-dot" />
-          <span className="t-mono">128</span> added without asking
-        </li>
-        <li>
-          <span className="fact-dot" />
-          <span className="t-mono">9</span> approved, <span className="t-mono">2</span> rejected
-        </li>
-      </ul>
-    }
-  >
-    A clear queue is the normal state, not a lucky day.
-  </DoneState>
+export const EmptySection: Story = () => (
+  <Card style={{ maxWidth: 560 }}>
+    <CardHeader title="Activity" />
+    <InlineEmpty>No activity yet. New and changed notes appear here.</InlineEmpty>
+  </Card>
+);
+
+export const Loading: Story = () => (
+  <div style={{ maxWidth: 560 }}>
+    <LoadingState label="Loading your memories…" />
+  </div>
+);
+
+export const CouldNotLoad: Story = () => (
+  <div style={{ maxWidth: 560 }}>
+    <ErrorState
+      title="Couldn't load your memories"
+      details="GET /api/vaults responded 500"
+      onRetry={() => {}}
+    >
+      palaia answered with an error.
+    </ErrorState>
+  </div>
 );

@@ -748,7 +748,7 @@ describe("Telegram screen copy — no jargon in the surface (system.md §3 rule 
       ...screen.queryAllByRole("button"),
       ...Array.from(
         document.querySelectorAll(
-          ".badge, .card__title, .field__label, .segmented__item, .switchrow",
+          ".pill, .badge, .card__title, .field__label, .segmented__item, .switchrow",
         ),
       ),
     ];

@@ -7,22 +7,26 @@
  * sign-in page when they use it.
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api, ApiError } from "../lib/api/client";
-import { initialsFor, useSession } from "../lib/session";
-import { Topbar } from "./Topbar";
+import type { InfoResponse } from "../lib/api/client";
+import { useSession } from "../lib/session";
+import { Sidebar } from "./Sidebar";
 
 function Shell() {
   const { session, signOut } = useSession();
   return (
-    <Topbar
-      title="Memory"
-      health="ok"
-      userInitials={initialsFor(session?.username ?? null)}
-      signedInAs={session?.signed_in ? session.username : null}
-      onSignOut={signOut}
-    />
+    <MemoryRouter>
+      <Sidebar
+        mode="locked"
+        health={{ tone: "ok", label: "Running" }}
+        vaultChangeCount={0}
+        signedInAs={session?.signed_in ? session.username : null}
+        onSignOut={signOut}
+      />
+    </MemoryRouter>
   );
 }
 
@@ -31,13 +35,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("initials", () => {
-  it("reads a name, and falls back rather than rendering an empty circle", () => {
-    expect(initialsFor("Ada Lovelace")).toBe("AL");
-    expect(initialsFor("ada.lovelace")).toBe("AL");
-    expect(initialsFor("owner")).toBe("OW");
-    expect(initialsFor(null)).toBe("PA");
-  });
+beforeEach(() => {
+  vi.spyOn(api, "info").mockResolvedValue({} as unknown as InfoResponse);
 });
 
 describe("the sign-out control", () => {

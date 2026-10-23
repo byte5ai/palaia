@@ -280,7 +280,7 @@ describe("Marketplace screen (SPEC-304)", () => {
 
     expect(
       await screen.findByRole("link", { name: /go to clients/i }),
-    ).toHaveAttribute("href", "/clients");
+    ).toHaveAttribute("href", "/apps");
     expect(
       screen.queryByRole("button", { name: /install and connect/i }),
     ).not.toBeInTheDocument();
@@ -396,7 +396,7 @@ describe("Marketplace screen copy — no jargon in the surface (system.md §3 ru
       ...screen.queryAllByRole("option"),
       ...Array.from(
         document.querySelectorAll(
-          ".badge, .card__title, .card__subject, .field__label",
+          ".pill, .badge, .card__title, .card__subject, .field__label",
         ),
       ),
     ];

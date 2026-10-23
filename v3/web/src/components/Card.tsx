@@ -8,6 +8,8 @@ const VARIANT_CLASS: Record<CardVariant, string> = {
   raised: "card--raised",
 };
 
+/** A white surface on the canvas: 14 px corners, a hairline border. Cards
+ * group one subject; settings use one card per group of rows. */
 export function Card({
   variant = "default",
   className,
@@ -24,8 +26,37 @@ export function Card({
   );
 }
 
-/** The container's own label — quiet, lowercase, secondary — never a
- * heading (system.md §1.2a). Its right slot is a mono meta string. */
+/**
+ * A card's title row: the title (title-2), an optional one-line
+ * description under it, and actions or a status on the right.
+ */
+export function CardHeader({
+  title,
+  description,
+  actions,
+  titleId,
+}: {
+  title: ReactNode;
+  description?: ReactNode;
+  actions?: ReactNode;
+  /** An id for the title, so a section can be labelled by it. */
+  titleId?: string;
+}) {
+  return (
+    <div className="card__head">
+      <div className="grow">
+        <h2 className="card__title" id={titleId}>
+          {title}
+        </h2>
+        {description ? <p className="card__desc">{description}</p> : null}
+      </div>
+      {actions ? <div className="card__head-end">{actions}</div> : null}
+    </div>
+  );
+}
+
+/** The earlier head API: a title plus a meta string and actions. New code
+ * uses `CardHeader`. */
 export function CardHead({
   title,
   meta,
@@ -36,11 +67,9 @@ export function CardHead({
   children?: ReactNode;
 }) {
   const metaNode = meta !== undefined ? <span className="t-meta">{meta}</span> : null;
-  // With a title, `children` are the head's actions (a button, a badge):
-  // they sit at the right edge together with `meta`. Laid out as three
-  // flex items under `space-between`, a button landed in the middle of the
-  // head whenever `meta` was set too. Without a title, `children` are the
-  // head's left-hand content (e.g. a CardSubject) and stay where they are.
+  // With a title, `children` are the head's actions: they sit at the right
+  // edge together with `meta`. Without a title, `children` are the head's
+  // left-hand content (e.g. a CardSubject) and stay where they are.
   if (title !== undefined && children !== undefined) {
     return (
       <div className="card__head">
@@ -61,8 +90,7 @@ export function CardHead({
   );
 }
 
-/** The head names a SUBJECT ("Claude Code CLI") rather than the
- * container ("clients") — a real heading, sans, ink (system.md §1.2a). */
+/** A head that names its subject ("Claude Code CLI"). */
 export function CardSubject({ children }: { children: ReactNode }) {
   return <span className="card__subject">{children}</span>;
 }
@@ -85,9 +113,9 @@ export function CardBody({
   );
 }
 
-export function CardFoot({ children, ...rest }: HTMLAttributes<HTMLDivElement>) {
+export function CardFoot({ children, className, ...rest }: HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className="card__foot" {...rest}>
+    <div className={["card__foot", className ?? ""].filter(Boolean).join(" ")} {...rest}>
       {children}
     </div>
   );

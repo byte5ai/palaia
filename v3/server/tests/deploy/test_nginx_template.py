@@ -83,7 +83,7 @@ def _proxied_prefix_pattern() -> re.Pattern[str]:
         "/.well-known/oauth-authorization-server",
         # Issue #439: Telegram's webhook deliveries reach the hub, not the SPA.
         "/telegram/webhook/support",
-        "/telegram",
+        "/telegram/webhook",
     ],
 )
 def test_every_backend_prefix_is_proxied_to_the_hub(path: str) -> None:
@@ -91,7 +91,19 @@ def test_every_backend_prefix_is_proxied_to_the_hub(path: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "path", ["/", "/index.html", "/assets/app.js", "/telegramx", "/explorer/telegram"]
+    "path",
+    [
+        "/",
+        "/index.html",
+        "/assets/app.js",
+        "/telegramx",
+        "/explorer/telegram",
+        # Issue #570: `/telegram` is an old dashboard address that redirects
+        # to Settings › Telegram; the hub has no route there.
+        "/telegram",
+        "/telegram/",
+        "/settings/telegram",
+    ],
 )
 def test_the_dashboard_stays_with_the_static_locations(path: str) -> None:
     assert not _proxied_prefix_pattern().search(path), path

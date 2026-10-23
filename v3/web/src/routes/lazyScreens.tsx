@@ -5,6 +5,12 @@ import { lazy } from "react";
 // (they are the first paint); every other screen — and what only it
 // imports, such as the SKILL.md sources the connect panels inline — loads
 // when its route is first visited.
+export const About = lazy(() =>
+  import("./settings/About").then((m) => ({ default: m.About })),
+);
+export const AiApps = lazy(() =>
+  import("./AiApps").then((m) => ({ default: m.AiApps })),
+);
 export const Agents = lazy(() =>
   import("./Agents").then((m) => ({ default: m.Agents })),
 );
@@ -26,14 +32,17 @@ export const Exposure = lazy(() =>
 export const Marketplace = lazy(() =>
   import("./Marketplace").then((m) => ({ default: m.Marketplace })),
 );
+export const Memories = lazy(() =>
+  import("./Memories").then((m) => ({ default: m.Memories })),
+);
 export const Onboarding = lazy(() =>
   import("./onboarding/Onboarding").then((m) => ({ default: m.Onboarding })),
 );
 export const ReviewQueue = lazy(() =>
   import("./ReviewQueue").then((m) => ({ default: m.ReviewQueue })),
 );
-export const Settings = lazy(() =>
-  import("./Settings").then((m) => ({ default: m.Settings })),
+export const SettingsHub = lazy(() =>
+  import("./settings/SettingsHub").then((m) => ({ default: m.SettingsHub })),
 );
 export const Telegram = lazy(() =>
   import("./Telegram").then((m) => ({ default: m.Telegram })),

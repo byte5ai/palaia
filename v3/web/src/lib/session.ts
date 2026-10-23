@@ -1,8 +1,8 @@
 /**
  * Who is signed in, for the shell (SPEC-401 deliverable #6).
  *
- * One small hook rather than a context: exactly one place in the app renders
- * this (the topbar's sign-out control), and everything else finds out about
+ * One small hook rather than a context: the shell's sign-out control and
+ * the Settings top card read it, and everything else finds out about
  * an expired session the moment a real call comes back 401 — the API client
  * turns that into a single redirect to the hub's sign-in page, so there is
  * no session state to keep in sync across screens.
@@ -17,17 +17,6 @@ export interface SessionView {
    * server at all (nothing to show, nothing to sign out of). */
   session: SessionState | null;
   signOut: () => Promise<void>;
-}
-
-/** Initials for the avatar: "Ada Lovelace" -> "AL", "owner" -> "OW". */
-export function initialsFor(username: string | null): string {
-  const name = (username ?? "").trim();
-  if (!name) return "PA";
-  const parts = name.split(/[\s._-]+/).filter(Boolean);
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[1][0]).toUpperCase();
-  }
-  return name.slice(0, 2).toUpperCase();
 }
 
 export function useSession(): SessionView {

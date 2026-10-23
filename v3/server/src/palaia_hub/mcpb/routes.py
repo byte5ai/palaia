@@ -106,7 +106,7 @@ def build_mcpb_router(
                 detail=(
                     "no client-authentication method is configured (neither OAuth nor "
                     "token auth) — a downloaded bundle would have no way to authenticate. "
-                    "Fix: enable OAuth (Access mode page) or token auth."
+                    "Fix: enable OAuth (Settings › Access & sign-in) or token auth."
                 ),
             )
 

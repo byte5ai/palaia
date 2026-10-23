@@ -6,8 +6,8 @@
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   min-height: 100vh;
-  background: var(--bg-canvas-top);
-  color: var(--text-primary);
+  background: var(--canvas);
+  color: var(--text);
 }
 
 .ob__rail {
@@ -15,7 +15,7 @@
   flex-direction: column;
   gap: var(--space-6);
   padding: var(--space-8) var(--space-5);
-  border-right: 1px solid var(--border-subtle-top);
+  border-right: 1px solid var(--border);
 }
 
 .ob__brand {
@@ -43,7 +43,7 @@
   border: 0;
   border-radius: var(--radius-md);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text-2);
   font: inherit;
   font-size: 15px;
   text-align: left;
@@ -53,12 +53,12 @@
   cursor: default;
 }
 .ob__step:focus-visible {
-  outline: 2px solid var(--accent-fill);
+  outline: 2px solid var(--action);
   outline-offset: 2px;
 }
 .ob__step--current {
-  background: var(--selection-wash);
-  color: var(--text-primary);
+  background: var(--info-bg);
+  color: var(--text);
   font-weight: 600;
 }
 
@@ -69,25 +69,25 @@
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  border: 1.5px solid var(--border-strong-top);
+  border: 1.5px solid var(--text-3);
   font-size: 13px;
   font-weight: 700;
 }
 .ob__step--current .ob__num {
-  border-color: var(--accent-fill);
-  color: var(--accent-fill);
+  border-color: var(--action);
+  color: var(--action);
 }
 .ob__step--done .ob__num {
-  border-color: var(--state-success-fg);
-  color: var(--state-success-fg);
+  border-color: var(--ok);
+  color: var(--ok);
 }
 .ob__step--skipped .ob__step-name {
   text-decoration: line-through;
   text-decoration-thickness: 1px;
 }
 .ob__step--attention .ob__num {
-  border-color: var(--state-warning-fg);
-  color: var(--state-warning-fg);
+  border-color: var(--warn);
+  color: var(--warn);
 }
 
 .ob__rail-note {
@@ -117,13 +117,13 @@
 .ob__progress {
   height: 4px;
   border-radius: 4px;
-  background: var(--border-subtle-top);
+  background: var(--border);
   overflow: hidden;
 }
 .ob__progress > span {
   display: block;
   height: 100%;
-  background: var(--accent-fill);
+  background: var(--action);
   transition: width var(--duration-smooth) var(--easing-standard);
 }
 
@@ -150,7 +150,7 @@
 
 .ob__more > summary {
   cursor: pointer;
-  color: var(--text-secondary);
+  color: var(--text-2);
   font-size: 14px;
 }
 .ob__more[open] > summary {
@@ -168,7 +168,7 @@
   margin-left: 6px;
   font-weight: 400;
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--text-2);
 }
 
 .ob__checks {
@@ -185,11 +185,11 @@
   align-items: flex-start;
 }
 .ob__check--ok svg {
-  color: var(--state-success-fg);
+  color: var(--ok);
   margin-top: 3px;
 }
 .ob__check--fail svg {
-  color: var(--state-warning-fg);
+  color: var(--warn);
   margin-top: 3px;
 }
 
@@ -207,10 +207,10 @@
   align-items: center;
   gap: var(--space-2);
   font-size: 14px;
-  color: var(--text-secondary);
+  color: var(--text-2);
 }
 .ob__connected--ok {
-  color: var(--state-success-fg);
+  color: var(--ok);
   font-weight: 600;
 }
 
@@ -220,7 +220,7 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--border-subtle-top);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }
 .ob__summary li {
@@ -231,14 +231,14 @@
   min-height: 52px;
 }
 .ob__summary li + li {
-  border-top: 1px solid var(--border-subtle-top);
+  border-top: 1px solid var(--border);
 }
 .ob__summary-label {
   font-weight: 600;
   min-width: 7.5em;
 }
 .ob__summary-value {
-  color: var(--text-secondary);
+  color: var(--text-2);
   overflow-wrap: anywhere;
 }
 .ob__dot {
@@ -246,10 +246,10 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--text-tertiary);
+  background: var(--text-3);
 }
 .ob__dot--ok {
-  background: var(--state-success-fg);
+  background: var(--ok);
 }
 
 @media (max-width: 860px) {
@@ -258,7 +258,7 @@
   }
   .ob__rail {
     border-right: 0;
-    border-bottom: 1px solid var(--border-subtle-top);
+    border-bottom: 1px solid var(--border);
     padding: var(--space-4) max(16px, env(safe-area-inset-left, 0px));
     gap: var(--space-3);
   }
@@ -283,7 +283,7 @@
   }
   .ob__panel {
     padding: var(--space-5) max(16px, env(safe-area-inset-left, 0px))
-      var(--space-10);
+      calc(var(--space-5) * 2);
   }
   .ob__foot {
     justify-content: stretch;

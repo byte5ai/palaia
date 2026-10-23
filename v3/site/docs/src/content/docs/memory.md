@@ -18,7 +18,7 @@ overwritten.
 
 Notes can point at each other — "see also" links inside the text — so
 related ideas stay connected without needing a folder structure to capture
-every possible relationship. The dashboard's explorer shows a note alongside
+every possible relationship. The dashboard's **Memories** page shows a note alongside
 the handful of others it's directly connected to, so you can follow a thread
 without getting lost in everything else that's ever been saved.
 
@@ -67,7 +67,7 @@ two things:
   something that already exists in a bigger way — merging two notes,
   renaming one, retiring one that's gone stale. Nothing like that ever
   happens automatically. You see the proposal and approve or reject it
-  yourself — in the dashboard's **Review queue** (under Memory), or in the
+  yourself — in the dashboard under **Memories › Needs review**, or in the
   review view your AI tool can show you.
 
 That split is deliberate: adding something new is low-risk and constant, so
@@ -136,7 +136,7 @@ note can be found at all.
 
 ## Is your AI tool actually using it?
 
-The dashboard's **Clients** page shows, for each AI tool, how often it
+The dashboard's **AI apps** page shows, for each AI app, how often it
 looked something up and how often it saved something over the last seven
 days. It also says how many of its sessions saved before looking anything
 up, which is the sign of a tool that writes without reading what is
@@ -181,7 +181,7 @@ working, and the hub's health check lists it as overdue until you close it.
 Only a temporary memory can be closed this way; your everyday memories are
 never taken away by it.
 
-All of it happens on the dashboard's **Explorer**:
+All of it happens on the dashboard's **Memories** page:
 
 - **Create one** with **New temporary memory** next to the memory picker:
   a name (it becomes part of the tool names your AI tools see), what it is
