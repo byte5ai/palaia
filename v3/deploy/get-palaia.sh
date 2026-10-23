@@ -81,7 +81,9 @@ elif [ -n "${PALAIA_TSKEY:-}" ]; then
     $SUDO chmod 600 "$KEYFILE"
 fi
 unset PALAIA_TSKEY 2>/dev/null || true
-if [ -n "$KEYFILE" ]; then
+# Tailscale's own keys start with tskey-; a self-hosted control server
+# (PALAIA_TS_LOGIN_SERVER, e.g. Headscale) has its own format.
+if [ -n "$KEYFILE" ] && [ -z "$LOGIN_SERVER" ]; then
     case "$($SUDO head -c 6 "$KEYFILE")" in
         tskey-) : ;;
         *) die "that is not a Tailscale auth key (it should start with 'tskey-auth-'). You may have copied an access token — use 'Generate auth key'." ;;
