@@ -30,7 +30,7 @@ from .rate_limit import (
     DEFAULT_WINDOW_SECONDS,
     AuthRateLimitMiddleware,
 )
-from .selftest import SelfTestResult, check_public_url
+from .selftest import SelfTestCheck, SelfTestResult, check_public_url
 from .tunnel import (
     CLOUD_PUBLIC_PATH_PREFIXES,
     TunnelGuidance,
@@ -53,6 +53,7 @@ __all__ = [
     "ModeChangeError",
     "ModeChangeRequest",
     "ModeStatusOut",
+    "SelfTestCheck",
     "SelfTestResult",
     "TunnelDetection",
     "TunnelGuidance",

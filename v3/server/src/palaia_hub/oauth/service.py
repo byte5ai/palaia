@@ -223,6 +223,11 @@ class AuthorizationServer:
     def now(self) -> int:
         return self._clock()
 
+    def grantable_scopes(self) -> dict[str, tuple[str, ...]]:
+        """``{profile: scopes}`` this server can grant — fixed at construction,
+        so a vault created afterwards only joins it after a restart."""
+        return dict(self._profile_scopes)
+
     def scopes_for(self, audience: str) -> tuple[str, ...]:
         """The scope ceiling for ``audience`` (a canonical resource string)."""
         profile = self.resources.profile_for_audience(audience)

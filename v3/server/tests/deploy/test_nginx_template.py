@@ -16,7 +16,7 @@ TEMPLATE = Path(__file__).resolve().parents[3] / "deploy" / "nginx.conf.template
 def _blocks() -> tuple[str, dict[str, str]]:
     """(server-level text outside any location, {location header: body})."""
     text = TEMPLATE.read_text(encoding="utf-8")
-    server = text[text.index("server {") :]
+    server = text[text.index("server {") : text.index("listen ${CLOUD_PORT};")]
     locations: dict[str, str] = {}
     outside = []
     depth = 0
@@ -103,3 +103,56 @@ def test_the_proxy_forwards_the_host_header_with_its_port() -> None:
     text = TEMPLATE.read_text(encoding="utf-8")
     assert "proxy_set_header Host $http_host;" in text
     assert "proxy_set_header Host $host;" not in text
+
+
+# ------------------------------------------------ the cloud entry (#566, #567)
+
+
+def _cloud_block() -> str:
+    text = TEMPLATE.read_text(encoding="utf-8")
+    return text[text.index("listen ${CLOUD_PORT};") :]
+
+
+def _cloud_pattern() -> re.Pattern[str]:
+    match = re.search(r"location ~ (\S+) \{", _cloud_block())
+    assert match, "the cloud entry lost its location"
+    return re.compile(match.group(1))
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/mcp/default/",
+        "/oauth/authorize",
+        "/oauth/login",
+        "/.well-known/oauth-authorization-server",
+        "/.well-known/oauth-protected-resource/mcp/default",
+        "/telegram/webhook/support",
+    ],
+)
+def test_the_cloud_entry_forwards_the_ai_connection(path: str) -> None:
+    assert _cloud_pattern().match(path)
+
+
+@pytest.mark.parametrize(
+    "path", ["/", "/index.html", "/assets/app.js", "/api/info", "/api/mode", "/telegram", "/mcpx"]
+)
+def test_the_cloud_entry_never_forwards_the_dashboard_or_admin_api(path: str) -> None:
+    assert not _cloud_pattern().match(path)
+    assert 'return 404 "Not found.' in _cloud_block()
+
+
+def test_the_cloud_entry_marks_its_requests_and_the_private_door_clears_the_mark() -> None:
+    cloud = _cloud_block()
+    assert "proxy_set_header X-Palaia-Entry cloud;" in cloud
+    assert "proxy_set_header X-Forwarded-Proto https;" in cloud
+    _, locations = _blocks()
+    private = next(body for header, body in locations.items() if "api|mcp" in header)
+    assert 'proxy_set_header X-Palaia-Entry "";' in private
+
+
+def test_the_cloud_entry_and_the_hub_agree_on_the_routes() -> None:
+    from palaia_hub.modes.cloud_entry import CLOUD_ENTRY_PREFIXES
+
+    alternatives = _cloud_pattern().pattern.split("(", 1)[1].split(")", 1)[0].split("|")
+    assert {"/" + alt.replace("\\.", ".") for alt in alternatives} == set(CLOUD_ENTRY_PREFIXES)

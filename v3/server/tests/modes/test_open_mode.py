@@ -10,6 +10,7 @@ conditional: it fires exactly when the hub has no way in.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,7 @@ from fastapi.testclient import TestClient
 from palaia_hub.app import create_app
 from palaia_hub.config import ConfigError, HubConfig, load_config
 from palaia_hub.oauth import AuthorizationServer, OAuthStore, set_owner_password
+from palaia_hub.vault import VaultRegistry
 
 ISSUER = "https://hub.example.test"
 
@@ -118,6 +120,8 @@ def test_mode_endpoint_accepts_open_once_sign_in_exists(tmp_path: Path) -> None:
     """The whole change in one call: an owner account plus a sign-in server,
     and the wizard's 'fully public' option is available for the first time."""
     _create_owner(tmp_path)
+    # Issue #561: turning the sign-in server on needs a memory to grant.
+    asyncio.run(VaultRegistry(tmp_path).create("work", path=tmp_path / "vaults" / "work"))
     running = HubConfig(
         mode="locked",
         oauth={"enabled": True, "issuer": ISSUER},  # type: ignore[arg-type]
