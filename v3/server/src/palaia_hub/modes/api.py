@@ -229,6 +229,9 @@ class TunnelRequest(BaseModel):
     kind: Literal["tailscale", "cloudflared"]
     local_port: int | None = None
     hostname: str | None = None
+    #: The mode the guidance is for — the one being set up, which until it
+    #: is saved is not the configured one. Omitted, the configured mode.
+    mode: Literal["cloud", "open"] | None = None
 
 
 class SelfTestRequest(BaseModel):
@@ -427,7 +430,12 @@ def build_modes_router(
     @router.post("/api/exposure/tunnel", response_model=TunnelGuidanceOut)
     async def post_tunnel_guidance(body: TunnelRequest) -> TunnelGuidanceOut:
         configured = _configured()
-        tunnel_mode: Literal["cloud", "open"] = "open" if configured.mode == "open" else "cloud"
+        # The dashboard asks for the mode it is switching to: guidance for
+        # the configured one would point a new Cloud tunnel at the whole
+        # hub (8420) while Public is still configured.
+        tunnel_mode: Literal["cloud", "open"] = body.mode or (
+            "open" if configured.mode == "open" else "cloud"
+        )
         # Issue #567: the port the tunnel can actually reach on the server —
         # the loopback publish the installer made — never `config.port`,
         # which inside the image is the hub's own internal port.

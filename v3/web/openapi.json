@@ -1384,6 +1384,21 @@
               }
             ],
             "title": "Hostname"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "cloud",
+                  "open"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
           }
         },
         "additionalProperties": false,

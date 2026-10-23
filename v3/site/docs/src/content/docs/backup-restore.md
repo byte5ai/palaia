@@ -6,10 +6,14 @@ description: One button downloads a copy of your memories and settings. Here's w
 ## Back up
 
 In the dashboard, **Settings › Backups › Download backup** saves one file
-with everything palaia has saved on your behalf: all memories with their
-history, palaia's settings, your owner account, every AI app's access key,
-keys saved for add-ons and connected tools, and your automations and
-webhooks.
+with everything palaia has saved on your behalf: every memory in palaia's
+data folder with its history, palaia's settings, your owner account, every
+AI app's access key, keys saved for add-ons and connected tools, and your
+automations and webhooks.
+
+A memory you created in a folder of its own (the **Folder** option when you
+create one) is not in that file. Settings › Backups names each such memory
+and its folder; back those folders up yourself.
 
 **Store that file like a password.** It includes private data and access
 keys: anyone who has it can read everything in it and, if they restore it

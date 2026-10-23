@@ -22,13 +22,13 @@
  *   sign-in that follows.
  */
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { Button, LinkButton } from "../../components/Button";
+import { Button } from "../../components/Button";
 import { Callout } from "../../components/Callout";
 import { Disclosure } from "../../components/Disclosure";
 import { Field, Input } from "../../components/Field";
-import { RestartButton } from "../../components/RestartHub";
+import { RestartButton, RestartCallout } from "../../components/RestartHub";
 import { StatusPill } from "../../components/StatusPill";
 import { Stepper, StepperPanel, type StepperStep } from "../../components/Stepper";
 import type { SetupStatus } from "../../lib/api/client";
@@ -40,7 +40,15 @@ import { CloudStep } from "./CloudStep";
 import { ConnectStep } from "./ConnectStep";
 import { RestartByHand } from "./RestartByHand";
 import "./onboarding.css";
-import { firstOpenStep, goalOf, type Goal, type StepId, stepViews } from "./steps";
+import {
+  firstOpenStep,
+  goalOf,
+  type Goal,
+  isStepOf,
+  signInPending,
+  type StepId,
+  stepViews,
+} from "./steps";
 
 const MIN_PASSWORD_LENGTH = 12;
 const VAULT_KEY_RE = /^[a-z0-9][a-z0-9-]*$/;
@@ -52,21 +60,39 @@ export interface StepProps {
 
 export function Onboarding() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const { status, error, refresh } = useSetupStatus(3000);
-  // The step on screen. It starts at the first open one and moves only when
-  // the person moves (Continue, the step list): a status poll that finds a
-  // step done must not pull the page away from the result they are reading.
+  // The step on screen. It starts at the step a link asked for
+  // (`/onboarding?step=account`, e.g. from Backups — the step list is hidden
+  // on phones, so a link is the only way back to a skipped step there), else
+  // at the first open one, and moves only when the person moves (Continue,
+  // the step list): a status poll that finds a step done must not pull the
+  // page away from the result they are reading.
   const [pinned, setPinned] = useState<StepId | "done" | null>(null);
 
   const views = useMemo(() => (status ? stepViews(status) : []), [status]);
   const open = status ? firstOpenStep(views) : null;
-  if (status && pinned === null) setPinned(open ?? "done");
+  if (status && pinned === null) {
+    const asked = params.get("step");
+    setPinned(isStepOf(views, asked) ? asked : (open ?? "done"));
+  }
   const current: StepId | "done" = pinned ?? open ?? "done";
 
-  async function finish() {
+  /** Setup is finished once the hub says so: the app shell sends anyone
+   * whose setup is not finished back here, so this is saved before leaving
+   * for any page of the app. */
+  async function finish(to = "/") {
     await api.updateSetup({ completed: true });
-    navigate("/", { replace: true });
+    navigate(to, { replace: true });
   }
+
+  // A saved change waits for a restart, and the step on screen has no
+  // restart of its own (cloud access and a private account's sign-in do).
+  const restartHere =
+    status !== null &&
+    status.restart_required &&
+    current !== "cloud" &&
+    !(current === "account" && signInPending(status));
 
   async function next() {
     const latest = await refresh();
@@ -122,6 +148,15 @@ export function Onboarding() {
                   <p>{problem}</p>
                 </Callout>
               ))}
+            </div>
+          ) : null}
+          {restartHere ? (
+            <div className="ob__problems">
+              <RestartCallout supported={status.restart_supported}>
+                {goalOf(status) === "private" && status.mode !== "locked" ? (
+                  <p>Until then, palaia can still be reached from the internet.</p>
+                ) : null}
+              </RestartCallout>
             </div>
           ) : null}
           {current === "goal" ? <GoalStep status={status} onDone={next} /> : null}
@@ -181,11 +216,25 @@ function GoalStep({ status, onDone }: StepProps) {
   const [goal, setGoal] = useState<Goal>(goalOf(status));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Private means nothing reaches palaia from the internet: choosing it
+  // turns saved cloud (or public) access off too — the change Settings ›
+  // Access & sign-in › Switch to Private makes — never silently leaves it on
+  // behind a wizard that no longer shows it. With an account, the dashboard
+  // keeps asking for its password, as a private setup with an account does
+  // (Private alone would stop asking).
+  const turnsInternetOff = goal === "private" && status.configured_mode !== "locked";
 
   async function save() {
     setBusy(true);
     setError(null);
     try {
+      if (turnsInternetOff) {
+        await api.changeMode(
+          status.owner_configured
+            ? { mode: "locked", dashboard_require_sign_in: true }
+            : { mode: "locked" },
+        );
+      }
       await api.updateSetup({ goal });
       await onDone();
     } catch (err) {
@@ -229,6 +278,14 @@ function GoalStep({ status, onDone }: StepProps) {
           </button>
         ))}
       </div>
+      {turnsInternetOff ? (
+        <Callout tone="warn" title="This turns off access from the internet">
+          <p>
+            Only devices on your network or VPN can reach palaia afterwards. ChatGPT, claude.ai and
+            other apps that connect from the internet stop working.
+          </p>
+        </Callout>
+      ) : null}
       {error ? <p className="field__error">{error}</p> : null}
     </StepperPanel>
   );
@@ -359,13 +416,9 @@ function AccountStep({ status, onDone }: StepProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const signInPending =
-    goal === "private" &&
-    status.owner_configured &&
-    status.configured_sign_in &&
-    !status.sign_in_active;
+  const pending = signInPending(status);
 
-  if (status.owner_configured && !signInPending) {
+  if (status.owner_configured && !pending) {
     return (
       <StepperPanel
         title="Your account is set up"
@@ -379,7 +432,7 @@ function AccountStep({ status, onDone }: StepProps) {
     );
   }
 
-  if (signInPending) {
+  if (pending) {
     return (
       <StepperPanel
         title="Restart palaia to turn on sign-in"
@@ -499,7 +552,13 @@ function AccountStep({ status, onDone }: StepProps) {
 
 // --------------------------------------------------------------------- done
 
-function DoneStep({ status, onFinish }: { status: SetupStatus; onFinish: () => Promise<void> }) {
+function DoneStep({
+  status,
+  onFinish,
+}: {
+  status: SetupStatus;
+  onFinish: (to?: string) => Promise<void>;
+}) {
   const goal = goalOf(status);
   const rows: { label: string; value: string; ok: boolean }[] = [
     {
@@ -530,9 +589,9 @@ function DoneStep({ status, onFinish }: { status: SetupStatus; onFinish: () => P
       title="You're set up"
       primary={<ContinueButton label="Open palaia" onClick={() => void onFinish()} />}
       back={
-        <LinkButton to="/apps" variant="plain">
+        <Button variant="plain" onClick={() => void onFinish("/apps")}>
           Connect another AI app
-        </LinkButton>
+        </Button>
       }
     >
       <ul className="ob__summary">

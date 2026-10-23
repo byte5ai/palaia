@@ -226,6 +226,15 @@ export function Home() {
   const connected = activeTokens
     .filter((token) => token.last_used_at)
     .sort((a, b) => (b.last_used_at ?? "").localeCompare(a.last_used_at ?? ""));
+  // An AI app that signs in with the owner account (ChatGPT, Claude, the
+  // extension on a hub with sign-in) uses no access key, so the keys can't
+  // show it; the hub records the first request of any app
+  // (`client_connected`). Counted only while sign-in runs and no key shows
+  // a connection: that record is kept once ever, so it can't tell how many
+  // apps, and a key's own use already counts.
+  const signedInApp =
+    connected.length === 0 && Boolean(setup?.client_connected && setup.sign_in_active);
+  const anyConnected = connected.length > 0 || signedInApp;
   const hasVaults = (vaults?.length ?? 0) > 0;
   const totalNotes = vaults?.reduce((sum, vault) => sum + vault.note_count, 0) ?? 0;
   const unreachable =
@@ -274,7 +283,7 @@ export function Home() {
     verdict = { tone: "neutral", title: "Connecting to palaia…" };
   } else {
     verdict = { tone: "ok", title: "palaia is running" };
-    if (tokens !== null && connected.length === 0) {
+    if (tokens !== null && !anyConnected) {
       verdict.text = "Connect an AI app so it can start saving to your memories.";
       primary = (
         <LinkButton variant="primary" to="/apps">
@@ -308,10 +317,12 @@ export function Home() {
                   {count(vaults.length, "memory", "memories")} · {count(totalNotes, "note", "notes")}
                 </StatusPill>
                 {tokens !== null ? (
-                  <StatusPill tone={connected.length > 0 ? "ok" : "neutral"}>
+                  <StatusPill tone={anyConnected ? "ok" : "neutral"}>
                     {connected.length > 0
                       ? `${count(connected.length, "AI app", "AI apps")} connected`
-                      : "No AI app connected yet"}
+                      : signedInApp
+                        ? "AI app connected"
+                        : "No AI app connected yet"}
                   </StatusPill>
                 ) : null}
                 {toFile ? (
@@ -401,37 +412,51 @@ export function Home() {
             <CardHeader
               title="AI apps"
               actions={
-                tokens !== null ? <span className="t-meta">{connected.length} connected</span> : undefined
+                tokens !== null ? (
+                  <span className="t-meta">
+                    {signedInApp ? "Connected" : `${connected.length} connected`}
+                  </span>
+                ) : undefined
               }
             />
             {tokens === null ? (
               <InlineEmpty>Loading…</InlineEmpty>
-            ) : activeTokens.length === 0 ? (
+            ) : activeTokens.length === 0 && !signedInApp ? (
               <InlineEmpty>No AI app connected yet.</InlineEmpty>
             ) : (
-              activeTokens.slice(0, 3).map((token) => (
-                <ListRow
-                  key={token.id}
-                  icon={<ClientsIcon className="icon" />}
-                  title={token.name}
-                  description={
-                    token.last_used_at ? (
-                      <span title={exactTime(token.last_used_at)}>
-                        Last request {timeAgo(token.last_used_at)}
-                      </span>
-                    ) : (
-                      "Access key created, no request yet"
-                    )
-                  }
-                  trailing={
-                    token.last_used_at ? (
-                      <StatusPill tone="ok">Connected</StatusPill>
-                    ) : (
-                      <StatusPill tone="info">Waiting for first use</StatusPill>
-                    )
-                  }
-                />
-              ))
+              <>
+                {signedInApp ? (
+                  <ListRow
+                    icon={<ClientsIcon className="icon" />}
+                    title="Apps that sign in"
+                    description="Connected with your palaia account"
+                    trailing={<StatusPill tone="ok">Connected</StatusPill>}
+                  />
+                ) : null}
+                {activeTokens.slice(0, 3).map((token) => (
+                  <ListRow
+                    key={token.id}
+                    icon={<ClientsIcon className="icon" />}
+                    title={token.name}
+                    description={
+                      token.last_used_at ? (
+                        <span title={exactTime(token.last_used_at)}>
+                          Last request {timeAgo(token.last_used_at)}
+                        </span>
+                      ) : (
+                        "Access key created, no request yet"
+                      )
+                    }
+                    trailing={
+                      token.last_used_at ? (
+                        <StatusPill tone="ok">Connected</StatusPill>
+                      ) : (
+                        <StatusPill tone="info">Waiting for first use</StatusPill>
+                      )
+                    }
+                  />
+                ))}
+              </>
             )}
             <div className="card__foot">
               <Link to="/apps">Open AI apps</Link>

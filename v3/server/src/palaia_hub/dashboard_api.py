@@ -46,6 +46,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
+from .backup import archive_holds
 from .curator.profile import CURATOR_PROFILE_PATH
 from .curator.wiring import CuratorWiring
 from .events.bus import EventBus, publish_event
@@ -117,6 +118,9 @@ class VaultOut(BaseModel):
     ephemeral: bool = False
     #: When an ephemeral vault is due to be closed (ISO 8601 UTC), if set.
     expires: str | None = None
+    #: Whether a backup holds this vault: false for one kept in a folder
+    #: outside the hub's data folder (:func:`palaia_hub.backup.archive_holds`).
+    in_backup: bool = True
 
 
 class RecentChangeOut(BaseModel):
@@ -309,7 +313,7 @@ class IndexStatusOut(BaseModel):
         )
 
 
-def _vault_out(key: str, info: VaultInfo) -> VaultOut:
+def _vault_out(key: str, info: VaultInfo, *, home: Path) -> VaultOut:
     return VaultOut(
         key=key,
         purpose=info.purpose,
@@ -318,6 +322,7 @@ def _vault_out(key: str, info: VaultInfo) -> VaultOut:
         note_count=info.note_count,
         ephemeral=info.ephemeral,
         expires=info.expires,
+        in_backup=archive_holds(home, Path(info.path)),
     )
 
 
@@ -447,7 +452,7 @@ def build_dashboard_router(
                 data={"key": body.key, "purpose": body.purpose},
             )
 
-        return _vault_out(body.key, engine.info())
+        return _vault_out(body.key, engine.info(), home=registry.home)
 
     @router.post("/api/vaults/{vault_key}/promote", response_model=PromoteOut)
     async def promote_notes(vault_key: str, body: PromoteRequest) -> PromoteOut:
@@ -598,7 +603,7 @@ def build_dashboard_router(
         out: list[VaultOut] = []
         for record in registry.records():
             engine = await registry.get(record.name)
-            out.append(_vault_out(record.name, engine.info()))
+            out.append(_vault_out(record.name, engine.info(), home=registry.home))
         return out
 
     @router.get("/api/vaults/recent-activity", response_model=list[RecentChangeOut])

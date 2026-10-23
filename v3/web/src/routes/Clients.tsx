@@ -99,12 +99,15 @@ function DesktopCard({
   keys,
   status,
   profiles,
+  onDownloaded,
   onRevoked,
 }: {
   client: DownloadClient;
   keys: TokenInfo[];
   status: AppStatus;
   profiles: GatewayProfile[];
+  /** A download may have made a new access key: look again. */
+  onDownloaded: () => void;
   onRevoked: (ids: string[]) => void;
 }) {
   const toast = useToast();
@@ -120,6 +123,7 @@ function DesktopCard({
     try {
       const file = await api.downloadFile(client.downloadUrl("", toolSet));
       saveBlob(file.blob, file.filename ?? "palaia.mcpb");
+      onDownloaded();
     } catch (err) {
       toast.show(describeApiError(err));
     } finally {
@@ -129,13 +133,22 @@ function DesktopCard({
 
   async function revoke() {
     setBusy(true);
+    const revoked: string[] = [];
     try {
-      for (const key of keys) await api.revokeToken(key.id);
-      onRevoked(keys.map((k) => k.id));
+      // The keys that exist now, not the ones this page loaded: every
+      // download makes a new one, and each must stop working.
+      const live = (await api.listTokens()).filter(
+        (t) => t.name === client.name && !t.revoked_at,
+      );
+      for (const key of live) {
+        await api.revokeToken(key.id);
+        revoked.push(key.id);
+      }
       toast.show(`${client.name} can no longer use palaia.`);
     } catch (err) {
       toast.show(describeApiError(err));
     } finally {
+      if (revoked.length > 0) onRevoked(revoked);
       setBusy(false);
       setConfirm(false);
     }
@@ -379,6 +392,15 @@ export function Clients() {
     };
   }, [attempt]);
 
+  function refreshTokens() {
+    api
+      .listTokens()
+      .then(setTokens)
+      .catch(() => {
+        // a passing failure: the list stays as it was
+      });
+  }
+
   function upsert(info: TokenInfo) {
     setTokens((prev) => [...(prev ?? []).filter((t) => t.id !== info.id), info]);
   }
@@ -469,6 +491,7 @@ export function Clients() {
             keys={keysOf(selected)}
             status={selectedStatus}
             profiles={profiles}
+            onDownloaded={refreshTokens}
             onRevoked={markRevoked}
           />
         ) : (

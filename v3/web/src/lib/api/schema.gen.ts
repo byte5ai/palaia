@@ -572,6 +572,8 @@ export interface components {
             local_port?: number | null;
             /** Hostname */
             hostname?: string | null;
+            /** Mode */
+            mode?: ("cloud" | "open") | null;
         };
         /** ValidationError */
         ValidationError: {

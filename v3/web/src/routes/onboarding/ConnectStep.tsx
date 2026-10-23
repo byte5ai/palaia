@@ -61,8 +61,12 @@ export function ConnectStep({
     ? "default"
     : (status.profiles[0] ?? "default");
 
-  async function skip() {
-    await api.updateSetup({ skipped: [...status.skipped, "client"] });
+  // Without a first request the step is not done, so moving on means
+  // "later": saved on the hub, or the wizard would open this step again.
+  async function finish() {
+    if (!status.client_connected) {
+      await api.updateSetup({ skipped: [...status.skipped, "client"] });
+    }
     await onDone();
   }
 
@@ -70,13 +74,8 @@ export function ConnectStep({
     <StepperPanel
       title="Connect your AI app"
       description="Pick the app you use most. You can add more later."
-      back={
-        <Button variant="secondary" onClick={() => void skip()}>
-          Later
-        </Button>
-      }
       primary={
-        <Button variant="primary" size="lg" onClick={() => void onDone()}>
+        <Button variant="primary" size="lg" onClick={() => void finish()}>
           {status.client_connected ? "Continue" : "Finish"}
           <ArrowRightIcon className="icon--sm" />
         </Button>

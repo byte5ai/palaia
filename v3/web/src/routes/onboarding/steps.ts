@@ -21,6 +21,23 @@ export function goalOf(status: SetupStatus): Goal {
   return status.goal ?? "cloud";
 }
 
+/** A private hub's account exists and its sign-in is saved, but the running
+ * palaia does not ask for it yet: the account step's restart is still to
+ * do, so the step stays open until the hub confirms sign-in is active. */
+export function signInPending(status: SetupStatus): boolean {
+  return (
+    goalOf(status) === "private" &&
+    status.owner_configured &&
+    status.configured_sign_in &&
+    !status.sign_in_active
+  );
+}
+
+/** Whether `id` names a step of this setup (the `?step=` link). */
+export function isStepOf(views: StepView[], id: string | null): id is StepId {
+  return views.some((view) => view.id === id);
+}
+
 export function stepViews(status: SetupStatus): StepView[] {
   const goal = goalOf(status);
   const skipped = new Set(status.skipped);
@@ -39,7 +56,9 @@ export function stepViews(status: SetupStatus): StepView[] {
       id: "account",
       name: "Your account",
       state: status.owner_configured
-        ? "done"
+        ? signInPending(status)
+          ? "attention"
+          : "done"
         : goal === "private" && skipped.has("account")
           ? "skipped"
           : "todo",

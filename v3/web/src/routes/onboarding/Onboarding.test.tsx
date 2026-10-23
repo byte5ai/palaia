@@ -143,9 +143,9 @@ function fakeHub(initial: SetupStatus) {
   return { state, calls };
 }
 
-function renderWizard() {
+function renderWizard(at = "/onboarding") {
   return render(
-    <MemoryRouter initialEntries={["/onboarding"]}>
+    <MemoryRouter initialEntries={[at]}>
       <ToastProvider>
         <Onboarding />
       </ToastProvider>
@@ -460,5 +460,132 @@ describe("first-run setup", () => {
         body: { completed: true },
       }),
     );
+  });
+
+  it("a private account keeps its step open until sign-in is on, through the restart", async () => {
+    const hub = fakeHub(
+      freshStatus({ goal: "private", vaults: ["work"], profiles: ["default"] }),
+    );
+    const first = renderWizard();
+
+    await screen.findByRole("heading", { name: /create your account/i });
+    fireEvent.change(screen.getByLabelText(/^username/i), { target: { value: "owner" } });
+    fireEvent.change(screen.getByLabelText(/^password/i), {
+      target: { value: "a-long-passphrase" },
+    });
+    fireEvent.change(screen.getByLabelText(/repeat the password/i), {
+      target: { value: "a-long-passphrase" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /create account/i }));
+
+    expect(
+      await screen.findByRole("heading", { name: /restart palaia to turn on sign-in/i }),
+    ).toBeInTheDocument();
+    expect(hub.state.status.owner_configured).toBe(true);
+    expect(hub.state.status.configured_sign_in).toBe(true);
+
+    // A reload before the restart opens there again, not past it.
+    first.unmount();
+    renderWizard();
+    expect(
+      await screen.findByRole("heading", { name: /restart palaia to turn on sign-in/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("choosing private after cloud access was turned on turns it off and shows the restart", async () => {
+    const hub = fakeHub(
+      freshStatus({
+        goal: "cloud",
+        vaults: ["work"],
+        profiles: ["default"],
+        owner_configured: true,
+        mode: "cloud",
+        configured_mode: "cloud",
+        sign_in_active: true,
+        configured_sign_in: true,
+        issuer: PUBLIC,
+        configured_issuer: PUBLIC,
+        public_url: PUBLIC,
+        cloud_ready: true,
+        cloud_verified: true,
+        client_connected: true,
+      }),
+    );
+    renderWizard();
+
+    await screen.findByRole("heading", { name: /you're set up/i });
+    fireEvent.click(rail().getByRole("button", { name: /how you'll use palaia/i }));
+    fireEvent.click(await screen.findByRole("radio", { name: /only on my own devices/i }));
+    expect(screen.getByText(/this turns off access from the internet/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+
+    await waitFor(() =>
+      expect(hub.calls).toContainEqual({
+        method: "POST",
+        path: "/api/mode",
+        body: { mode: "locked", dashboard_require_sign_in: true },
+      }),
+    );
+    expect(hub.calls).toContainEqual({ method: "PUT", path: "/api/setup", body: { goal: "private" } });
+    expect(hub.state.status.configured_mode).toBe("locked");
+    expect(await screen.findByText(/restart palaia to apply your changes/i)).toBeInTheDocument();
+    expect(screen.getByText(/can still be reached from the internet/i)).toBeInTheDocument();
+  });
+
+  it("keeps cloud access when the goal stays cloud", async () => {
+    const hub = fakeHub(
+      freshStatus({ goal: null, configured_mode: "cloud", configured_sign_in: true }),
+    );
+    renderWizard();
+
+    await screen.findByRole("heading", { name: /how do you want to use palaia/i });
+    expect(screen.queryByText(/this turns off access from the internet/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+    await screen.findByRole("heading", { name: /create your first memory/i });
+    expect(hub.calls.some((c) => c.path === "/api/mode")).toBe(false);
+  });
+
+  it("opens the step a link asks for, also one skipped before", async () => {
+    fakeHub(
+      freshStatus({
+        completed: true,
+        goal: "private",
+        vaults: ["work"],
+        profiles: ["default"],
+        skipped: ["account"],
+        client_connected: true,
+      }),
+    );
+    const first = renderWizard();
+    // Without the link: every step is done or skipped.
+    await screen.findByRole("heading", { name: /you're set up/i });
+    first.unmount();
+
+    renderWizard("/onboarding?step=account");
+    expect(
+      await screen.findByRole("heading", { name: /create your account/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("Finish without a first request saves the step for later and moves on", async () => {
+    const hub = fakeHub(
+      freshStatus({
+        goal: "private",
+        vaults: ["work"],
+        profiles: ["default"],
+        skipped: ["account"],
+      }),
+    );
+    renderWizard();
+
+    await screen.findByRole("heading", { name: /connect your ai app/i });
+    fireEvent.click(screen.getByRole("button", { name: /^finish$/i }));
+
+    expect(await screen.findByRole("heading", { name: /you're set up/i })).toBeInTheDocument();
+    expect(hub.calls).toContainEqual({
+      method: "PUT",
+      path: "/api/setup",
+      body: { skipped: ["account", "client"] },
+    });
   });
 });

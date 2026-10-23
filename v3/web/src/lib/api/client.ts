@@ -127,6 +127,9 @@ export interface VaultSummary {
   ephemeral?: boolean;
   /** When a temporary memory is due to be closed (ISO 8601 UTC), if set. */
   expires?: string | null;
+  /** Whether a backup holds this memory: false for one kept in a folder
+   * outside palaia's data folder. Absent on older hubs. */
+  in_backup?: boolean;
 }
 
 /** `POST /api/vaults/{key}/promote` — `palaia_hub.dashboard_api.PromoteOut`. */
@@ -1384,6 +1387,8 @@ export const api = {
       kind: "tailscale" | "cloudflared";
       local_port?: number;
       hostname?: string;
+      /** The mode being set up; the hub otherwise answers for the configured one. */
+      mode?: "cloud" | "open";
     },
     signal?: AbortSignal,
   ) => postJson<TunnelGuidance>("/api/exposure/tunnel", body, signal),

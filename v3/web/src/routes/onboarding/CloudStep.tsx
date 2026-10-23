@@ -84,7 +84,9 @@ function CloudTurnOn({
     if (hint) return;
     let cancelled = false;
     api
-      .tunnelGuidance({ kind: "tailscale" })
+      // For Cloud by name: the hub otherwise answers for the configured
+      // mode, which on a hub set to Public is the whole hub.
+      .tunnelGuidance({ kind: "tailscale", mode: "cloud" })
       .then((next) => {
         if (!cancelled) setGuidance(next);
       })

@@ -66,6 +66,20 @@ def test_create_vault_honors_explicit_path(tmp_path: Path) -> None:
     assert (custom / "meta" / "vault.md").exists()
 
 
+def test_list_says_which_vaults_a_backup_leaves_out(tmp_path: Path) -> None:
+    """A vault created with its own folder outside the hub home is not in a
+    backup; the Backups page reads this to say so instead of promising every
+    memory."""
+    client = _client(tmp_path)
+    client.post("/api/vaults", json={"key": "work"})
+    created = client.post("/api/vaults", json={"key": "notes", "path": str(tmp_path / "elsewhere")})
+    assert created.json()["in_backup"] is False
+
+    listed = {v["key"]: v["in_backup"] for v in client.get("/api/vaults").json()}
+
+    assert listed == {"work": True, "notes": False}
+
+
 def test_create_duplicate_name_is_400(tmp_path: Path) -> None:
     client = _client(tmp_path)
     client.post("/api/vaults", json={"key": "work"})
