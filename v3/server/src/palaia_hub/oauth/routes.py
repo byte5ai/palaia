@@ -647,9 +647,9 @@ def _login_page(*, next_url: str, csrf: str, error: str) -> str:
             "</form>"
             "<details><summary>Forgot your password?</summary>"
             "<p class='hint'>Set a new one on the server palaia runs on:</p>"
-            "<p><code class='cmd'>palaia-hub oauth set-password --username &lt;name&gt;</code></p>"
+            "<p class='cmd'><code>palaia-hub oauth set-password --username &lt;name&gt;</code></p>"
             "<p class='hint'>With Docker:</p>"
-            "<p><code class='cmd'>docker exec -it palaia-hub palaia-hub oauth set-password "
+            "<p class='cmd'><code>docker exec -it palaia-hub palaia-hub oauth set-password "
             "--username &lt;name&gt;</code></p>"
             "</details>"
         ),
@@ -722,7 +722,7 @@ _PAGE_STYLE = f"""
   code {{ font: 13px/20px ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
           background: var(--surface-muted); padding: 1px 6px; border-radius: 6px;
           overflow-wrap: anywhere; }}
-  code.cmd {{ display: block; padding: 8px 12px; border-radius: 10px; }}
+  .cmd code {{ display: block; padding: 8px 12px; border-radius: 10px; }}
 """
 
 #: The palaia star — the website header's mark, inline (no request).
