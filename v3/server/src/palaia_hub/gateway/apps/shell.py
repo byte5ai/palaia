@@ -4,23 +4,18 @@ SPEC-208 deliverable #1. Every app this package serves (hub status, recall
 explorer, review queue) is rendered by :func:`render_app_page`, which
 produces one complete, self-contained ``<!doctype html>`` document:
 
-- **The Lume design tokens** (:data:`LUME_CSS`), the same color/spacing/type
-  values ``v3/docs/design/lume/colors_and_type.css`` and the dashboard
-  mockups use — copied, not re-derived — plus a small set of components
-  (card, badge, button, list row, queue meter) actually needed by these
-  three apps. This is a deliberately smaller subset than the dashboard's own
-  stylesheet: an MCP App is one compact panel, not a whole application
-  shell with a nav rail.
-- **Two self-hosted font files** (:data:`FONTS_CSS`), embedded as ``data:``
-  URIs from the same WOFF2 files the dashboard build self-hosts
+- **The design system's tokens** (:data:`COLORS`, from
+  ``v3/design/tokens.json``, the one source the dashboard and the docs site
+  are generated from — ``server/tests/gateway/test_apps_shell.py`` keeps the
+  values equal) plus a small set of components (card, status pill, button,
+  list row, input) these compact panels actually use. An MCP App is one
+  panel inside a chat, not a whole application with a sidebar.
+- **One self-hosted font file** (:func:`_fonts_css`), Nunito Sans, embedded
+  as a ``data:`` URI from the same WOFF2 file the dashboard self-hosts
   (``v3/web/src/assets/fonts``, vendored into this package under
   ``vendor/fonts`` so the server wheel does not depend on the ``web/``
-  package at runtime — see that directory's docstring). Only the
-  non-italic, latin-subset weight-normal files for Geist and Geist Mono are
-  embedded: these are compact UI panels, not prose passages, so the serif
-  register and the italic/extended-latin cuts are not needed here (a
-  genuinely different trade-off than the dashboard build's, which embeds
-  every cut).
+  package at runtime). Only the upright latin cut: these are compact UI
+  panels; code and numbers use the system's monospace font.
 - **The vendored MCP Apps view SDK** (:data:`_APP_BRIDGE_JS`, from
   ``vendor/mcp_app_bridge.js`` — see that file's own header for provenance),
   giving every page's own script a plain ``window.McpAppLib.{App,
@@ -64,167 +59,138 @@ def _font_data_uri(filename: str) -> str:
 
 @lru_cache(maxsize=1)
 def _fonts_css() -> str:
-    geist = _font_data_uri("geist-latin-wght-normal.woff2")
-    geist_mono = _font_data_uri("geist-mono-latin-wght-normal.woff2")
+    nunito = _font_data_uri("nunito-sans-normal-latin.woff2")
     return f"""
 @font-face {{
-  font-family: 'Geist Variable';
+  font-family: 'Nunito Sans';
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 200 1000;
   font-display: swap;
-  src: url('{geist}') format('woff2-variations');
-}}
-@font-face {{
-  font-family: 'Geist Mono Variable';
-  font-style: normal;
-  font-weight: 100 900;
-  font-display: swap;
-  src: url('{geist_mono}') format('woff2-variations');
+  src: url('{nunito}') format('woff2');
 }}
 """
 
 
-#: Design tokens copied verbatim (values, not structure) from
-#: ``v3/docs/design/lume/colors_and_type.css`` / the dashboard mockups —
-#: "same values as the dashboard" (SPEC-208 deliverable #1) — trimmed to
-#: the primitives and components these three compact panels actually use.
-#: Light tokens live on bare ``:root``; dark tokens are re-declared both
-#: under ``prefers-color-scheme: dark`` (the system default, no explicit
-#: host choice) and under ``:root[data-theme="dark"]`` (an explicit host
-#: choice always wins) per the theme-aware pattern every self-contained
-#: page in this codebase follows.
-LUME_CSS = """
-:root{
-  color-scheme: light dark;
-  --space-2:8px; --space-3:12px; --space-4:16px; --space-5:20px; --space-6:24px;
-  --radius-sm:6px; --radius-md:8px; --radius-lg:10px; --radius-pill:999px;
-  --font-sans:'Geist Variable',system-ui,-apple-system,'Segoe UI',sans-serif;
-  --font-mono:'Geist Mono Variable',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
-
-  --bg-canvas-top:#F8F9FA; --bg-canvas-btm:#F4F5F7;
-  --bg-surface-top:#FFFFFF; --bg-surface-btm:#FAFBFC;
-  --bg-surface-raised-top:#FFFFFF; --bg-surface-raised-btm:#F7F9FB;
-  --bg-surface-sunken-top:#F4F5F7; --bg-surface-sunken-btm:#EEF0F2;
-  --border-subtle-top:#E6E8EB; --border-subtle-btm:#D9DCDF;
-  --text-primary:#1A1D20; --text-secondary:#5A6068; --text-tertiary:#8A9098;
-  --text-on-accent:#FFFFFF; --top-edge-highlight:rgba(255,255,255,.60);
-  --state-error-fg:#A8443B; --state-error-edge:#C45A50;
-  --state-success-fg:#3F7A55; --state-warning-fg:#8C6A1F;
-  --accent-fill:#B36B2E; --accent-fill-hover:#9F5C26;
-  --accent-subtle:rgba(179,107,46,.10); --accent-glow:rgba(179,107,46,.24);
-  --shadow-raised:0 1px 2px rgba(20,25,30,.04), 0 0 0 1px rgba(20,25,30,.02);
-}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg-canvas-top:#232631; --bg-canvas-btm:#1B1D24;
-  --bg-surface-top:#2A2D38; --bg-surface-btm:#23262F;
-  --bg-surface-raised-top:#303440; --bg-surface-raised-btm:#292C37;
-  --bg-surface-sunken-top:#1D1F26; --bg-surface-sunken-btm:#16181E;
-  --border-subtle-top:rgba(255,255,255,.06); --border-subtle-btm:rgba(0,0,0,.40);
-  --text-primary:#EEEFF3; --text-secondary:#B6B9C3; --text-tertiary:#888B95;
-  --text-on-accent:#1F2127; --top-edge-highlight:rgba(255,255,255,.08);
-  --state-error-fg:#E08577; --state-error-edge:#C5685A;
-  --state-success-fg:#88C499; --state-warning-fg:#D6B468;
-  --accent-fill:#E0A26B; --accent-fill-hover:#E5B080;
-  --accent-subtle:rgba(224,162,107,.18); --accent-glow:rgba(224,162,107,.30);
-  --shadow-raised:0 1px 2px rgba(0,0,0,.30), 0 0 0 1px rgba(0,0,0,.20);
-}}
-:root[data-theme="dark"]{
-  --bg-canvas-top:#232631; --bg-canvas-btm:#1B1D24;
-  --bg-surface-top:#2A2D38; --bg-surface-btm:#23262F;
-  --bg-surface-raised-top:#303440; --bg-surface-raised-btm:#292C37;
-  --bg-surface-sunken-top:#1D1F26; --bg-surface-sunken-btm:#16181E;
-  --border-subtle-top:rgba(255,255,255,.06); --border-subtle-btm:rgba(0,0,0,.40);
-  --text-primary:#EEEFF3; --text-secondary:#B6B9C3; --text-tertiary:#888B95;
-  --text-on-accent:#1F2127; --top-edge-highlight:rgba(255,255,255,.08);
-  --state-error-fg:#E08577; --state-error-edge:#C5685A;
-  --state-success-fg:#88C499; --state-warning-fg:#D6B468;
-  --accent-fill:#E0A26B; --accent-fill-hover:#E5B080;
-  --accent-subtle:rgba(224,162,107,.18); --accent-glow:rgba(224,162,107,.30);
-  --shadow-raised:0 1px 2px rgba(0,0,0,.30), 0 0 0 1px rgba(0,0,0,.20);
+#: The design system's colours, ``name: (light, dark)`` — the same values
+#: as ``v3/design/tokens.json`` (a test keeps them equal).
+COLORS: dict[str, tuple[str, str]] = {
+    "canvas": ("#F5F7FA", "#0F1520"),
+    "surface": ("#FFFFFF", "#161D2A"),
+    "surface-muted": ("#EEF1F5", "#1C2433"),
+    "border": ("#E3E7ED", "#263043"),
+    "text": ("#1D232C", "#E8ECF1"),
+    "text-2": ("#4B5563", "#AEB6C2"),
+    "text-3": ("#667080", "#8B95A3"),
+    "action": ("#0369A1", "#38BDF8"),
+    "action-hover": ("#04618F", "#7DD3FC"),
+    "on-action": ("#FFFFFF", "#0A0F1A"),
+    "focus": ("#0369A1", "#009FE3"),
+    "ok": ("#157A3A", "#4ADE80"),
+    "ok-bg": ("#E8F2EB", "#1E3C38"),
+    "warn": ("#8A5A0A", "#FACC15"),
+    "warn-bg": ("#F3EEE6", "#3A3927"),
+    "error": ("#B91C1C", "#F87171"),
+    "error-bg": ("#F8E8E8", "#3A2A35"),
+    "neutral-bg": ("#EDEEEF", "#2E3542"),
 }
 
+
+def _color_vars(index: int) -> str:
+    return "".join(f"--{name}:{values[index]};" for name, values in COLORS.items())
+
+
+_LIGHT = _color_vars(0) + "--shadow-card:0 1px 2px rgba(15,21,32,.06);"
+_DARK = _color_vars(1) + "--shadow-card:none;"
+
+#: Light tokens on bare ``:root``; dark tokens both under
+#: ``prefers-color-scheme: dark`` (no explicit host choice) and under
+#: ``:root[data-theme="dark"]`` (an explicit host choice wins), the
+#: theme-aware pattern every self-contained page in this codebase follows.
+APP_CSS = (
+    ":root{color-scheme:light dark;"
+    "--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;"
+    "--radius-sm:10px;--radius-md:14px;--radius-pill:999px;"
+    "--font-sans:'Nunito Sans',system-ui,-apple-system,'Segoe UI',sans-serif;"
+    "--font-mono:ui-monospace,'SF Mono','Cascadia Code',Menlo,Consolas,monospace;"
+    + _LIGHT
+    + "}\n"
+    + '@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){'
+    + _DARK
+    + "}}\n"
+    + ':root[data-theme="dark"]{'
+    + _DARK
+    + "}\n"
+    + """
 *,*::before,*::after{box-sizing:border-box}
 html,body{margin:0;padding:0}
 body{
-  background:linear-gradient(180deg,var(--bg-canvas-top) 0%,var(--bg-canvas-btm) 100%);
-  color:var(--text-primary);
-  font-family:var(--font-sans);font-size:13px;line-height:1.5;
+  background:var(--canvas);color:var(--text);
+  font-family:var(--font-sans);font-size:14px;line-height:20px;
   padding:var(--space-4);
 }
 h1,h2,h3,p{margin:0}
-button{font:inherit;color:inherit;cursor:pointer}
-.t-mono{font-family:var(--font-mono);font-feature-settings:'tnum'}
-.t-muted{color:var(--text-secondary)}
-.t-subtle{color:var(--text-tertiary)}
-.t-over{font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;
-  text-transform:uppercase;color:var(--text-tertiary)}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.t-mono{font-family:var(--font-mono);font-size:13px;font-variant-numeric:tabular-nums}
+.t-muted{color:var(--text-2)}
+.t-subtle{color:var(--text-3)}
+.t-sm{font-size:13px;line-height:20px}
+.t-xs{font-size:12px;line-height:16px}
+.t-over{font-size:12px;line-height:16px;font-weight:600;color:var(--text-3)}
 .stack{display:flex;flex-direction:column;gap:var(--space-4)}
 .stack--2{display:flex;flex-direction:column;gap:var(--space-2)}
-.row{display:flex;align-items:center;gap:var(--space-3)}
+.row{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
 .row--between{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3)}
 
-.card{
-  background:linear-gradient(180deg,var(--bg-surface-top) 0%,var(--bg-surface-btm) 100%);
-  border:1px solid var(--border-subtle-btm);border-top-color:var(--border-subtle-top);
-  border-radius:var(--radius-lg);
-  box-shadow:var(--shadow-raised),0 1px 0 var(--top-edge-highlight) inset;
-}
-.card__head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-3);
-  padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border-subtle-btm)}
-.card__title{font-size:12px;font-weight:500;letter-spacing:.02em;color:var(--text-secondary)}
+.card{background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius-md);box-shadow:var(--shadow-card)}
+.card__head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);
+  padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border)}
+.card__title{font-size:15px;line-height:22px;font-weight:600;color:var(--text)}
 .card__body{padding:var(--space-4)}
 
-.tile{
-  background:linear-gradient(180deg,var(--bg-surface-raised-top) 0%,
-    var(--bg-surface-raised-btm) 100%);
-  border:1px solid var(--border-subtle-btm);border-top-color:var(--border-subtle-top);
-  border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);
-  display:flex;flex-direction:column;gap:4px;
-}
-.tile__metric{font-family:var(--font-mono);font-size:20px;font-weight:500;font-feature-settings:'tnum'}
-.tile__label{font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;
-  text-transform:uppercase;color:var(--text-tertiary)}
+.tile{background:var(--surface-muted);border-radius:var(--radius-sm);
+  padding:var(--space-3) var(--space-4);display:flex;flex-direction:column;gap:var(--space-1)}
+.tile__metric{font-size:20px;line-height:28px;font-weight:700;font-variant-numeric:tabular-nums}
+.tile__label{font-size:12px;line-height:16px;font-weight:600;color:var(--text-3)}
 
-.badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary)}
-.badge .dot{width:6px;height:6px;border-radius:50%;background:var(--text-tertiary);flex:none}
-.badge--ok .dot{background:var(--state-success-fg)}
-.badge--warn{color:var(--state-warning-fg)}
-.badge--warn .dot{background:var(--state-warning-fg)}
-.badge--risk{color:var(--state-error-fg)}
-.badge--risk .dot{background:var(--state-error-fg)}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;
+  border-radius:var(--radius-pill);background:var(--neutral-bg);color:var(--text-2);
+  font-size:12px;line-height:18px;font-weight:600;white-space:nowrap}
+.badge .dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.badge--ok{background:var(--ok-bg);color:var(--ok)}
+.badge--warn{background:var(--warn-bg);color:var(--warn)}
+.badge--risk{background:var(--error-bg);color:var(--error)}
 
-.btn{
-  display:inline-flex;align-items:center;justify-content:center;gap:6px;
-  height:26px;padding:0 var(--space-3);border-radius:var(--radius-md);
-  border:1px solid var(--border-subtle-btm);border-top-color:var(--border-subtle-top);
-  background:linear-gradient(180deg,var(--bg-surface-raised-top) 0%,
-    var(--bg-surface-raised-btm) 100%);
-  color:var(--text-primary);font-size:12px;font-weight:500;white-space:nowrap;
-}
-.btn:hover{background:linear-gradient(180deg,var(--accent-subtle),var(--accent-subtle)),
-  linear-gradient(180deg,var(--bg-surface-raised-top) 0%,var(--bg-surface-raised-btm) 100%)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  min-height:32px;padding:0 var(--space-4);border-radius:var(--radius-pill);
+  border:1px solid var(--border);background:var(--surface);color:var(--text);
+  font-size:13px;font-weight:600;white-space:nowrap}
+.btn:hover{background:var(--surface-muted)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
-.btn--primary{
-  background:linear-gradient(180deg,var(--accent-fill) 0%,var(--accent-fill-hover) 100%);
-  border-color:var(--accent-fill-hover);color:var(--text-on-accent);
-}
-.btn--risk{border-color:var(--state-error-edge);color:var(--state-error-fg);background:none}
+.btn--primary{background:var(--action);border-color:var(--action);color:var(--on-action)}
+.btn--primary:hover{background:var(--action-hover);border-color:var(--action-hover)}
+.btn--risk{color:var(--error)}
+
+.input{width:100%;min-height:36px;padding:0 var(--space-3);border:1px solid var(--border);
+  border-radius:var(--radius-sm);background:var(--surface);color:var(--text)}
+.field__error{color:var(--error);font-size:13px}
 
 .listrow{display:flex;align-items:flex-start;gap:var(--space-3);
-  padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border-subtle-btm)}
+  padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border)}
 .listrow:last-child{border-bottom:0}
-.listrow__title{font-size:13px;font-weight:500}
-.listrow__meta{font-size:11px;color:var(--text-tertiary)}
-.listrow__snippet{font-size:12px;color:var(--text-secondary);margin-top:2px}
+.listrow__title{font-size:14px;line-height:20px;font-weight:600}
+.listrow__meta{font-size:12px;line-height:16px;color:var(--text-3)}
+.listrow__snippet{font-size:13px;line-height:20px;color:var(--text-2);margin-top:2px}
 
-.diff{font-family:var(--font-mono);font-size:11px;line-height:1.5;color:var(--text-secondary);
-  background:linear-gradient(180deg,var(--bg-surface-sunken-top) 0%,
-    var(--bg-surface-sunken-btm) 100%);
-  border-radius:var(--radius-sm);padding:var(--space-3);white-space:pre-wrap;word-break:break-word;
-  max-height:220px;overflow:auto}
+.diff{font-family:var(--font-mono);font-size:12px;line-height:18px;color:var(--text-2);
+  background:var(--surface-muted);border-radius:var(--radius-sm);padding:var(--space-3);
+  white-space:pre-wrap;word-break:break-word;max-height:220px;overflow:auto}
 
-.empty{font-size:12px;color:var(--text-tertiary);padding:var(--space-4);text-align:center}
+.empty{font-size:13px;color:var(--text-2);padding:var(--space-4);text-align:center}
 """
+)
 
 #: Content-Security-Policy for the page's own ``<meta>`` tag — defense in
 #: depth alongside the host-enforced CSP the tool's ``AppConfig`` carries
@@ -266,7 +232,7 @@ def render_app_page(*, title: str, body_html: str, script_js: str) -> str:
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         f'<meta http-equiv="Content-Security-Policy" content="{_CSP}">\n'
         f"<title>{safe_title}</title>\n"
-        f"<style>{_fonts_css()}{LUME_CSS}</style>\n"
+        f"<style>{_fonts_css()}{APP_CSS}</style>\n"
         "</head>\n"
         f"<body>\n{body_html}\n"
         f"<script>{_app_bridge_js()}</script>\n"
@@ -276,4 +242,4 @@ def render_app_page(*, title: str, body_html: str, script_js: str) -> str:
     )
 
 
-__all__ = ["LUME_CSS", "render_app_page"]
+__all__ = ["APP_CSS", "COLORS", "render_app_page"]

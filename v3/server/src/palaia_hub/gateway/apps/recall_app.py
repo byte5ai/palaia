@@ -64,7 +64,9 @@ _SCRIPT_JS = r"""
       return;
     }
     var html = '<div class="card"><div class="card__head"><span class="card__title">'
-      + escapeHtml(state.kind) + " · " + state.hits.length + " result(s)</span></div><div>";
+      + escapeHtml(state.kind.charAt(0).toUpperCase() + state.kind.slice(1)) + " · "
+      + state.hits.length + (state.hits.length === 1 ? " result" : " results")
+      + "</span></div><div>";
     for (var i = 0; i < state.hits.length; i++) {
       var hit = state.hits[i];
       html += '<div class="listrow"><div style="flex:1;min-width:0">'
