@@ -220,7 +220,7 @@ def cloud_main(args):
     if cloud.url:
         print(f"cloud_url={cloud.url}", flush=True)
         return 0
-    log(f"cloud access is not set up: {cloud.result}.")
+    log(f"cloud access is not set up: {str(cloud.result).rstrip('.')}.")
     print("cloud_url=", flush=True)
     return 3
 

@@ -348,7 +348,7 @@ def cloud_main(args):
     if cloud.url:
         print(f"cloud_url={cloud.url}", flush=True)
         return 0
-    log(f"cloud access is not set up: {cloud.result}.")
+    log(f"cloud access is not set up: {str(cloud.result).rstrip('.')}.")
     print("cloud_url=", flush=True)
     return 3
 
@@ -831,6 +831,8 @@ $DOCKER run -d \
     -p "127.0.0.1:${CLOUD_PORT}:8422" \
     -e PALAIA_CLOUD_URL_HINT="${CLOUD_URL}" \
     -e PALAIA_CLOUD_HOST_PORT="${CLOUD_PORT}" \
+    -e PALAIA_HUB_HOST_PORT="${PORT}" \
+    -e PALAIA_SELF_RESTART=1 \
     -v "${VOLUME}:/data" \
     --restart unless-stopped \
     --security-opt no-new-privileges:true \

@@ -38,6 +38,24 @@ server joins their private network. No key to create, copy or paste.
 - Keep the machine name `palaia-hub` so "find palaia-hub in your Tailscale
   machine list" (install skill, Step 5) still holds.
 
+## Additions from the 2026-10-23 installation test (#550, #564, #567, #568)
+- **Cloud access on the same page.** After the join the page offers Tailscale
+  Funnel for the hub's loopback *cloud entry* (`127.0.0.1:8422`, AI-connection
+  routes only — see `deploy/nginx.conf.template`). If the tailnet has not
+  allowed Funnel, the page shows Tailscale's own allow link; "Keep it private"
+  skips. On a server already on a tailnet the installer runs the same step
+  without the page (`setup-page.py cloud`). The hub refuses the cloud entry
+  until the owner turns on Cloud mode, so preparing it early exposes nothing.
+- **One installer.** `cloud-init.yaml` runs `get-palaia.sh` instead of
+  carrying a second copy of the install procedure; the setup page is embedded
+  in the installer only.
+- **Keys never in argv.** `PALAIA_TSKEY_FILE` (root-only file, deleted
+  afterwards); Tailscale reads it via `--auth-key=file:`.
+- **Plain `sh`.** The installer is POSIX sh: the published `| sh` ran it under
+  dash, which stopped at `set -o pipefail`.
+- **Real readiness.** Done only when `/api/health` answers through nginx and
+  the container is not restarting.
+
 ## Deliverables
 1. `v3/deploy/setup-page.py` (or inlined into both scripts from one source
    of truth, same drift-test pattern as the docker-run flags): runs

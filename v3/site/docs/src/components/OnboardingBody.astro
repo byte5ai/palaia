@@ -34,12 +34,9 @@ const snippets = loadDeploySnippets();
 const cloudInit = loadCloudInitTemplate();
 const prerelease = isPrerelease();
 // The `curl … get.palaia.ai | sh` one-liner, read from get-palaia.sh's header.
-// During a pre-release the `stable` image does not exist yet, so the shown
-// command carries PALAIA_CHANNEL=beta until 3.0.0 is final, the bare one after.
-const getPalaiaBase = loadGetPalaiaCommand();
-const installCommand = prerelease
-  ? getPalaiaBase.replace(/\|\s*sh\s*$/, "| PALAIA_CHANNEL=beta sh")
-  : getPalaiaBase;
+// The installer picks the image channel of its own release (beta during a
+// pre-release), so the command is shown exactly as published.
+const installCommand = loadGetPalaiaCommand();
 
 const REPO = "https://github.com/byte5ai/palaia";
 // Site base, normalized without a trailing slash. In-site links in the

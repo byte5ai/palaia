@@ -87,9 +87,23 @@ _NOT_FROM_DEPLOY: dict[str, str] = {
     # through SSH_ASKPASS (works without sshpass, OpenSSH 8.4+).
     "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 "
     "root@<address> true": "key login check that can never hang on a prompt",
-    "mkdir -p ~/.palaia-setup && chmod 700 ~/.palaia-setup && printf 'Server password: ' "
-    "&& read -rs PW && (umask 077 && printf '%s\\n' \"$PW\" > ~/.palaia-setup/pw) "
-    "&& unset PW && echo ' saved'": "the user's Run line that saves the password privately",
+    'mkdir -p ~/.palaia-setup && chmod 700 ~/.palaia-setup && bash -c \'del=$(printf "\\177"); '
+    's=; printf "Server password: "; while IFS= read -rsn1 c; do if [ -z "$c" ]; then break; '
+    'elif [ "$c" = "$del" ]; then [ -n "$s" ] && s=${s%?} && printf "\\b \\b"; else '
+    's=$s$c; printf "*"; fi; done; echo; (umask 077; printf "%s\\n" "$s" > '
+    '~/.palaia-setup/pw); echo "Saved (${#s} characters)."\'': (
+        "the user's Run line that saves the password privately, a star per character (#558)"
+    ),
+    'mkdir -p ~/.palaia-setup && chmod 700 ~/.palaia-setup && bash -c \'del=$(printf "\\177"); '
+    's=; printf "Tailscale auth key: "; while IFS= read -rsn1 c; do if [ -z "$c" ]; then '
+    'break; elif [ "$c" = "$del" ]; then [ -n "$s" ] && s=${s%?} && printf "\\b \\b"; '
+    'else s=$s$c; printf "*"; fi; done; echo; (umask 077; printf "%s" "$s" > '
+    '~/.palaia-setup/tskey); case $s in tskey-auth-*) echo "Saved (${#s} characters).";; *) '
+    'echo "That is not an auth key (it starts with tskey-auth-). Run this line again.";; '
+    "esac'": "the key fallback's Run line: a private file, a star per character (#558)",
+    "ssh root@<address> 'umask 077; cat > /root/.palaia-tskey' < ~/.palaia-setup/tskey": (
+        "copies the key file over the login's stdin — never a command-line argument (#564)"
+    ),
     "printf '#!/bin/sh\\ncat \"$HOME/.palaia-setup/pw\"\\n' > ~/.palaia-setup/askpass "
     "&& chmod 700 ~/.palaia-setup/askpass": "askpass helper; holds no secret itself",
     'SSH_ASKPASS="$HOME/.palaia-setup/askpass" SSH_ASKPASS_REQUIRE=force ssh '
@@ -98,7 +112,7 @@ _NOT_FROM_DEPLOY: dict[str, str] = {
     "-o NumberOfPasswordPrompts=1 -o ConnectTimeout=15 root@<address> true": (
         "password login check through the askpass helper"
     ),
-    "rm -rf ~/.palaia-setup": "deletes the saved password when setup is done",
+    "rm -rf ~/.palaia-setup": "deletes the saved password or key when setup is done",
     "ssh-keygen -R <address>": "forgets a reset server's old host key",
     "ssh -o StrictHostKeyChecking=accept-new root@<address>": (
         "interactive first login, for a provider that forces a password change"
@@ -242,34 +256,27 @@ def test_the_get_palaia_command_is_the_headers_own() -> None:
     assert header in _quoted_literals(_skill_body())
 
 
-def test_the_image_tag_is_derived_from_version_not_hardcoded() -> None:
-    """Issue #449: "the image tag must follow v3/VERSION". The skill names no
-    concrete image tag at all; it tells the assistant the rule (pre-release →
-    `beta`, else `stable`), leaves cloud-init.yaml's pinned tag alone — which
-    ``test_unattended_install_paths_pin_the_channel_matching_version``
-    already forces to match VERSION — and adds ``PALAIA_CHANNEL=beta`` to the
-    installer line for a pre-release, exactly as the onboarding page does."""
+def test_the_image_tag_is_never_named_by_the_skill() -> None:
+    """Issue #449: "the image tag must follow v3/VERSION". The installer and
+    the setup file choose it themselves (get-palaia.sh's DEFAULT_CHANNEL,
+    which ``test_version_drift.py`` keeps in step with VERSION), so the skill
+    names no tag and adds no channel to the installer line — the literal
+    published command installs the matching release as it is."""
     body = _skill_body()
     assert not re.search(r"palaia-hub:[A-Za-z0-9]", body), (
         "the skill hardcodes an image tag — it must follow v3/VERSION instead"
     )
-    literals = _quoted_literals(body)
-    assert "v3/VERSION" in literals
-    assert "PALAIA_CHANNEL=beta" in literals
-
+    assert "PALAIA_CHANNEL" not in body
     get_palaia = GET_PALAIA_PATH.read_text(encoding="utf-8")
-    assert 'CHANNEL="${PALAIA_CHANNEL:-stable}"' in get_palaia
+    assert 'CHANNEL="${PALAIA_CHANNEL:-$DEFAULT_CHANNEL}"' in get_palaia
     assert "ghcr.io/byte5ai/palaia-hub:${CHANNEL}" in get_palaia
 
-    # The pre-release form the skill shows is the header command with the
-    # variable inserted before `sh` — the same transform OnboardingBody.astro
-    # applies when isPrerelease().
-    header = _header_command()
-    beta_lines = [line for line in literals if "PALAIA_CHANNEL=beta" in line and "curl" in line]
-    assert beta_lines, "the skill no longer shows the pre-release installer line"
-    for line in beta_lines:
-        assert line.startswith(header.removesuffix("sh").rstrip()), line
-        assert line.endswith("PALAIA_CHANNEL=beta sh"), line
+
+def test_the_skill_never_puts_a_key_into_a_command_line() -> None:
+    """Issue #564: no `PALAIA_TSKEY=<key>` in a remote command string."""
+    body = _skill_body()
+    assert "PALAIA_TSKEY=" not in body
+    assert "PALAIA_TSKEY_FILE=/root/.palaia-tskey" in body
 
 
 # --- the setup-code substitution, applied to the real file ------------------
@@ -313,7 +320,7 @@ def test_the_substituted_file_is_a_valid_cloud_config() -> None:
     assert 'PALAIA_SETUP_CODE="K7QM-R2XD-9FTP"' in _setup_script(filled)
 
 
-@pytest.mark.skipif(shutil.which("bash") is None, reason="bash not on PATH")
+@pytest.mark.skipif(shutil.which("sh") is None, reason="sh not on PATH")
 def test_the_guard_passes_the_substituted_code_and_stops_the_unedited_file(tmp_path: Path) -> None:
     """Run the real guard: the skill's edit must pass it (setup-page path);
     the unedited file must be stopped."""
@@ -324,10 +331,10 @@ def test_the_guard_passes_the_substituted_code_and_stops_the_unedited_file(tmp_p
     }
     for label, (text, expected) in cases.items():
         script = _setup_script(text)
-        guard = script[: script.index("# --- Docker")]
+        guard = script[: script.index("# --- Run the installer")]
         path = tmp_path / f"{label.replace(' ', '_').replace("'", '')}.sh"
         path.write_text(guard, encoding="utf-8")
         result = subprocess.run(
-            ["bash", str(path)], capture_output=True, text=True, timeout=30, check=False
+            ["sh", str(path)], capture_output=True, text=True, timeout=30, check=False
         )
         assert result.returncode == expected, (label, result.stdout, result.stderr)
