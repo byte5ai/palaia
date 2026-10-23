@@ -155,9 +155,14 @@ Covers `/oauth/token`, `/oauth/login`, `/oauth/register`, `/oauth/revoke`,
 - **The admin surface is covered too.** SPEC-401's session gate refuses an
   unauthenticated caller with a 401, and those refusals now fill a bucket
   of their own — one shared bucket per caller for the whole of `/api/*`,
-  so walking routes does not buy ten fresh tries per route. `/api/health`
-  and `/api/info` are never throttled: the sign-in page reads them, and a
-  locked-out operator must still be able to see that the hub is alive.
+  so walking routes does not buy ten fresh tries per route. Only a refusal
+  of a presented session cookie counts, each distinct value once per
+  window (issue #593): a request with no session cookie guesses nothing,
+  and a stale cookie is one guess however often the browser sends it, so
+  opening the dashboard before signing in never locks the owner out.
+  `/api/health` and `/api/info` are never throttled: the sign-in page reads
+  them, and a locked-out operator must still be able to see that the hub
+  is alive.
 - **The caller is identified correctly behind a reverse proxy.** In the
   packaged image nginx is the only public listener and the hub sees
   loopback for every request, which used to collapse every caller into one

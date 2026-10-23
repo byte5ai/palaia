@@ -74,6 +74,7 @@ from typing import TYPE_CHECKING, Any
 from .oauth.keys import OAUTH_DIR_NAME
 from .oauth.login import CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE
 from .oauth.store import DATABASE_FILE
+from .security.cookies import request_cookies
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .config import HubConfig
@@ -265,7 +266,7 @@ class AdminSessionMiddleware:
         if scope_type != "http" or not guarded:
             await self._app(scope, receive, send)
             return
-        cookies = _parse_cookies(scope)
+        cookies = request_cookies(scope)
         # One worker-thread hop for both store reads (is there a way in, and
         # is this session live). SQLite statements are blocking and the
         # store's lock is shared with the token endpoint, so running them
@@ -316,29 +317,6 @@ class AdminSessionMiddleware:
             }
         )
         await send({"type": "http.response.body", "body": body})
-
-
-def _parse_cookies(scope: Scope) -> dict[str, str]:
-    """Parse the request's ``Cookie`` header.
-
-    Hand-rolled rather than via :class:`starlette.requests.Request` so the
-    middleware stays a plain ASGI callable with no per-request object
-    allocation, same shape as :mod:`palaia_hub.modes.rate_limit`.
-    """
-    raw = b""
-    for name, value in scope.get("headers", []):
-        if name == b"cookie":
-            raw = value
-            break
-    if not raw:
-        return {}
-    cookies: dict[str, str] = {}
-    for part in raw.decode("latin-1").split(";"):
-        name, sep, value = part.partition("=")
-        if not sep:
-            continue
-        cookies[name.strip()] = value.strip()
-    return cookies
 
 
 def _csrf_ok(scope: Scope, cookies: dict[str, str]) -> bool:
