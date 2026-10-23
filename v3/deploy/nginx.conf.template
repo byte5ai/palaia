@@ -25,6 +25,18 @@ http {
     uwsgi_temp_path /tmp/nginx/uwsgi;
     scgi_temp_path /tmp/nginx/scgi;
 
+    # The scheme the browser used. A TLS tunnel in front of the private door
+    # (open mode: the whole hub is public) reaches it over http and says
+    # `X-Forwarded-Proto: https`; overwriting that with `$scheme` made the
+    # hub set its sign-in cookies without `Secure` on a public https
+    # address. Only an `https` claim is passed on: it can only make the
+    # cookies stricter, and a plain-http visit on the owner's own network
+    # still gets cookies it can keep.
+    map $http_x_forwarded_proto $palaia_forwarded_proto {
+        default $scheme;
+        https https;
+    }
+
     server {
         listen ${PUBLIC_PORT};
         server_name _;
@@ -62,7 +74,7 @@ http {
             proxy_set_header Host $http_host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Proto $palaia_forwarded_proto;
             # Requests through this door are never cloud-entry requests,
             # whatever a client sends (an empty value drops the header).
             proxy_set_header X-Palaia-Entry "";
