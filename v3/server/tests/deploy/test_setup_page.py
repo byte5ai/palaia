@@ -282,3 +282,36 @@ def test_get_palaia_embeds_the_setup_page_verbatim() -> None:
     match = re.search(r"<<'PALAIA_SETUP_PAGE'\n(.*?)^PALAIA_SETUP_PAGE$", script, re.S | re.M)
     assert match, "get-palaia.sh no longer embeds setup-page.py in a 'PALAIA_SETUP_PAGE' heredoc"
     assert match.group(1) == _source()
+
+
+def _page_module():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("palaia_setup_page", SETUP_PAGE)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_page_colours_are_the_design_tokens_of_the_same_name() -> None:
+    """The page cannot load the dashboard's stylesheet (it runs before palaia
+    exists), so it carries the token values; they must stay equal to
+    ``v3/design/tokens.json`` (issue 570)."""
+    import json
+
+    tokens_file = DEPLOY_ROOT.parent / "design" / "tokens.json"
+    tokens = {
+        token["name"]: (token["value"]["light"], token["value"]["dark"])
+        for token in json.loads(tokens_file.read_text(encoding="utf-8"))["color"]["tokens"]
+    }
+    module = _page_module()
+    page = module.PAGE.format(body="")
+    for name, (light, dark) in module.COLORS.items():
+        assert tokens.get(name) == (light, dark), name
+        assert f"--{name}: {light};" in page
+        assert f"--{name}: {dark};" in page
+    assert "prefers-color-scheme: dark" in page
+    # Inline styles and an inline mark only: the page fetches nothing.
+    assert re.search(r'(src|href)="https?://', page) is None
+    assert "@import" not in page and "url(" not in page
