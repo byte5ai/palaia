@@ -141,7 +141,7 @@ function renderWizard() {
 }
 
 function rail() {
-  return within(screen.getByRole("complementary", { name: /setup steps/i }));
+  return within(screen.getByRole("list", { name: /^steps$/i }));
 }
 
 describe("first-run setup", () => {
@@ -269,9 +269,15 @@ describe("first-run setup", () => {
       tunnel: "tailscale",
     });
     expect(JSON.stringify(mode?.body)).not.toContain(window.location.origin);
-    expect(
-      screen.getByRole("button", { name: /restart palaia/i }),
-    ).toBeInTheDocument();
+    // The step itself says what the restart does: one click restarts,
+    // without a second "Restart palaia?" question.
+    fireEvent.click(screen.getByRole("button", { name: /restart palaia/i }));
+    await waitFor(() =>
+      expect(
+        hub.calls.some((c) => c.method === "POST" && c.path === "/api/hub/restart"),
+      ).toBe(true),
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("refuses a plain http address before sending anything", async () => {
