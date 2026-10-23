@@ -10,7 +10,7 @@
  * 3. Active: the hub checks its own public address the way ChatGPT and
  *    Claude do (the self-test) and shows each result.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "../../components/Button";
 import { Callout } from "../../components/Callout";
@@ -216,6 +216,12 @@ function CloudRestart({ status }: { status: SetupStatus }) {
   );
 }
 
+/** A new public address (Tailscale Funnel, a fresh tunnel) can take a few
+ * minutes before it answers. The step keeps checking by itself this often,
+ * for this long, before it asks the person to look. */
+const RECHECK_EVERY_MS = 10_000;
+const RECHECK_FOR_MS = 180_000;
+
 function CloudCheck({
   status,
   refresh,
@@ -226,42 +232,51 @@ function CloudCheck({
   onDone: () => Promise<void>;
 }) {
   const [result, setResult] = useState<SelfTestResult | null>(null);
-  const [rechecking, setRechecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Each check has a number; `attempt` asks for one, `finished` is the
+  // last one that answered, so "checking" needs no state of its own.
+  const [attempt, setAttempt] = useState(0);
+  const [finished, setFinished] = useState(-1);
+  const [autoRecheck, setAutoRecheck] = useState(false);
+  const since = useRef(0);
   const address = status.public_url ?? status.issuer ?? "";
-  const checking = rechecking || (result === null && error === null);
+  const checking = finished !== attempt;
 
-  async function check() {
-    setRechecking(true);
-    setError(null);
-    try {
-      setResult(await api.selfTest(address));
-      await refresh();
-    } catch (err) {
-      setError(describeApiError(err));
-    } finally {
-      setRechecking(false);
-    }
+  function check() {
+    since.current = 0;
+    setAttempt((n) => n + 1);
   }
 
-  // Checked once when the step opens; "Check again" repeats it.
+  // Checked when the step opens and again every few seconds while the
+  // address does not answer yet; "Check again" starts a new round.
   useEffect(() => {
     if (!address) return;
     let cancelled = false;
+    let timer = 0;
+    if (since.current === 0) since.current = Date.now();
     api
       .selfTest(address)
       .then((next) => {
         if (cancelled) return;
+        const again = !next.reachable && Date.now() - since.current < RECHECK_FOR_MS;
         setResult(next);
+        setError(null);
+        setAutoRecheck(again);
+        setFinished(attempt);
         void refresh();
+        if (again) timer = window.setTimeout(() => setAttempt((n) => n + 1), RECHECK_EVERY_MS);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(describeApiError(err));
+        if (cancelled) return;
+        setError(describeApiError(err));
+        setAutoRecheck(false);
+        setFinished(attempt);
       });
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
-  }, [address, refresh]);
+  }, [address, refresh, attempt]);
 
   const works = Boolean(result?.reachable);
   return (
@@ -274,7 +289,7 @@ function CloudCheck({
         </>
       }
       back={
-        <Button variant="secondary" onClick={() => void check()} loading={checking}>
+        <Button variant="secondary" onClick={check} loading={checking}>
           {checking ? "Checking…" : "Check again"}
         </Button>
       }
@@ -299,7 +314,15 @@ function CloudCheck({
         ))}
         {checking && !result ? <li className="t-muted">Checking…</li> : null}
       </ul>
-      {result && !works ? (
+      {result && !works && autoRecheck ? (
+        <Callout tone="info" title="Not reachable yet" role="status">
+          <p>
+            A new address can take a few minutes to work. palaia checks again by itself every few
+            seconds.
+          </p>
+        </Callout>
+      ) : null}
+      {result && !works && !autoRecheck ? (
         <Callout tone="warn" title="Not working yet" role="status">
           <p>{result.error}</p>
         </Callout>
