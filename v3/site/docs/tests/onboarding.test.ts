@@ -115,16 +115,18 @@ describe("onboarding page snippets", () => {
     expect(cloudInit).toContain("tskey-REPLACE_ME");
   });
 
-  it("SPEC-601: the cloud-init snippet's docker run reuses install.sh's hardening flags verbatim", () => {
+  it("SPEC-601: the cloud-init snippet runs the installer, whose docker run reuses install.sh's hardening flags", () => {
     // The authoritative drift test is server/tests/deploy/test_cloud_init.py
     // (it also proves the file validates against `cloud-init schema`); this
     // is the same "read the real files, never a second hand-typed list"
-    // check applied on the onboarding-page side, so a change to either file
-    // that breaks the pairing fails loudly here too, not only in the Python
-    // suite.
+    // check applied on the onboarding-page side. The setup file no longer
+    // carries its own install procedure: it runs get-palaia.sh.
     const installSh = readFileSync(path.join(DEPLOY_ROOT, "install.sh"), "utf8");
+    const installer = readFileSync(path.join(DEPLOY_ROOT, "get-palaia.sh"), "utf8");
     const cloudInit = loadCloudInitTemplate();
 
+    expect(cloudInit).toContain('INSTALLER_URL="https://get.palaia.ai/install"');
+    expect(cloudInit).toContain("sh /opt/palaia/get-palaia.sh");
     for (const flag of [
       "--security-opt no-new-privileges:true",
       "--cap-drop ALL",
@@ -133,7 +135,7 @@ describe("onboarding page snippets", () => {
       "--tmpfs /run",
     ]) {
       expect(installSh, `install.sh should still contain ${JSON.stringify(flag)}`).toContain(flag);
-      expect(cloudInit, `cloud-init.yaml should reuse install.sh's ${JSON.stringify(flag)}`).toContain(
+      expect(installer, `get-palaia.sh should reuse install.sh's ${JSON.stringify(flag)}`).toContain(
         flag,
       );
     }
