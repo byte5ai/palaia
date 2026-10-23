@@ -363,7 +363,7 @@ def test_the_routes_configure_push_and_remove(
     }
     assert TOKEN not in saved.text
 
-    pushed = client.post(VAULT_REMOTE_PUSH_PATH.format(vault="work"))
+    pushed = client.post(VAULT_REMOTE_PUSH_PATH.format(vault="work"), json={})
     assert pushed.status_code == 200, pushed.text
     assert pushed.json()["commit"] == _git(vault_root, "rev-parse", "HEAD")
     assert pushed.json()["trigger"] == "manual"
@@ -371,7 +371,7 @@ def test_the_routes_configure_push_and_remove(
     removed = client.delete(VAULT_REMOTE_PATH.format(vault="work"))
     assert removed.status_code == 200
     assert secrets.get(secret_name("work")) is None
-    assert client.post(VAULT_REMOTE_PUSH_PATH.format(vault="work")).status_code == 404
+    assert client.post(VAULT_REMOTE_PUSH_PATH.format(vault="work"), json={}).status_code == 404
 
 
 def test_a_bad_url_is_a_422_with_the_fix(remotes: VaultRemotes) -> None:
@@ -390,7 +390,7 @@ def test_a_refused_push_is_a_500_with_the_reason(
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "none"))
     client = _client(remotes)
     client.put(VAULT_REMOTE_PATH.format(vault="work"), json={"url": URL, "token": TOKEN})
-    response = client.post(VAULT_REMOTE_PUSH_PATH.format(vault="work"))
+    response = client.post(VAULT_REMOTE_PUSH_PATH.format(vault="work"), json={})
     assert response.status_code == 500
     assert TOKEN not in response.text
     (listed,) = client.get(VAULT_REMOTES_PATH).json()["vaults"]
@@ -400,7 +400,7 @@ def test_a_refused_push_is_a_500_with_the_reason(
 def test_a_vault_being_pushed_answers_409(remotes: VaultRemotes) -> None:
     remotes.configure("work", url=URL, token=TOKEN)
     remotes._pushing.add("work")
-    response = _client(remotes).post(VAULT_REMOTE_PUSH_PATH.format(vault="work"))
+    response = _client(remotes).post(VAULT_REMOTE_PUSH_PATH.format(vault="work"), json={})
     assert response.status_code == 409
 
 
@@ -412,7 +412,7 @@ def test_every_route_refuses_on_a_hub_with_no_sign_in(remotes: VaultRemotes) -> 
         ("DELETE", VAULT_REMOTE_PATH.format(vault="work")),
         ("POST", VAULT_REMOTE_PUSH_PATH.format(vault="work")),
     ):
-        body = {"url": URL, "token": TOKEN} if method == "PUT" else None
+        body = {"url": URL, "token": TOKEN} if method == "PUT" else {} if method == "POST" else None
         response = client.request(method, path, json=body)
         assert response.status_code == 403, (method, path)
         assert response.json()["detail"] == UNGATED_VAULT_REMOTES_DETAIL

@@ -216,17 +216,31 @@ def test_every_gated_route_refuses_a_caller_with_no_session(walk_hub: Hub) -> No
             assert response.json()["sign_in_url"] == "/oauth/login"
 
 
-def test_every_gated_route_answers_a_signed_in_caller(walk_hub: Hub) -> None:
+def test_every_gated_route_answers_a_signed_in_caller(
+    walk_hub: Hub, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """ "Works with one": the gate is what changed, not the route's own answer,
-    so this asserts only that nothing is refused for lack of a session."""
+    so this asserts only that nothing is refused for lack of a session — or,
+    since issue #587, as another site's request. Each call is shaped like the
+    dashboard's own (`web/src/lib/api/client.ts`): JSON for every write, a
+    bare `DELETE`, from this hub's own page."""
+    # The restart route is reached now; it must answer 409, not end pytest.
+    monkeypatch.delenv("PALAIA_SELF_RESTART", raising=False)
     with TestClient(walk_hub.app) as client:
         client.cookies.set(SESSION_COOKIE, walk_hub.session_cookie())
         client.cookies.set(CSRF_COOKIE, "csrf-token-value")
         for method, path in _api_routes(walk_hub.app):
             if path in STREAMING_PATHS:
                 continue
-            response = _call(client, method, path, headers={CSRF_HEADER: "csrf-token-value"})
-            assert response.status_code not in (401, 403), (
+            body = {"json": {}} if method in ("POST", "PUT", "PATCH") else {}
+            response = _call(
+                client,
+                method,
+                path,
+                headers={CSRF_HEADER: "csrf-token-value", "Sec-Fetch-Site": "same-origin"},
+                **body,
+            )
+            assert response.status_code not in (401, 403, 415), (
                 f"{method} {path} answered {response.status_code}: {response.text[:200]}"
             )
 

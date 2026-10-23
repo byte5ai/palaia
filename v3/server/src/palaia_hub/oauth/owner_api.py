@@ -30,9 +30,11 @@ Two things bound the exposure of a POST that, by design, needs no session:
 * it works only on a hub with **no** owner — the state in which every
   ``/api/*`` route is already reachable to whoever reaches the hub at all
   (the zero-config first run the admin gate deliberately allows);
-* a browser fetch carries ``Sec-Fetch-Site``; anything but a same-origin
-  request is refused, so a page on another site cannot plant an owner
-  password into a fresh hub through the operator's browser.
+* like every change under ``/api/*``, it is accepted only as JSON and
+  never from a request a browser marks as coming from another site
+  (:mod:`palaia_hub.security.cross_site`, issue #587), so a page on another
+  site cannot plant an owner password into a fresh hub through the
+  operator's browser.
 """
 
 from __future__ import annotations
@@ -55,10 +57,6 @@ from .store import OAuthStore
 logger = logging.getLogger("palaia_hub.oauth.owner_api")
 
 OWNER_PATH = "/api/auth/owner"
-
-#: ``Sec-Fetch-Site`` values a browser sends for a request this hub's own
-#: pages made. ``none`` is a user-initiated navigation (typed URL, bookmark).
-_SAME_SITE_FETCHES = frozenset({"same-origin", "same-site", "none"})
 
 
 class OwnerAccountState(BaseModel):
@@ -110,15 +108,9 @@ def build_owner_router(
     ) -> OwnerAccountState:
         """Create the one owner account and sign this browser in.
 
-        409 once an account exists; 403 for a request another site's page
-        made through this browser.
+        409 once an account exists. A request another site's page made
+        through this browser never gets here (``security.cross_site``).
         """
-        fetch_site = request.headers.get("sec-fetch-site", "").lower()
-        if fetch_site and fetch_site not in _SAME_SITE_FETCHES:
-            raise HTTPException(
-                status_code=403,
-                detail="the owner account can only be created from this hub's own pages.",
-            )
         if store().get_owner() is not None:
             raise HTTPException(
                 status_code=409,

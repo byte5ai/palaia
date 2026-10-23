@@ -108,7 +108,7 @@ async def test_a_connected_server_survives_a_restart(
     async with _running(restarted) as http:
         # The monitor's own first pass is asynchronous; probing explicitly is
         # the deterministic equivalent.
-        probed = (await http.post("/api/gateway/upstreams/fixture/probe")).json()
+        probed = (await http.post("/api/gateway/upstreams/fixture/probe", json={})).json()
         assert probed["up"] is True
         async with Client(restarted.dynamic_gateway.profile_servers["default"]) as client:
             assert "fixture_echo" in {tool.name for tool in await client.list_tools()}

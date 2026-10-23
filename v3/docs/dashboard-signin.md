@@ -77,6 +77,25 @@ carry the double-submit token the sign-in flow set, in the
 The dashboard sends the header on every mutating call from one place
 (`web/src/lib/api/client.ts`); no component issues a bare `fetch`.
 
+In every mode, with or without sign-in, one more rule applies to the same
+methods (issue #587, `palaia_hub.security.cross_site`), because a hub
+without the gate — Private without dashboard sign-in — has no token to check:
+
+- `POST`, `PUT` and `PATCH` must say `Content-Type: application/json`, with
+  or without a body (415 otherwise). A form or a `no-cors` fetch on another
+  site cannot send that without a CORS preflight, and palaia grants none.
+  The dashboard sends `{}` for a change that takes no input; a script that
+  calls such a route needs the header too (`curl -H 'Content-Type:
+  application/json' -d '{}' …`).
+- A request a browser marks with a `Sec-Fetch-Site` other than
+  `same-origin` (or `none`, a typed address) is refused (403). Browsers send
+  this header only over https; on a plain-http hub the first rule is what
+  holds.
+
+`DELETE` is held only to the second rule: the dashboard sends it without a
+body, and no browser sends one across sites without the preflight. `/mcp`,
+`/oauth` and `/telegram/webhook` are not under `/api/` and not affected.
+
 ## 5. Open mode, and issue #242
 
 `open` mode was refused outright while no dashboard sign-in existed. It is

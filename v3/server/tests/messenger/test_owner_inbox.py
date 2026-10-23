@@ -120,6 +120,8 @@ async def test_the_owner_inbox_is_served_over_the_admin_surface(
     assert [e["id"] for e in inbox.json()["envelopes"]] == [sent.envelopes[0].id]
     assert inbox.json()["envelopes"][0]["body"] == "done"
 
-    assert client.post(f"/api/messenger/inbox/{sent.envelopes[0].id}/ack").status_code == 200
+    assert (
+        client.post(f"/api/messenger/inbox/{sent.envelopes[0].id}/ack", json={}).status_code == 200
+    )
     assert client.get("/api/messenger/inbox").json()["envelopes"] == []
-    assert client.post("/api/messenger/inbox/no-such-envelope/ack").status_code == 404
+    assert client.post("/api/messenger/inbox/no-such-envelope/ack", json={}).status_code == 404

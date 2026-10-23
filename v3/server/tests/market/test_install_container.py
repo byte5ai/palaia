@@ -109,13 +109,13 @@ async def test_container_install_run_update_uninstall_lifecycle(
         assert installed["kind"] == "container"
 
         # Health visible.
-        probed = await http.post(f"/api/gateway/upstreams/{upstream_key}/probe")
+        probed = await http.post(f"/api/gateway/upstreams/{upstream_key}/probe", json={})
         assert probed.json()["up"] is True
         assert "whoami" in probed.json()["tools"] or "add" in probed.json()["tools"]
 
         # Update — same tag, but exercises the one-click update path end to
         # end (re-pull, rebuild the connection).
-        updated = await http.post(f"/api/market/installed/{upstream_key}/update")
+        updated = await http.post(f"/api/market/installed/{upstream_key}/update", json={})
         assert updated.status_code == 200, updated.text
 
         # Uninstall leaves no container behind.
@@ -157,6 +157,6 @@ async def test_updating_a_non_container_add_on_is_refused(tmp_path: Path) -> Non
         )
         upstream_key = install.json()["upstream_key"]
 
-        response = await http.post(f"/api/market/installed/{upstream_key}/update")
+        response = await http.post(f"/api/market/installed/{upstream_key}/update", json={})
         assert response.status_code == 400
         assert "container" in response.json()["detail"]

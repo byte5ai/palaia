@@ -186,7 +186,9 @@ def test_running_a_target_writes_the_archive_on_the_hub_not_through_the_browser(
     destination = tmp_path / "backups"
     published: list[tuple[str, dict[str, Any]]] = []
 
-    response = _target_client(home, destination, published).post(f"{BACKUP_TARGETS_PATH}/nas/run")
+    response = _target_client(home, destination, published).post(
+        f"{BACKUP_TARGETS_PATH}/nas/run", json={}
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -202,7 +204,9 @@ def test_running_a_target_writes_the_archive_on_the_hub_not_through_the_browser(
 def test_running_an_unknown_target_names_the_configured_ones(tmp_path: Path) -> None:
     home = _hub_home(tmp_path)
 
-    response = _target_client(home, tmp_path / "backups").post(f"{BACKUP_TARGETS_PATH}/nope/run")
+    response = _target_client(home, tmp_path / "backups").post(
+        f"{BACKUP_TARGETS_PATH}/nope/run", json={}
+    )
 
     assert response.status_code == 404
     detail = response.json()["detail"]
@@ -215,7 +219,7 @@ def test_a_failing_target_answers_500_with_the_reason(tmp_path: Path) -> None:
     could not carry it out, and the operator is told which."""
     home = _hub_home(tmp_path)
 
-    response = _target_client(home, home / "inside").post(f"{BACKUP_TARGETS_PATH}/nas/run")
+    response = _target_client(home, home / "inside").post(f"{BACKUP_TARGETS_PATH}/nas/run", json={})
 
     assert response.status_code == 500
     assert "inside the hub's own data directory" in response.json()["detail"]
@@ -228,7 +232,7 @@ def test_a_hub_with_no_backup_section_lists_nothing_and_runs_nothing(tmp_path: P
     client = TestClient(app)
 
     assert client.get(BACKUP_TARGETS_PATH).json() == {"targets": [], "schedule": None}
-    missing = client.post(f"{BACKUP_TARGETS_PATH}/nas/run")
+    missing = client.post(f"{BACKUP_TARGETS_PATH}/nas/run", json={})
     assert missing.status_code == 404
     assert "none are configured" in missing.json()["detail"]
 
@@ -240,7 +244,7 @@ def test_the_target_routes_refuse_on_a_hub_with_no_sign_in(tmp_path: Path) -> No
     client = TestClient(app)
 
     listed = client.get(BACKUP_TARGETS_PATH)
-    ran = client.post(f"{BACKUP_TARGETS_PATH}/nas/run")
+    ran = client.post(f"{BACKUP_TARGETS_PATH}/nas/run", json={})
 
     assert listed.status_code == 403
     assert listed.json()["detail"] == UNGATED_TARGETS_DETAIL
@@ -256,7 +260,7 @@ def test_a_run_from_the_dashboard_is_listed_as_the_targets_last_run(tmp_path: Pa
     published: list[tuple[str, dict[str, Any]]] = []
     client = _target_client(home, tmp_path / "backups", published)
 
-    ran = client.post(f"{BACKUP_TARGETS_PATH}/nas/run").json()
+    ran = client.post(f"{BACKUP_TARGETS_PATH}/nas/run", json={}).json()
     listed = client.get(BACKUP_TARGETS_PATH).json()["targets"][0]
 
     last = listed["last_run"]
@@ -274,7 +278,7 @@ def test_a_failed_run_is_listed_with_its_reason(tmp_path: Path) -> None:
     home = _hub_home(tmp_path)
     client = _target_client(home, home / "inside")
 
-    client.post(f"{BACKUP_TARGETS_PATH}/nas/run")
+    client.post(f"{BACKUP_TARGETS_PATH}/nas/run", json={})
     last = client.get(BACKUP_TARGETS_PATH).json()["targets"][0]["last_run"]
 
     assert last["ok"] is False
@@ -299,7 +303,7 @@ def test_a_target_already_being_written_answers_409_and_writes_nothing(
     lock = ledger._run_locks["nas"]  # noqa: SLF001 - hold it as a run in progress would
 
     with lock:
-        busy = client.post(f"{BACKUP_TARGETS_PATH}/nas/run")
+        busy = client.post(f"{BACKUP_TARGETS_PATH}/nas/run", json={})
         listed = client.get(BACKUP_TARGETS_PATH).json()["targets"][0]
 
     assert busy.status_code == 409

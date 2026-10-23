@@ -87,7 +87,7 @@ from .notifications import NotificationStore, build_notifications_router
 from .oauth import AuthorizationServer, build_oauth_router, build_owner_router
 from .oauth.login import SESSION_COOKIE
 from .oauth.verifier import build_hub_auth
-from .security import SecurityHeadersMiddleware
+from .security import CrossSiteRequestGuard, SecurityHeadersMiddleware
 from .setup_api import build_setup_router
 from .startup import PROBLEMS as STARTUP_PROBLEMS
 from .stash.service import StashService
@@ -729,12 +729,20 @@ def create_app(
     wire_funnel_tracking(event_bus, funnel_store)
     # Middleware order matters here and is the whole point of this block.
     # Starlette builds the stack so that the LAST `add_middleware` call is
-    # the OUTERMOST layer, so these three are added innermost-first:
+    # the OUTERMOST layer, so these are added innermost-first:
     #
     #   security headers  <- outermost, sees every response including 401s
-    #     failed-attempt limiter
-    #       admin session gate
-    #         the app's own routes                <- innermost
+    #     cloud entry
+    #       failed-attempt limiter
+    #         admin session gate
+    #           cross-site guard
+    #             the app's own routes            <- innermost
+    #
+    # Issue #587: the cross-site guard refuses every change under `/api/*`
+    # that another site's page could send through the owner's browser, in
+    # every mode — it is the one protection where no gate runs (`locked`
+    # without dashboard sign-in). Inside the gate, so a caller with no
+    # session still gets the gate's 401 and its sign-in link first.
     #
     # SPEC-401 originally had the gate outermost, reasoning that an
     # unauthenticated caller should be turned away before any other
@@ -754,6 +762,7 @@ def create_app(
     admin_session_enforced = sign_in_required(config) and (
         oauth_server is not None or sign_in_configured(config, hub_home)
     )
+    app.add_middleware(CrossSiteRequestGuard)
     if admin_session_enforced:
         app.add_middleware(
             AdminSessionMiddleware,
