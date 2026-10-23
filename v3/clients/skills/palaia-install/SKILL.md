@@ -6,22 +6,19 @@ license: MIT
 
 # Get palaia running
 
-You are setting palaia up for someone who may not be technical. Your job is to
-ask a few plain questions, then do the work — run the commands yourself if you
-can reach their machine, otherwise give them exactly one line to paste. Never
-show them a wall of Docker commands and never assume they know what any of this
-means. One step at a time; wait for each to finish before the next.
+You are setting palaia up for someone who may not be technical. Ask a few plain
+questions, then do the work: run the commands yourself if you can reach their
+machine, otherwise give them exactly one line to paste. One step at a time; wait
+for each to finish before the next. Never paste raw error output at them.
 
-palaia runs on a machine they own and is reached in a browser. It is almost
-always a separate always-on box (a rented server, a NAS, a small Pi), because a
-hub that only serves the laptop it lives on gives up the point of it. Keep that
-in mind when they are unsure where to put it.
+palaia runs on a machine they own and is used in a browser. It is almost always a
+separate always-on box (a rented server, a NAS, a small Pi): a hub that only
+serves the laptop it lives on gives up the point of it.
 
 ## Before you start — read the real files
 
-The setup file and the install command change between releases, so never
-write them from memory, and never from this page alone. Read them from the
-files palaia actually ships, every time:
+The setup file and the installer change between releases, so never write them
+from memory, and never from this page alone. Read them from what palaia ships:
 
 | What | File | Address |
 |---|---|---|
@@ -30,266 +27,249 @@ files palaia actually ships, every time:
 | Notes on reboots, updates and backups | `v3/deploy/README.md` | `https://get.palaia.ai/deploy-notes` |
 | Which release this is | `v3/VERSION` | `https://get.palaia.ai/version` |
 
-If you are working inside a copy of the palaia repository, read the files
-there. Otherwise open each address — those are the only addresses to use or
-show; never point the person at any other place to download from.
-Read all four from the same place, so they belong to the same release. If you
-cannot open files or web pages at all, say so plainly and do not make the
-commands up.
-
-### Which image this release uses
-
-Read `v3/VERSION`. If it contains a hyphen (like 3.0.0-rc2), this is a test
-release: palaia's image is published only under the `beta` name, and the
-everyday `stable` name does not exist yet. With no hyphen (like 3.0.0), it is
-a full release and `stable` is right.
-
-- **The setup file already handles this.** It names the image that matches
-  its release. Never change its image line.
-- **The installer needs to be told.** For a test release, add
-  `PALAIA_CHANNEL=beta` to its command (Step 3 shows where). For a full
-  release, leave it out.
+Inside a copy of the palaia repository, read the files there; otherwise open
+each address. Read all four from the same place. These are the only addresses to
+use or show. If you cannot open files or web pages, say so; do not make
+commands up. The installer and the setup file choose the right palaia image for
+their release themselves: never add or change an image name.
 
 ## Step 1 — Where should palaia live?
 
-Ask this first. Offer the four choices in plain words:
+Ask this first, in plain words:
 
-- **A rented cloud server (VPS)** — Hetzner, DigitalOcean, Netcup, and similar.
+- **A rented cloud server (VPS)** — Hetzner, DigitalOcean, Netcup and similar.
   The most common answer. Go to Step 2.
-- **A home NAS** — Synology, Umbrel, TrueNAS, CasaOS. These have their own app
-  store; point them to palaia's listing there and skip the rest of this skill.
-- **A Raspberry Pi** — they flash a ready-made palaia image onto an SD card.
-  Point them at the Pi image attached to the latest release and its flashing
-  guide; skip the rest.
-- **Their own computer** — uncommon, but fine for a quick try. If it runs
-  Linux, treat it like an existing server (Step 3); when they only want to
-  reach palaia from that same computer, `PALAIA_NO_TAILSCALE=1` takes the place
-  of the key and Step 4 can be skipped. On a Mac or Windows PC the installer
-  does not apply: they need Docker Desktop and the first command under "Quick
-  start" in `v3/deploy/README.md` (with the image name from "Which image this
-  release uses").
+- **A home NAS** — Synology, Umbrel, TrueNAS, CasaOS: palaia's listing in its app
+  store; skip the rest of this skill.
+- **A Raspberry Pi** — the ready-made palaia image attached to the latest release
+  and its flashing guide; skip the rest.
+- **Their own computer** — fine for a quick try. Linux: treat it like an existing
+  server (Step 3). Mac or Windows: Docker Desktop and the first command under
+  "Quick start" in `v3/deploy/README.md`.
 
-## Step 2 — VPS: does the server already exist?
+## Step 2 — How will they use it? Then: does the server exist?
 
-Only for the rented-server path. Ask whether they have already created the
-server, or are about to.
+Explain the usual setup and recommend it: **cloud access**. ChatGPT and Claude
+(the app on their Mac or phone, and claude.ai) connect from the internet, so
+palaia offers them one public HTTPS address for the AI connection only, where
+each app has to sign in. The dashboard — palaia's settings and their memories —
+stays on their private network (Tailscale) and is never public. The other choice
+is **private only**: just tools on their own devices (Claude Desktop, Claude
+Code, Codex). Remember their answer and their chosen AI app for every later step;
+the Claude app is not Claude Code.
 
-- **Not yet created** — the easiest path. You will prepare a small setup file
-  they paste into one field when they create the server, so no commands are
-  needed at all. Go to Step 2a.
-- **Already created (it exists and is empty)** — that paste-at-creation field is
-  no longer available to them, so you set it up over a remote connection
-  instead. Go to Step 3.
+Then ask whether the server exists already or is about to be created:
 
-### Step 2a — Not yet created: the paste-at-creation file
+- **Not yet created** — the easiest path: a setup file pasted into one field when
+  creating the server. No commands. Go to Step 2a.
+- **Already created** — Step 3. If it is still empty and they cannot give you a
+  way in, recreating it with the setup file (Step 2a) avoids the provider's
+  console; offer that.
 
-1. Get the private-network key first (Step 4).
-2. Take `v3/deploy/cloud-init.yaml` exactly as it is and make **one** change:
-   replace the text `TAILSCALE_AUTH_KEY="tskey-REPLACE_ME"` with
-   `TAILSCALE_AUTH_KEY="<their-key>"`. That text appears twice — once in the
-   explanation at the top and once where the key is really set — and changing
-   both is fine.
-3. Do **not** replace every `tskey-REPLACE_ME` in the file. One of them sits in
-   the line that checks whether the key was forgotten; change that one too and
-   the server stops right away with an error nobody is watching.
-4. Check your copy before handing it over: the first line is still
-   `#cloud-config`, the key line holds their key, the checking line still says
-   `tskey-REPLACE_ME`, and nothing else changed — not the image line, not the
-   indentation.
-5. Give them the whole file as one block to copy. Tell them to paste it into
-   the field their provider shows when creating a server — Hetzner calls it
-   "Cloud config", others call it "User data" — then create the server. The
-   file now contains their key: they should not share it or keep it lying
-   around.
-6. Nothing else to run. Setting itself up takes a few minutes after the server
-   starts. Go to Step 5.
+**The setup code.** The setup page (Step 4) opens only with a one-time code. Make
+one up: 12 capital letters and digits without 0, O, 1 or I, in three groups like
+`K7QM-R2XD-9FTP`. Tell them; it is not a password and stops working once setup
+is done.
+
+### Step 2a — Not yet created: the setup file
+
+1. Take `v3/deploy/cloud-init.yaml` exactly as it is and change one line:
+   `PALAIA_SETUP_CODE="setup-code-REPLACE_ME"` becomes
+   `PALAIA_SETUP_CODE="<code>"` with your code — the text appears twice (the
+   explanation at the top and where it is set); change both.
+2. Check: the first line is still `#cloud-config`, nothing else changed.
+3. Give them the whole file as one block. They paste it into the field their
+   provider shows when creating a server (Hetzner: "Cloud config", others:
+   "User data"), then create it.
+4. Ask for the server's address once it shows. Go to Step 4.
 
 ## Step 3 — An existing server: set it up remotely
 
-Ask in one go: the server's address, and how they log in — with a key already
-on this computer, with a password (the provider emailed or showed it), or they
-do not know (then ask whether the provider sent a password; if so, that is the
-password path). Never ask them to type a password into the chat: whatever is
-written there stays in the conversation.
+Ask in one go: the server's address, and how they log in — a key already on this
+computer, or a password the provider showed or emailed. Never ask for a password
+in the chat: what is written there stays in the conversation. A server that
+already runs Docker or is already on their Tailscale network is fine; the
+installer keeps both.
 
-The installer line comes from the top of `v3/deploy/get-palaia.sh`; today:
+The installer line is the first one in `v3/deploy/get-palaia.sh`:
 
 ```
 curl -fsSL https://get.palaia.ai | sh
 ```
 
-Put their key (Step 4) between the `|` and `sh`, so it does not stop to ask:
+Run it with your setup code, so you know it:
 
 ```
-curl -fsSL https://get.palaia.ai | PALAIA_TSKEY=<their-key> sh
+curl -fsSL https://get.palaia.ai | PALAIA_SETUP_CODE=<code> sh
 ```
 
-For a test release (see "Which image this release uses"), still one line:
+For **private only** (Step 2), add `PALAIA_CLOUD=0` before `sh`. The installer
+sets up Docker and Tailscale if missing, then opens the setup page and waits up
+to 30 minutes for them. Start it so it keeps running after your command returns
+(your tool's background mode, for example), keep reading its output, and go to
+Step 4. It ends with a line starting `done ✓  Open` and palaia's address.
 
-```
-curl -fsSL https://get.palaia.ai | PALAIA_TSKEY=<their-key> PALAIA_CHANNEL=beta sh
-```
+The logins below use root, which most providers set up; use their user name if
+the provider gave another. "Run the installer line through it" means: put the
+line, in single quotes, in place of the final word true.
 
-The commands below log in as root, which most providers set up; if theirs
-gave a different user name, use that. "Run the installer line through it"
-means: put the line, in single quotes, in place of the final word true. It
-takes a few minutes, then go to Step 5. If a login prints an error, see "When
-the login fails" in Step 6.
-
-**3a — With a key.** Check you get in (these options never hang on a
-question); no output means you are in, then run the installer line through it:
+**3a — With a key.** No output means you are in; then run the installer line:
 
 ```
 ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 root@<address> true
 ```
 
-**3b — With a password, and you can run commands on their computer** (the
-commands you show get a Run button, or there is a terminal next to the chat).
-The password goes into a private file on their computer and never through the
-chat. Show them this one line and say: "Click Run (or paste it into the
-terminal), type your server password when it asks, press Enter. Nothing
-appears while you type — that is normal." Wait until it printed "saved".
+**3b — With a password, and you can run commands on their computer** (a Run
+button, or a terminal next to the chat). The password goes into a private file on
+their computer, never through the chat. Show this line and say: "Click Run (or
+paste it into the terminal), type your server password and press Enter. You see a
+star for each character." Wait until it printed "Saved".
 
 ```bash
-mkdir -p ~/.palaia-setup && chmod 700 ~/.palaia-setup && printf 'Server password: ' && read -rs PW && (umask 077 && printf '%s\n' "$PW" > ~/.palaia-setup/pw) && unset PW && echo ' saved'
+mkdir -p ~/.palaia-setup && chmod 700 ~/.palaia-setup && bash -c 'del=$(printf "\177"); s=; printf "Server password: "; while IFS= read -rsn1 c; do if [ -z "$c" ]; then break; elif [ "$c" = "$del" ]; then [ -n "$s" ] && s=${s%?} && printf "\b \b"; else s=$s$c; printf "*"; fi; done; echo; (umask 077; printf "%s\n" "$s" > ~/.palaia-setup/pw); echo "Saved (${#s} characters)."'
 ```
 
-Then create a helper that hands the saved password to the login (it holds no
-secret itself), check you get in, and run the installer line through the
-second command:
+Then create the helper that hands it to the login (it holds no secret), check you
+get in, and run the installer line through the second command:
 
 ```
 printf '#!/bin/sh\ncat "$HOME/.palaia-setup/pw"\n' > ~/.palaia-setup/askpass && chmod 700 ~/.palaia-setup/askpass
 SSH_ASKPASS="$HOME/.palaia-setup/askpass" SSH_ASKPASS_REQUIRE=force ssh -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password,keyboard-interactive -o NumberOfPasswordPrompts=1 -o ConnectTimeout=15 root@<address> true
 ```
 
-When done — or if they stop halfway — delete the saved password:
+When done, or if they stop halfway, delete the saved password for good:
 
 ```
 rm -rf ~/.palaia-setup
 ```
 
-**3c — You cannot run commands for them** (a chat with no Run button and no
-terminal). Give them the installer line to paste into their server's terminal
-— most providers have a "Console" button on their website that opens one in
-the browser — and ask them to send back the last few lines it prints.
+**3c — You cannot run commands for them** (no Run button, no terminal). For an
+empty server, offer recreating it with the setup file (Step 2a). Otherwise give
+them the plain installer line to paste into their provider's web console (most
+have a "Console" button). The screen then shows the address to open and a setup
+code. Go to Step 4.
 
-The installer puts everything in place — the container engine, the private
-network, the firewall, and palaia itself — and ends with a line starting
-`done ✓  Open` followed by the address to open. Go to Step 5.
+## Step 4 — The setup page: private network and cloud access
 
-## Step 4 — The private-network key (Tailscale)
+palaia joins the person's own private network (Tailscale), reachable only from
+their devices. The setup page does that in the browser, with no key to copy.
 
-A rented server sits on the open internet, so palaia is placed on the person's
-own private network (Tailscale) and is reachable only from their own devices,
-never publicly. You need one key for this.
+1. If they do not use Tailscale yet: a free account at tailscale.com, and the
+   Tailscale app on the device they will open palaia from.
+2. They open `http://<address>:8420/` (the server's public address). Not there
+   yet? Wait a minute and reload; the server is still installing.
+3. They type the setup code, click **Connect with Tailscale** and log in.
+4. **Cloud access.** For the cloud setup the page continues by itself. If it says
+   **Let ChatGPT and Claude reach palaia**, their Tailscale network must allow
+   it once: **Allow in Tailscale**, confirm, come back. **Keep it private** skips
+   it. Explain before they choose; it can be turned on later.
+5. The page says "Done", shows palaia's private address and closes.
 
-Walk them through it:
+A server already on their Tailscale network shows no page. For the cloud setup
+the installer prints a `login.tailscale.com` link instead when the network still
+has to allow it: give them that link, same explanation, and wait.
 
-1. If they do not use Tailscale yet: create a free account and install the
-   Tailscale app on the computer they will open palaia from.
-2. Generate a key at `https://login.tailscale.com/admin/settings/keys` →
-   **Generate auth key**.
-3. Two warnings that save the most common failures:
-   - Pick **auth key**, not **access token** — they sit next to each other and
-     the access token will be rejected with a confusing error. An auth key
-     starts with `tskey-auth-`; one starting with `tskey-api-` is the access
-     token.
-   - Leave **Reusable** and **Ephemeral** off. (The setup file's own comment
-     says a reusable, ephemeral key also works; keep it simple and leave both
-     off — a server on an ephemeral key can drop off the private network after
-     it has been offline for a while.)
+**For technical people only — a key instead of the page.** At
+`https://login.tailscale.com/admin/settings/keys` → **Generate auth key**:
+description "palaia", **Reusable** and **Ephemeral** off; an **auth key** (starts
+with `tskey-auth-`), not an access token (`tskey-api-`). The key never goes
+through the chat or into a command line. With a terminal on their computer, have
+them run this line; it shows a star per character and checks the start:
 
-Keep the key only long enough to use it; treat it like a password.
+```bash
+mkdir -p ~/.palaia-setup && chmod 700 ~/.palaia-setup && bash -c 'del=$(printf "\177"); s=; printf "Tailscale auth key: "; while IFS= read -rsn1 c; do if [ -z "$c" ]; then break; elif [ "$c" = "$del" ]; then [ -n "$s" ] && s=${s%?} && printf "\b \b"; else s=$s$c; printf "*"; fi; done; echo; case $s in tskey-auth-*) (umask 077; printf "%s" "$s" > ~/.palaia-setup/tskey); echo "Saved (${#s} characters).";; *) echo "That is not an auth key (it starts with tskey-auth-). Nothing was saved; run this line again.";; esac'
+```
 
-## Step 5 — Confirm it worked, then the next step
+Copy it to the server through the login you checked (prefix it as in 3b for a
+password), run the installer with the file — the installer deletes it there —
+and delete the local copy:
 
-However it was installed, the end state is the same: palaia answers in a
-browser on the private network, on port `8420`.
+```
+ssh root@<address> 'umask 077; cat > /root/.palaia-tskey' < ~/.palaia-setup/tskey
+curl -fsSL https://get.palaia.ai | PALAIA_TSKEY_FILE=/root/.palaia-tskey sh
+rm -rf ~/.palaia-setup
+```
 
-- **Installer path** — the address is in the installer's last line.
-- **Setup-file path** — nothing is printed anywhere they can see. After a few
-  minutes, ask them to open the machine list in their Tailscale admin page and
-  look for a machine named `palaia-hub`; its address, with `:8420` added, is
-  the one to open in a browser (`http://<address>:8420/`).
+The installer deletes that file whether it finishes or stops; to retry, copy
+it again. No terminal on their computer: use the setup page instead. Never ask them to
+paste a key into the chat. With the setup file, the key goes into its
+`TAILSCALE_AUTH_KEY="tskey-REPLACE_ME"` line instead of the code.
 
-If it answers: give them that address and tell them the next step is opening it
-and connecting their first AI tool. If you used the password path (Step 3b),
-delete the saved password now, as that step says. If it does not, go to Step 6.
+## Step 5 — Confirm it worked, then finish setup
+
+palaia answers on the private network at the address the setup page and the
+installer's last line show (port `8420`). The device needs the Tailscale app on.
+A running server is not a finished setup: say "palaia is running", not "done".
+Tell them to open that address; palaia's own setup opens there by itself. If you
+used 3b, delete the saved password now. If it does not answer, Step 6.
 
 ## Step 6 — When it does not come up
 
-Name the likely cause in plain words; never paste raw error output at them.
+Name the likely cause in plain words.
 
-**The installer path** prints its own errors, each starting `palaia: ERROR:`
-and saying what to do. Translate it:
+**The setup page:**
 
-- The key was an access token, expired, or already used — get a fresh
-  **auth key** (Step 4) and run the line again.
-- It joined the private network but got no address yet — wait a moment and run
-  the line again.
-- It could not download palaia's image — check "Which image this release
-  uses"; for a test release the line needs `PALAIA_CHANNEL=beta`.
+- **Does not open after five minutes** — a provider firewall may block it. Ask
+  them to allow port 8420 there for now (Hetzner: "Firewalls"), or use a key.
+- **"That code is not right."** — a typo; dashes and case do not matter.
+- **Closed before they finished** — it gives up after 30 minutes. Run the
+  installer line again (setup file: `sudo sh /opt/palaia/cloud-init-setup.sh`)
+  for a fresh page.
 
-**When the login fails** (Step 3a or 3b), translate its error line:
+**The installer** prints its own errors, each starting `palaia: ERROR:` and
+saying what to do. Translate:
 
-- **"REMOTE HOST IDENTIFICATION HAS CHANGED"** — a different machine answers
-  at that address than this computer met before; expected after they reset or
-  reinstalled the server. Only if they confirm they did, run the line below
-  and try again; otherwise stop and tell them plainly.
+- The setup page closed without joining — run the line again.
+- The key was an access token, expired or already used — a fresh **auth key**,
+  then the line again.
+- Joined but no address yet — wait a moment, run the line again.
+- `the hub did not become ready` — it shows palaia's last log lines; translate
+  them. Running the line again is safe and keeps their data.
+- Cloud access is off — palaia still works privately; running the line again
+  retries it.
+
+**When the login fails** (3a or 3b):
+
+- **"REMOTE HOST IDENTIFICATION HAS CHANGED"** — another machine answers at that
+  address than before; expected after they reset the server. Only if they
+  confirm, run this, then try again:
 
 ```
 ssh-keygen -R <address>
 ```
 
 - **"Permission denied"** — wrong password or user name: rerun the 3b line.
-- **"Password change required" / "Your password has expired"** — the provider
-  wants a new password at first login (Hetzner does this without a key). Have
-  them run the line below, type the password they were sent, choose a new one
-  twice, type exit — then rerun the 3b line with the new password.
+- **"Password change required"** — the provider wants a new password first.
+  They run this, type the old one, choose a new one twice, type exit, then rerun
+  the 3b line:
 
 ```bash
 ssh -o StrictHostKeyChecking=accept-new root@<address>
 ```
 
-- **"Connection timed out" / "No route to host"** — wrong address or the
-  server is off; have them check both on the provider's website.
+- **"Connection timed out" / "No route to host"** — wrong address, or the server
+  is off.
 
-**The setup-file path** writes everything it did to one log on the server:
-`/var/log/cloud-init-output.log`. Only the hub itself is kept off the public
-internet; SSH still works, so they (or you) can log in to the server's public
-address, or use the provider's web console, and run
-`sudo tail -n 50 /var/log/cloud-init-output.log`. Every line palaia's own setup
-writes starts with `palaia cloud-init:`, so the last of those shows how far it
-got:
+**The setup file** logs to `/var/log/cloud-init-output.log` on the server, its
+lines starting `palaia cloud-init:`. Read it over SSH or the provider's console
+with `sudo tail -n 50 /var/log/cloud-init-output.log`:
 
-- **It stops with `ERROR: edit this file's TAILSCALE_AUTH_KEY`** — the key was
-  never filled in, or the checking line was changed too. The server exists
-  now, so do not recreate it: finish with Step 3's installer on it.
-- **It stops after `joining the tailnet ...`** with a Tailscale error below it —
-  the key was rejected (an access token, expired, or a one-time key already
-  used). Get a fresh auth key, then finish with Step 3's installer.
-- **It stops after `pulling`, with a download error** — the setup file names the
-  right image for its release, so this is almost always a passing network or
-  download hiccup. Re-run the setup on the server, which is safe to repeat:
-  `sudo bash /opt/palaia/cloud-init-setup.sh`. If someone edited the image line,
-  put the original file's line back first.
-- **The last line starts `done. Open`, yet the page does not open** — the
-  device they are browsing from must be on the same Tailscale network with the
-  app switched on. Right after the server restarts, a minute or two of
-  "connection refused" is normal: palaia waits for its private-network address
-  and retries by itself (the "Reboots" note in `v3/deploy/README.md`). Only if
-  it still refuses after five minutes, look at palaia's own log with
-  `sudo docker logs --tail 50 palaia-hub` and translate what it says.
+- **`ERROR: edit this file's PALAIA_SETUP_CODE (or TAILSCALE_AUTH_KEY)`** — the
+  code was never filled in; the server exists now: finish with Step 3.
+- **A download error** — usually a network hiccup: rerun
+  `sudo sh /opt/palaia/cloud-init-setup.sh`.
+- **Ends with `done ✓  Open`, yet the page does not open** — the device must be
+  on the same Tailscale network with the app on. Right after a restart a minute of
+  "connection refused" is normal. Still refused after five minutes: read
+  `sudo docker logs --tail 50 palaia-hub` and translate it.
 
 ## What not to do
 
-- Do not open with Docker, compose files, or app-store jargon. Those are a
-  fallback for technical people, not the path here.
+- Do not open with Docker, compose files or app-store jargon.
 - Do not invent where their palaia runs or which provider they use — ask.
-- Do not write the setup file or the install line from memory — read them
-  (see "Before you start").
-- Do not pick the image name yourself; it follows `v3/VERSION`.
+- Do not write the setup file or the install line from memory.
+- Do not depend on helper tools of your own environment; everything above uses
+  what a Mac or Linux computer has.
 
 ## Per-model notes
 

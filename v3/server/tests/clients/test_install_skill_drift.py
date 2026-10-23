@@ -20,11 +20,10 @@ about a file that can change underneath it, so this module checks every one:
 - the image tag is never hardcoded — the skill derives it from
   ``v3/VERSION`` the same way the onboarding page and
   ``test_version_drift.py`` do;
-- the key substitution the skill prescribes, applied to the real
-  ``cloud-init.yaml``, yields a cloud-config that still parses and whose
-  "forgot the key" guard lets the real key through — executed, not just
-  pattern-matched, because the naive replace-every-placeholder edit silently
-  produces a server that stops on first boot.
+- the setup-code substitution the skill prescribes (SPEC-605), applied to
+  the real ``cloud-init.yaml``, yields a cloud-config that still parses and
+  whose "forgot to fill it in" guard lets it through — executed, not just
+  pattern-matched.
 """
 
 from __future__ import annotations
@@ -63,13 +62,11 @@ _CLEAN_URLS: dict[str, str] = {
 #: Same header regex ``deploy-snippets.mjs``'s ``loadGetPalaiaCommand`` uses.
 _GET_PALAIA_HEADER_RE = re.compile(r"^#\s+(curl\s.*get\.palaia\.ai.*)$", re.MULTILINE)
 
-#: The one edit the skill prescribes to the cloud-init file, and its result.
-_KEY_LINE = 'TAILSCALE_AUTH_KEY="tskey-REPLACE_ME"'
-_KEY_LINE_FILLED = 'TAILSCALE_AUTH_KEY="<their-key>"'
+#: The one edit the skill prescribes to the cloud-init file, and its result
+#: (SPEC-605: a setup code the assistant makes up — no key to handle).
+_CODE_LINE = 'PALAIA_SETUP_CODE="setup-code-REPLACE_ME"'
+_CODE_LINE_FILLED = 'PALAIA_SETUP_CODE="<code>"'
 _SETUP_SCRIPT_PATH = "/opt/palaia/cloud-init-setup.sh"
-#: How the setup script's "forgot the key" guard opens (found by shape, not
-#: by the placeholder, so a wrongly edited copy is still located).
-_GUARD_OPENING = 'if [ "${TAILSCALE_AUTH_KEY}" = '
 
 #: Literals the skill quotes that are not palaia's own to ship, so they
 #: cannot be found in ``v3/deploy`` — each with the reason it may stand.
@@ -90,9 +87,25 @@ _NOT_FROM_DEPLOY: dict[str, str] = {
     # through SSH_ASKPASS (works without sshpass, OpenSSH 8.4+).
     "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 "
     "root@<address> true": "key login check that can never hang on a prompt",
-    "mkdir -p ~/.palaia-setup && chmod 700 ~/.palaia-setup && printf 'Server password: ' "
-    "&& read -rs PW && (umask 077 && printf '%s\\n' \"$PW\" > ~/.palaia-setup/pw) "
-    "&& unset PW && echo ' saved'": "the user's Run line that saves the password privately",
+    'mkdir -p ~/.palaia-setup && chmod 700 ~/.palaia-setup && bash -c \'del=$(printf "\\177"); '
+    's=; printf "Server password: "; while IFS= read -rsn1 c; do if [ -z "$c" ]; then break; '
+    'elif [ "$c" = "$del" ]; then [ -n "$s" ] && s=${s%?} && printf "\\b \\b"; else '
+    's=$s$c; printf "*"; fi; done; echo; (umask 077; printf "%s\\n" "$s" > '
+    '~/.palaia-setup/pw); echo "Saved (${#s} characters)."\'': (
+        "the user's Run line that saves the password privately, a star per character (#558)"
+    ),
+    'mkdir -p ~/.palaia-setup && chmod 700 ~/.palaia-setup && bash -c \'del=$(printf "\\177"); '
+    's=; printf "Tailscale auth key: "; while IFS= read -rsn1 c; do if [ -z "$c" ]; then '
+    'break; elif [ "$c" = "$del" ]; then [ -n "$s" ] && s=${s%?} && printf "\\b \\b"; '
+    'else s=$s$c; printf "*"; fi; done; echo; case $s in tskey-auth-*) (umask 077; '
+    'printf "%s" "$s" > ~/.palaia-setup/tskey); echo "Saved (${#s} characters).";; *) '
+    'echo "That is not an auth key (it starts with tskey-auth-). Nothing was saved; run this '
+    "line again.\";; esac'": (
+        "the key fallback's Run line: a private file, a star per character (#558)"
+    ),
+    "ssh root@<address> 'umask 077; cat > /root/.palaia-tskey' < ~/.palaia-setup/tskey": (
+        "copies the key file over the login's stdin — never a command-line argument (#564)"
+    ),
     "printf '#!/bin/sh\\ncat \"$HOME/.palaia-setup/pw\"\\n' > ~/.palaia-setup/askpass "
     "&& chmod 700 ~/.palaia-setup/askpass": "askpass helper; holds no secret itself",
     'SSH_ASKPASS="$HOME/.palaia-setup/askpass" SSH_ASKPASS_REQUIRE=force ssh '
@@ -101,7 +114,7 @@ _NOT_FROM_DEPLOY: dict[str, str] = {
     "-o NumberOfPasswordPrompts=1 -o ConnectTimeout=15 root@<address> true": (
         "password login check through the askpass helper"
     ),
-    "rm -rf ~/.palaia-setup": "deletes the saved password when setup is done",
+    "rm -rf ~/.palaia-setup": "deletes the saved password or key when setup is done",
     "ssh-keygen -R <address>": "forgets a reset server's old host key",
     "ssh -o StrictHostKeyChecking=accept-new root@<address>": (
         "interactive first login, for a provider that forces a password change"
@@ -245,42 +258,35 @@ def test_the_get_palaia_command_is_the_headers_own() -> None:
     assert header in _quoted_literals(_skill_body())
 
 
-def test_the_image_tag_is_derived_from_version_not_hardcoded() -> None:
-    """Issue #449: "the image tag must follow v3/VERSION". The skill names no
-    concrete image tag at all; it tells the assistant the rule (pre-release →
-    `beta`, else `stable`), leaves cloud-init.yaml's pinned tag alone — which
-    ``test_unattended_install_paths_pin_the_channel_matching_version``
-    already forces to match VERSION — and adds ``PALAIA_CHANNEL=beta`` to the
-    installer line for a pre-release, exactly as the onboarding page does."""
+def test_the_image_tag_is_never_named_by_the_skill() -> None:
+    """Issue #449: "the image tag must follow v3/VERSION". The installer and
+    the setup file choose it themselves (get-palaia.sh's DEFAULT_CHANNEL,
+    which ``test_version_drift.py`` keeps in step with VERSION), so the skill
+    names no tag and adds no channel to the installer line — the literal
+    published command installs the matching release as it is."""
     body = _skill_body()
     assert not re.search(r"palaia-hub:[A-Za-z0-9]", body), (
         "the skill hardcodes an image tag — it must follow v3/VERSION instead"
     )
-    literals = _quoted_literals(body)
-    assert "v3/VERSION" in literals
-    assert "PALAIA_CHANNEL=beta" in literals
-
+    assert "PALAIA_CHANNEL" not in body
     get_palaia = GET_PALAIA_PATH.read_text(encoding="utf-8")
-    assert 'CHANNEL="${PALAIA_CHANNEL:-stable}"' in get_palaia
+    assert 'CHANNEL="${PALAIA_CHANNEL:-$DEFAULT_CHANNEL}"' in get_palaia
     assert "ghcr.io/byte5ai/palaia-hub:${CHANNEL}" in get_palaia
 
-    # The pre-release form the skill shows is the header command with the
-    # variable inserted before `sh` — the same transform OnboardingBody.astro
-    # applies when isPrerelease().
-    header = _header_command()
-    beta_lines = [line for line in literals if "PALAIA_CHANNEL=beta" in line and "curl" in line]
-    assert beta_lines, "the skill no longer shows the pre-release installer line"
-    for line in beta_lines:
-        assert line.startswith(header.removesuffix("sh").rstrip()), line
-        assert line.endswith("PALAIA_CHANNEL=beta sh"), line
+
+def test_the_skill_never_puts_a_key_into_a_command_line() -> None:
+    """Issue #564: no `PALAIA_TSKEY=<key>` in a remote command string."""
+    body = _skill_body()
+    assert "PALAIA_TSKEY=" not in body
+    assert "PALAIA_TSKEY_FILE=/root/.palaia-tskey" in body
 
 
-# --- the key substitution, applied to the real file ----------------------
+# --- the setup-code substitution, applied to the real file ------------------
 
 
-def _substitute(cloud_init: str, key: str) -> str:
-    """The edit Step 2a prescribes: replace the key line's exact text."""
-    return cloud_init.replace(_KEY_LINE, _KEY_LINE_FILLED.replace("<their-key>", key))
+def _substitute(cloud_init: str, code: str) -> str:
+    """The edit Step 2a prescribes: replace the code line's exact text."""
+    return cloud_init.replace(_CODE_LINE, _CODE_LINE_FILLED.replace("<code>", code))
 
 
 def _setup_script(cloud_init: str) -> str:
@@ -292,61 +298,45 @@ def _setup_script(cloud_init: str) -> str:
     raise AssertionError(f"cloud-init.yaml no longer writes {_SETUP_SCRIPT_PATH}")
 
 
-def _guard_prefix(script: str) -> str:
-    """The script up to and including the "forgot the key" guard's ``fi``."""
-    lines = script.splitlines()
-    guard = next(
-        (i for i, line in enumerate(lines) if line.lstrip().startswith(_GUARD_OPENING)),
-        None,
-    )
-    assert guard is not None, "the setup script no longer checks for the unfilled key"
-    end = next(i for i in range(guard, len(lines)) if lines[i].strip() == "fi")
-    return "\n".join(lines[: end + 1]) + "\n"
-
-
 def test_the_skill_prescribes_exactly_this_edit() -> None:
     literals = _quoted_literals(_skill_body())
-    assert _KEY_LINE in literals
-    assert _KEY_LINE_FILLED in literals
+    assert _CODE_LINE in literals
+    assert _CODE_LINE_FILLED in literals
 
 
 def test_the_substituted_file_is_a_valid_cloud_config() -> None:
     template = CLOUD_INIT_PATH.read_text(encoding="utf-8")
-    filled = _substitute(template, "tskey-auth-kEXAMPLE1CNTRL-0123456789abcdef")
+    filled = _substitute(template, "K7QM-R2XD-9FTP")
 
     assert filled.startswith("#cloud-config")
     assert yaml.safe_load(filled) is not None
-    # Only the key changed: the documented line was actually present, and
-    # every other line is untouched.
+    # Only the code line changed: it was actually present, and every other
+    # line is untouched.
     changed = [
         (old, new)
         for old, new in zip(template.splitlines(), filled.splitlines(), strict=True)
         if old != new
     ]
-    assert changed, f"{_KEY_LINE!r} is not in cloud-init.yaml any more"
-    assert all(_KEY_LINE in old for old, _ in changed), changed
-
-    script = _setup_script(filled)
-    assert 'TAILSCALE_AUTH_KEY="tskey-auth-kEXAMPLE1CNTRL-0123456789abcdef"' in script
-    # The guard still compares against the placeholder, not the real key.
-    assert '= "tskey-REPLACE_ME" ]' in script
+    assert changed, f"{_CODE_LINE!r} is not in cloud-init.yaml any more"
+    assert all(_CODE_LINE in old for old, _ in changed), changed
+    assert 'PALAIA_SETUP_CODE="K7QM-R2XD-9FTP"' in _setup_script(filled)
 
 
-@pytest.mark.skipif(shutil.which("bash") is None, reason="bash not on PATH")
-def test_the_guard_passes_the_substituted_key_and_stops_the_rest(tmp_path: Path) -> None:
-    """Run the real guard: the skill's edit must pass it; the unedited file,
-    and the naive "replace every placeholder" edit, must both be stopped."""
+@pytest.mark.skipif(shutil.which("sh") is None, reason="sh not on PATH")
+def test_the_guard_passes_the_substituted_code_and_stops_the_unedited_file(tmp_path: Path) -> None:
+    """Run the real guard: the skill's edit must pass it (setup-page path);
+    the unedited file must be stopped."""
     template = CLOUD_INIT_PATH.read_text(encoding="utf-8")
-    key = "tskey-auth-kEXAMPLE1CNTRL-0123456789abcdef"
     cases = {
-        "skill's edit": (_substitute(template, key), 0),
+        "skill's edit": (_substitute(template, "K7QM-R2XD-9FTP"), 0),
         "unedited": (template, 1),
-        "replace-every-placeholder": (template.replace("tskey-REPLACE_ME", key), 1),
     }
     for label, (text, expected) in cases.items():
-        script = tmp_path / f"{label.replace(' ', '_')}.sh"
-        script.write_text(_guard_prefix(_setup_script(text)), encoding="utf-8")
+        script = _setup_script(text)
+        guard = script[: script.index("# --- Run the installer")]
+        path = tmp_path / f"{label.replace(' ', '_').replace("'", '')}.sh"
+        path.write_text(guard, encoding="utf-8")
         result = subprocess.run(
-            ["bash", str(script)], capture_output=True, text=True, timeout=30, check=False
+            ["sh", str(path)], capture_output=True, text=True, timeout=30, check=False
         )
         assert result.returncode == expected, (label, result.stdout, result.stderr)
