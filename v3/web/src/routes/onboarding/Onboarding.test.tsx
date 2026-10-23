@@ -56,7 +56,9 @@ interface Call {
 /** A hub in memory: the endpoints the wizard uses change `state` the way the
  * real ones change the hub. */
 function fakeHub(initial: SetupStatus) {
-  const state = { status: initial };
+  // `unreachable`: how many self-tests fail before the address answers (a
+  // new tunnel or Funnel address that is not reachable yet).
+  const state = { status: initial, unreachable: 0 };
   const calls: Call[] = [];
   const json = (body: unknown, status = 200) =>
     Promise.resolve(
@@ -96,6 +98,17 @@ function fakeHub(initial: SetupStatus) {
       case "POST /api/hub/restart":
         return json({ restarting: true }, 202);
       case "POST /api/exposure/selftest":
+        if (state.unreachable > 0) {
+          state.unreachable -= 1;
+          return json({
+            checked_url: body.public_url,
+            reachable: false,
+            status_code: 0,
+            latency_ms: 0,
+            error: "the address did not answer.",
+            checks: [{ id: "discovery", passed: false, detail: "no answer." }],
+          });
+        }
         state.status = { ...s, cloud_verified: true };
         return json({
           checked_url: body.public_url,
@@ -326,6 +339,42 @@ describe("first-run setup", () => {
       await screen.findByRole("heading", { name: /cloud access works/i }),
     ).toBeInTheDocument();
     expect(screen.getByText("Dashboard stays private")).toBeInTheDocument();
+  });
+
+  it("keeps checking a new public address by itself until it answers", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const hub = fakeHub(
+        freshStatus({
+          goal: "cloud",
+          vaults: ["work"],
+          profiles: ["default"],
+          owner_configured: true,
+          mode: "cloud",
+          configured_mode: "cloud",
+          sign_in_active: true,
+          configured_sign_in: true,
+          issuer: PUBLIC,
+          configured_issuer: PUBLIC,
+          public_url: PUBLIC,
+          cloud_ready: true,
+        }),
+      );
+      hub.state.unreachable = 1;
+      renderWizard();
+
+      expect(await screen.findByText(/not reachable yet/i)).toBeInTheDocument();
+      expect(screen.queryByText(/not working yet/i)).not.toBeInTheDocument();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(
+        await screen.findByRole("heading", { name: /cloud access works/i }),
+      ).toBeInTheDocument();
+      expect(
+        hub.calls.filter((c) => c.path === "/api/exposure/selftest"),
+      ).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("offers the Claude app and ChatGPT first for the cloud goal, ready with the public address", async () => {
