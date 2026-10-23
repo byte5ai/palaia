@@ -240,3 +240,12 @@ def test_cloud_init_fits_the_user_data_limits() -> None:
     """Hetzner Cloud takes 32 KiB of user data (DigitalOcean 64 KiB, AWS
     16 KB). Running the installer keeps the file far below all three."""
     assert len(CLOUD_INIT_PATH.read_bytes()) <= 16 * 1000
+
+
+def test_the_key_is_written_only_once_the_installer_is_downloaded() -> None:
+    """The installer deletes the key file however it ends; a key written
+    before a failed download would stay on the server for good."""
+    text = CLOUD_INIT_PATH.read_text(encoding="utf-8")
+    download = text.index("-o /opt/palaia/get-palaia.sh")
+    write = text.index("> /root/.palaia-tskey")
+    assert download < write

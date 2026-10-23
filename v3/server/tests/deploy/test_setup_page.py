@@ -315,3 +315,13 @@ def test_the_page_colours_are_the_design_tokens_of_the_same_name() -> None:
     # Inline styles and an inline mark only: the page fetches nothing.
     assert re.search(r'(src|href)="https?://', page) is None
     assert "@import" not in page and "url(" not in page
+
+
+def test_a_waiting_page_reloads_when_the_phase_differs_from_the_one_it_shows() -> None:
+    """The phase can change between rendering and the first poll (the login
+    link arrives a moment later): the page must compare with what it shows,
+    not with the first answer, or it keeps the old view until the timeout."""
+    module = _page_module()
+    script = module.poll_script("abcd-efgh-jkmn", "preparing")
+    assert 'const p="preparing"' in script
+    assert "if(s.phase!==p)location.reload()" in script

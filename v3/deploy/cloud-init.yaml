@@ -72,9 +72,12 @@ write_files:
       fi
 
       # --- Run the installer ----------------------------------------------
-      # The key goes into a file only root can read; the installer hands it
-      # to Tailscale as `--auth-key=file:...` (never a command-line argument)
-      # and deletes the file afterwards.
+      log "downloading the installer from ${INSTALLER_URL} ..."
+      curl -fsSL --retry 5 --retry-delay 5 "${INSTALLER_URL}" -o /opt/palaia/get-palaia.sh
+      # The key goes into a file only root can read — only now, once the
+      # installer is here to delete it again: it hands the key to Tailscale
+      # as `--auth-key=file:...` (never a command-line argument) and removes
+      # the file however it ends.
       if [ "$USE_KEY" = "1" ]; then
           ( umask 077 && printf '%s' "${TAILSCALE_AUTH_KEY}" > /root/.palaia-tskey )
           export PALAIA_TSKEY_FILE=/root/.palaia-tskey
@@ -82,8 +85,6 @@ write_files:
       export PALAIA_SETUP_CODE
       # A server created for palaia: switch ufw on (SSH stays open).
       export PALAIA_FIREWALL=on
-      log "downloading the installer from ${INSTALLER_URL} ..."
-      curl -fsSL --retry 5 --retry-delay 5 "${INSTALLER_URL}" -o /opt/palaia/get-palaia.sh
       log "running the installer ..."
       sh /opt/palaia/get-palaia.sh </dev/null
 

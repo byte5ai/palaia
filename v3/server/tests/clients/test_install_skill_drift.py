@@ -175,6 +175,9 @@ def _anchor_tokens(literal: str) -> list[str]:
     return _ANCHOR_RE.findall(literal)
 
 
+_SSH_WRAPPED_RE = re.compile(r"ssh root@<address> '(.+)'")
+
+
 def _check_literal(literal: str, corpus: str, header: str) -> str | None:
     """``None`` if ``literal`` is grounded in what ships, else why it is not."""
     if literal in corpus:
@@ -183,6 +186,10 @@ def _check_literal(literal: str, corpus: str, header: str) -> str | None:
         if not (REPO_ROOT / _CLEAN_URLS[literal]).exists():
             return f"serves {_CLEAN_URLS[literal]!r}, which is not in the repository"
         return None
+    wrapped = _SSH_WRAPPED_RE.fullmatch(literal)
+    if wrapped:
+        # The same command, run on the server through the checked login.
+        return _check_literal(wrapped.group(1), corpus, header)
     if "get.palaia.ai" in literal:
         match = _CURL_ASSIGNMENT_RE.search(literal)
         if match is None:
