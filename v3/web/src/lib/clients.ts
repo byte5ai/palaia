@@ -305,7 +305,7 @@ export const CLIENTS: ClientEntry[] = [
   {
     kind: "guided",
     id: "generic",
-    name: "Any other AI tool",
+    name: "Any other AI app",
     icon: ExplorerIcon,
     estimate: "a couple of minutes",
     // No vendor syntax to follow here: the address, and the one header

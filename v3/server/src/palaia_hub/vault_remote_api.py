@@ -40,10 +40,9 @@ VAULT_REMOTE_PATH = "/api/backup/vault-remotes/{vault}"
 VAULT_REMOTE_PUSH_PATH = "/api/backup/vault-remotes/{vault}/push"
 
 UNGATED_VAULT_REMOTES_DETAIL = (
-    "Pushing vaults to a git repository is only set up by a signed-in owner, and "
-    "this hub has no dashboard sign-in turned on — the access token entered here can "
-    "write to your repository. Fix: turn on sign-in (`oauth.enabled: true` and "
-    "`oauth.issuer` in config.yaml, then `palaia-hub oauth set-password`)."
+    "Only a signed-in owner can copy memories to a git repository, and this "
+    "palaia has no dashboard sign-in: the access token entered here can write to "
+    "your repository. Fix: turn on sign-in in Settings › Access & sign-in."
 )
 
 
