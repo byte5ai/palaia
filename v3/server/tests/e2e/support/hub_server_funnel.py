@@ -13,11 +13,10 @@ grantable-scopes-per-profile dict at construction
 (``self._profile_scopes`` in ``__init__`` — never mutated afterward,
 confirmed by grep: no ``add_``/``register_``/``update_`` method on that
 class touches it). Production's own CLI path
-(``palaia_hub.cli._maybe_oauth_server``) keeps this coupled to reality by
-refusing to even start the OAuth server until at least one vault already
-exists ("this hub serves no MCP profiles yet ... Fix: create a vault
-first"). This script deliberately takes the case that guard exists to
-protect against as its own scenario instead: an operator who chooses Cloud
+(``palaia_hub.cli._maybe_oauth_server``) starts the OAuth server with no
+profile at all until a vault exists, so a vault created afterwards gets
+OAuth tokens only after a restart. This script deliberately takes that case
+as its own scenario instead: an operator who chooses Cloud
 mode from the very first boot, before running the wizard, already knowing
 the vault key the wizard is about to create — exactly what a scripted,
 deterministic funnel walk is. `resolve_full_gateway_profiles`/
