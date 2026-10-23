@@ -9,7 +9,7 @@ Custom (bring-your-own) `MCP` connectors — web/iOS/Android
 
 ## What has to be true first
 
-- **Locked mode.** Grok connects from the internet, so it needs cloud access. Turn it on in setup or under Access; your dashboard stays on your private network.
+- **Locked mode.** Grok connects from the internet, so it needs cloud access. Turn it on in setup or in Settings › Access & sign-in; your dashboard stays on your private network.
 - **Cloud mode or Open mode.** Grok signs in to palaia with your account, and sign-in is not on yet. Finish turning on cloud access, then come back here. Connect from web, iOS or Android once it is on.
 
 ## Once sign-in is on

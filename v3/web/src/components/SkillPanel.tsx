@@ -1,29 +1,31 @@
 /**
- * The skill half of connecting a client (SPEC-207 #3).
+ * The skill half of connecting an AI app (SPEC-207 #3).
  *
- * Connecting a client gives an agent the memory's tools. That is not the
- * same as the agent using them: an assistant with a memory it never opens
- * behaves exactly like one without a memory. So the connect page offers the
- * skill packages next to the token, and it does so only for clients that can
- * load one — a client with no skill loader gets the honest reason instead of
- * a download it cannot use, the same rule the not-yet connect cards follow.
+ * Connecting gives an app palaia's tools; a skill teaches it to use them —
+ * look things up before answering, save what is worth keeping. One skill is
+ * the recommendation (palaia-memory); the others sit under "More skills".
+ * Everything is collapsed: the connect flow above is the task, this is the
+ * next layer (report §3.5). An app that cannot load a skill gets the reason
+ * instead of a download it cannot use.
  *
  * Copy hands over the SKILL.md verbatim; download hands over the same bytes
- * as a file, for the clients whose install path is "put this file there".
+ * as a file.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 
 import type { SkillPackage } from "../lib/skills";
 import { SKILLS, skillSupportFor } from "../lib/skills";
-import { CopyIcon, InfoIcon, SparkleIcon, WarningIcon } from "../shell/icons";
+import { CopyIcon } from "../shell/icons";
 import { Button } from "./Button";
-import { Card, CardBody, CardFoot, CardHead, CardSubject } from "./Card";
+import { Card, CardBody, CardHeader } from "./Card";
+import { Disclosure } from "./Disclosure";
+import { StatusPill } from "./StatusPill";
 import { useToast } from "./Toast";
 
+const RECOMMENDED = "palaia-memory";
+
 function SkillDownload({ skill }: { skill: SkillPackage }) {
-  // An object URL rather than a data: URI so the file arrives with a real
-  // name; revoked on unmount so a long-lived dashboard session does not
-  // accumulate them.
+  // An object URL so the file arrives with a real name; revoked on unmount.
   const href = useMemo(
     () => URL.createObjectURL(new Blob([skill.source], { type: "text/markdown" })),
     [skill.source],
@@ -36,69 +38,47 @@ function SkillDownload({ skill }: { skill: SkillPackage }) {
   );
 }
 
-function SkillCard({ skill }: { skill: SkillPackage }) {
+function SkillActions({ skill }: { skill: SkillPackage }) {
   const toast = useToast();
-  const [open, setOpen] = useState(false);
-
   function copy() {
     navigator.clipboard.writeText(skill.source).then(
-      () => toast.show("Skill copied — paste it into a SKILL.md file."),
-      () => toast.show("Could not copy — open it below and copy manually."),
+      () => toast.show("Skill copied. Paste it into a file named SKILL.md."),
+      () => toast.show("Couldn't copy. Open the skill text below and copy it yourself."),
     );
   }
-
   return (
-    <Card variant="flat">
-      <CardHead>
-        <div>
-          <CardSubject>{skill.slug}</CardSubject>
-          <p className="t-xs t-muted" style={{ marginTop: 2 }}>
-            {skill.audience}
-          </p>
+    <div className="stack stack--3">
+      <div className="row row--wrap">
+        <Button size="sm" onClick={copy}>
+          <CopyIcon className="icon--sm" />
+          Copy the skill
+        </Button>
+        <SkillDownload skill={skill} />
+      </div>
+      <Disclosure summary="Show the skill text">
+        <div className="snippet snippet--block">
+          <code>{skill.source}</code>
         </div>
-      </CardHead>
-      <CardBody className="stack stack--3">
-        <p className="t-sm t-muted">{skill.summary}</p>
-        <div className="row row--wrap">
-          <Button size="sm" onClick={copy}>
-            <CopyIcon className="icon--sm" />
-            Copy the skill
-          </Button>
-          <SkillDownload skill={skill} />
-          <Button size="sm" variant="quiet" onClick={() => setOpen((was) => !was)}>
-            {open ? "Hide it" : "Read it first"}
-          </Button>
-        </div>
-        {open ? (
-          <div className="snippet snippet--block">
-            <code>{skill.source}</code>
-          </div>
-        ) : null}
-      </CardBody>
-    </Card>
+      </Disclosure>
+    </div>
   );
 }
 
 export function SkillPanel({ clientId, clientName }: { clientId: string; clientName: string }) {
   const support = skillSupportFor(clientId);
+  const recommended = SKILLS.find((skill) => skill.slug === RECOMMENDED) ?? SKILLS[0]!;
+  const others = SKILLS.filter((skill) => skill !== recommended);
 
   if (support.kind === "unsupported") {
     return (
       <Card>
-        <CardHead>
-          <div>
-            <CardSubject>Teaching it to use the memory</CardSubject>
-            <p className="t-xs t-muted" style={{ marginTop: 2 }}>
-              {clientName} cannot load a skill package
-            </p>
-          </div>
-          <span className="badge">not applicable</span>
-        </CardHead>
+        <CardHeader
+          title="Skills"
+          description={`${clientName} can't load a skill.`}
+          actions={<StatusPill tone="neutral">Not available</StatusPill>}
+        />
         <CardBody>
-          <div className="banner banner--warn">
-            <WarningIcon className="icon icon--sm" />
-            <p className="t-sm t-muted">{support.reason}</p>
-          </div>
+          <p className="t-sm t-muted">{support.reason}</p>
         </CardBody>
       </Card>
     );
@@ -106,51 +86,42 @@ export function SkillPanel({ clientId, clientName }: { clientId: string; clientN
 
   return (
     <Card>
-      <CardHead>
-        <div>
-          <CardSubject>Teaching it to use the memory</CardSubject>
-          <p className="t-xs t-muted" style={{ marginTop: 2 }}>
-            Optional, and the difference between an agent that has a memory and one that uses it.
-          </p>
-        </div>
-        <span className="badge">
-          <SparkleIcon className="icon--sm" style={{ marginRight: 4 }} />
-          {SKILLS.length} skills
-        </span>
-      </CardHead>
-      <CardBody className="stack">
-        {support.kind === "unknown" ? (
-          <div className="banner">
-            <InfoIcon className="icon icon--sm" />
-            <p className="t-sm t-muted">{support.note}</p>
-          </div>
-        ) : (
-          <div className="stack stack--3">
-            <p className="t-sm">{support.install.headline}</p>
-            <ol className="stack stack--3 t-sm t-muted">
-              {support.install.steps.map((step) => (
-                <li key={step}>{step}</li>
-              ))}
-            </ol>
-            {support.install.command ? (
-              <div className="snippet snippet--wrap">
-                <code>{support.install.command}</code>
-              </div>
-            ) : null}
-          </div>
-        )}
-        <div className="stack stack--3">
-          {SKILLS.map((skill) => (
-            <SkillCard key={skill.slug} skill={skill} />
+      <CardHeader
+        title="Recommended: install the palaia skill"
+        description={`Teaches ${clientName} to look things up before answering and to save decisions.`}
+      />
+      <CardBody className="stack stack--4">
+        <Disclosure summary="Install skill">
+          {support.kind === "unknown" ? (
+            <p>{support.note}</p>
+          ) : (
+            <div className="stack stack--3">
+              <p className="t-strong">{support.install.headline}</p>
+              <ol className="stack stack--2" style={{ listStyle: "decimal", paddingLeft: "var(--space-5)" }}>
+                {support.install.steps.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+              {support.install.command ? (
+                <div className="snippet snippet--wrap">
+                  <code>{support.install.command}</code>
+                </div>
+              ) : null}
+            </div>
+          )}
+          <p className="t-strong">{recommended.slug}</p>
+          <SkillActions skill={recommended} />
+        </Disclosure>
+        <Disclosure summary="More skills">
+          {others.map((skill) => (
+            <div key={skill.slug} className="stack stack--2">
+              <p className="t-strong">{skill.slug}</p>
+              <p>{skill.audience}</p>
+              <SkillActions skill={skill} />
+            </div>
           ))}
-        </div>
+        </Disclosure>
       </CardBody>
-      <CardFoot>
-        <span className="t-xs t-subtle">
-          Take one or both. They only ever read and write through this hub, so nothing changes for
-          the client except what it thinks to do.
-        </span>
-      </CardFoot>
     </Card>
   );
 }

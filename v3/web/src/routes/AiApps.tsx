@@ -1,5 +1,6 @@
 import { Outlet, useOutletContext } from "react-router-dom";
 
+import { PageHeader } from "../components/PageHeader";
 import { TabLinks } from "../components/TabLinks";
 import type { EventStreamState } from "../lib/events";
 
@@ -9,6 +10,10 @@ export function AiApps() {
   const stream = useOutletContext<EventStreamState>();
   return (
     <div className="stack">
+      <PageHeader
+        title="AI apps"
+        description="Connect the apps you use, and see which ones are working."
+      />
       <TabLinks
         label="AI apps"
         items={[

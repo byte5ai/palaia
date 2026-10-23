@@ -1,20 +1,26 @@
 /**
- * SPEC-307 deliverable #4: the trigger -> condition -> action automations
- * editor, plus deliverable #5's canned recipes. Copy is written to
- * system.md §3 rule 0 (plain language, no protocol/implementation word in
- * a label/heading/button/badge/option name) — see `Automations.test.tsx`'s
- * jargon lint, scoped to this editor's own controls.
+ * SPEC-307 deliverable #4: the "when → only when → then" automations, and
+ * deliverable #5's ready-made recipes (shown on the empty list; one click
+ * opens the New automation dialog prefilled — nothing runs until saved).
+ *
+ * Copy follows system.md §3 and principles §0.1: no protocol or
+ * implementation word in a label, heading, button, pill or option (see the
+ * lint in `Automations.test.tsx`). The event names stay the stored values,
+ * never the labels.
  */
 import { useEffect, useId, useState } from "react";
 
 import {
-  Badge,
   Button,
-  Card,
-  CardBody,
-  CardHead,
+  ConfirmDialog,
+  Dialog,
+  Disclosure,
   EmptyState,
+  Field,
   LabeledInput,
+  ListRow,
+  StatusPill,
+  Switch,
   useToast,
 } from "../components";
 import type {
@@ -23,49 +29,42 @@ import type {
   ConditionClause,
   DeliveryLogEntry,
 } from "../lib/api/client";
-import { api, ApiError } from "../lib/api/client";
+import { api } from "../lib/api/client";
 import { describeApiError } from "../lib/errors";
+import { exactTime, timeAgo } from "../lib/format";
 import { AutomationsIcon } from "../shell/icons";
 
-/** Plain-language labels for the event names a person is likely to pick as
- * a trigger — the technical name stays the wire value, never the label. */
+/** Plain-language labels for the events a person is likely to pick. */
 const TRIGGER_OPTIONS: { value: string; label: string }[] = [
-  { value: "memory.entry.created", label: "A memory is created" },
-  { value: "memory.entry.updated", label: "A memory is changed" },
-  { value: "inbox.captured", label: "Something is captured" },
-  {
-    value: "curator.capture.needs_review",
-    label: "The curator needs a review",
-  },
-  { value: "curator.run.finished", label: "The curator finishes a pass" },
+  { value: "memory.entry.created", label: "A note is created" },
+  { value: "memory.entry.updated", label: "A note is changed" },
+  { value: "inbox.captured", label: "A note is captured" },
+  { value: "curator.capture.needs_review", label: "palaia needs your review" },
+  { value: "curator.run.finished", label: "palaia finishes sorting notes" },
   { value: "doctor.finding", label: "A problem is found" },
-  { value: "client.connected", label: "A client connects for the first time" },
+  { value: "client.connected", label: "An AI app connects for the first time" },
   { value: "*", label: "Anything happens" },
 ];
 
-const ACTION_KIND_OPTIONS: {
-  value: AutomationAction["kind"];
-  label: string;
-}[] = [
-  { value: "memory_write", label: "Save a memory" },
-  { value: "stash_set", label: "Save a value" },
+const ACTION_KIND_OPTIONS: { value: AutomationAction["kind"]; label: string }[] = [
   { value: "notification", label: "Send me a notification" },
+  { value: "memory_write", label: "Save a note in a memory" },
+  { value: "stash_set", label: "Save a value in the scratchpad" },
 ];
 
 const CONDITION_FIELD_OPTIONS: { value: string; label: string }[] = [
   { value: "event", label: "what happened" },
   { value: "origin", label: "where it came from" },
-  { value: "vault", label: "the vault" },
+  { value: "vault", label: "the memory" },
 ];
 
-const CONDITION_OP_OPTIONS: { value: ConditionClause["op"]; label: string }[] =
-  [
-    { value: "equals", label: "is exactly" },
-    { value: "contains", label: "contains" },
-    { value: "prefix", label: "starts with" },
-  ];
+const CONDITION_OP_OPTIONS: { value: ConditionClause["op"]; label: string }[] = [
+  { value: "equals", label: "is exactly" },
+  { value: "contains", label: "contains" },
+  { value: "prefix", label: "starts with" },
+];
 
-interface Recipe {
+export interface Recipe {
   id: string;
   title: string;
   description: string;
@@ -74,38 +73,28 @@ interface Recipe {
   action: AutomationAction;
 }
 
-/** Deliverable #5: 3-4 canned automations on the empty screen. One click
- * prefills the form below — nothing installs on its own. */
+/** Deliverable #5: ready-made automations for the empty list. */
 const RECIPES: Recipe[] = [
   {
     id: "notify-review",
-    title: "Notify me when the curator needs a review",
-    description:
-      "A dashboard notification appears whenever a capture is too ambiguous to file on its own.",
+    title: "Notify me when palaia needs a review",
+    description: "A notification whenever a captured note is too unclear to file on its own.",
     trigger_event: "curator.capture.needs_review",
     condition: [],
-    action: {
-      kind: "notification",
-      title_template: "Review needed: {{data.permalink}}",
-    },
+    action: { kind: "notification", title_template: "Review needed: {{data.permalink}}" },
   },
   {
     id: "notify-doctor",
     title: "Notify me when a problem is found",
-    description:
-      "A dashboard notification appears whenever the doctor reports a finding.",
+    description: "A notification whenever palaia's health check finds something.",
     trigger_event: "doctor.finding",
     condition: [],
-    action: {
-      kind: "notification",
-      title_template: "{{data.severity}}: {{data.detail}}",
-    },
+    action: { kind: "notification", title_template: "{{data.severity}}: {{data.detail}}" },
   },
   {
     id: "remember-capture",
     title: "Keep a running note of every capture",
-    description:
-      "Every capture also lands a short memory of what came in and where.",
+    description: "Every captured note also saves a short note of what came in and where.",
     trigger_event: "inbox.captured",
     condition: [],
     action: {
@@ -118,9 +107,8 @@ const RECIPES: Recipe[] = [
   },
   {
     id: "stash-last-client",
-    title: "Remember which client connected last",
-    description:
-      "Saves the most recently connected client's name to a value you can look up.",
+    title: "Remember which AI app connected last",
+    description: "Saves the name of the most recently connected AI app as a value you can look up.",
     trigger_event: "client.connected",
     condition: [],
     action: {
@@ -134,107 +122,137 @@ const RECIPES: Recipe[] = [
 
 function defaultActionFor(kind: AutomationAction["kind"]): AutomationAction {
   if (kind === "memory_write") {
-    return {
-      kind,
-      vault: "",
-      what_it_concerns_template: "",
-      why_keep_template: "",
-      content_template: "",
-    };
+    return { kind, vault: "", what_it_concerns_template: "", why_keep_template: "", content_template: "" };
   }
   if (kind === "stash_set") {
-    return {
-      kind,
-      namespace: "automations",
-      key_template: "",
-      value_template: "",
-    };
+    return { kind, namespace: "automations", key_template: "", value_template: "" };
   }
   return { kind, title_template: "", body_template: "" };
 }
 
+function triggerLabel(event: string): string {
+  return TRIGGER_OPTIONS.find((opt) => opt.value === event)?.label ?? event;
+}
+
+function actionLabel(kind: AutomationAction["kind"]): string {
+  return ACTION_KIND_OPTIONS.find((opt) => opt.value === kind)?.label ?? kind;
+}
+
+function Placeholders() {
+  return (
+    <Disclosure summary="Details you can insert">
+      <ul className="automations-placeholders">
+        <li>
+          <code>{"{{event}}"}</code> — what happened
+        </li>
+        <li>
+          <code>{"{{vault}}"}</code> — the memory it happened in
+        </li>
+        <li>
+          <code>{"{{data.title}}"}</code> — one detail of it; each kind of event has its own
+        </li>
+      </ul>
+    </Disclosure>
+  );
+}
+
 function ActionFields({
   action,
+  memories,
   onChange,
 }: {
   action: AutomationAction;
+  memories: string[] | null;
   onChange: (action: AutomationAction) => void;
 }) {
+  const memoryId = useId();
   if (action.kind === "memory_write") {
     return (
-      <div className="stack stack--3">
-        <LabeledInput
-          label="Vault"
-          placeholder="work"
-          value={action.vault}
-          onChange={(e) => onChange({ ...action, vault: e.target.value })}
-        />
+      <div className="stack stack--4">
+        <Field label="Memory" controlId={memoryId}>
+          {memories && memories.length > 0 ? (
+            <select
+              id={memoryId}
+              className="input"
+              value={action.vault}
+              onChange={(e) => onChange({ ...action, vault: e.target.value })}
+            >
+              <option value="">Choose a memory…</option>
+              {memories.map((key) => (
+                <option key={key} value={key}>
+                  {key}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              id={memoryId}
+              className="input"
+              placeholder="work"
+              value={action.vault}
+              onChange={(e) => onChange({ ...action, vault: e.target.value })}
+            />
+          )}
+        </Field>
         <LabeledInput
           label="What it concerns"
-          hint="Can use {{event}}, {{vault}}, {{data.<key>}}."
           value={action.what_it_concerns_template}
-          onChange={(e) =>
-            onChange({ ...action, what_it_concerns_template: e.target.value })
-          }
+          onChange={(e) => onChange({ ...action, what_it_concerns_template: e.target.value })}
         />
         <LabeledInput
           label="Why keep it"
           value={action.why_keep_template}
-          onChange={(e) =>
-            onChange({ ...action, why_keep_template: e.target.value })
-          }
+          onChange={(e) => onChange({ ...action, why_keep_template: e.target.value })}
         />
         <LabeledInput
-          label="What to remember"
+          label="What to save"
           value={action.content_template}
-          onChange={(e) =>
-            onChange({ ...action, content_template: e.target.value })
-          }
+          onChange={(e) => onChange({ ...action, content_template: e.target.value })}
         />
+        <Placeholders />
       </div>
     );
   }
   if (action.kind === "stash_set") {
     return (
-      <div className="stack stack--3">
+      <div className="stack stack--4">
         <LabeledInput
-          label="Namespace"
-          value={action.namespace}
-          onChange={(e) => onChange({ ...action, namespace: e.target.value })}
-        />
-        <LabeledInput
-          label="Key"
-          hint="Can use {{event}}, {{vault}}, {{data.<key>}}."
+          label="Value name"
+          placeholder="last-client"
           value={action.key_template}
-          onChange={(e) =>
-            onChange({ ...action, key_template: e.target.value })
-          }
+          onChange={(e) => onChange({ ...action, key_template: e.target.value })}
         />
         <LabeledInput
           label="Value"
           value={action.value_template}
-          onChange={(e) =>
-            onChange({ ...action, value_template: e.target.value })
-          }
+          onChange={(e) => onChange({ ...action, value_template: e.target.value })}
         />
+        <Disclosure summary="Advanced">
+          <LabeledInput
+            label="Scratchpad group"
+            hint="Values are kept in groups. Most people keep the default."
+            value={action.namespace}
+            onChange={(e) => onChange({ ...action, namespace: e.target.value })}
+          />
+        </Disclosure>
+        <Placeholders />
       </div>
     );
   }
   return (
-    <div className="stack stack--3">
+    <div className="stack stack--4">
       <LabeledInput
         label="Title"
-        hint="Can use {{event}}, {{vault}}, {{data.<key>}}."
         value={action.title_template}
-        onChange={(e) =>
-          onChange({ ...action, title_template: e.target.value })
-        }
+        onChange={(e) => onChange({ ...action, title_template: e.target.value })}
       />
       <LabeledInput
         label="Details"
+        optional
         value={action.body_template ?? ""}
         onChange={(e) => onChange({ ...action, body_template: e.target.value })}
       />
+      <Placeholders />
     </div>
   );
 }
@@ -257,23 +275,22 @@ function ConditionEditor({
   }
   return (
     <div className="stack stack--2">
-      <span className="field__label">Only when (optional)</span>
+      <span className="field__label">
+        Only when<span className="field__optional">Optional</span>
+      </span>
+      {condition.length === 0 ? (
+        <p className="t-sm t-muted">Every time it happens.</p>
+      ) : null}
       {condition.map((clause, index) => {
         const isDataField = clause.field.startsWith("data.");
         return (
-          <div
-            key={index}
-            className="row row--wrap"
-            style={{ gap: 8, alignItems: "center" }}
-          >
+          <div key={index} className="automations-condition">
             <select
               className="input"
               aria-label="Which detail to check"
               value={isDataField ? "data" : clause.field}
               onChange={(e) =>
-                update(index, {
-                  field: e.target.value === "data" ? "data." : e.target.value,
-                })
+                update(index, { field: e.target.value === "data" ? "data." : e.target.value })
               }
             >
               {CONDITION_FIELD_OPTIONS.map((opt) => (
@@ -281,13 +298,12 @@ function ConditionEditor({
                   {opt.label}
                 </option>
               ))}
-              <option value="data">a data field</option>
+              <option value="data">a detail of the event</option>
             </select>
             {isDataField ? (
               <input
-                className="input"
-                style={{ width: 140 }}
-                aria-label="Name of the data field"
+                className="input input--mono"
+                aria-label="Name of the detail"
                 placeholder="data.severity"
                 value={clause.field}
                 onChange={(e) => update(index, { field: e.target.value })}
@@ -297,9 +313,7 @@ function ConditionEditor({
               className="input"
               aria-label="How to compare"
               value={clause.op}
-              onChange={(e) =>
-                update(index, { op: e.target.value as ConditionClause["op"] })
-              }
+              onChange={(e) => update(index, { op: e.target.value as ConditionClause["op"] })}
             >
               {CONDITION_OP_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -309,19 +323,18 @@ function ConditionEditor({
             </select>
             <input
               className="input"
-              style={{ width: 140 }}
               aria-label="Value to compare with"
               value={clause.value}
               onChange={(e) => update(index, { value: e.target.value })}
             />
-            <Button variant="ghost" size="sm" onClick={() => remove(index)}>
+            <Button variant="plain" size="sm" onClick={() => remove(index)}>
               Remove
             </Button>
           </div>
         );
       })}
       <div>
-        <Button variant="ghost" size="sm" onClick={add}>
+        <Button variant="plain" size="sm" onClick={add}>
           Add a condition
         </Button>
       </div>
@@ -329,27 +342,46 @@ function ConditionEditor({
   );
 }
 
-function AutomationForm({
+/** The New automation dialog. `prefill` is a recipe, or `null` for a blank
+ * one; keyed by the caller so each opening starts clean. */
+export function AutomationDialog({
+  open,
   prefill,
+  onClose,
   onCreated,
 }: {
+  open: boolean;
   prefill: Recipe | null;
-  onCreated: () => void;
+  onClose: () => void;
+  onCreated: (automation: AutomationInfo) => void;
 }) {
   const whenId = useId();
   const thenId = useId();
   const [name, setName] = useState(prefill?.title ?? "");
-  const [triggerEvent, setTriggerEvent] = useState(
-    prefill?.trigger_event ?? TRIGGER_OPTIONS[0].value,
-  );
-  const [condition, setCondition] = useState<ConditionClause[]>(
-    prefill?.condition ?? [],
-  );
+  const [triggerEvent, setTriggerEvent] = useState(prefill?.trigger_event ?? TRIGGER_OPTIONS[0].value);
+  const [condition, setCondition] = useState<ConditionClause[]>(prefill?.condition ?? []);
   const [action, setAction] = useState<AutomationAction>(
     prefill?.action ?? defaultActionFor("notification"),
   );
+  const [memories, setMemories] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    api
+      .listVaults()
+      .then((list) => {
+        if (!cancelled) setMemories(list.map((v) => v.key));
+      })
+      .catch(() => {
+        if (!cancelled) setMemories(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   async function submit() {
     setError(null);
@@ -359,156 +391,140 @@ function AutomationForm({
     }
     setSaving(true);
     try {
-      await api.createAutomation({
+      const created = await api.createAutomation({
         name: name.trim(),
         trigger_event: triggerEvent,
         action,
         condition,
       });
-      setName("");
-      setCondition([]);
-      setAction(defaultActionFor("notification"));
-      onCreated();
+      onCreated(created);
     } catch (err) {
-      setError(
-        err instanceof ApiError &&
-          typeof err.body === "object" &&
-          err.body !== null
-          ? String(
-              (err.body as { detail?: string }).detail ??
-                "Could not create the automation.",
-            )
-          : "Could not create the automation.",
-      );
+      setError(describeApiError(err));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Card>
-      <CardHead title="new automation" />
-      <CardBody className="stack stack--4">
-        <LabeledInput
-          label="Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <div className="stack stack--2">
-          <label className="field__label" htmlFor={whenId}>
-            When
-          </label>
-          <select
-            id={whenId}
-            className="input"
-            value={triggerEvent}
-            onChange={(e) => setTriggerEvent(e.target.value)}
-          >
-            {TRIGGER_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <ConditionEditor condition={condition} onChange={setCondition} />
-        <div className="stack stack--2">
-          <label className="field__label" htmlFor={thenId}>
-            Then
-          </label>
-          <select
-            id={thenId}
-            className="input"
-            value={action.kind}
-            onChange={(e) =>
-              setAction(
-                defaultActionFor(e.target.value as AutomationAction["kind"]),
-              )
-            }
-          >
-            {ACTION_KIND_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-          <ActionFields action={action} onChange={setAction} />
-        </div>
-        {error ? <p className="field__error">{error}</p> : null}
-        <div className="row">
-          <Button variant="primary" onClick={submit} disabled={saving}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      size="form"
+      title="New automation"
+      description="When something happens, palaia does one thing."
+      footer={
+        <>
+          <Button onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={() => void submit()} loading={saving}>
             {saving ? "Creating…" : "Create automation"}
           </Button>
-        </div>
-      </CardBody>
-    </Card>
+        </>
+      }
+    >
+      <LabeledInput label="Name" value={name} onChange={(e) => setName(e.target.value)} />
+      <Field label="When" controlId={whenId}>
+        <select
+          id={whenId}
+          className="input"
+          value={triggerEvent}
+          onChange={(e) => setTriggerEvent(e.target.value)}
+        >
+          {TRIGGER_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <ConditionEditor condition={condition} onChange={setCondition} />
+      <Field label="Then" controlId={thenId}>
+        <select
+          id={thenId}
+          className="input"
+          value={action.kind}
+          onChange={(e) => setAction(defaultActionFor(e.target.value as AutomationAction["kind"]))}
+        >
+          {ACTION_KIND_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <ActionFields action={action} memories={memories} onChange={setAction} />
+      {error ? (
+        <p className="field__error" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </Dialog>
   );
 }
+
+const DELIVERY_TONE: Record<string, "ok" | "error" | "info" | "neutral"> = {
+  delivered: "ok",
+  dead: "error",
+  pending: "info",
+};
+
+const DELIVERY_WORD: Record<string, string> = {
+  delivered: "Done",
+  dead: "Failed",
+  pending: "Waiting",
+};
 
 function DeliveryLog({ automationId }: { automationId: string }) {
   const [entries, setEntries] = useState<DeliveryLogEntry[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  function refresh() {
+  useEffect(() => {
+    let cancelled = false;
     api
       .automationDeliveries(automationId)
-      .then(setEntries)
-      .catch(() => setEntries([]));
-  }
+      .then((list) => {
+        if (!cancelled) setEntries(list);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(describeApiError(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [automationId]);
 
+  if (error) return <p className="t-sm t-muted">Couldn't load the history. {error}</p>;
+  if (entries === null) return <p className="t-sm t-muted">Loading the history…</p>;
+  if (entries.length === 0) return <p className="t-sm t-muted">It hasn't run yet.</p>;
   return (
-    <div className="stack stack--2">
-      <Button variant="ghost" size="sm" onClick={refresh}>
-        {entries === null
-          ? "Show delivery history"
-          : "Refresh delivery history"}
-      </Button>
-      {entries !== null ? (
-        entries.length === 0 ? (
-          <p className="t-xs t-subtle">No deliveries yet.</p>
-        ) : (
-          <div className="stack stack--1">
-            {entries.map((entry) => (
-              <div
-                key={entry.id}
-                className="row"
-                style={{ justifyContent: "space-between" }}
-              >
-                <span className="t-xs t-mono">
-                  {entry.event_name} {entry.test ? "(test)" : ""}
-                </span>
-                <Badge
-                  variant={
-                    entry.status === "delivered"
-                      ? "ok"
-                      : entry.status === "dead"
-                        ? "risk"
-                        : "neutral"
-                  }
-                >
-                  {entry.status}
-                </Badge>
-              </div>
-            ))}
-          </div>
-        )
-      ) : null}
-    </div>
+    <ul className="automations-log">
+      {entries.map((entry) => (
+        <li key={entry.id}>
+          <span title={exactTime(entry.created_at)}>
+            {timeAgo(entry.created_at)}
+            {entry.test ? " · test" : ""}
+          </span>
+          <StatusPill tone={DELIVERY_TONE[entry.status] ?? "neutral"}>
+            {DELIVERY_WORD[entry.status] ?? entry.status}
+          </StatusPill>
+        </li>
+      ))}
+    </ul>
   );
 }
 
-function AutomationRow({
-  automation,
-  onChanged,
-}: {
-  automation: AutomationInfo;
-  onChanged: () => void;
-}) {
+function AutomationRow({ automation, onChanged }: { automation: AutomationInfo; onChanged: () => void }) {
   const toast = useToast();
+  const labelId = useId();
   const [testResult, setTestResult] = useState<DeliveryLogEntry | null>(null);
+  const [testing, setTesting] = useState(false);
   const [showLog, setShowLog] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
-  // Issue 376: these used to have no catch — a 403 (a sign-in cookie
-  // rotated by another tab) or any other refusal did nothing visible.
+  // Issue 376: a refusal (a sign-in cookie rotated by another tab, …) is
+  // shown, never swallowed.
   async function toggle(enabled: boolean) {
     try {
       await api.setAutomationEnabled(automation.id, enabled);
@@ -520,201 +536,125 @@ function AutomationRow({
   }
 
   async function remove() {
+    setDeleting(true);
     try {
       await api.deleteAutomation(automation.id);
     } catch (err) {
       toast.show(describeApiError(err));
+      setDeleting(false);
       return;
     }
+    setConfirmDelete(false);
     onChanged();
   }
 
   async function testFire() {
+    setTesting(true);
     try {
       setTestResult(await api.testFireAutomation(automation.id, {}));
     } catch (err) {
       toast.show(describeApiError(err));
+    } finally {
+      setTesting(false);
     }
   }
 
-  const triggerLabel =
-    TRIGGER_OPTIONS.find((opt) => opt.value === automation.trigger_event)
-      ?.label ?? automation.trigger_event;
-  const actionLabel =
-    ACTION_KIND_OPTIONS.find((opt) => opt.value === automation.action.kind)
-      ?.label ?? automation.action.kind;
-
   return (
-    <div className="card" style={{ padding: 0 }}>
-      <div className="card__body stack stack--3">
-        <div
-          className="row"
-          style={{ justifyContent: "space-between", alignItems: "flex-start" }}
-        >
-          <div className="stack stack--1">
-            <span className="t-sm">{automation.name}</span>
-            <span className="t-xs t-subtle">
-              When {triggerLabel.toLowerCase()} → {actionLabel.toLowerCase()}
-            </span>
-          </div>
-          <Badge variant={automation.enabled ? "ok" : "neutral"}>
-            {automation.enabled ? "on" : "off"}
-          </Badge>
+    <div className="automations-row">
+      <div className="automations-row__head">
+        <div className="automations-row__main">
+          <span className="listrow__title" id={labelId}>
+            {automation.name}
+          </span>
+          <span className="listrow__desc">
+            When {triggerLabel(automation.trigger_event).toLowerCase()}:{" "}
+            {actionLabel(automation.action.kind).toLowerCase()}
+            {automation.condition.length > 0 ? " (with a condition)" : ""}
+          </span>
         </div>
-        <div
-          className="row row--wrap"
-          style={{ justifyContent: "space-between" }}
-        >
-          <div className="row" style={{ gap: 8 }}>
-            <Button
-              variant={automation.enabled ? "secondary" : "primary"}
-              size="sm"
-              onClick={() => toggle(!automation.enabled)}
-            >
-              {automation.enabled ? "Turn off" : "Turn on"}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={testFire}>
-              Test this automation
-            </Button>
-          </div>
-          <Button variant="risk" size="sm" onClick={remove}>
-            Delete
-          </Button>
+        <div className="automations-row__actions">
+          <span className="t-sm t-muted" aria-hidden="true">
+            {automation.enabled ? "On" : "Off"}
+          </span>
+          <Switch checked={automation.enabled} onChange={(on) => void toggle(on)} labelledBy={labelId} />
         </div>
-        {testResult ? (
-          <p className="t-xs t-subtle">
-            Test run: <strong>{testResult.status}</strong>
-            {testResult.last_error ? ` — ${testResult.last_error}` : ""}
-          </p>
-        ) : null}
-        <Button variant="ghost" size="sm" onClick={() => setShowLog((v) => !v)}>
-          {showLog ? "Hide history" : "Show history"}
-        </Button>
-        {showLog ? <DeliveryLog automationId={automation.id} /> : null}
       </div>
+      <div className="automations-row__tools">
+        <Button size="sm" onClick={() => void testFire()} loading={testing}>
+          Test it
+        </Button>
+        <Button
+          size="sm"
+          variant="plain"
+          onClick={() => setShowLog((v) => !v)}
+          aria-expanded={showLog}
+        >
+          {showLog ? "Hide history" : "History"}
+        </Button>
+        <Button size="sm" variant="destructive" onClick={() => setConfirmDelete(true)}>
+          Delete
+        </Button>
+      </div>
+      {testResult ? (
+        <p className="t-sm" role="status">
+          Test run:{" "}
+          <StatusPill tone={DELIVERY_TONE[testResult.status] ?? "neutral"}>
+            {DELIVERY_WORD[testResult.status] ?? testResult.status}
+          </StatusPill>
+          {testResult.last_error ? ` ${testResult.last_error}` : ""}
+        </p>
+      ) : null}
+      {showLog ? <DeliveryLog automationId={automation.id} /> : null}
+      <ConfirmDialog
+        open={confirmDelete}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => void remove()}
+        title={`Delete ${automation.name}?`}
+        confirmLabel="Delete automation"
+        destructive
+        busy={deleting}
+      >
+        <p>It stops right away. You can create it again later.</p>
+      </ConfirmDialog>
     </div>
   );
 }
 
-export function AutomationEditor() {
-  const [automations, setAutomations] = useState<AutomationInfo[] | null>(null);
-  const [available, setAvailable] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [prefill, setPrefill] = useState<Recipe | null>(null);
-
-  function refresh() {
-    api
-      .listAutomations()
-      .then((list) => {
-        setAutomations(list);
-        setAvailable(true);
-      })
-      .catch((err) => {
-        if (err instanceof ApiError && err.status === 404) {
-          setAvailable(false);
-          return;
-        }
-        // Issue 378: any other failure left the count at "…" for good.
-        setLoadError(describeApiError(err));
-      });
-  }
-
-  useEffect(refresh, []);
-
-  if (loadError && automations === null) {
+/** The list of automations; on an empty list, the recipes to start from. */
+export function AutomationList({
+  automations,
+  onChanged,
+  onUseRecipe,
+}: {
+  automations: AutomationInfo[];
+  onChanged: () => void;
+  onUseRecipe: (recipe: Recipe) => void;
+}) {
+  if (automations.length === 0) {
     return (
-      <Card>
-        <CardBody className="stack stack--2">
-          <p className="t-sm t-muted">Could not load your automations: {loadError}</p>
-          <div className="row">
-            <Button
-              size="sm"
-              onClick={() => {
-                setLoadError(null);
-                refresh();
-              }}
-            >
-              Try again
-            </Button>
-          </div>
-        </CardBody>
-      </Card>
-    );
-  }
-
-  if (!available) {
-    return (
-      <Card>
-        <CardBody>
-          <p className="t-sm t-muted">
-            This hub has no automations store mounted, so no automation can be
-            configured from here yet.
-          </p>
-        </CardBody>
-      </Card>
-    );
-  }
-
-  return (
-    <section className="stack stack--4">
-      {automations && automations.length === 0 ? (
-        <Card>
-          <CardHead title="try one of these" />
-          <CardBody className="stack stack--2">
-            {RECIPES.map((recipe) => (
-              <button
-                key={recipe.id}
-                type="button"
-                className="listrow"
-                style={{ width: "100%", textAlign: "left" }}
-                onClick={() => setPrefill(recipe)}
-              >
-                <div className="stack stack--1">
-                  <span className="t-sm">{recipe.title}</span>
-                  <span className="t-xs t-subtle">{recipe.description}</span>
-                </div>
-              </button>
-            ))}
-          </CardBody>
-        </Card>
-      ) : null}
-
-      <AutomationForm
-        key={prefill?.id ?? "blank"}
-        prefill={prefill}
-        onCreated={() => {
-          setPrefill(null);
-          refresh();
-        }}
-      />
-
-      <div className="card">
-        <div className="card__head">
-          <span className="card__title">automations</span>
-          <span className="t-meta">
-            {automations ? `${automations.length} configured` : "…"}
-          </span>
-        </div>
-        <div className="card__body stack stack--3">
-          {automations && automations.length === 0 ? (
-            <EmptyState
-              mark={<AutomationsIcon className="icon--lg" />}
-              title="No automations yet."
-            >
-              Pick a recipe above, or build your own: when something happens, do
-              one thing.
-            </EmptyState>
-          ) : (
-            (automations ?? []).map((automation) => (
-              <AutomationRow
-                key={automation.id}
-                automation={automation}
-                onChanged={refresh}
-              />
-            ))
-          )}
+      <div className="stack">
+        <EmptyState mark={<AutomationsIcon className="icon icon--xl" />} title="No automations yet">
+          Start from one of these, or create your own with New automation.
+        </EmptyState>
+        <div className="card">
+          {RECIPES.map((recipe) => (
+            <ListRow
+              key={recipe.id}
+              onClick={() => onUseRecipe(recipe)}
+              title={recipe.title}
+              description={recipe.description}
+              chevron
+            />
+          ))}
         </div>
       </div>
-    </section>
+    );
+  }
+  return (
+    <div className="card">
+      {automations.map((automation) => (
+        <AutomationRow key={automation.id} automation={automation} onChanged={onChanged} />
+      ))}
+    </div>
   );
 }

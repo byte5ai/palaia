@@ -269,35 +269,86 @@ def run_tailscale(state, hostname, login_server):
         state.failed = "tailscale up ended without joining (see the lines above)."
 
 
-PAGE = """<!doctype html>
+# The design system's colours (v3/design/tokens.json), carried inline: this
+# page runs on the bare server before palaia exists and loads nothing.
+COLORS = {
+    "canvas": ("#F5F7FA", "#0F1520"),
+    "surface": ("#FFFFFF", "#161D2A"),
+    "surface-muted": ("#EEF1F5", "#1C2433"),
+    "border": ("#E3E7ED", "#263043"),
+    "text": ("#1D232C", "#E8ECF1"),
+    "text-2": ("#4B5563", "#AEB6C2"),
+    "brand": ("#009FE3", "#009FE3"),
+    "action": ("#0369A1", "#38BDF8"),
+    "action-hover": ("#04618F", "#7DD3FC"),
+    "on-action": ("#FFFFFF", "#0A0F1A"),
+    "focus": ("#0369A1", "#009FE3"),
+    "ok": ("#157A3A", "#4ADE80"),
+    "error": ("#B91C1C", "#F87171"),
+}
+LIGHT = "".join(f"--{name}: {light};" for name, (light, _) in COLORS.items())
+DARK = "".join(f"--{name}: {dark};" for name, (_, dark) in COLORS.items())
+
+MARK = (
+    '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">'
+    '<circle cx="12" cy="12" r="3" fill="var(--brand)"/>'
+    '<g stroke="var(--brand)" stroke-opacity=".5" stroke-width="1.3">'
+    '<line x1="12" y1="12" x2="12" y2="3"/><line x1="12" y1="12" x2="20" y2="8"/>'
+    '<line x1="12" y1="12" x2="19" y2="18"/><line x1="12" y1="12" x2="5" y2="18"/>'
+    '<line x1="12" y1="12" x2="4" y2="8"/></g><g fill="var(--brand)" fill-opacity=".85">'
+    '<circle cx="12" cy="3" r="1.7"/><circle cx="20" cy="8" r="1.7"/>'
+    '<circle cx="19" cy="18" r="1.7"/><circle cx="5" cy="18" r="1.7"/>'
+    '<circle cx="4" cy="8" r="1.7"/></g></svg>'
+)
+
+PAGE = (
+    (
+        """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>palaia setup</title>
 <style>
-:root{{color-scheme:light dark;--bg:#f6f7f9;--card:#fff;--text:#16181d;--muted:#5d6470;
---line:#dfe2e7;--accent:#2457d6;--ok:#167a3e;--err:#b3261e}}
-@media (prefers-color-scheme:dark){{:root{{--bg:#111317;--card:#1a1d23;--text:#eceef2;
---muted:#a3a9b4;--line:#2c313a;--accent:#7aa2ff;--ok:#5fcf8b;--err:#ff8a80}}}}
-body{{margin:0;background:var(--bg);color:var(--text);font:16px/1.55 system-ui,sans-serif}}
-main{{max-width:30rem;margin:8vh auto;padding:0 16px}}
-.brand{{font-weight:650;letter-spacing:-.01em;margin-bottom:12px;color:var(--muted)}}
-.card{{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px}}
-h1{{font-size:1.35rem;line-height:1.3;margin:0 0 8px}}
+:root{{color-scheme:light;@LIGHT@}}
+@media (prefers-color-scheme: dark){{:root{{color-scheme:dark;@DARK@}}}}
+body{{margin:0;background:var(--canvas);color:var(--text);
+font:15px/1.6 "Nunito Sans",system-ui,-apple-system,"Segoe UI",sans-serif}}
+main{{max-width:32rem;margin:8vh auto;padding:0 16px}}
+.brand{{display:flex;align-items:center;gap:8px;margin-bottom:16px;font-size:20px;font-weight:700}}
+.brand svg{{width:20px;height:20px}}
+.card{{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:32px}}
+h1{{font-size:24px;line-height:32px;margin:0 0 8px}}
 p{{margin:8px 0}}
-.steps{{display:flex;gap:6px;margin:0 0 16px;font-size:.8rem;color:var(--muted)}}
-.steps span{{padding:2px 8px;border:1px solid var(--line);border-radius:999px}}
-.steps .on{{border-color:var(--accent);color:var(--accent)}}
-input{{font:inherit;font-size:1.1rem;padding:10px 12px;width:100%;box-sizing:border-box;
-letter-spacing:.12em;text-transform:uppercase;border:1px solid var(--line);border-radius:8px;
-background:var(--bg);color:var(--text)}}
-.row{{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:16px}}
-button,a.btn{{display:inline-block;font:inherit;font-weight:600;padding:10px 16px;border:0;
-border-radius:8px;background:var(--accent);color:#fff;text-decoration:none;cursor:pointer}}
-button.ghost{{background:transparent;color:var(--muted);border:1px solid var(--line)}}
-.err{{color:var(--err)}} .ok{{color:var(--ok)}} .muted{{color:var(--muted);font-size:.92rem}}
-code{{font:.92rem ui-monospace,monospace}}
-</style></head><body><main><div class="brand">palaia</div>
+a{{color:var(--action)}}
+.steps{{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 20px;font-size:13px;color:var(--text-2)}}
+.steps span{{padding:2px 10px;border:1px solid var(--border);border-radius:999px}}
+.steps .on{{border-color:var(--action);color:var(--action);font-weight:600}}
+label{{display:block;font-weight:600;margin-top:16px}}
+input{{font:inherit;font-size:18px;padding:10px 12px;margin-top:6px;width:100%;
+box-sizing:border-box;letter-spacing:.12em;text-transform:uppercase;
+border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text)}}
+.row{{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:20px}}
+.row form{{margin:0}}
+button,a.btn{{display:inline-flex;align-items:center;justify-content:center;
+min-height:44px;box-sizing:border-box;font:inherit;font-weight:600;padding:0 22px;
+border:1px solid transparent;border-radius:999px;background:var(--action);
+color:var(--on-action);text-decoration:none;cursor:pointer}}
+button:hover,a.btn:hover{{background:var(--action-hover)}}
+button.ghost{{background:var(--surface);color:var(--text);border-color:var(--border)}}
+button.ghost:hover{{background:var(--surface-muted)}}
+:focus-visible{{outline:2px solid var(--focus);outline-offset:2px}}
+.err{{color:var(--error)}} .ok{{color:var(--ok)}}
+.muted{{color:var(--text-2);font-size:13px}}
+code{{font:13px ui-monospace,"SF Mono",Menlo,Consolas,monospace;background:var(--surface-muted);
+padding:1px 6px;border-radius:6px;overflow-wrap:anywhere}}
+@media (max-width: 480px){{.card{{padding:20px}} .row>*,.row form button{{width:100%}}}}
+</style></head><body><main><div class="brand">"""
+        + MARK
+        + """palaia</div>
 <div class="card">{body}</div></main></body></html>"""
+    )
+    .replace("@LIGHT@", LIGHT)
+    .replace("@DARK@", DARK)
+)
 
 
 def steps(active):
@@ -312,7 +363,7 @@ def code_form(error=""):
         steps(0) + "<h1>Set up palaia</h1>"
         "<p>Enter the setup code you were given.</p>"
         f"{hint}"
-        '<form method="get" action="/connect"><label class="muted" for="code">Setup code</label>'
+        '<form method="get" action="/connect"><label for="code">Setup code</label>'
         '<input id="code" name="code" autocomplete="off" autofocus required '
         'placeholder="XXXX-XXXX-XXXX"><div class="row"><button type="submit">Continue</button>'
         "</div></form>"

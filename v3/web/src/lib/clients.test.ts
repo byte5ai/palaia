@@ -20,7 +20,7 @@ describe("client integration catalog", () => {
       "Antigravity / Gemini CLI",
       "Grok",
       "LM Studio",
-      "Any other AI tool",
+      "Any other AI app",
     ]);
   });
 

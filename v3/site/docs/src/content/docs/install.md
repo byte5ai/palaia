@@ -37,21 +37,28 @@ container itself is disposable — you can remove and recreate it without
 losing anything.
 
 Open `http://localhost:8420/` in your browser (or the machine's address, if
-you're installing on a home server and browsing from a laptop). A short
-first-run setup walks you through:
+you're installing on a home server and browsing from a laptop). palaia's
+setup opens by itself and walks you through, one step at a time:
 
-1. **An administrator sign-in** for the dashboard — a username and a
-   password you choose right there. (A hub started without its sign-in
-   server offers to switch it on first; that one change needs a restart of
-   the container, then the setup asks for your account.)
-2. **How far your memory reaches** — just this device and network, or the
-   internet too (with sign-in required the moment it is). You can change
-   this later; starting local is the safe default.
-3. **Your first memory** — give it a name and a one-line purpose ("work" or
-   "personal" is plenty to start).
+1. **How you'll use palaia** — with ChatGPT and Claude (they reach palaia
+   over a secure web address and sign in; the dashboard stays on your
+   private network), or only on your own devices.
+2. **Your first memory** — a name such as `work`. What it's for is
+   optional; AI apps read it to pick the right memory.
+3. **Your account** — a username and a password of at least 12 characters.
+   Needed for ChatGPT and Claude; optional when palaia stays private.
+4. **Cloud access** — only for ChatGPT and Claude: palaia's public `https://`
+   address. palaia restarts once, asks you to sign in, then checks that
+   address the way ChatGPT and Claude reach it.
+5. **Connect an AI app** — the steps for the app you use, ending when
+   palaia receives its first request.
 
-From there you land on a page whose whole job is getting your first AI tool
-connected — see [Connect your AI](/connect/).
+Setup remembers where you are: after a reload or a restart it continues at
+the first step that is still open. See [Connect your AI](/connect/) for
+every app.
+
+Installing on a Linux server instead? [Get palaia running](/onboarding/)
+has the one command that also sets up Docker and Tailscale.
 
 ## Prefer a config file, or already run other containers?
 

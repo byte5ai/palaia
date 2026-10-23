@@ -9,6 +9,7 @@ import { useOutletContext } from "react-router-dom";
 import {
   Card,
   ListRow,
+  PageHeader,
   RestartButton,
   RestartCallout,
   Segmented,
@@ -149,6 +150,7 @@ export function SettingsHub() {
 
   return (
     <div className="stack narrow">
+      <PageHeader title="Settings" />
       <Card>
         <div className="card__body stack stack--4">
           <div className="row" style={{ alignItems: "flex-start" }}>

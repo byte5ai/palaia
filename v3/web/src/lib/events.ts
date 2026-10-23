@@ -9,7 +9,7 @@
  * this hook just tracks the last known state so a component can render a
  * quiet "reconnecting" indicator instead of nothing.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { api } from "./api/client";
 
@@ -133,21 +133,20 @@ export function useEventStream(
   EventSourceCtor: typeof EventSource = EventSource,
 ): EventStreamState {
   const [state, setState] = useState<EventStreamState>(INITIAL_STATE);
-  const hasConnectedOnce = useRef(false);
 
   useEffect(() => {
     const source = new EventSourceCtor(api.eventsUrl());
 
     source.addEventListener("open", () => {
       setState((prev) => ({ ...prev, connection: "open" }));
-      hasConnectedOnce.current = true;
     });
 
+    // Any failed attempt means palaia can't be reached right now, whether
+    // or not a connection ever opened; EventSource keeps retrying, and the
+    // next successful frame flips this back to "open". (A page loaded while
+    // palaia was down used to say "Connecting…" forever.)
     source.addEventListener("error", () => {
-      setState((prev) => ({
-        ...prev,
-        connection: hasConnectedOnce.current ? "reconnecting" : "connecting",
-      }));
+      setState((prev) => ({ ...prev, connection: "reconnecting" }));
     });
 
     source.addEventListener("health", (event: MessageEvent<string>) => {

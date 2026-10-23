@@ -1,35 +1,44 @@
 import { describe, expect, it } from "vitest";
 
-import { buildFeed } from "./activityFeed";
+import { buildFeed, titleFromPermalink } from "./activityFeed";
 import type { VaultChangeEntry } from "./events";
 
 const LIVE: VaultChangeEntry = {
   ts: 2_000,
-  event: "memory.entry.updated",
+  event: "memory.entry.created",
   vault: "work",
-  permalink: "projects/billing",
-  data: { path: "projects/billing.md" },
+  permalink: "projects/website/release-process",
+  data: { path: "projects/website/release-process.md" },
 };
 
 describe("buildFeed", () => {
-  it("puts live events first and skips loaded notes they already cover", () => {
+  it("puts live events first, names the note, and skips loaded notes they already cover", () => {
     const feed = buildFeed(
       [LIVE],
       [
-        { vault: "work", permalink: "projects/billing", title: "Billing", modified: "2026-09-28T10:00:00Z" },
-        { vault: "work", permalink: "howto/setup", title: "Setup", modified: "2026-09-28T09:00:00Z" },
-      ],
+        {
+          vault: "work",
+          permalink: "projects/website/release-process",
+          title: "Release process",
+          modified: "2026-09-28T10:00:00Z",
+        },
+        { vault: "work", permalink: "howto/setup", title: "Setup guide", modified: "2026-09-28T09:00:00Z" },
+      ] as never,
     );
-    expect(feed.map((item) => item.text)).toEqual([
-      "Updated projects/billing in work",
-      "Changed howto/setup in work",
+    expect(feed.map((item) => [item.verb, item.title, item.vault])).toEqual([
+      ["Created", "Release process", "work"],
+      ["Saved", "Setup guide", "work"],
     ]);
-    expect(feed[0].path).toBe("projects/billing.md");
     expect(feed[1].at).toBe(Date.parse("2026-09-28T09:00:00Z"));
   });
 
+  it("never shows a raw path: a name without a title becomes words", () => {
+    expect(titleFromPermalink("inbox/invoice-numbering")).toBe("Invoice numbering");
+    expect(titleFromPermalink("decisions/design_review.md")).toBe("Design review");
+  });
+
   it("leaves the time out when a note carries none", () => {
-    const [item] = buildFeed([], [{ vault: "work", permalink: "a", title: "A", modified: "" }]);
+    const [item] = buildFeed([], [{ vault: "work", permalink: "a", title: "A", modified: "" }] as never);
     expect(item.at).toBeNull();
   });
 
@@ -40,6 +49,6 @@ describe("buildFeed", () => {
       title: `N${i}`,
       modified: "",
     }));
-    expect(buildFeed([], loaded, 20)).toHaveLength(20);
+    expect(buildFeed([], loaded as never, 20)).toHaveLength(20);
   });
 });

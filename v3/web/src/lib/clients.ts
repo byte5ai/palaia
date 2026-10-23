@@ -95,7 +95,7 @@ export interface NotYetClient {
   /** Truthful, mode-aware explanation — never just "not available". */
   reason: (mode: HubMode) => string;
   /** SPEC-205 deliverable #3: once Cloud/Open mode has sign-in actually
-   * turned on and configured (the Access mode page), a cloud connector
+   * turned on and configured (Settings › Access & sign-in), a cloud connector
    * unlocks here instead of staying stuck on `reason` above — the address
    * to paste into the client's own "custom connector" settings. Present
    * only on clients that connect through sign-in rather than through
@@ -113,7 +113,7 @@ const CLOUD_CONNECTOR_REASON =
   (mode: HubMode): string =>
     mode === "locked"
       ? `${name} connects from the internet, so it needs cloud access. Turn it on in setup or ` +
-        `under Access; your dashboard stays on your private network.`
+        `in Settings › Access & sign-in; your dashboard stays on your private network.`
       : `${name} signs in to palaia with your account, and sign-in is not on yet. Finish ` +
         `turning on cloud access, then come back here. ${planNote}`;
 
@@ -305,7 +305,7 @@ export const CLIENTS: ClientEntry[] = [
   {
     kind: "guided",
     id: "generic",
-    name: "Any other AI tool",
+    name: "Any other AI app",
     icon: ExplorerIcon,
     estimate: "a couple of minutes",
     // No vendor syntax to follow here: the address, and the one header

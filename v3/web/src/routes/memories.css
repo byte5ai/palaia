@@ -1,0 +1,32 @@
+/* Memories (Browse and Needs review). Tokens only — see styles/tokens.css. */
+
+.memories-toolbar__name { display: inline-flex; align-items: center; gap: var(--space-2); height: var(--control-height);
+  font-size: var(--type-body-strong-size); font-weight: var(--type-body-strong-weight); color: var(--text); }
+.memories-toolbar__name .icon { color: var(--text-2); }
+.memories-toolbar__actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+
+.memories-pick { display: flex; align-items: center; justify-content: center; text-align: center;
+  min-height: 160px; padding: var(--space-8) var(--space-5); }
+
+.memories-links { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--type-secondary-size); }
+.memories-history { display: flex; flex-direction: column; gap: var(--space-2);
+  font-size: var(--type-secondary-size); line-height: var(--type-secondary-lh); color: var(--text-2); }
+
+.memories-keep { display: flex; flex-direction: column; gap: var(--space-2); max-height: 240px; overflow: auto;
+  font-size: var(--type-secondary-size); }
+.memories-temp__panel { margin-top: var(--space-4); padding: var(--space-4); background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); }
+
+.memories-tools__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--space-3); }
+.memories-tools__row { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.memories-tools__row .t-mono { color: var(--text); overflow-wrap: anywhere; }
+
+/* Needs review: one proposal per card. */
+.review-meta { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.review-body { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-sans);
+  font-size: var(--type-secondary-size); line-height: var(--type-secondary-lh); color: var(--text); }
+
+@media (max-width: 767px) {
+  .memories-toolbar .searchbox { flex-basis: 100%; order: 2; }
+  .memories-toolbar__actions { order: 3; }
+}

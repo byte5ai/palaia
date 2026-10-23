@@ -1,14 +1,12 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import axe from "axe-core";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ToastProvider } from "../components/Toast";
-import type {
-  CreatedToken,
-  GatewayProfile,
-  ModeStatus,
-} from "../lib/api/client";
-import { api } from "../lib/api/client";
+import type { GatewayProfile, ModeStatus, TokenInfo } from "../lib/api/client";
+import { api, ApiError } from "../lib/api/client";
+import { CLIENTS } from "../lib/clients";
 import { Clients } from "./Clients";
 
 const DEFAULT_PROFILE: GatewayProfile = {
@@ -24,177 +22,210 @@ const DEFAULT_PROFILE: GatewayProfile = {
   managed: false,
 };
 
-const CODEX_ONLY_PROFILE: GatewayProfile = {
-  ...DEFAULT_PROFILE,
-  path: "codex-only",
-  tool_count: 4,
-};
+const CODEX_ONLY_PROFILE: GatewayProfile = { ...DEFAULT_PROFILE, path: "codex-only", tool_count: 4 };
 
-describe("Clients (connect-a-client)", () => {
-  it("lists every §6-matrix client and explains a not-yet one when selected", async () => {
-    render(
-      <MemoryRouter>
-        <ToastProvider>
-          <Clients />
-        </ToastProvider>
-      </MemoryRouter>,
+function key(name: string, overrides: Partial<TokenInfo> = {}): TokenInfo {
+  return {
+    id: `t-${name}`,
+    name,
+    profile: "default",
+    scopes: [],
+    created_at: "2026-10-01T00:00:00Z",
+    revoked_at: null,
+    last_used_at: null,
+    ...overrides,
+  };
+}
+
+function stub({
+  mode = "locked",
+  issuer = null,
+  tokens = [],
+  profiles = [DEFAULT_PROFILE],
+}: {
+  mode?: "locked" | "cloud" | "open";
+  issuer?: string | null;
+  tokens?: TokenInfo[] | Error;
+  profiles?: GatewayProfile[];
+} = {}) {
+  vi.spyOn(api, "mode").mockResolvedValue({
+    active_mode: mode,
+    configured_mode: mode,
+    restart_required: false,
+    oauth_enabled: issuer !== null,
+    oauth_issuer: issuer,
+  } as unknown as ModeStatus);
+  if (tokens instanceof Error) vi.spyOn(api, "listTokens").mockRejectedValue(tokens);
+  else vi.spyOn(api, "listTokens").mockResolvedValue(tokens);
+  vi.spyOn(api, "listGatewayProfiles").mockResolvedValue(profiles);
+  vi.spyOn(api, "tokenUsage").mockRejectedValue(new ApiError("/api/auth/tokens/usage", 404, {}));
+}
+
+function mount() {
+  return render(
+    <MemoryRouter>
+      <ToastProvider>
+        <Clients />
+      </ToastProvider>
+    </MemoryRouter>,
+  );
+}
+
+function row(name: RegExp): HTMLElement {
+  return screen.getByRole("button", { name });
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+describe("AI apps › Apps (report §3.5)", () => {
+  it("lists every supported app with its status and says how many are connected", async () => {
+    stub({
+      tokens: [
+        key("Claude Code CLI", { last_used_at: new Date(Date.now() - 120_000).toISOString() }),
+        key("Codex"),
+      ],
+    });
+    mount();
+
+    expect(await screen.findByText(`1 of ${CLIENTS.length} connected`)).toBeInTheDocument();
+    for (const client of CLIENTS) {
+      expect(screen.getByText(client.name, { selector: ".listrow__title" })).toBeInTheDocument();
+    }
+    expect(row(/^claude code cli/i)).toHaveTextContent("Connected");
+    expect(row(/^claude code cli/i)).toHaveTextContent("Last request 2 min ago");
+    expect(row(/^codex/i)).toHaveTextContent("Waiting for first use");
+    expect(row(/^lm studio/i)).toHaveTextContent("Ready to connect");
+  });
+
+  it("says a cloud app needs Cloud mode in Private mode, with the way to set it up", async () => {
+    stub({ mode: "locked" });
+    mount();
+
+    fireEvent.click(await screen.findByRole("button", { name: /^chatgpt/i }));
+
+    expect(row(/^chatgpt/i)).toHaveTextContent("Needs Cloud mode");
+    expect(screen.getByText("ChatGPT needs Cloud mode")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Set up Cloud mode" })).toHaveAttribute("href", "/settings/access");
+    // The plan limit from the catalog is still said.
+    expect(screen.getByText(/write access needs a business/i)).toBeInTheDocument();
+  });
+
+  it("gives a cloud app its address once Cloud mode has sign-in for AI apps", async () => {
+    stub({ mode: "cloud", issuer: "https://palaia.example.com" });
+    mount();
+
+    // The Claude app and claude.ai share one cloud entry ("Claude", issue 565).
+    const claude = (await screen.findByText("Claude", { selector: ".listrow__title" })).closest("button")!;
+    fireEvent.click(claude);
+
+    expect(claude).toHaveTextContent("Ready to connect");
+    expect(screen.getByText("https://palaia.example.com/mcp/default")).toBeInTheDocument();
+  });
+
+  it("starts the default app at Create access key", async () => {
+    stub();
+    mount();
+
+    expect(await screen.findByRole("button", { name: /create access key/i })).toBeInTheDocument();
+  });
+
+  it("an error loading the apps is an error, never an empty list", async () => {
+    stub({ tokens: new ApiError("/api/auth/tokens", 500, { detail: "database is locked" }) });
+    mount();
+
+    expect(await screen.findByText("Couldn't load your AI apps")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    expect(screen.queryByText(/connected$/)).not.toBeInTheDocument();
+  });
+
+  it("updates an app's row when its access key is revoked", async () => {
+    stub({ tokens: [key("Claude Code CLI", { last_used_at: new Date().toISOString() })] });
+    vi.spyOn(api, "revokeToken").mockResolvedValue(undefined);
+    mount();
+
+    await waitFor(() => expect(row(/^claude code cli/i)).toHaveTextContent("Connected"));
+    fireEvent.click(await screen.findByRole("button", { name: "Revoke access" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Revoke access" }));
+
+    await waitFor(() => expect(row(/^claude code cli/i)).toHaveTextContent("Ready to connect"));
+  });
+});
+
+describe("Claude Desktop — the one-click extension (SPEC-306)", () => {
+  it("downloads a real extension on click, for the tool set picked under Advanced", async () => {
+    stub({ profiles: [DEFAULT_PROFILE, CODEX_ONLY_PROFILE] });
+    const download = vi
+      .spyOn(api, "downloadFile")
+      .mockResolvedValue({ blob: new Blob(["fake mcpb bytes"]), filename: "palaia.mcpb" });
+    vi.stubGlobal(
+      "URL",
+      Object.assign(URL, { createObjectURL: () => "blob:test", revokeObjectURL: () => {} }),
+    );
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: /^claude desktop/i }));
+    fireEvent.change(await screen.findByLabelText("Tool set"), { target: { value: "codex-only" } });
+    fireEvent.click(screen.getByRole("button", { name: /download extension/i }));
+
+    await waitFor(() => expect(download).toHaveBeenCalledTimes(1));
+    expect(String(download.mock.calls[0]![0])).toContain("/api/connect/mcpb?profile=codex-only");
+    await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
+  });
+
+  it("shows palaia's own reason when it cannot build one", async () => {
+    stub();
+    vi.spyOn(api, "downloadFile").mockRejectedValue(
+      new ApiError("/api/connect/mcpb", 501, { detail: "no client-authentication method is configured" }),
     );
 
-    expect(
-      screen.getByRole("button", { name: /claude code cli/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /^chatgpt/i }),
-    ).toBeInTheDocument();
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: /^claude desktop/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /download extension/i }));
 
-    fireEvent.click(screen.getByRole("button", { name: /^chatgpt/i }));
-
-    // A not-yet client never dead-ends: it gets a truthful, specific reason.
-    expect(await screen.findByText(/not available yet/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no client-authentication method is configured/i)).toBeInTheDocument();
   });
+});
 
-  it("selects a guided client by default and offers to issue it a token", async () => {
-    render(
-      <MemoryRouter>
-        <ToastProvider>
-          <Clients />
-        </ToastProvider>
-      </MemoryRouter>,
-    );
+/** principles.md §0.1: no protocol word in a label, heading, button, pill or option. */
+describe("AI apps copy — no jargon in the surface", () => {
+  const BANNED = [/\bmcp\b/i, /\boauth\b/i, /\btoken\b/i, /\bprofile\b/i, /\bendpoint\b/i, /\bvault\b/i, /\bbearer\b/i];
 
-    expect(
-      await screen.findByRole("button", { name: /issue token/i }),
-    ).toBeInTheDocument();
+  it("no heading, button, pill or field label uses an implementation word", async () => {
+    stub({ profiles: [DEFAULT_PROFILE, CODEX_ONLY_PROFILE] });
+    mount();
+    await screen.findByRole("button", { name: /create access key/i });
+
+    const controls = [
+      ...screen.queryAllByRole("heading"),
+      ...screen.queryAllByRole("button"),
+      ...screen.queryAllByRole("tab"),
+      ...Array.from(document.querySelectorAll(".pill, .badge, .card__title, .field__label, summary, option")),
+    ];
+    expect(controls.length).toBeGreaterThan(10);
+    for (const element of controls) {
+      const text = element.textContent ?? "";
+      for (const pattern of BANNED) expect(text, text).not.toMatch(pattern);
+    }
   });
+});
 
-  describe("the tool-profile picker (issue 373)", () => {
-    afterEach(() => {
-      vi.restoreAllMocks();
+describe("AI apps accessibility", () => {
+  it("the list and the connect flow have no serious axe-core violations", async () => {
+    stub({
+      tokens: [key("Codex")],
+      profiles: [DEFAULT_PROFILE, CODEX_ONLY_PROFILE],
     });
+    mount();
+    await screen.findByRole("button", { name: /create access key/i });
+    fireEvent.click(row(/^codex/i));
+    await screen.findByRole("tablist");
 
-    it("issues the token for the profile picked, not for the default", async () => {
-      vi.spyOn(api, "mode").mockResolvedValue({
-        active_mode: "locked",
-        configured_mode: "locked",
-        restart_required: false,
-        oauth_enabled: false,
-        oauth_issuer: null,
-      } as unknown as ModeStatus);
-      vi.spyOn(api, "listTokens").mockResolvedValue([]);
-      vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([
-        DEFAULT_PROFILE,
-        CODEX_ONLY_PROFILE,
-      ]);
-      const created = vi.spyOn(api, "createToken").mockImplementation(
-        async (body) =>
-          ({
-            info: {
-              id: "t-new",
-              name: body.name,
-              profile: body.profile,
-              scopes: body.scopes ?? [],
-              created_at: new Date().toISOString(),
-              last_used_at: null,
-              revoked_at: null,
-            },
-            token: "plaintext-token",
-          }) as CreatedToken,
-      );
-
-      render(
-        <MemoryRouter>
-          <ToastProvider>
-            <Clients />
-          </ToastProvider>
-        </MemoryRouter>,
-      );
-
-      const picker = await screen.findByLabelText(/tool profile for/i);
-      fireEvent.change(picker, { target: { value: "codex-only" } });
-      fireEvent.click(
-        await screen.findByRole("button", { name: /issue token/i }),
-      );
-
-      await waitFor(() => expect(created).toHaveBeenCalled());
-      expect(created).toHaveBeenCalledWith(
-        expect.objectContaining({ profile: "codex-only" }),
-      );
-    });
-  });
-
-  describe("Claude Desktop — the one-click download (SPEC-306)", () => {
-    afterEach(() => {
-      vi.unstubAllGlobals();
-    });
-
-    it("downloads a real bundle on click, no copy/paste step", async () => {
-      const fetchMock = vi.fn().mockResolvedValue({
-        ok: true,
-        blob: async () => new Blob(["fake mcpb bytes"]),
-      });
-      vi.stubGlobal("fetch", fetchMock);
-      const clickSpy = vi.fn();
-      const originalClick = HTMLAnchorElement.prototype.click;
-      HTMLAnchorElement.prototype.click = clickSpy;
-
-      render(
-        <MemoryRouter>
-          <ToastProvider>
-            <Clients />
-          </ToastProvider>
-        </MemoryRouter>,
-      );
-
-      fireEvent.click(screen.getByRole("button", { name: /^claude desktop/i }));
-      const downloadButton = await screen.findByRole("button", {
-        name: /download bundle/i,
-      });
-      fireEvent.click(downloadButton);
-
-      // The dashboard's own mount-time calls (mode/listTokens) share this
-      // same mocked `fetch` — the assertion is that *a* call named the
-      // bundle endpoint, not that it was the only call.
-      await waitFor(() => {
-        const urls = fetchMock.mock.calls.map((call) => String(call[0]));
-        expect(urls.some((url) => url.includes("/api/connect/mcpb"))).toBe(
-          true,
-        );
-      });
-      await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
-
-      HTMLAnchorElement.prototype.click = originalClick;
-    });
-
-    it("shows the hub's own error instead of a dead end when it cannot build one", async () => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue({
-          ok: false,
-          status: 501,
-          json: async () => ({
-            detail: "no client-authentication method is configured",
-          }),
-        }),
-      );
-
-      render(
-        <MemoryRouter>
-          <ToastProvider>
-            <Clients />
-          </ToastProvider>
-        </MemoryRouter>,
-      );
-
-      fireEvent.click(screen.getByRole("button", { name: /^claude desktop/i }));
-      fireEvent.click(
-        await screen.findByRole("button", { name: /download bundle/i }),
-      );
-
-      expect(
-        await screen.findByText(
-          /no client-authentication method is configured/i,
-        ),
-      ).toBeInTheDocument();
-    });
+    const results = await axe.run(document.body, { rules: { "color-contrast": { enabled: false } } });
+    const serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+    expect(serious.map((v) => `${v.id}: ${v.nodes.map((n) => n.html).join(" | ")}`)).toEqual([]);
   });
 });

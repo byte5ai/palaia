@@ -80,19 +80,23 @@ _SCRIPT_JS = r"""
     });
   }
 
+  // The dashboard's names for the modes (v3/web/src/lib/mode.ts).
+  var MODE_LABEL = { locked: "Private", cloud: "Cloud", open: "Public" };
+
   function render(sc) {
     sc = sc || {};
     var vaults = Array.isArray(sc.vaults) ? sc.vaults : [];
     var clients = Array.isArray(sc.clients) ? sc.clients : [];
     var html = '<div class="row--between">'
-      + '<span class="badge badge--ok"><span class="dot"></span>' + escapeHtml(sc.mode || "")
+      + '<span class="badge badge--ok"><span class="dot"></span>'
+      + escapeHtml(MODE_LABEL[sc.mode] || sc.mode || "")
       + " · v" + escapeHtml(sc.version || "") + "</span>"
       + '<button class="btn" id="refresh">Refresh</button></div>';
 
     html += '<div class="card"><div class="card__head">'
-      + '<span class="card__title">Vaults</span></div><div>';
+      + '<span class="card__title">Memories</span></div><div>';
     if (!vaults.length) {
-      html += '<div class="empty">No vaults configured.</div>';
+      html += '<div class="empty">No memory yet.</div>';
     }
     for (var i = 0; i < vaults.length; i++) {
       var v = vaults[i];
@@ -103,16 +107,17 @@ _SCRIPT_JS = r"""
         + '<div class="listrow__title">' + escapeHtml(v.key) + "</div>"
         + '<div class="listrow__meta">' + escapeHtml(v.purpose || "") + "</div>"
         + "</div><div style=\"text-align:right\">"
-        + '<div class="t-mono t-muted">' + v.note_count + " note(s)</div>"
+        + '<div class="t-muted">' + v.note_count
+        + (v.note_count === 1 ? " note" : " notes") + "</div>"
         + (backlog ? '<div class="listrow__meta">' + escapeHtml(backlog) + "</div>" : "")
         + "</div></div>";
     }
     html += "</div></div>";
 
     html += '<div class="card"><div class="card__head">'
-      + '<span class="card__title">Connected clients</span></div><div>';
+      + '<span class="card__title">Connected AI apps</span></div><div>';
     if (!clients.length) {
-      html += '<div class="empty">No client has connected yet.</div>';
+      html += '<div class="empty">No AI app has connected yet.</div>';
     }
     for (var j = 0; j < clients.length; j++) {
       var c = clients[j];

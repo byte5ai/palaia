@@ -1,0 +1,54 @@
+/* =============================================================
+   Settings sub-pages: Access & sign-in, Backups, Telegram, Advanced.
+   Page-specific layout only; every value is a token (tokens.css) or a
+   component constant from components.css.
+   ============================================================= */
+
+/* A card's stack of content, with the card's own padding. */
+.settings-body { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); }
+.settings-body + .settings-body, .settings-rows + .settings-body { border-top: 1px solid var(--border); }
+
+/* A one-line summary of the current state above the details. */
+.settings-summary { display: flex; align-items: flex-start; gap: var(--space-4); padding: var(--space-5); }
+.settings-summary__main { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; flex: 1; }
+.settings-summary__title { font-size: var(--type-title-2-size); line-height: var(--type-title-2-lh); font-weight: var(--type-title-2-weight); }
+.settings-summary__pills { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-2); }
+
+/* The three access modes, each with its outcome line. */
+.mode-choice { display: grid; gap: var(--space-3); grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.mode-choice .radiocard { height: 100%; text-align: left; font: inherit; color: inherit; }
+.mode-choice .radiocard__name, .mode-choice .radiocard__when { display: block; }
+.mode-choice__current { display: inline-flex; margin-top: var(--space-2); }
+@media (max-width: 1023px) { .mode-choice { grid-template-columns: minmax(0, 1fr); } }
+
+/* Results of a check, one per line: a status pill and what was seen. */
+.check-list { display: flex; flex-direction: column; gap: var(--space-3); }
+.check-list__item { display: flex; gap: var(--space-3); align-items: flex-start; }
+.check-list__item .pill { margin-top: 1px; }
+.check-list__text { display: flex; flex-direction: column; min-width: 0; font-size: var(--type-secondary-size); line-height: var(--type-secondary-lh); }
+.check-list__title { font-weight: 600; color: var(--text); }
+.check-list__detail { color: var(--text-2); overflow-wrap: anywhere; }
+
+/* Commands to copy, one per line. */
+.command-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.command-list__label { font-size: var(--type-secondary-size); line-height: var(--type-secondary-lh); color: var(--text-2); }
+
+/* A setting row's extra content under the row (a confirmation, an error). */
+.setting-note { padding: 0 var(--space-5) var(--space-4); }
+
+/* The list of rows inside a section card (bots, rules, tool sets). */
+.settings-rows { display: flex; flex-direction: column; }
+.settings-rows > li { list-style: none; }
+.settings-rows > li + li { border-top: 1px solid var(--border); }
+.settings-rows .listrow { border-bottom: 0; }
+.settings-row--top { align-items: flex-start; }
+.settings-form { padding: var(--space-5); border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: var(--space-4); background: var(--surface); }
+.settings-form__actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
+/* Telegram: a recent message stacks its outcome under its title. */
+.telegram-recent { flex-direction: column; align-items: stretch; gap: var(--space-2); }
+
+@media (max-width: 767px) {
+  .settings-body, .settings-summary, .settings-form { padding: var(--space-4); }
+  .setting-note { padding: 0 var(--space-4) var(--space-4); }
+}

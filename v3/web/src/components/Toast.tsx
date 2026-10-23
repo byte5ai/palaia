@@ -3,6 +3,7 @@ import {
   type ReactNode,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -29,6 +30,16 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const nextId = useRef(0);
+  // Pending dismiss timers, cleared when the provider goes away so a toast
+  // never updates state after the page (or a test) has been torn down.
+  const timers = useRef(new Set<number>());
+  useEffect(() => {
+    const pending = timers.current;
+    return () => {
+      for (const timer of pending) window.clearTimeout(timer);
+      pending.clear();
+    };
+  }, []);
 
   const dismiss = useCallback((id: number) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
@@ -39,7 +50,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       const id = nextId.current++;
       setToasts((prev) => [...prev, { id, message, ...options }]);
       const duration = options?.durationMs ?? 4000;
-      window.setTimeout(() => dismiss(id), duration);
+      const timer = window.setTimeout(() => {
+        timers.current.delete(timer);
+        dismiss(id);
+      }, duration);
+      timers.current.add(timer);
     },
     [dismiss],
   );

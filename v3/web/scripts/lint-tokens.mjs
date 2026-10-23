@@ -57,6 +57,15 @@ function isInsideCustomPropertyValue(text, index) {
   return propertyName.startsWith("--");
 }
 
+/** The text with comments blanked out (same length, so indexes still line
+ * up): "issue #570" in a comment is not a colour. Strings are left alone —
+ * a colour in a string is exactly what this lint is for. */
+function withoutComments(text, isCss) {
+  const blank = (match) => match.replace(/[^\n]/g, " ");
+  const block = text.replace(/\/\*[\s\S]*?\*\//g, blank);
+  return isCss ? block : block.replace(/(^|[^:"'`\\])\/\/[^\n]*/g, (match, lead) => lead + blank(match.slice(lead.length)));
+}
+
 function isSkipped(rel) {
   return rel.endsWith(".gen.ts") || rel.endsWith(".test.ts") || rel.endsWith(".test.tsx");
 }
@@ -65,9 +74,9 @@ function checkLiterals(path) {
   const rel = relative(ROOT, path);
   if (ALLOWED_FILES.has(rel) || isSkipped(rel)) return [];
 
-  const text = readFileSync(path, "utf-8");
-  const violations = [];
   const isCss = extname(path) === ".css";
+  const text = withoutComments(readFileSync(path, "utf-8"), isCss);
+  const violations = [];
 
   for (const match of text.matchAll(HEX_COLOR)) {
     if (isCss && isInsideCustomPropertyValue(text, match.index)) continue;
@@ -107,7 +116,7 @@ for (const path of files.filter((file) => extname(file) === ".css")) {
 for (const path of files) {
   const rel = relative(ROOT, path);
   if (isSkipped(rel)) continue;
-  const text = readFileSync(path, "utf-8");
+  const text = withoutComments(readFileSync(path, "utf-8"), extname(path) === ".css");
   for (const match of text.matchAll(VAR_USE)) {
     if (!defined.has(match[1])) violations.push(`${rel}: var(${match[1]}) is not defined anywhere`);
   }

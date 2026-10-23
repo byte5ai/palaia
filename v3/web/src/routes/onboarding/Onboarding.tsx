@@ -198,7 +198,7 @@ function GoalStep({ status, onDone }: StepProps) {
   return (
     <StepperPanel
       title="How do you want to use palaia?"
-      description="You can change this later in Settings → Access."
+      description="You can change this later in Settings › Access & sign-in."
       primary={
         <Button variant="primary" size="lg" loading={busy} onClick={() => void save()}>
           Continue

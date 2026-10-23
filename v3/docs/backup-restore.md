@@ -97,12 +97,31 @@ docker run --rm \
   -v palaia_home:/data \
   -v "$PWD":/backup \
   alpine sh -c "rm -rf /data/* /data/.[!.]* /data/..?* 2>/dev/null; \
-                tar xzf /backup/palaia-backup-YYYYMMDDTHHMMSSZ.tar.gz -C /data"
+                tar xzf /backup/palaia-backup-YYYYMMDDTHHMMSSZ.tar.gz -C /data && \
+                chown -R 1000:1000 /data"
 ```
+
+The `chown` hands every file to the container's `palaia` user (uid/gid
+1000). Archives written before `3.0.0-rc5` stored the SQLite snapshots as
+root-owned; restored as-is, the hub could not open them and never became
+ready.
 
 The `rm -rf` clears the volume first (including dotfiles) — omit it only
 if you are restoring into a genuinely empty volume (a fresh install), in
 which case there is nothing to clear.
+
+### Installer variant (`get.palaia.ai`)
+
+```bash
+docker rm -f palaia-hub
+# (unpack step above)
+curl -fsSL https://get.palaia.ai | sh      # PALAIA_CLOUD=0 for a private hub
+```
+
+The installer recreates the container with the flags it chose the first
+time (tailnet bind, loopback cloud entry, self-restart) and keeps the
+volume. A plain `docker run` would publish port 8420 on every interface and
+drop the cloud entry.
 
 ### One-liner variant
 
@@ -145,8 +164,10 @@ grew there naturally.
 - `palaia-hub backup [--out PATH]` writes the identical archive on the
   machine the hub runs on (mode `0600`, via a `.part` file renamed into
   place) — the way to back up a hub whose dashboard has no sign-in. In the
-  container: `docker exec palaia-hub palaia-hub backup --out /tmp/hub.tar.gz`
-  then `docker cp palaia-hub:/tmp/hub.tar.gz .`.
+  container, stream it out (its `/tmp` is a tmpfs, which `docker cp` cannot
+  read): `docker exec palaia-hub sh -c 'palaia-hub backup --out
+  /tmp/palaia-backup.tar.gz >&2 && cat /tmp/palaia-backup.tar.gz && rm
+  /tmp/palaia-backup.tar.gz' > palaia-backup.tar.gz`.
 - The archive is built and streamed straight into the HTTP response body;
   `server/src/palaia_hub/backup.py` never writes it to a temp file, so
   there is no window where a full copy of a hub's secrets sits in a

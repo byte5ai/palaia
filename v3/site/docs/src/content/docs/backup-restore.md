@@ -1,36 +1,42 @@
 ---
 title: Back up & restore
-description: One button downloads everything palaia has saved. Here's what's in that file, and how to bring it back.
+description: One button downloads a copy of your memories and settings. Here's what's in that file, and how to bring it back.
 ---
 
 ## Back up
 
-On the dashboard's home screen, **Back up** downloads one file with
-everything palaia has saved on your behalf: every memory, your sign-in and
-connection setup, and anything else you've connected (saved passwords or
-keys for other tools included).
+In the dashboard, **Settings › Backups › Download backup** saves one file
+with everything palaia has saved on your behalf: all memories with their
+history, palaia's settings, your owner account, every AI app's access key,
+keys saved for add-ons and connected tools, and your automations and
+webhooks.
 
-**Treat that file like a password.** Anyone who has it can act as your hub
-— read everything in it and, if they restore it somewhere, look and behave
-exactly like your setup. Store it the way you'd store a password: in a
-password manager or an encrypted drive, never in a plain, shared, or
-public place, and never sent casually over email or chat.
+**Store that file like a password.** It includes private data and access
+keys: anyone who has it can read everything in it and, if they restore it
+somewhere, use those keys. Keep it in a password manager or an encrypted
+drive, never in a plain, shared, or public place, and never send it casually
+over email or chat.
 
-You need to be signed in as the administrator to download one — the same
-sign-in the dashboard itself uses. If your hub's dashboard has no sign-in
-turned on (the default when it only runs on your own network), the button
-is replaced by a note: on the machine the hub runs on, `palaia-hub backup`
-writes the same file. Running palaia in Docker, that is
-`docker exec palaia-hub palaia-hub backup --out /tmp/hub.tar.gz` followed by
-`docker cp palaia-hub:/tmp/hub.tar.gz .`.
+You need to be signed in to the dashboard to download one. If the dashboard
+doesn't ask anyone to sign in (the default when palaia only runs on your own
+network), Settings › Backups offers **Turn on dashboard sign-in** instead,
+and shows how to write the same file on the server: `palaia-hub backup` on
+a plain install, or for the Docker install
+
+```sh
+docker exec palaia-hub sh -c 'palaia-hub backup --out /tmp/palaia-backup.tar.gz >&2 && cat /tmp/palaia-backup.tar.gz && rm /tmp/palaia-backup.tar.gz' > palaia-backup.tar.gz
+```
+
+The file comes out through the command's output because the container's
+`/tmp` lives in memory, where `docker cp` cannot read it.
 
 One thing is deliberately left out to keep the file smaller: the part that
 makes searching fast. It isn't a record of anything — it's rebuilt
 automatically from your actual notes the moment a restored install starts
 up, so leaving it out costs you nothing.
 
-<!-- screenshot: the "Back up" action on the dashboard home screen, with
-     its warning text visible -->
+<!-- screenshot: Settings › Backups with the Download backup button and its
+     security note visible -->
 
 ## Have palaia write the file for you
 
@@ -167,6 +173,26 @@ deliberately than to trigger by accident from a web page.
 The idea in three steps: **stop palaia, replace its saved data with what's
 in your download, start it again.**
 
+If you installed on a server with `curl -fsSL https://get.palaia.ai | sh`:
+
+```bash
+docker rm -f palaia-hub
+
+docker run --rm \
+  -v palaia_home:/data \
+  -v "$PWD":/backup \
+  alpine sh -c "rm -rf /data/* /data/.[!.]* /data/..?* 2>/dev/null; \
+                tar xzf /backup/palaia-backup-YOUR-FILE.tar.gz -C /data && \
+                chown -R 1000:1000 /data"
+
+curl -fsSL https://get.palaia.ai | sh
+```
+
+The last line is the installer again: it starts palaia with the same
+settings as before and keeps the restored data. If you kept palaia private
+during the first install, run it the same way again
+(`curl -fsSL https://get.palaia.ai | PALAIA_CLOUD=0 sh`).
+
 If you installed with the one-line command from [Install it](/install/):
 
 ```bash
@@ -176,7 +202,8 @@ docker run --rm \
   -v palaia_home:/data \
   -v "$PWD":/backup \
   alpine sh -c "rm -rf /data/* /data/.[!.]* /data/..?* 2>/dev/null; \
-                tar xzf /backup/palaia-backup-YOUR-FILE.tar.gz -C /data"
+                tar xzf /backup/palaia-backup-YOUR-FILE.tar.gz -C /data && \
+                chown -R 1000:1000 /data"
 
 docker run -d --name palaia-hub \
   -p 8420:8420 -v palaia_home:/data --restart unless-stopped \
@@ -200,13 +227,16 @@ docker run --rm \
   -v palaia_home:/data \
   -v "$PWD":/backup \
   alpine sh -c "rm -rf /data/* /data/.[!.]* /data/..?* 2>/dev/null; \
-                tar xzf /backup/palaia-backup-YOUR-FILE.tar.gz -C /data"
+                tar xzf /backup/palaia-backup-YOUR-FILE.tar.gz -C /data && \
+                chown -R 1000:1000 /data"
 
 docker compose up -d
 ```
 
 Replace `palaia-backup-YOUR-FILE.tar.gz` with the actual name of the file
-you downloaded, and run these from the folder you saved it in.
+you downloaded, and run these from the folder you saved it in. The `chown`
+hands the files back to the user palaia runs as (`1000`); without it,
+palaia cannot open its databases after a restore from an older backup.
 
 Open the dashboard once it's back up — everything should look exactly the
 way it did when you took the backup, including your connected tools.

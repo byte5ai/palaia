@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from palaia_hub.auth.store import TokenError, TokenStore
+from palaia_hub.auth.store import LAST_USED_FILE, TokenError, TokenStore
 
 
 def test_create_returns_plaintext_once_and_it_verifies(tmp_path: Path) -> None:
@@ -181,15 +181,65 @@ def test_list_tokens_reports_last_used_only_after_a_successful_verify(tmp_path: 
     assert after.last_used_at is not None
 
 
-def test_last_used_at_is_not_persisted_to_disk(tmp_path: Path) -> None:
+def test_last_used_at_survives_a_restart_without_touching_tokens_yaml(tmp_path: Path) -> None:
+    """Issue #570: after a restart the dashboard said "waiting" for an app
+    that had worked minutes before. The time lives in its own file, so
+    tokens.yaml (which the CLI writes too) keeps its format."""
+    store = TokenStore(home=tmp_path)
+    created = store.create("client", "default", [])
+    tokens_yaml = (tmp_path / "tokens.yaml").read_text(encoding="utf-8")
+
+    store.verify(created.token)
+    used = store.get(created.info.id).last_used_at
+    assert used is not None
+
+    reloaded = TokenStore(home=tmp_path)
+
+    assert reloaded.get(created.info.id).last_used_at == used
+    assert (tmp_path / "tokens.yaml").read_text(encoding="utf-8") == tokens_yaml
+    assert "last_used" not in tokens_yaml
+
+
+def test_last_use_is_written_once_per_interval_not_on_every_request(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = TokenStore(home=tmp_path)
+    created = store.create("client", "default", [])
+    writes: list[str] = []
+    real_save = store._save_last_used
+    monkeypatch.setattr(store, "_save_last_used", lambda: (writes.append("w"), real_save()))
+
+    for _ in range(5):
+        store.verify(created.token)
+
+    assert writes == ["w"]
+
+
+def test_a_remembered_last_use_still_counts_as_first_use_this_process(tmp_path: Path) -> None:
+    """The client.connected event fires once per token per process, whether or
+    not a last-use time was remembered from before the restart."""
     store = TokenStore(home=tmp_path)
     created = store.create("client", "default", [])
     store.verify(created.token)
-    assert store.get(created.info.id).last_used_at is not None
+
+    reloaded = TokenStore(home=tmp_path)
+    firsts: list[bool] = []
+    reloaded.on_verified = lambda _record, first: firsts.append(first)
+    reloaded.verify(created.token)
+    reloaded.verify(created.token)
+
+    assert firsts == [True, False]
+
+
+def test_an_unreadable_last_use_file_costs_only_the_times(tmp_path: Path) -> None:
+    store = TokenStore(home=tmp_path)
+    created = store.create("client", "default", [])
+    (tmp_path / LAST_USED_FILE).write_text("{not json", encoding="utf-8")
 
     reloaded = TokenStore(home=tmp_path)
 
     assert reloaded.get(created.info.id).last_used_at is None
+    assert reloaded.verify(created.token) is not None
 
 
 def test_failed_verify_does_not_stamp_last_used(tmp_path: Path) -> None:

@@ -12,7 +12,7 @@ describe('App', () => {
       expect(primary.textContent).toContain(place)
     }
 
-    // The Overview's verdict, before any live-state event has arrived.
-    expect(await screen.findByText(/connecting to the hub/i)).toBeInTheDocument()
+    // The Overview's verdict, before palaia has answered.
+    expect(await screen.findByRole('heading', { name: 'Connecting to palaia…' })).toBeInTheDocument()
   })
 })

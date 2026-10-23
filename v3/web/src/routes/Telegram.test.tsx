@@ -278,8 +278,8 @@ describe("Telegram screen", () => {
     // Where messages go, in plain words.
     expect(screen.getByText("every chat")).toBeInTheDocument();
     expect(screen.getAllByText("Messenger → ops-agent")).toHaveLength(2);
-    expect(screen.getAllByText("Inbox of vault work")).toHaveLength(1);
-    expect(screen.getByText("Hub event")).toBeInTheDocument();
+    expect(screen.getAllByText("To file in work")).toHaveLength(1);
+    expect(screen.getByText("Event for automations")).toBeInTheDocument();
 
     // Recent messages: one of each outcome, newest first.
     expect(screen.getByText(/No rule matched/)).toBeInTheDocument();
@@ -306,10 +306,10 @@ describe("Telegram screen", () => {
 
     mount();
 
-    await screen.findByText("No bots yet.");
+    await screen.findByText(/No bots yet\./);
     expect(screen.getByText(/@BotFather/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add a bot" })).toBeInTheDocument();
-    const guide = screen.getByRole("link", { name: "setup guide" });
+    const guide = screen.getByRole("link", { name: "Setup guide" });
     expect(guide).toHaveAttribute(
       "href",
       expect.stringContaining("v3/docs/telegram.md"),
@@ -325,7 +325,7 @@ describe("Telegram screen", () => {
     mount();
 
     await screen.findByText(/inbox of vault 'later'/);
-    expect(document.querySelector(".banner--warn")).not.toBeNull();
+    expect(document.querySelector(".callout--warn, .callout--error")).not.toBeNull();
   });
 
   it("shows a hub error in a banner, not a crash", async () => {
@@ -338,7 +338,7 @@ describe("Telegram screen", () => {
     mount();
 
     await screen.findByText("the hub is having a bad day");
-    expect(document.querySelector(".banner--warn")).not.toBeNull();
+    expect(document.querySelector(".callout--warn, .callout--error")).not.toBeNull();
   });
 
   it("checks a bot's connection on demand and shows what Telegram said", async () => {
@@ -404,10 +404,10 @@ describe("editing (issue 463)", () => {
 
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "Add a bot" }));
-    fireEvent.change(screen.getByLabelText("Name on the hub"), {
+    fireEvent.change(screen.getByLabelText("Name"), {
       target: { value: "support" },
     });
-    fireEvent.change(screen.getByLabelText("Display name"), {
+    fireEvent.change(screen.getByLabelText(/^Display name/), {
       target: { value: "Support bot" },
     });
     fireEvent.change(screen.getByLabelText("Bot token"), {
@@ -441,7 +441,7 @@ describe("editing (issue 463)", () => {
 
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "Add a bot" }));
-    fireEvent.change(screen.getByLabelText("Name on the hub"), {
+    fireEvent.change(screen.getByLabelText("Name"), {
       target: { value: "support" },
     });
 
@@ -529,8 +529,8 @@ describe("editing (issue 463)", () => {
       .mockResolvedValue(FULL_STATUS);
 
     mount();
-    await screen.findByText("Hub event");
-    const row = screen.getByText("Hub event").closest("tr")!;
+    await screen.findByText("Event for automations");
+    const row = screen.getByText("Event for automations").closest("tr")!;
     fireEvent.click(row.querySelector("button")!);
     fireEvent.click(screen.getByRole("radio", { name: "An agent's inbox" }));
     fireEvent.change(screen.getByLabelText("To"), {
@@ -568,7 +568,7 @@ describe("editing (issue 463)", () => {
     await screen.findByText("'x' is not a usable chat reference.");
   });
 
-  it("lets a tool profile send, offering only profiles without an entry", async () => {
+  it("lets a tool set send, offering only tool sets without an entry", async () => {
     vi.spyOn(api, "telegramStatus").mockResolvedValue(FULL_STATUS);
     const profile = {
       label: null,
@@ -587,12 +587,12 @@ describe("editing (issue 463)", () => {
     const put = vi.spyOn(api, "putTelegramGrant").mockResolvedValue(FULL_STATUS);
 
     mount();
-    fireEvent.click(await screen.findByRole("button", { name: "Let a profile send" }));
-    const select = await screen.findByLabelText("Tool profile");
+    fireEvent.click(await screen.findByRole("button", { name: "Let a tool set send" }));
+    const select = await screen.findByLabelText("Tool set");
     const options = Array.from(select.querySelectorAll("option")).map((o) => o.value);
     expect(options).toEqual(["phone"]);
     // The profile has no Telegram tools yet — the form says so.
-    expect(screen.getByText(/does not carry the Telegram tools yet/)).toBeInTheDocument();
+    expect(screen.getByText(/doesn't include the Telegram tools yet/)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("To these chats"), {
       target: { value: "-1001, @opsroom" },
     });
@@ -624,7 +624,7 @@ describe("editing (issue 463)", () => {
 
     mount();
     await screen.findByText("Connected");
-    for (const name of ["Add a bot", "Add a rule", "Let a profile send", "Edit", "Remove"]) {
+    for (const name of ["Add a bot", "Add a rule", "Let a tool set send", "Edit", "Remove"]) {
       expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
     }
     // Candidates stay plain chips.
@@ -639,7 +639,7 @@ describe("live updates", () => {
       .mockResolvedValue(EMPTY_STATUS);
 
     mountLive();
-    await screen.findByText("No bots yet.");
+    await screen.findByText(/No bots yet\./);
     expect(status).toHaveBeenCalledTimes(1);
 
     const source = FakeEventSource.instances.at(-1)!;
@@ -669,7 +669,7 @@ describe("live updates", () => {
       });
 
     mountLive();
-    await screen.findByText("No messages yet.");
+    await screen.findByText(/No messages yet\./);
 
     const source = FakeEventSource.instances.at(-1)!;
     act(() => {
@@ -740,8 +740,8 @@ describe("Telegram screen copy — no jargon in the surface (system.md §3 rule 
     // Open every editor, so their labels and buttons are checked too.
     fireEvent.click(screen.getByRole("button", { name: "Add a bot" }));
     fireEvent.click(screen.getByRole("button", { name: "Add a rule" }));
-    fireEvent.click(screen.getByRole("button", { name: "Let a profile send" }));
-    await screen.findByText(/Every tool profile already has an entry/);
+    fireEvent.click(screen.getByRole("button", { name: "Let a tool set send" }));
+    await screen.findByText(/Every tool set can already send/);
 
     const controls = [
       ...screen.queryAllByRole("heading"),

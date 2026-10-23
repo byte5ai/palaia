@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ToastProvider } from "../components/Toast";
@@ -80,9 +81,11 @@ const WORK_VAULT_IDENTITY: GatewayVaultIdentity = {
 
 function mount() {
   return render(
-    <ToastProvider>
-      <ToolProfiles />
-    </ToastProvider>,
+    <MemoryRouter>
+      <ToastProvider>
+        <ToolProfiles />
+      </ToastProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -100,7 +103,7 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     mount();
 
     expect(
-      await screen.findByText(/no gateway attached/i),
+      await screen.findByText(/doesn't serve tool sets/i),
     ).toBeInTheDocument();
   });
 
@@ -124,7 +127,7 @@ describe("ToolProfiles screen (SPEC-305)", () => {
 
     mount();
 
-    expect(await screen.findByText(/managed elsewhere/i)).toBeInTheDocument();
+    expect(await screen.findByText("Managed by the curator")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^edit$/i })).not.toBeInTheDocument();
   });
 
@@ -140,13 +143,13 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     });
 
     mount();
-    await screen.findByText(/no tool profiles yet/i);
+    await screen.findByText(/only the default tool set exists/i);
 
-    fireEvent.click(screen.getByRole("button", { name: /new tool profile/i }));
-    fireEvent.change(screen.getByLabelText(/address segment/i), {
+    fireEvent.click(screen.getByRole("button", { name: /new tool set/i }));
+    fireEvent.change(screen.getByLabelText(/address name/i), {
       target: { value: "Codex!" },
     });
-    fireEvent.click(screen.getByLabelText("work"));
+    fireEvent.click(screen.getByLabelText(/^work/));
     listSpy.mockResolvedValue([{ ...DEFAULT_PROFILE, path: "codex" }]);
     fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
 
@@ -169,10 +172,10 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     });
 
     mount();
-    await screen.findByText(/no tool profiles yet/i);
+    await screen.findByText(/only the default tool set exists/i);
 
-    fireEvent.click(screen.getByRole("button", { name: /new tool profile/i }));
-    fireEvent.change(screen.getByLabelText(/address segment/i), {
+    fireEvent.click(screen.getByRole("button", { name: /new tool set/i }));
+    fireEvent.change(screen.getByLabelText(/address name/i), {
       target: { value: "codex" },
     });
     fireEvent.click(await screen.findByLabelText(/^fetch/i));
@@ -223,8 +226,7 @@ describe("ToolProfiles screen (SPEC-305)", () => {
 
     mount();
     fireEvent.click(await screen.findByRole("button", { name: /^edit$/i }));
-    const row = (await screen.findByText("Also carry the Telegram tools")).closest("label")!;
-    const toggle = row.querySelector('[role="switch"]')!;
+    const toggle = await screen.findByRole("switch", { name: "Include Telegram tools" });
     expect(toggle).toHaveAttribute("aria-checked", "false");
     fireEvent.click(toggle);
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
@@ -249,13 +251,12 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     });
 
     mount();
-    await screen.findByText(/no tool profiles yet/i);
-    fireEvent.click(screen.getByRole("button", { name: /new tool profile/i }));
-    fireEvent.change(screen.getByLabelText(/address segment/i), {
+    await screen.findByText(/only the default tool set exists/i);
+    fireEvent.click(screen.getByRole("button", { name: /new tool set/i }));
+    fireEvent.change(screen.getByLabelText(/address name/i), {
       target: { value: "desk" },
     });
-    const row = screen.getByText("Also carry the Telegram tools").closest("label")!;
-    fireEvent.click(row.querySelector('[role="switch"]')!);
+    fireEvent.click(screen.getByRole("switch", { name: "Include Telegram tools" }));
     fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
 
     await waitFor(() =>
@@ -274,7 +275,7 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     vi.spyOn(api, "listGatewayUpstreams").mockResolvedValue([]);
 
     mount();
-    expect(await screen.findByText("telegram", { selector: ".pill" })).toBeInTheDocument();
+    expect(await screen.findByText("Telegram", { selector: ".pill" })).toBeInTheDocument();
   });
 
   it("assigns an already-connected tool to an existing profile through its checkbox", async () => {
@@ -301,16 +302,31 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     );
   });
 
-  it("cannot delete the default profile", async () => {
-    vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([DEFAULT_PROFILE]);
+  it("offers no delete for the default tool set, and confirms before deleting another", async () => {
+    vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([
+      DEFAULT_PROFILE,
+      { ...DEFAULT_PROFILE, path: "codex" },
+    ]);
     vi.spyOn(api, "listGatewayVaults").mockResolvedValue([WORK_VAULT_IDENTITY]);
     vi.spyOn(api, "listVaults").mockResolvedValue([WORK_VAULT]);
     vi.spyOn(api, "listGatewayUpstreams").mockResolvedValue([]);
+    vi.spyOn(api, "listGatewayProfileTools").mockResolvedValue(WORK_TOOLS);
+    const remove = vi.spyOn(api, "deleteGatewayProfile").mockResolvedValue(undefined);
 
     mount();
 
-    expect(await screen.findByText(/cannot delete the default profile/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^delete$/i })).not.toBeInTheDocument();
+    const defaultRow = await screen.findByTestId("tool-set-default");
+    fireEvent.click(within(defaultRow).getByRole("button", { name: /^edit$/i }));
+    expect(within(defaultRow).queryByRole("button", { name: /delete/i })).not.toBeInTheDocument();
+    // No error about it either: the action simply isn't there.
+    expect(screen.queryByText(/cannot delete/i)).not.toBeInTheDocument();
+
+    const codexRow = screen.getByTestId("tool-set-codex");
+    fireEvent.click(within(codexRow).getByRole("button", { name: /^edit$/i }));
+    fireEvent.click(within(codexRow).getByRole("button", { name: "Delete tool set" }));
+    const dialog = screen.getByRole("dialog", { name: /delete the tool set codex/i });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete tool set" }));
+    await waitFor(() => expect(remove).toHaveBeenCalledWith("codex"));
   });
 
   it("renames a vault's tool and reports a sanitized value", async () => {
@@ -327,7 +343,7 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     });
 
     mount();
-    await screen.findByText(/vault tool names/i);
+    await screen.findByTestId("tool-names");
 
     fireEvent.change(screen.getByPlaceholderText("search"), {
       target: { value: "find notes!" },
@@ -335,7 +351,7 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     listVaultsSpy.mockResolvedValue([
       { ...WORK_VAULT_IDENTITY, tool_renames: { search: "find_notes" } },
     ]);
-    fireEvent.click(screen.getByRole("button", { name: /save renames/i }));
+    fireEvent.click(screen.getByRole("button", { name: /save names/i, hidden: true }));
 
     expect(await screen.findByText(/was not a valid tool name/i)).toBeInTheDocument();
   });

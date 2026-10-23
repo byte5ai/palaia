@@ -26,7 +26,7 @@ describe("routing errors (issue 379)", () => {
     mountAt("/memories/typo");
 
     expect(await screen.findByText(/that page doesn't exist/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /back to home/i })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: /go to overview/i })).toHaveAttribute("href", "/");
     // Still inside the shell: the navigation is there to leave by.
     expect(screen.getByRole("link", { name: /^memories$/i })).toBeInTheDocument();
     expect(screen.queryByText(/unexpected application error/i)).not.toBeInTheDocument();
@@ -42,8 +42,11 @@ describe("routing errors (issue 379)", () => {
     );
     render(<RouterProvider router={router} />);
 
-    expect(await screen.findByText(/this screen ran into a problem/i)).toBeInTheDocument();
+    expect(await screen.findByText(/something went wrong on this page/i)).toBeInTheDocument();
+    // The raw reason stays one click away, not in the main text.
+    expect(screen.getByText("Show details")).toBeInTheDocument();
     expect(screen.getByText(/tripped over itself/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /back to home/i })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /go to overview/i })).toHaveAttribute("href", "/");
   });
 });

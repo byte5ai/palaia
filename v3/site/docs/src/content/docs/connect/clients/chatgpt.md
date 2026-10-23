@@ -9,7 +9,7 @@ A custom connector in developer mode
 
 ## What has to be true first
 
-- **Locked mode.** ChatGPT connects from the internet, so it needs cloud access. Turn it on in setup or under Access; your dashboard stays on your private network.
+- **Locked mode.** ChatGPT connects from the internet, so it needs cloud access. Turn it on in setup or in Settings › Access & sign-in; your dashboard stays on your private network.
 - **Cloud mode or Open mode.** ChatGPT signs in to palaia with your account, and sign-in is not on yet. Finish turning on cloud access, then come back here. Write access needs a Business, Enterprise or Edu workspace — Plus/Pro get a read-only profile so recall still works.
 
 ## Once sign-in is on

@@ -139,3 +139,21 @@ def test_vendored_bridge_exposes_the_expected_view_sdk_classes() -> None:
     result = subprocess.run(["node", "-e", probe], capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "ok"
+
+
+def test_the_app_colours_are_the_design_tokens_of_the_same_name() -> None:
+    """The panels carry the token values inline (an MCP App loads nothing);
+    they must stay equal to ``v3/design/tokens.json`` (issue 570)."""
+    import json
+
+    from palaia_hub.gateway.apps.shell import APP_CSS, COLORS
+
+    tokens_file = Path(__file__).resolve().parents[3] / "design" / "tokens.json"
+    tokens = {
+        token["name"]: (token["value"]["light"], token["value"]["dark"])
+        for token in json.loads(tokens_file.read_text(encoding="utf-8"))["color"]["tokens"]
+    }
+    for name, (light, dark) in COLORS.items():
+        assert tokens.get(name) == (light, dark), name
+        assert f"--{name}:{light};" in APP_CSS
+        assert f"--{name}:{dark};" in APP_CSS

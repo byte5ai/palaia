@@ -69,16 +69,17 @@ describe("NewTemporaryMemory (issue 168)", () => {
     const onCreated = vi.fn();
     render(
       <ToastProvider>
-        <NewTemporaryMemory onCreated={onCreated} onCancel={() => {}} />
+        <NewTemporaryMemory open onCreated={onCreated} onCancel={() => {}} />
       </ToastProvider>,
     );
 
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "trip" } });
-    fireEvent.change(screen.getByLabelText("What it is for"), {
+    expect(screen.getByRole("dialog", { name: "New temporary memory" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/what it's for/i), {
       target: { value: "Research for the Lisbon trip" },
     });
-    fireEvent.change(screen.getByLabelText("Due in (days)"), { target: { value: "14" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    fireEvent.change(screen.getByLabelText(/due in days/i), { target: { value: "14" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create temporary memory" }));
 
     await waitFor(() =>
       expect(create).toHaveBeenCalledWith({
@@ -97,11 +98,11 @@ describe("NewTemporaryMemory (issue 168)", () => {
     );
     render(
       <ToastProvider>
-        <NewTemporaryMemory onCreated={() => {}} onCancel={() => {}} />
+        <NewTemporaryMemory open onCreated={() => {}} onCancel={() => {}} />
       </ToastProvider>,
     );
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "trip" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create temporary memory" }));
 
     expect(await screen.findByText(/already registered/)).toBeInTheDocument();
   });
@@ -111,14 +112,14 @@ describe("TemporaryMemoryBanner (issue 168)", () => {
   it("says when the memory is due", () => {
     banner();
     const box = screen.getByTestId("temporary-memory");
-    expect(box).toHaveTextContent("This is a temporary memory.");
+    expect(box).toHaveTextContent("This is a temporary memory");
     expect(box).toHaveTextContent(/It is due on/);
   });
 
   it("says when it is overdue", () => {
     banner({ ...TRIP, expires: "2026-09-01T00:00:00Z" });
     expect(screen.getByTestId("temporary-memory")).toHaveTextContent(
-      "This temporary memory is overdue.",
+      "This temporary memory is overdue",
     );
   });
 

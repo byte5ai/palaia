@@ -14,16 +14,16 @@
 import { ApiError } from "./api/client";
 
 const UNREACHABLE_HINT =
-  "Could not reach the hub — check that its container is still running and that " +
-  "this browser is on the address it printed at startup, then try again.";
+  "Can't reach palaia. Check that it is still running and that this browser is on " +
+  "the address shown at install, then try again.";
 
 /** A user-facing message for `err`, always ending in something to try next. */
 export function describeApiError(err: unknown): string {
   if (err instanceof ApiError) {
     const body = err.body as { detail?: string } | undefined;
     if (body?.detail) return body.detail;
-    return `The hub answered with an unexpected error (status ${err.status}). ` +
-      "Try again — if it keeps happening, restart the hub container.";
+    return `palaia answered with an unexpected error (status ${err.status}). ` +
+      "Try again; if it keeps happening, restart palaia.";
   }
   return UNREACHABLE_HINT;
 }
