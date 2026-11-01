@@ -57,7 +57,7 @@ RUN npm run build
 # ---------------------------------------------------------------------------
 # Stage 2: hub build (uv-managed venv, no dev dependencies)
 # ---------------------------------------------------------------------------
-FROM python:3.12-slim@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9 AS hub-build
+FROM python:3.15-slim@sha256:94d3426f1def7db4a106a232ac121bfd975393e5dfd40a619b955fae45fe7913 AS hub-build
 COPY --from=ghcr.io/astral-sh/uv:0.8@sha256:1d31be550ff927957472b2a491dc3de1ea9b5c2d319a9cea5b6a48021e2990a6 /uv /uvx /usr/local/bin/
 WORKDIR /src
 # The venv's console-script shebangs and the python symlink embed the path
@@ -101,7 +101,7 @@ COPY v3/tools/build-mcpb/proxy/ ./proxy/
 # ---------------------------------------------------------------------------
 # Stage 4: runtime
 # ---------------------------------------------------------------------------
-FROM python:3.12-slim@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9 AS runtime
+FROM python:3.15-slim@sha256:94d3426f1def7db4a106a232ac121bfd975393e5dfd40a619b955fae45fe7913 AS runtime
 
 # nginx: single public entry point (static dashboard + reverse proxy to the
 # hub's internal port). curl: used by the HEALTHCHECK below. gettext-base:
