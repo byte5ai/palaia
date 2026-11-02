@@ -7,7 +7,7 @@
 # instance in this repository — SUBMIT.md names that as the owner's step.
 services:
   hub:
-    image: ghcr.io/byte5ai/palaia-hub:stable
+    image: ghcr.io/byte5ai/palaia:stable
     container_name: palaia
     restart: unless-stopped
     # The image's own non-root user, pinned to 1000:1000 (v3/deploy/Dockerfile,

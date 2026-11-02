@@ -167,7 +167,7 @@ def resolve_profiles(
                 "config.yaml: gateway.profiles[path=%r] pre-declares vault "
                 "key(s) %s not yet registered on this hub — its tools stay "
                 "absent until the vault is created (the dashboard wizard, "
-                "or `palaia-hub import ...`), but its OAuth scopes (if "
+                "or `palaia import ...`), but its OAuth scopes (if "
                 "oauth.enabled) are already reserved for this profile.",
                 profile.path,
                 sorted(pending),

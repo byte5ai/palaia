@@ -116,7 +116,7 @@ now — a link someone repaired since, or a duplicate address that was
 resolved, is not mentioned — and as soon as a note changes, palaia forgets
 what it knew about it. Problems that come up after the hub started show up
 after its next restart. For the complete check, run
-`palaia-hub doctor` (see [Troubleshooting](/troubleshooting/)).
+`palaia doctor` (see [Troubleshooting](/troubleshooting/)).
 
 ## Finding things again
 
@@ -197,8 +197,8 @@ All of it happens on the dashboard's **Memories** page:
 If you're moving from an existing setup rather than starting empty, an
 importer can read your old palaia notes, or notes from other markdown-based
 note tools, and bring them in with their original dates and tags intact. It
-runs from the command line on the machine that hosts your hub (`palaia-hub
-import v2 …` or `palaia-hub import basic-memory …`, each with a `--dry-run`
+runs from the command line on the machine that hosts your hub (`palaia
+import v2 …` or `palaia import basic-memory …`, each with a `--dry-run`
 that only reports); the dashboard has no import screen yet. [For
 developers](/developers/) has the technical detail on the file format itself,
 for anyone who wants to script against it directly.

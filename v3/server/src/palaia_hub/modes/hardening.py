@@ -49,7 +49,7 @@ def build_checklist(
             wizard has run one this session. ``None`` renders as "not run
             yet" rather than as a failure.
         owner_account_configured: whether a local owner account exists
-            (``palaia-hub oauth set-password``) — the caller looks this up
+            (``palaia oauth set-password``) — the caller looks this up
             against the OAuth store, since this module has no store access
             of its own. ``None`` when the caller cannot check (no OAuth
             store mounted), rendered as manual.
@@ -109,7 +109,7 @@ def build_checklist(
                 id="owner_account",
                 title="The owner account has its own password",
                 detail=(
-                    "Confirm you have run `palaia-hub oauth set-password` yourself and are "
+                    "Confirm you have run `palaia oauth set-password` yourself and are "
                     "not relying on a default credential."
                 ),
                 auto=False,

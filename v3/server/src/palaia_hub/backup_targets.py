@@ -2,7 +2,7 @@
 
 SPEC-604 built the floor — one archive
 (:mod:`palaia_hub.backup`), downloadable by a signed-in owner or written by
-hand with ``palaia-hub backup``. Both paths need a person: a browser session
+hand with ``palaia backup``. Both paths need a person: a browser session
 or a shell. The owner decision behind issue #297 is that backup has to work
 without one, into a destination the operator names once.
 
@@ -185,7 +185,7 @@ class LocalDirectoryTarget(BackupTarget):
 
     Carries the full archive, and is secret-safe: it is a path on the
     operator's own filesystem, chosen by the operator, which is exactly
-    where ``palaia-hub backup`` has always written the identical bytes. What
+    where ``palaia backup`` has always written the identical bytes. What
     the hub can still enforce — and does, per run — is that the destination
     is not *inside* the hub home it archives.
     """

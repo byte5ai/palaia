@@ -1,4 +1,4 @@
-"""``palaia-hub token create/list/revoke`` in-process (no subprocess needed)."""
+"""``palaia token create/list/revoke`` in-process (no subprocess needed)."""
 
 from __future__ import annotations
 

@@ -57,7 +57,7 @@ def test_a_flood_of_findings_is_capped_and_says_how_many_it_hid() -> None:
 
     assert "issue-2" in text
     assert "issue-3" not in text
-    assert "… and 9 more — see `palaia-hub doctor --json`." in text
+    assert "… and 9 more — see `palaia doctor --json`." in text
 
 
 def test_repairable_findings_point_at_the_command_that_fixes_them() -> None:
@@ -73,7 +73,7 @@ def test_repairable_findings_point_at_the_command_that_fixes_them() -> None:
 
     text = render_report(report)
 
-    assert "1 of these can be fixed safely for you: run `palaia-hub doctor --fix`." in text
+    assert "1 of these can be fixed safely for you: run `palaia doctor --fix`." in text
 
 
 def test_repairs_report_what_was_done_and_what_was_left() -> None:

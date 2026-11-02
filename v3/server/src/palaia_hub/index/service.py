@@ -637,7 +637,7 @@ class VaultIndex:
     async def embed_next_batch(self) -> int:
         """Embed one batch of pending chunks; returns how many were embedded.
 
-        Public because it is also how tests (and a future CLI ``palaia-hub
+        Public because it is also how tests (and a future CLI ``palaia
         index embed``) drain the backlog deterministically instead of racing
         the worker.
         """

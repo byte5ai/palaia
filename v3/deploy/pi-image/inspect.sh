@@ -68,12 +68,12 @@ if [ -L "${ROOTFS}/etc/systemd/system/multi-user.target.wants/palaia.service" ];
 else
     fail "palaia.service is not enabled — no multi-user.target.wants symlink found"
 fi
-grep -q 'ghcr.io/byte5ai/palaia-hub:stable' "${PALAIA_UNIT}" \
+grep -q 'ghcr.io/byte5ai/palaia:stable' "${PALAIA_UNIT}" \
     || fail "palaia.service does not run the :stable channel image"
 
 # --- mDNS on -----------------------------------------------------------------
 # The image's own mDNS announcer (v3/deploy/mdns_announce.py) runs inside
-# the palaia-hub container and needs the host network to reach the LAN —
+# the palaia container and needs the host network to reach the LAN —
 # see systemd/palaia.service's own comment. "mDNS on" for this appliance
 # means: the unit runs the container with host networking, and nothing in
 # the image disables the announcer.

@@ -58,7 +58,7 @@ Start a stopwatch at power-on.
 | `http://palaia.local:8420/` answers too | Same device | the hub's own port; must work whether or not port 80 does |
 
 **Note on first-run network dependency**: `palaia.service`'s `docker run`
-pulls `ghcr.io/byte5ai/palaia-hub:stable` from GHCR the first time it
+pulls `ghcr.io/byte5ai/palaia:stable` from GHCR the first time it
 runs (the appliance image itself does not bundle that image's layers —
 this is the one honest gap against "flash, boot, done" fully offline; a
 follow-up could pre-bake the image into the `.img.xz` and is out of this
@@ -79,7 +79,7 @@ file it.
 Also check, once the wizard has loaded at `http://palaia.local/`: the
 address bar still shows no port after the wizard's own redirects, the
 connect page's MCP address reads `http://palaia.local/mcp/…` (no `:8420`),
-and the page load shows up in `docker logs palaia-hub` (nginx's access
+and the page load shows up in `docker logs palaia` (nginx's access
 lines) with your device's own address, not `127.0.0.1` — the hub's
 failed-sign-in limit depends on it.
 
@@ -91,7 +91,7 @@ expected; just don't conflate "I turned SSH on to measure this" with
 "the image ships with SSH on" (it doesn't — that's what
 `inspect.sh` checks).
 
-1. **Idle**: `docker stats --no-stream palaia-hub` and `free -h`, at
+1. **Idle**: `docker stats --no-stream palaia` and `free -h`, at
    least 5 minutes after `http://palaia.local` first answered, with no
    browser tab open against it.
 2. **Under the funnel walk**: the same two commands, immediately after

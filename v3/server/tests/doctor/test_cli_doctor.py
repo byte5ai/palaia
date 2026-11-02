@@ -1,4 +1,4 @@
-"""``palaia-hub doctor`` end to end on a real hub home (issue #296)."""
+"""``palaia doctor`` end to end on a real hub home (issue #296)."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def test_a_fresh_hub_gets_a_readable_report_and_exit_code_0(
     main(["doctor"])
 
     out = capsys.readouterr().out
-    assert out.startswith("palaia-hub doctor")
+    assert out.startswith("palaia doctor")
     # A hub with no vault and no token: two things to do, both named.
     assert "no-vaults" in out
     assert "no-way-in" in out
@@ -87,7 +87,7 @@ def test_fix_performs_the_safe_repair_and_says_what_it_did(
 
     out = capsys.readouterr().out
     assert "config-readable-by-others" in out
-    assert "palaia-hub doctor --fix" in out
+    assert "palaia doctor --fix" in out
     assert "Re-run the doctor to confirm." in out
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
 

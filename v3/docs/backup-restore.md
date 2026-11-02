@@ -127,7 +127,7 @@ which case there is nothing to clear.
 ### Installer variant (`get.palaia.ai`)
 
 ```bash
-docker rm -f palaia-hub
+docker rm -f palaia
 # (unpack step above)
 curl -fsSL https://get.palaia.ai | sh      # PALAIA_CLOUD=0 for a private hub
 ```
@@ -140,14 +140,14 @@ drop the cloud entry.
 ### One-liner variant
 
 ```bash
-docker rm -f palaia-hub          # stop, if it exists
+docker rm -f palaia          # stop, if it exists
 # (unpack step above)
-docker run -d --name palaia-hub \
+docker run -d --name palaia \
   --network host -e PALAIA_CLOUD_BIND=127.0.0.1 \
   -v palaia_home:/data --restart unless-stopped \
   --security-opt no-new-privileges:true --cap-drop ALL \
   --read-only --tmpfs /tmp --tmpfs /run \
-  ghcr.io/byte5ai/palaia-hub:stable
+  ghcr.io/byte5ai/palaia:stable
 ```
 
 That is the Linux one-liner (`v3/deploy/README.md`, Quick start); with
@@ -180,11 +180,11 @@ grew there naturally.
   the archive is key material rather than "the vault" the locked-mode LAN
   posture was written for. `create_app` tells the route which case applies
   (`session_gated`); no opt-in parameter exists to mount it any other way.
-- `palaia-hub backup [--out PATH]` writes the identical archive on the
+- `palaia backup [--out PATH]` writes the identical archive on the
   machine the hub runs on (mode `0600`, via a `.part` file renamed into
   place) — the way to back up a hub whose dashboard has no sign-in. In the
   container, stream it out (its `/tmp` is a tmpfs, which `docker cp` cannot
-  read): `docker exec palaia-hub sh -c 'palaia-hub backup --out
+  read): `docker exec palaia sh -c 'palaia backup --out
   /tmp/palaia-backup.tar.gz >&2 && cat /tmp/palaia-backup.tar.gz && rm
   /tmp/palaia-backup.tar.gz' > palaia-backup.tar.gz`.
 - The archive is built and streamed straight into the HTTP response body;
@@ -198,7 +198,7 @@ grew there naturally.
 ## 5. Backup targets (issue #297)
 
 SPEC-604's floor needs a person at either end: a browser session for the
-download, a shell for `palaia-hub backup`. The owner decision on 2026-09-01
+download, a shell for `palaia backup`. The owner decision on 2026-09-01
 is that a hub must also write its archive **itself**, into a destination
 named once — starting with a local directory, "which must always work".
 
@@ -209,7 +209,7 @@ facts about what it moves and implements one method that moves it:
 
 | | `carries_full_archive` | `secret_safe` |
 |---|---|---|
-| `LocalDirectoryTarget` (built) | yes — the whole hub home | yes — a path on the operator's own filesystem, the same place `palaia-hub backup` already writes these bytes |
+| `LocalDirectoryTarget` (built) | yes — the whole hub home | yes — a path on the operator's own filesystem, the same place `palaia backup` already writes these bytes |
 | user-defined external target (not built) | yes | must be answered by whoever builds it |
 | per-vault git push (built, §5.7 — not a `BackupTarget`) | **no** — notes only; no hub secret has ever lived in a vault | n/a |
 
@@ -249,7 +249,7 @@ backup:
 
 The archive is written through a `.part` sibling renamed into place only
 once complete, `chmod 0600` **before** the rename, exactly like
-`palaia-hub backup`. A directory inside the hub home is refused: each
+`palaia backup`. A directory inside the hub home is refused: each
 archive would contain every archive before it, and none would survive
 losing that directory.
 
@@ -260,9 +260,9 @@ losing that directory.
 | `GET /api/backup/targets` | the configured destinations (`backup_api.py`), each with `running` and its `last_run` (outcome, trigger, artifact, size, reason), plus `schedule` — `null` when none is configured (issue #438) |
 | `POST /api/backup/targets/{name}/run` | writes one now, on a worker thread; 404 unknown, 409 while that target is already being written (by the schedule or an earlier click), 500 with the reason when the destination failed |
 | dashboard **Backups** screen (`web/src/routes/Backups.tsx`) | the list above, "Back up now" per folder, and the schedule (issue #438); Home's backup card links to it |
-| `palaia-hub backup --target NAME` | the same run on the host (repeatable) |
-| `palaia-hub backup --all-targets` | every one, continuing past a failure, exit 1 if any failed |
-| `palaia-hub backup --list-targets` | what is configured, the schedule, and each target's last run by the hub (read from the status file, §5.5); writes nothing |
+| `palaia backup --target NAME` | the same run on the host (repeatable) |
+| `palaia backup --all-targets` | every one, continuing past a failure, exit 1 if any failed |
+| `palaia backup --list-targets` | what is configured, the schedule, and each target's last run by the hub (read from the status file, §5.5); writes nothing |
 
 Both REST routes carry the same admin gate as the download itself (issue
 #317) and refuse with a 403 naming the CLI on a hub with no sign-in. The
@@ -324,7 +324,7 @@ backup:
   finishes or is cut short by the exit — safe either way, the `.part`
   rename (§5.2) means a killed run never leaves a finished-looking file.
 
-**The CLI is not coordinated with this.** `palaia-hub backup --target`
+**The CLI is not coordinated with this.** `palaia backup --target`
 runs in its own process and takes none of the hub's locks, so a
 `cron`/`systemd` wrapper around `--all-targets` (the interim before this
 existed) should be removed once `interval_hours` is set — two schedulers

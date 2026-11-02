@@ -53,7 +53,7 @@ from .upstream.models import UpstreamConfig as GatewayUpstreamSettings
 
 logger = logging.getLogger("palaia_hub.config")
 
-APP_NAME = "palaia-hub"
+APP_NAME = "palaia"
 
 # The default curator runner command, duplicated here as a plain tuple rather
 # than imported from palaia_hub.curator.session: this module must stay
@@ -266,7 +266,7 @@ oauth:
 # on a private network ('locked'), where the first-run wizard has to be
 # reachable before any account exists. Set it yourself to require signing in
 # on a private network too — it takes effect once you have set a password
-# (`palaia-hub oauth set-password`) or configured a sign-in provider.
+# (`palaia oauth set-password`) or configured a sign-in provider.
 # dashboard:
 #   require_sign_in: true
 
@@ -392,9 +392,9 @@ curator:
   max_attempts: 3
   # Apply approved proposals in the same pass (no model is ever involved in
   # applying one). Turn off to apply them yourself with
-  # `palaia-hub curator apply`.
+  # `palaia curator apply`.
   auto_apply: true
-  # The curator's own token, from `palaia-hub curator token`. Prefer the
+  # The curator's own token, from `palaia curator token`. Prefer the
   # PALAIA_CURATOR_TOKEN environment variable over writing it here.
   # token:
   # Where a session reaches this hub. Defaults to http://<host>:<port>.
@@ -414,8 +414,8 @@ market:
 
 # Where this hub writes its own backups. Empty (as below) means it writes
 # none by itself: you download one from the dashboard, or run
-# `palaia-hub backup` on this machine. Name a directory here and
-# `palaia-hub backup --target <name>` (or the dashboard's run action)
+# `palaia backup` on this machine. Name a directory here and
+# `palaia backup --target <name>` (or the dashboard's run action)
 # writes the very same archive into it — no browser involved, which is what
 # makes a mounted NAS path work.
 #
@@ -899,7 +899,7 @@ class CuratorSettings(BaseModel):
     #: The curator token (profile ``curator``). Prefer the
     #: ``PALAIA_CURATOR_TOKEN`` environment variable — a token in a config
     #: file is a secret in a config file. Mint one with
-    #: ``palaia-hub curator token``.
+    #: ``palaia curator token``.
     token: str | None = None
     #: The base URL a curation session reaches this hub at. Defaults to
     #: ``http://<host>:<port>`` from the settings above, which is right for
@@ -967,7 +967,7 @@ class MarketSettings(BaseModel):
 
 
 #: A backup target's name: lowercase, digits and dashes. It is the operator's
-#: handle for one destination — it appears in ``palaia-hub backup --target``,
+#: handle for one destination — it appears in ``palaia backup --target``,
 #: in the ``/api/backup/targets/{name}/run`` path and in every
 #: ``backup.target.*`` event — so it is kept to the same slug shape every
 #: other path segment in this hub uses rather than accepting spaces and
@@ -987,7 +987,7 @@ class LocalDirectoryBackupTarget(BaseModel):
     The first of the three targets that issue designs, and the one that
     "must always work": no browser, no network, no credentials — the hub
     writes the same ``tar.gz`` ``GET /api/backup`` streams (and
-    ``palaia-hub backup`` writes by hand) into a directory the operator
+    ``palaia backup`` writes by hand) into a directory the operator
     chose, typically a mounted NAS share.
 
     ``path`` must be **absolute**: this runs in a container and under a
@@ -1064,7 +1064,7 @@ class BackupSettings(BaseModel):
     """Where this hub writes its own backups (issue #297).
 
     Empty by default: SPEC-604's floor — the dashboard download and
-    ``palaia-hub backup`` — keeps working untouched with no ``backup:``
+    ``palaia backup`` — keeps working untouched with no ``backup:``
     section at all, and a hub only ever writes an archive somewhere on its
     own once an operator has named that somewhere here.
 
@@ -1327,7 +1327,7 @@ def _read_env_values() -> dict[str, Any]:
 def apply_config_overrides(config: HubConfig, overrides: Mapping[str, object]) -> HubConfig:
     """Return ``config`` with ``overrides`` applied *and re-validated* (issue #327).
 
-    ``model_copy(update=...)`` skips every validator, so ``palaia-hub serve
+    ``model_copy(update=...)`` skips every validator, so ``palaia serve
     --host 0.0.0.0`` on a ``mode: cloud`` config used to start a hub the
     policy in :meth:`HubConfig._check_operating_mode_policy` exists to
     refuse — and ``deploy/entrypoint.sh`` takes exactly that path. Rebuilding
@@ -1418,7 +1418,7 @@ def load_config(home: Path | None = None, *, create_if_missing: bool = True) -> 
                 f"internet, so it needs a way for you to sign in first — and "
                 f"this hub has none configured yet. Fix: turn the sign-in "
                 f"server on (`oauth.enabled: true` plus an `oauth.issuer`) and "
-                f"either set your password with `palaia-hub oauth set-password` "
+                f"either set your password with `palaia oauth set-password` "
                 f"or configure a sign-in provider (`oauth.idp`); or use "
                 f"`mode: cloud`, where clients like claude.ai and ChatGPT "
                 f"connect exactly the same way and the dashboard stays on your "

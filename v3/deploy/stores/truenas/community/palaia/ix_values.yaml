@@ -2,7 +2,7 @@
 # `stable` channel tag (SPEC-501) — bump on release, same as every other
 # store package here.
 image:
-  repository: ghcr.io/byte5ai/palaia-hub
+  repository: ghcr.io/byte5ai/palaia
   tag: stable
   pullPolicy: IfNotPresent
 

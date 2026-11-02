@@ -19,7 +19,7 @@ Consequences worth stating:
 
 - Setting a password — the first-run wizard's owner step
   (`POST /api/auth/owner`, accepted only while no account exists; issue
-  #342) or `palaia-hub oauth set-password` — or configuring a provider is
+  #342) or `palaia oauth set-password` — or configuring a provider is
   what creates the dashboard's account, too.
 - Session lifetime is `oauth.session_ttl` (default 12 hours). There is no
   separate dashboard timeout and no remember-me.

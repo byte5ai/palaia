@@ -1,5 +1,5 @@
 [project]
-name = "palaia-hub"
+name = "palaia"
 dynamic = ["version"]
 description = "palaia v3 hub daemon (Python core)"
 requires-python = ">=3.12"
@@ -27,7 +27,7 @@ dependencies = [
 ]
 
 [project.scripts]
-palaia-hub = "palaia_hub.cli:main"
+palaia = "palaia_hub.cli:main"
 
 [project.optional-dependencies]
 # Local embeddings for the SPEC-104 vector/hybrid lane. Kept an extra rather
@@ -41,7 +41,7 @@ embeddings = [
 [dependency-groups]
 # Issue #396: a dependency *group* (PEP 735), not a wheel extra — the
 # add-on SDK below resolves only through the uv path source in this
-# workspace, so `pip install palaia-hub[dev]` from a built wheel could
+# workspace, so `pip install palaia[dev]` from a built wheel could
 # never work. `uv sync` installs the group; a wheel carries no trace of it.
 dev = [
     "pytest>=8",

@@ -36,7 +36,7 @@ describe("Synology guide", () => {
     const compose = loadComposeFile();
     expect(compose.length).toBeGreaterThan(0);
     expect(compose).toContain("services:");
-    expect(compose).toContain("image: ghcr.io/byte5ai/palaia-hub:stable");
+    expect(compose).toContain("image: ghcr.io/byte5ai/palaia:stable");
   });
 
   it("has a screenshot marker for each step a reader can't do without seeing the real UI, and no fake images", () => {

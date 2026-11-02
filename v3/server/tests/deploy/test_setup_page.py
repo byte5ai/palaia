@@ -51,7 +51,7 @@ FAKE_TAILSCALE = textwrap.dedent(
     # Any `serve` or `funnel` call is logged: the address step must not
     # change Tailscale's settings.
     marker="$FAKE_TS_DIR/logged-in"
-    name="$(cat "$FAKE_TS_DIR/magicdns" 2>/dev/null || echo palaia-hub.tail1234.ts.net)"
+    name="$(cat "$FAKE_TS_DIR/magicdns" 2>/dev/null || echo palaia.tail1234.ts.net)"
     case "$1" in
       up)
         printf '\\nTo authenticate, visit:\\n\\n\\t@LOGIN_URL@\\n\\n' >&2
@@ -78,7 +78,7 @@ FAKE_TAILSCALE = textwrap.dedent(
     exit 0
     """
 ).replace("@LOGIN_URL@", LOGIN_URL)
-MAGIC_NAME = "palaia-hub.tail1234.ts.net"
+MAGIC_NAME = "palaia.tail1234.ts.net"
 
 
 def _free_port() -> int:
@@ -241,7 +241,7 @@ def test_with_magicdns_and_port_80_done_names_palaia_without_a_port(fake_ts: Pat
     proc = _start(fake_ts, port, port_80="1")
     _wait_for_port(port, proc)
     page = _done_page(proc, port, fake_ts)
-    assert 'href="http://palaia-hub/"' in page
+    assert 'href="http://palaia/"' in page
     assert f"http://{MAGIC_NAME}/" in page
     assert "100.64.0.7" not in page
     assert _serve_calls(fake_ts) == []
@@ -251,7 +251,7 @@ def test_with_port_80_taken_done_keeps_the_port_and_says_why(running, fake_ts: P
     proc, port = running  # started with --port-80 0
     (fake_ts / "magicdns").write_text(MAGIC_NAME, encoding="utf-8")
     page = _done_page(proc, port, fake_ts)
-    assert 'href="http://palaia-hub:8420/"' in page
+    assert 'href="http://palaia:8420/"' in page
     assert "Port 80 on this server" in page
     assert _serve_calls(fake_ts) == []
 
@@ -288,12 +288,12 @@ def test_the_address_command_follows_the_port_80_publish(fake_ts: Path) -> None:
     (fake_ts / "logged-in").touch()
     (fake_ts / "magicdns").write_text(MAGIC_NAME, encoding="utf-8")
     assert _address(fake_ts, "1") == {
-        "address": "http://palaia-hub/",
+        "address": "http://palaia/",
         "full_address": f"http://{MAGIC_NAME}/",
         "address_note": "",
     }
     busy = _address(fake_ts, "0")
-    assert busy["address"] == "http://palaia-hub:8420/"
+    assert busy["address"] == "http://palaia:8420/"
     assert busy["full_address"] == f"http://{MAGIC_NAME}:8420/"
     assert "Port 80 on this server's tailnet address is already used" in busy["address_note"]
     assert _serve_calls(fake_ts) == []
@@ -309,8 +309,8 @@ def test_the_address_command_without_magicdns_gives_the_number(fake_ts: Path) ->
 
 def test_a_taken_name_gives_the_name_tailscale_chose(fake_ts: Path) -> None:
     (fake_ts / "logged-in").touch()
-    (fake_ts / "magicdns").write_text("palaia-hub-1.tail1234.ts.net", encoding="utf-8")
-    assert _address(fake_ts, "1")["address"] == "http://palaia-hub-1/"
+    (fake_ts / "magicdns").write_text("palaia-1.tail1234.ts.net", encoding="utf-8")
+    assert _address(fake_ts, "1")["address"] == "http://palaia-1/"
 
 
 def test_timeout_exits_one_closes_the_port_and_drops_the_pending_login(fake_ts: Path) -> None:

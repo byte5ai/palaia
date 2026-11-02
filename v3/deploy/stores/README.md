@@ -22,7 +22,7 @@ docs, and what to update on every release.
 
 ## What's shared across every package
 
-- **Image**: `ghcr.io/byte5ai/palaia-hub:stable` (or, for Home Assistant,
+- **Image**: `ghcr.io/byte5ai/palaia:stable` (or, for Home Assistant,
   `image` plus the release version in `version` — the Supervisor pulls
   `image:<version>`, and only a changing version makes it offer an update;
   issue #394) — never `beta` or `edge`. A

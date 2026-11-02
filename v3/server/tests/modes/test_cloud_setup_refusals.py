@@ -73,7 +73,7 @@ def test_cloud_mode_refuses_a_plain_http_sign_in_address(tmp_path: Path) -> None
 
 def test_cloud_mode_with_the_public_https_address_is_accepted(tmp_path: Path) -> None:
     asyncio.run(VaultRegistry(tmp_path).create("work", path=tmp_path / "vaults" / "work"))
-    url = "https://palaia-hub.tail1234.ts.net"
+    url = "https://palaia.tail1234.ts.net"
     response = _client(tmp_path).post(
         "/api/mode",
         json={
@@ -203,7 +203,7 @@ def test_switching_a_cloud_hub_to_private_keeps_its_dashboard_sign_in(
     store.open()
     set_owner_password(store, "owner", "a-long-enough-passphrase", now=1_800_000_000)
     store.close()
-    public = "https://palaia-hub.tail1234.ts.net"
+    public = "https://palaia.tail1234.ts.net"
     private = "http://100.64.0.1:8420"
     client = _client(tmp_path)
     cloud = client.post(

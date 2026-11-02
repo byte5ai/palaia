@@ -51,8 +51,8 @@ services:
   hub:
     # rc-channel-note — release candidate: the `stable` tag is created by the
     # final 3.0.0 release only. Until then, use `:beta` here.
-    image: ghcr.io/byte5ai/palaia-hub:stable
-    container_name: palaia-hub
+    image: ghcr.io/byte5ai/palaia:stable
+    container_name: palaia
     # The host network: the hub's own name announcement (palaia.local)
     # reaches the local network only from here; Docker's bridge network does
     # not forward it. Port 8420 answers on this machine's addresses exactly
@@ -71,7 +71,7 @@ services:
       # dashboard's "Restart" button ends it.
       PALAIA_SELF_RESTART: "1"
       # SPEC-501: tells the dashboard's "Update available" banner which
-      # instructions to show — this file, so "run `palaia-hub update`,
+      # instructions to show — this file, so "run `palaia update`,
       # then `docker compose pull && docker compose up -d`" rather than a
       # store's own update button. Leave this as-is; it describes this
       # file, not a preference to change.
@@ -122,8 +122,8 @@ This is the same file the [Install it](/install/) page's Compose option uses —
 
 <!-- rc-channel-note -->
 > **Release candidate:** until `3.0.0` is final there is no `stable` image yet. Before you paste the
-> file above, change its `image:` line from `ghcr.io/byte5ai/palaia-hub:stable` to
-> `ghcr.io/byte5ai/palaia-hub:beta`.
+> file above, change its `image:` line from `ghcr.io/byte5ai/palaia:stable` to
+> `ghcr.io/byte5ai/palaia:beta`.
 
 ## About that shared folder, and where your memory actually lives
 
@@ -133,9 +133,9 @@ The folder you picked two steps ago holds the project's own compose file — it 
 
 Continue past any remaining setup screens (Container Manager may offer to also set up quick web access — safe to skip, it isn't needed) and finish creating the project. Container Manager pulls the image and starts the container; the project's status shows **Running** once it has.
 
-<!-- screenshot: the finished project showing status Running, with its one container (palaia-hub) listed -->
+<!-- screenshot: the finished project showing status Running, with its one container (palaia) listed -->
 
-If it doesn't reach **Running**, open the container's log from Container Manager itself — the **Container** section, select `palaia-hub`, then its **Log** (or **Details**) tab — rather than a terminal; the same startup message [Install it](/install/) describes shows up there.
+If it doesn't reach **Running**, open the container's log from Container Manager itself — the **Container** section, select `palaia`, then its **Log** (or **Details**) tab — rather than a terminal; the same startup message [Install it](/install/) describes shows up there.
 
 ## Open the hub
 

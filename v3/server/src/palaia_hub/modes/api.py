@@ -365,7 +365,7 @@ def build_modes_router(
                     "Fully public also needs a way for you to sign in to this "
                     "dashboard — it would otherwise be reachable from the "
                     "internet by anyone. Fix: set your own password (the "
-                    "dashboard's first-run setup, or `palaia-hub oauth set-password`) "
+                    "dashboard's first-run setup, or `palaia oauth set-password`) "
                     "or connect a sign-in "
                     "provider, and turn the sign-in server on with a public "
                     "address for it; then choose fully public again."

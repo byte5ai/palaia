@@ -39,7 +39,7 @@ research the platform's CURRENT submission docs and cite them.
 4. One-click self-update from the dashboard, honest about its mechanics:
    inside a container, "self-update" = pull-and-recreate, which the
    container cannot do to itself portably. Fixed design: a
-   `palaia-hub update` helper for compose users (writes the new tag,
+   `palaia update` helper for compose users (writes the new tag,
    prints the two commands), a documented watchtower-compatible label on
    the image, and — where the hosting store has an update mechanism
    (Umbrel/CasaOS/Runtipi/TrueNAS all do) — the dashboard points at it by

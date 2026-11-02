@@ -1,7 +1,7 @@
 # SPEC-109 visual parity — screenshot evidence
 
 Chromium (Playwright) screenshots of the real dashboard build served by
-`palaia-hub` (`npm run build` output, `PALAIA_WEB_DIST` pointed at it),
+`palaia` (`npm run build` output, `PALAIA_WEB_DIST` pointed at it),
 next to the SPEC-005 reference mockup (`v3/docs/design/mockups/home.html`).
 The feature content in the mockup (tiles, activity feed, tool surface) is
 SPEC-110's; this SPEC's own content is the live health card. What is

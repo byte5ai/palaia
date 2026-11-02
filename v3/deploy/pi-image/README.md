@@ -6,7 +6,7 @@ image, boot, open the browser. No terminal.
 
 This is packaging only — nothing here changes the hub product itself. It
 takes the exact container image [`v3/deploy/`](../) already ships
-(`ghcr.io/byte5ai/palaia-hub:stable`) and preinstalls it, Docker, the
+(`ghcr.io/byte5ai/palaia:stable`) and preinstalls it, Docker, the
 `palaia.service` unit and a port-80 redirect onto Raspberry Pi OS Lite.
 
 ## What the image ships
@@ -16,7 +16,7 @@ takes the exact container image [`v3/deploy/`](../) already ships
 - **Docker** (`docker.io` from the base image's own apt archive), enabled
   at boot, and **nftables** (the `nft` tool for the port-80 redirect).
 - **`palaia.service`** ([`systemd/palaia.service`](systemd/palaia.service)),
-  enabled at boot: runs `ghcr.io/byte5ai/palaia-hub:stable` with
+  enabled at boot: runs `ghcr.io/byte5ai/palaia:stable` with
   `--network host` and the exact same [SPEC-502 hardening
   flags](../install.sh) `install.sh` and `docker-compose.yml` use
   (`--security-opt no-new-privileges:true --cap-drop ALL --read-only
@@ -163,7 +163,7 @@ hardware, with a real network — is the owner's job, protocol in
 
 Same volume convention as every other palaia install path: `palaia_home`,
 a named Docker volume holding everything under `/data` (config, vault,
-index). `docker volume inspect palaia_home` / `docker exec palaia-hub ls
+index). `docker volume inspect palaia_home` / `docker exec palaia ls
 /data` and ordinary Docker volume backup tooling all work identically to
 the compose or one-liner install — nothing about running from this image
 changes where or how that volume is managed.

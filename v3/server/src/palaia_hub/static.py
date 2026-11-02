@@ -37,7 +37,7 @@ def _default_dist_dir() -> Path:
     # v3/server/src/palaia_hub/static.py -> parents[0]=palaia_hub,
     # [1]=src, [2]=server, [3]==v3/ (SPEC-110: the previous parents[2]
     # here resolved to v3/server/, one level short of v3/ — every existing
-    # test overrides PALAIA_WEB_DIST, so a zero-config `palaia-hub serve`
+    # test overrides PALAIA_WEB_DIST, so a zero-config `palaia serve`
     # was the only path that ever exercised this default, and it silently
     # served no dashboard at all. See tests/test_static.py's regression
     # test for the default path itself, not just an overridden one.)

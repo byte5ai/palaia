@@ -303,7 +303,7 @@ def create_app(
             this app and stopped with it — the curator is a hook-driven
             automation living inside the hub, not a second daemon (MASTERPLAN
             §5.1). Omitted (the default), no curation ever runs from this
-            process; ``palaia-hub curator run`` still works on demand.
+            process; ``palaia curator run`` still works on demand.
         curator_wiring: the same curator, as its whole
             :class:`~palaia_hub.curator.wiring.CuratorWiring` rather than
             just its scheduler (SPEC-301). Given, a vault created through
@@ -713,7 +713,7 @@ def create_app(
             if unbridge_vault is not None:
                 unbridge_vault()
 
-    app = FastAPI(title="palaia-hub", version=__version__, lifespan=lifespan)
+    app = FastAPI(title="palaia", version=__version__, lifespan=lifespan)
     app.state.config = config
     app.state.start_time = start_time
     app.state.event_bus = event_bus

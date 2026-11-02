@@ -22,7 +22,7 @@ from palaia_hub.vault.models import Attribution
 from .models import ImportedItem, ImportReport, MappedNote, SkippedItem
 
 #: The attribution every import commit carries (vault-format.md §2.1 origin).
-IMPORT_ATTRIBUTION = Attribution(client="palaia-hub-import")
+IMPORT_ATTRIBUTION = Attribution(client="palaia-import")
 
 
 class ImportRunner:

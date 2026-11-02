@@ -197,7 +197,7 @@ def verify_owner_password(
     denied = OAuthError(
         "access_denied",
         "sign-in failed. Fix: check the username and password; the operator sets "
-        "them with `palaia-hub oauth set-password` (or the dashboard's first-run "
+        "them with `palaia oauth set-password` (or the dashboard's first-run "
         "setup, while no account exists).",
         status_code=401,
     )

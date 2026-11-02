@@ -54,8 +54,8 @@ def test_the_sign_in_page_is_styled_for_light_and_dark_and_fetches_nothing() -> 
 def test_the_sign_in_page_says_how_to_reset_a_forgotten_password() -> None:
     page = _login_page(next_url="/", csrf="x", error="")
     assert "<summary>Forgot your password?</summary>" in page
-    assert "palaia-hub oauth set-password --username" in page
-    assert "docker exec -it palaia-hub palaia-hub oauth set-password" in page
+    assert "palaia oauth set-password --username" in page
+    assert "docker exec -it palaia palaia oauth set-password" in page
 
 
 def test_the_error_page_leads_with_the_explanation_not_the_code() -> None:

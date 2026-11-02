@@ -14,13 +14,13 @@ memories, search, connected AI tools, the configuration and the storage.
 It says what it found and what to do about each finding:
 
 ```bash
-palaia-hub doctor
+palaia doctor
 ```
 
 With `--fix` it also performs the repairs that cannot lose anything, such as
 clearing a lock left behind by a crash or rebuilding search from your notes,
 and then reports what it did. In the container, run it as
-`docker exec palaia-hub palaia-hub doctor`.
+`docker exec palaia palaia doctor`.
 
 ## "Sign-in fails immediately, every time, for every AI tool"
 
@@ -65,7 +65,7 @@ name from crossing between separate networks, such as a guest Wi-Fi. See
 which setups it works on. It's always a convenience, never a requirement —
 your hub's regular address (shown in its startup log, and in the dashboard)
 always works. On a server set up with the `get.palaia.ai` command, use the
-address the setup printed instead (usually `http://palaia-hub/`); that
+address the setup printed instead (usually `http://palaia/`); that
 server is reached over your tailnet, not by this name.
 
 ## "How do I know a save actually happened?"

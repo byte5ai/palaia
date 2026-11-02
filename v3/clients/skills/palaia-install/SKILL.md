@@ -163,7 +163,7 @@ their devices. The setup page does that in the browser, with no key to copy.
    **Let ChatGPT and Claude reach palaia**, their Tailscale network must allow
    it once: **Allow in Tailscale**, confirm, come back. **Keep it private** skips
    it. Explain before they choose; it can be turned on later.
-5. The page says "Done", shows palaia's address (a name, usually http://palaia-hub/;
+5. The page says "Done", shows palaia's address (a name, usually http://palaia/;
    a number only with MagicDNS off, and then says how to turn it on) and closes.
 
 A server already on their Tailscale network shows no page. For the cloud setup
@@ -285,7 +285,7 @@ with `sudo tail -n 50 /var/log/cloud-init-output.log`:
 - **Ends with `done ✓  Open`, yet the page does not open** — the device must be
   on the same Tailscale network with the app on. Right after a restart a minute of
   "connection refused" is normal. Still refused after five minutes: read
-  `sudo docker logs --tail 50 palaia-hub` and translate it.
+  `sudo docker logs --tail 50 palaia` and translate it.
 
 ## What not to do
 

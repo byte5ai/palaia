@@ -134,7 +134,7 @@ no dates filled in before the release.
       release and its notes are manual — the workflow exists because
       agent sessions cannot push tags.)
 - [ ] Watch `v3-release.yml`'s run: it builds and pushes
-      `ghcr.io/byte5ai/palaia-hub:v3.3.0.0` and `:stable` (never `:beta`
+      `ghcr.io/byte5ai/palaia:v3.3.0.0` and `:stable` (never `:beta`
       for a non-`rc`/non-`beta` version — the workflow's own branch logic;
       `server/tests/test_version_drift.py`'s
       `test_release_workflow_tag_derived_version_would_round_trip_this_rc`
@@ -152,7 +152,7 @@ no dates filled in before the release.
 
 ## 4. After the tag: what becomes reachable
 
-- [ ] `docker pull ghcr.io/byte5ai/palaia-hub:stable` now serves `3.0.0`
+- [ ] `docker pull ghcr.io/byte5ai/palaia:stable` now serves `3.0.0`
       — `deploy/install.sh` and `deploy/docker-compose.yml` need no edits;
       they already pin the `stable` channel tag on purpose
       (`deploy/README.md`/`deploy/stores/README.md` — never a literal

@@ -2,7 +2,7 @@
 
 Unlike ``hub_server.py`` (which mounts exactly one vault, known before the
 process starts, for the SPEC-113 scenarios), this script boots the hub the
-same way ``palaia-hub serve`` does in production —
+same way ``palaia serve`` does in production —
 :func:`palaia_hub.serve.build_production_app` — against an empty
 ``PALAIA_HOME`` (no ``vaults.yaml`` yet). The test that drives this process
 is the one that creates a vault, over ``POST /api/vaults``, and then makes

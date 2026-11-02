@@ -127,7 +127,7 @@ def _run_compute_tags(
         "GITHUB_REF": ref,
         "GITHUB_SHA": "0123456789abcdef0123456789abcdef01234567",
         "GITHUB_OUTPUT": str(output_file),
-        "IMAGE": "ghcr.io/byte5ai/palaia-hub",
+        "IMAGE": "ghcr.io/byte5ai/palaia",
     }
     result = subprocess.run(
         ["bash", "-e", "-c", script],
@@ -156,11 +156,11 @@ def test_any_semver_suffix_publishes_to_the_beta_channel_never_stable(
     assert result.returncode == 0, result.stderr
     assert outputs["channel"] == "beta"
     tags = outputs["tags"].split(",")
-    assert "ghcr.io/byte5ai/palaia-hub:beta" in tags
-    assert "ghcr.io/byte5ai/palaia-hub:stable" not in tags
-    assert f"ghcr.io/byte5ai/palaia-hub:v3.{version}" in tags
+    assert "ghcr.io/byte5ai/palaia:beta" in tags
+    assert "ghcr.io/byte5ai/palaia:stable" not in tags
+    assert f"ghcr.io/byte5ai/palaia:v3.{version}" in tags
     # Issue #394: Home Assistant pulls `image:<config.yaml version>`.
-    assert f"ghcr.io/byte5ai/palaia-hub:{version}" in tags
+    assert f"ghcr.io/byte5ai/palaia:{version}" in tags
     assert outputs["annotation_version"] == version
 
 
@@ -170,9 +170,9 @@ def test_a_final_version_publishes_to_stable(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert outputs["channel"] == "stable"
     tags = outputs["tags"].split(",")
-    assert "ghcr.io/byte5ai/palaia-hub:stable" in tags
-    assert "ghcr.io/byte5ai/palaia-hub:beta" not in tags
-    assert "ghcr.io/byte5ai/palaia-hub:3.0.0" in tags
+    assert "ghcr.io/byte5ai/palaia:stable" in tags
+    assert "ghcr.io/byte5ai/palaia:beta" not in tags
+    assert "ghcr.io/byte5ai/palaia:3.0.0" in tags
     assert outputs["annotation_version"] == "3.0.0"
 
 
@@ -453,7 +453,7 @@ def test_a_manual_channel_is_honoured_on_a_release_tag(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert outputs["channel"] == "stable"
-    assert "ghcr.io/byte5ai/palaia-hub:stable" in outputs["tags"].split(",")
+    assert "ghcr.io/byte5ai/palaia:stable" in outputs["tags"].split(",")
     assert outputs["annotation_version"] == "3.0.0-rc1"
 
 
@@ -464,7 +464,7 @@ def test_a_plain_manual_rebuild_on_main_still_works(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert outputs["channel"] == "edge"
-    assert "ghcr.io/byte5ai/palaia-hub:edge" in outputs["tags"].split(",")
+    assert "ghcr.io/byte5ai/palaia:edge" in outputs["tags"].split(",")
 
 
 # ---------------------------------------------------------------------------

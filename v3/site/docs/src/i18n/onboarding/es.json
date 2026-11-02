@@ -37,7 +37,7 @@
     "step2Body": "palaia se une a una <em>tailnet</em>: una pequeña red privada formada solo por tus propios dispositivos (mediante <a href=\"https://tailscale.com/\">Tailscale</a>, gratis para uso personal), así que tu hub es accesible desde tu móvil y tu portátil, pero nunca desde el internet abierto. Necesitas una cuenta gratuita de Tailscale y la app de Tailscale en el dispositivo que vayas a usar. No hay que crear ninguna clave: inventa un código de 12 letras y cifras, por ejemplo <code>K7QM-R2XD-9FTP</code>. Lo escribirás una sola vez, en la página de configuración de palaia.",
     "step3H3": "Pega este archivo, pon tu código y crea el servidor",
     "step3Body": "Copia el archivo de abajo en el campo <strong>Cloud config</strong> / <strong>User data</strong> de tu proveedor. Cambia la única línea marcada — <code>PALAIA_SETUP_CODE=\"setup-code-REPLACE_ME\"</code>, cerca del principio — por tu código del paso 2. No hay que editar nada más. Después crea el servidor.",
-    "afterNote": "Unos minutos después de que arranque el servidor, abre <code>http://&lt;dirección-del-servidor&gt;:8420/</code>, escribe tu código, pulsa <strong>Connect with Tailscale</strong> e inicia sesión. La página muestra la dirección privada de tu hub (normalmente <code>http://palaia-hub/</code>) y luego se cierra para siempre. Si no arranca, el archivo <code>/var/log/cloud-init-output.log</code> del servidor tiene el registro completo."
+    "afterNote": "Unos minutos después de que arranque el servidor, abre <code>http://&lt;dirección-del-servidor&gt;:8420/</code>, escribe tu código, pulsa <strong>Connect with Tailscale</strong> e inicia sesión. La página muestra la dirección privada de tu hub (normalmente <code>http://palaia/</code>) y luego se cierra para siempre. Si no arranca, el archivo <code>/var/log/cloud-init-output.log</code> del servidor tiene el registro completo."
   },
   "existing": {
     "h2": "¿Ya tienes un servidor? Un comando por SSH",
@@ -53,7 +53,7 @@
   "dev": {
     "h2": "Para desarrolladores: Docker y Compose",
     "fine": "¿Ya ejecutas contenedores? Instala el hub directamente desde la imagen.",
-    "rcNote": "<strong>Versión candidata.</strong> Los comandos de aquí siguen usando la imagen <code>:stable</code>, que no se publica hasta que 3.0.0 sea definitiva. Hasta entonces usa <code>:beta</code> en su lugar; por ejemplo, <code>ghcr.io/byte5ai/palaia-hub:beta</code>. El archivo del servidor en la nube y el comando de una línea de <code>get.palaia.ai</code> de arriba ya apuntan a <code>:beta</code>, así que ahí no hay nada que cambiar.",
+    "rcNote": "<strong>Versión candidata.</strong> Los comandos de aquí siguen usando la imagen <code>:stable</code>, que no se publica hasta que 3.0.0 sea definitiva. Hasta entonces usa <code>:beta</code> en su lugar; por ejemplo, <code>ghcr.io/byte5ai/palaia:beta</code>. El archivo del servidor en la nube y el comando de una línea de <code>get.palaia.ai</code> de arriba ya apuntan a <code>:beta</code>, así que ahí no hay nada que cambiar.",
     "tabDocker": "Docker",
     "tabCompose": "Archivo de Compose",
     "tabStores": "Tiendas de apps para autoalojamiento",
@@ -71,7 +71,7 @@
   },
   "open": {
     "h2": "Luego abre tu hub",
-    "body": "En una instalación en la nube o por SSH, abre la dirección que muestra la instalación al terminar (normalmente <code>http://palaia-hub/</code>) desde cualquier dispositivo de tu tailnet. En una máquina Linux de tu propia red, abre <code>http://palaia.local:8420/</code> desde cualquier dispositivo de esa red; o, si ese nombre no se resuelve (algunas redes lo bloquean; consulta <a href=\"%BASE%/install/#finding-it-on-your-network-palaialocal\">Instálalo</a>), la dirección <code>http://&lt;host&gt;:8420</code> que se muestra en el propio registro del contenedor, que siempre funciona. Con Docker Desktop, abre <code>http://localhost:8420/</code>."
+    "body": "En una instalación en la nube o por SSH, abre la dirección que muestra la instalación al terminar (normalmente <code>http://palaia/</code>) desde cualquier dispositivo de tu tailnet. En una máquina Linux de tu propia red, abre <code>http://palaia.local:8420/</code> desde cualquier dispositivo de esa red; o, si ese nombre no se resuelve (algunas redes lo bloquean; consulta <a href=\"%BASE%/install/#finding-it-on-your-network-palaialocal\">Instálalo</a>), la dirección <code>http://&lt;host&gt;:8420</code> que se muestra en el propio registro del contenedor, que siempre funciona. Con Docker Desktop, abre <code>http://localhost:8420/</code>."
   },
   "wizard": {
     "h2": "El asistente toma el control",

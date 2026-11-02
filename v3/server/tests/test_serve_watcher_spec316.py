@@ -2,7 +2,7 @@
 
 Before this, ``build_production_app`` opened an index per vault but never
 started a :class:`~palaia_hub.vault.VaultWatcher`, so a note edited in
-Obsidian (or written by ``palaia-hub import`` against a running hub) never
+Obsidian (or written by ``palaia import`` against a running hub) never
 reached search until the next restart.
 """
 

@@ -35,7 +35,7 @@ server joins their private network. No key to create, copy or paste.
 - **The key path stays.** `PALAIA_TSKEY` (installer) and the
   `TAILSCALE_AUTH_KEY` line (cloud-init) keep working for technical users.
   The setup page is the default only when no key is given.
-- Keep the machine name `palaia-hub` so "find palaia-hub in your Tailscale
+- Keep the machine name `palaia` so "find palaia in your Tailscale
   machine list" (install skill, Step 5) still holds.
 
 ## Additions from the 2026-10-23 installation test (#550, #564, #567, #568)
@@ -59,7 +59,7 @@ server joins their private network. No key to create, copy or paste.
 ## Deliverables
 1. `v3/deploy/setup-page.py` (or inlined into both scripts from one source
    of truth, same drift-test pattern as the docker-run flags): runs
-   `tailscale up --hostname=palaia-hub` without an auth key in the
+   `tailscale up --hostname=palaia` without an auth key in the
    background, captures the login URL it prints, serves one plain page on
    `0.0.0.0:8420`: code field → on the right code, a "Connect with
    Tailscale" button to that login URL, then "Waiting for you to log in…"

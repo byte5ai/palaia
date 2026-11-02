@@ -1,4 +1,4 @@
-"""SPEC-308 e2e hub process: a real hub wired the exact way ``palaia-hub
+"""SPEC-308 e2e hub process: a real hub wired the exact way ``palaia
 serve`` wires one (:func:`palaia_hub.serve.build_production_app`, same as
 ``hub_server_oauth.py`` and ``cli.py`` itself), plus a curated-index entry
 that is real for real: a signed document, fetched and Ed25519-verified by

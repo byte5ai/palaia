@@ -137,7 +137,7 @@ def test_palaia_service_hardening_flags_match_install_sh_verbatim() -> None:
 
 def test_palaia_service_runs_the_stable_channel_image() -> None:
     unit = (PI_IMAGE_ROOT / "systemd" / "palaia.service").read_text(encoding="utf-8")
-    assert "ghcr.io/byte5ai/palaia-hub:stable" in unit, (
+    assert "ghcr.io/byte5ai/palaia:stable" in unit, (
         "the appliance must run the :stable release channel (SPEC-501), not a moving tag"
     )
 

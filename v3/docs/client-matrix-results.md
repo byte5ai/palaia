@@ -311,7 +311,7 @@ no per-client setup.** Scripted evidence lives in
 against a new hub subprocess,
 [`support/hub_server_market.py`](../server/tests/e2e/support/hub_server_market.py),
 that wires `palaia_hub.serve.build_production_app` exactly the way
-`palaia-hub serve` does — real `VaultEngine`, real `AuthorizationServer`,
+`palaia serve` does — real `VaultEngine`, real `AuthorizationServer`,
 real marketplace/install machinery, two gateway profiles (`default`,
 `mobile`) both accepting OAuth *and* SPEC-108 `plt_` tokens at once — over
 a real `uvicorn` socket.
@@ -411,7 +411,7 @@ one, picked up and acted on by the other. Scripted evidence lives in
 against a new hub subprocess,
 [`support/hub_server_messenger.py`](../server/tests/e2e/support/hub_server_messenger.py),
 that wires `palaia_hub.serve.build_production_app` exactly the way
-`palaia-hub serve` does — real `VaultEngine`, real `AuthorizationServer`,
+`palaia serve` does — real `VaultEngine`, real `AuthorizationServer`,
 real directory/messenger services, two gateway profiles (`default`,
 `mobile`) both carrying the one shared vault plus `directory: true`/
 `messenger: true` — over a real `uvicorn` socket.

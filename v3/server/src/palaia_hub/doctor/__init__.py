@@ -3,7 +3,7 @@
 Issue #296. ``palaia doctor`` existed in v1 and v2 and is the feature the
 migration guide's gap table called out as missing; this package is its v3
 core — the check framework, the checks themselves, and the rendering the
-``palaia-hub doctor`` command prints. The dashboard surface consumes the
+``palaia doctor`` command prints. The dashboard surface consumes the
 same :class:`~.framework.HubReport`.
 
 Layering, deliberately: :mod:`palaia_hub.vault.doctor` stays the *vault*

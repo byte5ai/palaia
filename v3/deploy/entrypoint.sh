@@ -30,7 +30,7 @@ envsubst '${PUBLIC_PORT} ${CLOUD_LISTEN} ${PALAIA_HOST} ${PALAIA_PORT}' \
 
 pids=()
 
-palaia-hub serve --host "$PALAIA_HOST" --port "$PALAIA_PORT" &
+palaia serve --host "$PALAIA_HOST" --port "$PALAIA_PORT" &
 hub_pid=$!
 pids+=("$hub_pid")
 
@@ -38,14 +38,14 @@ if [ "${PALAIA_MDNS_ENABLED:-1}" = "1" ]; then
     python /opt/palaia/mdns_announce.py --port "$PUBLIC_PORT" &
     pids+=("$!")
 else
-    echo "palaia-hub: mDNS announcing disabled (PALAIA_MDNS_ENABLED=0)" >&2
+    echo "palaia: mDNS announcing disabled (PALAIA_MDNS_ENABLED=0)" >&2
 fi
 
 nginx -c /tmp/nginx/nginx.conf -g "daemon off;" &
 nginx_pid=$!
 pids+=("$nginx_pid")
 
-echo "palaia-hub: channel=${PALAIA_CHANNEL:-edge} deployment=${PALAIA_DEPLOYMENT:-unknown}" >&2
+echo "palaia: channel=${PALAIA_CHANNEL:-edge} deployment=${PALAIA_DEPLOYMENT:-unknown}" >&2
 
 # Issue #568: "ready" only once the hub's own health check answers through
 # nginx — the static dashboard answers long before (or without) the hub, so
@@ -55,13 +55,13 @@ echo "palaia-hub: channel=${PALAIA_CHANNEL:-edge} deployment=${PALAIA_DEPLOYMENT
     for _ in $(seq 1 120); do
         if curl -fsS --max-time 2 "http://127.0.0.1:${PUBLIC_PORT}/api/health" 2>/dev/null \
             | grep -q '"status":"ok"'; then
-            echo "palaia-hub: ready — open http://<this-host's-ip>:${PUBLIC_PORT}/ " \
+            echo "palaia: ready — open http://<this-host's-ip>:${PUBLIC_PORT}/ " \
                  "(http://palaia.local:${PUBLIC_PORT}/ if mDNS reaches your LAN; see v3/deploy/README.md)" >&2
             exit 0
         fi
         sleep 1
     done
-    echo "palaia-hub: NOT ready — the hub has not answered its health check after 120 s;" \
+    echo "palaia: NOT ready — the hub has not answered its health check after 120 s;" \
          "see the lines above." >&2
 ) &
 pids+=("$!")

@@ -257,13 +257,13 @@ def test_the_hub_is_published_with_the_port_80_choice(tmp_path: Path) -> None:
 HUB_ENV = {
     "SUDO": "",
     "DOCKER": "docker",
-    "CONTAINER_NAME": "palaia-hub",
+    "CONTAINER_NAME": "palaia",
     "BIND_ADDR": "100.64.0.7",
     "PORT": "8420",
     "CLOUD_PORT": "8422",
     "CLOUD_URL": "",
     "VOLUME": "palaia_home",
-    "IMAGE": "ghcr.io/byte5ai/palaia-hub:beta",
+    "IMAGE": "ghcr.io/byte5ai/palaia:beta",
     "LOOPBACK_PUBLISH": "-p 127.0.0.1:8420:8420",
 }
 
@@ -295,7 +295,7 @@ def test_a_port_80_taken_since_the_check_is_retried_without_it(tmp_path: Path) -
     _docker_failing_on(
         tmp_path,
         "docker: Error response from daemon: driver failed programming external "
-        "connectivity on endpoint palaia-hub: Bind for 100.64.0.7:80 failed: "
+        "connectivity on endpoint palaia: Bind for 100.64.0.7:80 failed: "
         "port is already allocated.",
     )
     result = _start_hub(tmp_path, "-p 100.64.0.7:80:8420")
@@ -304,7 +304,7 @@ def test_a_port_80_taken_since_the_check_is_retried_without_it(tmp_path: Path) -
     calls = (tmp_path / "docker.log").read_text(encoding="utf-8").splitlines()
     assert [call.split()[0] for call in calls] == ["run", "rm", "run"]
     assert "100.64.0.7:80:8420" in calls[0]
-    assert calls[1] == "rm -f palaia-hub"
+    assert calls[1] == "rm -f palaia"
     assert ":80:8420" not in calls[2]
 
 
@@ -352,12 +352,12 @@ def test_the_last_line_names_palaia_instead_of_its_number(tmp_path: Path, port80
     address step is told whether port 80 was really published."""
     lines = _report_address(
         tmp_path,
-        "address=http://palaia-hub/\nfull_address=http://palaia-hub.tail1234.ts.net/\naddress_note=\n",
+        "address=http://palaia/\nfull_address=http://palaia.tail1234.ts.net/\naddress_note=\n",
         port80=port80,
     )
     assert lines == [
-        DONE.format("http://palaia-hub/"),
-        "palaia:   full name: http://palaia-hub.tail1234.ts.net/",
+        DONE.format("http://palaia/"),
+        "palaia:   full name: http://palaia.tail1234.ts.net/",
     ]
     args = (tmp_path / "args.txt").read_text(encoding="utf-8").split()
     assert args == ["/opt/palaia/setup-page.py", "address", "--port", "8420", "--port-80", port80]
@@ -377,6 +377,24 @@ def test_no_answer_keeps_the_address_the_installer_had(tmp_path: Path) -> None:
 
 def test_without_tailscale_nothing_asks_tailscale(tmp_path: Path) -> None:
     """PALAIA_NO_TAILSCALE=1 binds 0.0.0.0 and has no setup page to ask."""
-    lines = _report_address(tmp_path, "address=http://palaia-hub/\n", bind="0.0.0.0")
+    lines = _report_address(tmp_path, "address=http://palaia/\n", bind="0.0.0.0")
     assert lines == [DONE.format("http://0.0.0.0:8420/")]
     assert not (tmp_path / "args.txt").exists()
+
+
+def test_a_new_server_joins_the_tailnet_as_palaia() -> None:
+    """One name, `palaia` (#619): the tailnet name people type (`http://palaia/`)
+    and the container's name.
+
+    Both the key path (the installer's own `tailscale up`) and the setup page
+    (its `--hostname` default, which the installer passes through) use it.
+    """
+    text = SCRIPT.read_text(encoding="utf-8")
+    for line in (
+        'HOSTNAME_TS="${PALAIA_TS_HOSTNAME:-palaia}"',
+        'CONTAINER_NAME="${PALAIA_CONTAINER_NAME:-palaia}"',
+    ):
+        assert re.search(rf"^{re.escape(line)}$", text, re.MULTILINE), line
+    assert 'parser.add_argument("--hostname", default="palaia")' in text
+    page = (SCRIPT.parent / "setup-page.py").read_text(encoding="utf-8")
+    assert 'parser.add_argument("--hostname", default="palaia")' in page

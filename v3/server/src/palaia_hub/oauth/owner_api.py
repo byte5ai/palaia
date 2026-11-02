@@ -2,7 +2,7 @@
 
 The install docs promised "an administrator sign-in for the dashboard" as
 the wizard's first step; in reality the owner account could only be created
-from a terminal (``palaia-hub oauth set-password``), and the login page told
+from a terminal (``palaia oauth set-password``), and the login page told
 a browser-only user — the Synology guide's whole audience — to go run it.
 This router is that step's server side:
 
@@ -77,7 +77,7 @@ def _already_has_owner() -> HTTPException:
     return HTTPException(
         status_code=409,
         detail="this hub already has an owner account. Fix: to change its "
-        "password, run `palaia-hub oauth set-password` where the hub runs.",
+        "password, run `palaia oauth set-password` where the hub runs.",
     )
 
 

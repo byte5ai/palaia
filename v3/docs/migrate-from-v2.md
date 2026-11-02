@@ -26,7 +26,7 @@ v3 memory library as its own file, with its title, tags, body, and where it
 came from all preserved. Run it with:
 
 ```bash
-palaia-hub import v2 /path/to/.palaia --vault /path/to/new/vault --vault-name personal
+palaia import v2 /path/to/.palaia --vault /path/to/new/vault --vault-name personal
 ```
 
 Add `--dry-run --json` first to get a report of exactly what would be
@@ -75,13 +75,13 @@ yet; don't move a workflow that depends on one of these until it lands.
 | `palaia init`, `setup claude-code`, `setup --multi-agent` | Carried, changed | The hub's first-run setup screen and per-tool connect pages replace these; nothing to run per machine. |
 | `palaia ui` | Carried, changed | Always-on web dashboard, reachable from any device on the network — not a localhost-only, opt-in extra. |
 | `palaia status`, `upgrade` | Carried, changed | Health lives in the dashboard; updates are one click from there instead of a command. |
-| `palaia curate analyze`, `curate apply` | Carried | The curator runs the same two-pass review, now on a schedule or on demand via `palaia-hub curator run` / `curator apply`. |
+| `palaia curate analyze`, `curate apply` | Carried | The curator runs the same two-pass review, now on a schedule or on demand via `palaia curator run` / `curator apply`. |
 | `palaia project create/list/show/write/query/set-scope/set-owner/delete` | Carried, changed | Multiple memory libraries and their access scopes are a dashboard/config concern now, not a `project` subcommand. |
 | `palaia memo send/broadcast/inbox/ack/gc` | Carried, changed | Replaced by the built-in agent-to-agent messenger (structured handoffs between sessions), not a like-for-like command. |
 | `palaia config list/get/set/set-chain/set-alias/get-aliases/remove-alias` | Carried, changed | One `config.yaml` plus dashboard settings screens; no `set-chain`/alias equivalent — v3's embedding setup is one choice, not a fallback chain. |
 | `palaia warmup`, `embed-server` | Carried, changed | Indexing and embeddings run inside the hub process; there's no separate server to start or index to pre-warm by hand. |
 | `palaia mcp-server --read-only` | Carried, changed | Read-only access is a scope on a tool's own credential, granted when it's connected — not a server flag. |
-| `palaia doctor` | Carried, changed | `palaia-hub doctor` checks the whole hub at once — memory libraries, search, connected tools, configuration, storage — and names the fix for everything it finds. `--fix` performs the repairs that cannot lose anything (clearing a stale lock, sweeping leftovers from an interrupted write, rebuilding the search index from your files, narrowing file permissions); anything riskier is reported with the command to run. It works on a hub that will not start, and it changes nothing unless you pass `--fix`. The same report in the dashboard, with one-click fixes, is still to come. |
+| `palaia doctor` | Carried, changed | `palaia doctor` checks the whole hub at once — memory libraries, search, connected tools, configuration, storage — and names the fix for everything it finds. `--fix` performs the repairs that cannot lose anything (clearing a stale lock, sweeping leftovers from an interrupted write, rebuilding the search index from your files, narrowing file permissions); anything riskier is reported with the command to run. It works on a hub that will not start, and it changes nothing unless you pass `--fix`. The same report in the dashboard, with one-click fixes, is still to come. |
 | `palaia prune`, `gc` (knowledge cleanup, decay-based) | **Missing** | v3 records the same tiering data on import (`import.tier`, `import.decay_seed`) but nothing yet recomputes or prunes by it — see the honest scope note in [`import-mappings.md`](import-mappings.md#cold-embed-as-a-background-job-honest-scope-note). |
 | `palaia priorities` (injection budget control) | **Missing** | No equivalent yet. |
 | `palaia ingest <source>` (document indexing) | **Missing** | No bulk "index this folder of documents" command yet. |

@@ -184,7 +184,7 @@ the signal is a cache:
   if the reference names a different note by then, it gets none. So
   what `read` reports is true of the vault as it now is. The other
   direction is not covered: a problem that appears after start-up is not
-  reported until the hub restarts — `palaia-hub doctor` remains the complete
+  reported until the hub restarts — `palaia doctor` remains the complete
   check.
 - **One cooldown per note.** The nudge's `state` carries the note's path,
   so two notes with the same problem — including the two claimants of one

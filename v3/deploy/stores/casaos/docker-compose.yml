@@ -5,7 +5,7 @@ services:
     environment:
       PALAIA_MODE: locked
       PALAIA_DEPLOYMENT: casaos
-    image: ghcr.io/byte5ai/palaia-hub:stable
+    image: ghcr.io/byte5ai/palaia:stable
     # The image's own non-root user, pinned to 1000:1000 (v3/deploy/Dockerfile,
     # issue #329). The bind mount below must be owned by that uid — see
     # SUBMIT.md, "Data directory ownership".
@@ -36,7 +36,7 @@ services:
         - container: /data
           description:
             en_US: palaia's notes, search index, and settings.
-    container_name: palaia-hub
+    container_name: palaia
 
 x-casaos:
   id: ai.byte5.palaia

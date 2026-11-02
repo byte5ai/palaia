@@ -187,7 +187,7 @@ class ConfigCheck:
                         "fails to sign in to this hub and nothing in the inbox is filed."
                     ),
                     fix=(
-                        f"Mint one with `palaia-hub curator token` and put it in the "
+                        f"Mint one with `palaia curator token` and put it in the "
                         f"environment as {TOKEN_ENV}, or in `curator.token`."
                     ),
                     subject="curator.token",
@@ -222,7 +222,7 @@ class VaultsCheck:
                     ),
                     fix=(
                         "Create one in the dashboard's setup wizard, or bring an existing "
-                        "store over with `palaia-hub import v2 <path> --vault <dir>`."
+                        "store over with `palaia import v2 <path> --vault <dir>`."
                     ),
                 )
             ]
@@ -281,7 +281,7 @@ class VaultsCheck:
                         f"files are intact — the index is the derived copy."
                     ),
                     fix=(
-                        "Rebuild the index from the files — `palaia-hub doctor --fix` does "
+                        "Rebuild the index from the files — `palaia doctor --fix` does "
                         "it, and so does starting the hub."
                     ),
                     subject=key,
@@ -424,7 +424,7 @@ class SearchCheck:
                         f"are findable by word but not by meaning."
                     ),
                     fix=(
-                        "Rebuild the index (`palaia-hub doctor --fix`) to retry them; if "
+                        "Rebuild the index (`palaia doctor --fix`) to retry them; if "
                         "they keep failing, the hub log names the model error."
                     ),
                     subject=key,
@@ -463,7 +463,7 @@ class ClientsCheck:
                     ),
                     fix=(
                         "Issue one on the dashboard's connect page, or with "
-                        "`palaia-hub token create --name <client> --profile default`."
+                        "`palaia token create --name <client> --profile default`."
                     ),
                 )
             )
@@ -484,7 +484,7 @@ class ClientsCheck:
                         ),
                         fix=(
                             f"Bring that profile back in config.yaml's `gateway.profiles`, "
-                            f"or revoke the token (`palaia-hub token revoke {info.id}`) and "
+                            f"or revoke the token (`palaia token revoke {info.id}`) and "
                             f"issue a new one for a profile that exists."
                         ),
                         subject=info.id,
@@ -501,7 +501,7 @@ class ClientsCheck:
                         ),
                         fix=(
                             "Finish that client's setup, or revoke the token with "
-                            f"`palaia-hub token revoke {info.id}` if it is not needed."
+                            f"`palaia token revoke {info.id}` if it is not needed."
                         ),
                         subject=info.id,
                     )
@@ -537,7 +537,7 @@ class ClientsCheck:
                     ),
                     fix=(
                         "Create the owner account with "
-                        "`palaia-hub oauth set-password --username <you>`, or configure an "
+                        "`palaia oauth set-password --username <you>`, or configure an "
                         "identity provider under `oauth.idp`."
                     ),
                 )
@@ -561,7 +561,7 @@ class ClientsCheck:
                     ),
                     # Deliberately not a one-click repair: pruning makes those
                     # clients register again, which is the owner's call.
-                    fix="Prune them when you are sure they are gone: `palaia-hub oauth gc`.",
+                    fix="Prune them when you are sure they are gone: `palaia oauth gc`.",
                 )
             )
         return findings
@@ -655,7 +655,7 @@ class StorageCheck:
                     f"address this hub answers at."
                 ),
                 fix=(
-                    f"Narrow it to {FILE_MODE:04o} — `palaia-hub doctor --fix` does it, and "
+                    f"Narrow it to {FILE_MODE:04o} — `palaia doctor --fix` does it, and "
                     f"so does `chmod 600 {path}`."
                 ),
                 subject=str(path),
@@ -680,7 +680,7 @@ class StorageCheck:
 
 
 def default_checks() -> tuple[Check, ...]:
-    """Every check ``palaia-hub doctor`` runs, in report order."""
+    """Every check ``palaia doctor`` runs, in report order."""
     return (ConfigCheck(), VaultsCheck(), SearchCheck(), ClientsCheck(), StorageCheck())
 
 

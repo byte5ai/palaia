@@ -74,7 +74,7 @@ def test_a_quoted_image_value_is_rewritten_and_keeps_its_quotes() -> None:
 
 
 def test_a_mirror_registry_is_reported_as_not_found_not_as_already_switched() -> None:
-    text = "    image: mirror.example.com/byte5ai/palaia-hub:stable\n"
+    text = "    image: mirror.example.com/byte5ai/palaia:stable\n"
     new_text, outcome = rewrite_compose_channel(text, "beta")
     assert outcome == "not_found"
     assert new_text == text

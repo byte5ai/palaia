@@ -30,7 +30,7 @@ anonymous caller before this route runs. When it is *not* mounted — ``mode:
 locked`` with no ``dashboard.require_sign_in`` override, or a hub with no
 sign-in server at all — "trusts the network" is the documented posture for
 the rest of ``/api/*``, but not for key material: this route then refuses
-with 403 and names the two ways out (turn on sign-in, or ``palaia-hub
+with 403 and names the two ways out (turn on sign-in, or ``palaia
 backup`` on the host). ``session_gated`` is how :func:`palaia_hub.app.
 create_app` tells the route which of the two worlds it lives in.
 
@@ -71,7 +71,7 @@ UNGATED_DETAIL = (
     "Only a signed-in owner can download a backup, and this palaia has no "
     "dashboard sign-in: the file holds every key palaia keeps, so anyone who can "
     "reach palaia could take it. Fix: turn on sign-in in Settings › Access & "
-    "sign-in, or run `palaia-hub backup` on the server palaia runs on."
+    "sign-in, or run `palaia backup` on the server palaia runs on."
 )
 
 
@@ -82,7 +82,7 @@ UNGATED_DETAIL = (
 UNGATED_TARGETS_DETAIL = (
     "Only a signed-in owner can use backup destinations, and this palaia has no "
     "dashboard sign-in: a backup holds every key palaia keeps. Fix: turn on "
-    "sign-in in Settings › Access & sign-in, or run `palaia-hub backup --target "
+    "sign-in in Settings › Access & sign-in, or run `palaia backup --target "
     "<name>` on the server palaia runs on."
 )
 

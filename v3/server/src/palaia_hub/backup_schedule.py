@@ -50,7 +50,7 @@ the same — an archive is written under a ``.part`` name and renamed into
 place only once complete, so a killed run never leaves a finished-looking
 file behind.
 
-**What the CLI does.** ``palaia-hub backup --target``/``--all-targets`` runs
+**What the CLI does.** ``palaia backup --target``/``--all-targets`` runs
 in its own one-shot process: it takes none of these locks and records
 nothing here (``--list-targets`` does *read* this file, to print the last
 outcome). That is why the docs tell an operator who used to wrap it in
@@ -448,7 +448,7 @@ class BackupScheduler:
         in it).
 
         A failing target never stops the pass — the next one still runs,
-        exactly like ``palaia-hub backup --all-targets``.
+        exactly like ``palaia backup --all-targets``.
         """
         self._ledger.mark_pass(self._clock() if started_at is None else started_at)
         outcome: dict[str, bool] = {}

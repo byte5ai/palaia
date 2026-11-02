@@ -1,4 +1,4 @@
-"""Integration tests that spawn a real ``palaia-hub serve`` subprocess.
+"""Integration tests that spawn a real ``palaia serve`` subprocess.
 
 These exercise behavior that only exists once uvicorn's real event loop and
 signal handling are involved: starting from zero config, and completing an

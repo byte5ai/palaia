@@ -7,8 +7,8 @@
 # would rather paste one command than read the README.
 set -euo pipefail
 
-IMAGE="${PALAIA_IMAGE:-ghcr.io/byte5ai/palaia-hub:stable}"
-CONTAINER_NAME="${PALAIA_CONTAINER_NAME:-palaia-hub}"
+IMAGE="${PALAIA_IMAGE:-ghcr.io/byte5ai/palaia:stable}"
+CONTAINER_NAME="${PALAIA_CONTAINER_NAME:-palaia}"
 PORT="${PALAIA_INSTALL_PORT:-8420}"
 VOLUME="${PALAIA_VOLUME:-palaia_home}"
 

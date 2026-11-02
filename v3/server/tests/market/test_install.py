@@ -1,6 +1,6 @@
 """SPEC-304 deliverables #1/#3/#4 over REST, through the real production
 app — mirrors ``tests/upstream/test_api.py``'s own pattern (the exact
-wiring ``palaia-hub serve`` runs), since an install lands in that same
+wiring ``palaia serve`` runs), since an install lands in that same
 upstream/gateway machinery.
 """
 

@@ -44,7 +44,7 @@ class CuratorScheduler:
         appliers: one :class:`~palaia_hub.curator.apply.ProposalApplier` per
             vault key. Optional: a hub may want curation without an
             automatic apply pass, in which case approved proposals are
-            applied by ``palaia-hub curator apply``.
+            applied by ``palaia curator apply``.
         debounce_seconds / interval_seconds: see the module docstring.
         subscribe: the event bus's ``on()`` (``EventBus.on``), used to
             listen for ``inbox.captured``. Omitted, the scheduler is

@@ -30,7 +30,7 @@ later screen) composes instead of styles.
    SSE endpoint emitting health + vault change events from SPEC-102's bus
    stub); UI state updates without reload (ravitemer-hub pattern).
 4. API client layer: typed client generated from the hub's OpenAPI schema.
-5. Static build served by the hub (`palaia-hub serve` = one process, one port).
+5. Static build served by the hub (`palaia serve` = one process, one port).
 
 ## Acceptance criteria
 - [ ] visual parity with SPEC-005 mockups for shell + components (owner eyeball

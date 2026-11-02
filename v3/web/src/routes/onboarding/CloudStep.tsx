@@ -160,7 +160,7 @@ function CloudTurnOn({
             <Input
               value={address}
               onChange={(e) => setAddress(e.target.value)}
-              placeholder="https://palaia-hub.your-tailnet.ts.net"
+              placeholder="https://palaia.your-tailnet.ts.net"
               inputMode="url"
               autoComplete="off"
               invalid={Boolean(addressError)}

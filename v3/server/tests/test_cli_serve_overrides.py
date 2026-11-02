@@ -1,4 +1,4 @@
-"""Issue #327: ``palaia-hub serve --host/--port`` obey the operating-mode policy.
+"""Issue #327: ``palaia serve --host/--port`` obey the operating-mode policy.
 
 ``model_copy(update=...)`` skips pydantic validators, so a ``mode: cloud``
 config could be started on a wildcard bind through the CLI flag — the path

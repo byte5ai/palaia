@@ -1,7 +1,7 @@
 """SPEC-302 deliverables #2/#4 over REST, through the real production app.
 
 ``build_production_app`` is used rather than a hand-assembled router, so
-these exercise the same wiring ``palaia-hub serve`` runs: connect a server,
+these exercise the same wiring ``palaia serve`` runs: connect a server,
 see its health, have its tools appear on a profile without a restart, and —
 the security half — never get a stored value back out of any endpoint.
 """

@@ -271,7 +271,7 @@ _NOTE_FINDING_TEXTS: dict[str, Callable[[list[NoteFinding]], str]] = {
     ),
     "permalink-duplicate": lambda _: (
         "Another note claims this note's permalink, so reading or linking by it can "
-        "reach either one. Fix: ask the owner to rename one of them — `palaia-hub "
+        "reach either one. Fix: ask the owner to rename one of them — `palaia "
         "doctor` names both."
     ),
     "partial-rename": _renamed_link_text,

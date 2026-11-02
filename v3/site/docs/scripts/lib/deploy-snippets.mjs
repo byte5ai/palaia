@@ -156,7 +156,7 @@ export function loadComposeFile() {
   const composePath = path.join(DEPLOY_ROOT, "docker-compose.yml");
   const compose = readFileSync(composePath, "utf8").trimEnd();
 
-  const checks = ["services:", "hub:", "image: ghcr.io/byte5ai/palaia-hub:stable", "palaia_home:/data", "volumes:"];
+  const checks = ["services:", "hub:", "image: ghcr.io/byte5ai/palaia:stable", "palaia_home:/data", "volumes:"];
   for (const needle of checks) {
     if (!compose.includes(needle)) {
       throw new Error(

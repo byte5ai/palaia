@@ -228,7 +228,7 @@ contents. Both carry `trigger` — `manual` for the dashboard's run action,
 `schedule` for the timer — so an automation can route "the nightly backup
 failed" differently from "the one I just clicked failed".
 
-`palaia-hub backup --target` runs the same code in a one-shot process with
+`palaia backup --target` runs the same code in a one-shot process with
 no bus attached, so it publishes nothing; it reports the same outcome on
 stdout/stderr and exits non-zero on a failure, which is what a `cron` entry
 or a `systemd` timer around it reads.

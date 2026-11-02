@@ -8,7 +8,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 # --network host: the image's own mDNS announcer (v3/deploy/mdns_announce.py,
-# baked into the palaia-hub image and started by its entrypoint.sh whenever
+# baked into the palaia image and started by its entrypoint.sh whenever
 # PALAIA_MDNS_ENABLED=1, the default) needs the host's real network to
 # advertise http://palaia.local — Docker's default bridge network does not
 # forward multicast to the LAN. This appliance is always a dedicated Linux
@@ -26,8 +26,8 @@ Type=simple
 # entry (port 8422, the one door a public tunnel points at) would otherwise
 # listen on every address of this Pi. A tunnel reaches it on loopback, so
 # that is the only address it listens on.
-ExecStartPre=-/usr/bin/docker rm -f palaia-hub
-ExecStart=/usr/bin/docker run --rm --name palaia-hub \
+ExecStartPre=-/usr/bin/docker rm -f palaia
+ExecStart=/usr/bin/docker run --rm --name palaia \
     --network host \
     -e PALAIA_CLOUD_BIND=127.0.0.1 \
     -v palaia_home:/data \
@@ -36,8 +36,8 @@ ExecStart=/usr/bin/docker run --rm --name palaia-hub \
     --read-only \
     --tmpfs /tmp \
     --tmpfs /run \
-    ghcr.io/byte5ai/palaia-hub:stable
-ExecStop=/usr/bin/docker stop --time 30 palaia-hub
+    ghcr.io/byte5ai/palaia:stable
+ExecStop=/usr/bin/docker stop --time 30 palaia
 Restart=on-failure
 RestartSec=5
 TimeoutStartSec=300

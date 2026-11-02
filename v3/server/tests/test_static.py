@@ -17,7 +17,7 @@ def test_default_dist_dir_points_at_v3_web_dist_not_v3_server_web_dist() -> None
     """Regression test for a real bug (SPEC-110): every other test here
     sets ``PALAIA_WEB_DIST``, so the *unoverridden* default path was never
     checked and silently pointed one directory short (``v3/server/web/dist``
-    instead of ``v3/web/dist``) — a zero-config ``palaia-hub serve`` would
+    instead of ``v3/web/dist``) — a zero-config ``palaia serve`` would
     never find or serve the dashboard build at all.
     """
     default = _default_dist_dir()

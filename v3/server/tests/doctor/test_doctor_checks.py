@@ -256,7 +256,7 @@ async def test_a_hub_nothing_can_connect_to_says_so(home: Path) -> None:
 
     finding = by_code(await ClientsCheck().run(context), "no-way-in")
 
-    assert "palaia-hub token create" in finding.fix
+    assert "palaia token create" in finding.fix
 
 
 async def test_a_token_bound_to_a_vanished_profile_is_an_error(home: Path) -> None:

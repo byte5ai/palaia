@@ -132,7 +132,7 @@ _TOKEN_RE = re.compile(rf"^{TOKEN_PREFIX}_([A-Za-z0-9_-]{{8,}})\.([A-Za-z0-9_-]{
 
 _HEADER = (
     "# palaia client tokens — argon2id hashes only. Never edit the 'hash'\n"
-    "# field by hand; use `palaia-hub token create/revoke` or the REST API.\n"
+    "# field by hand; use `palaia token create/revoke` or the REST API.\n"
 )
 
 
@@ -144,7 +144,7 @@ def _new_token_id() -> str:
     """A fresh public token id that never starts with ``-``.
 
     ``secrets.token_urlsafe`` draws from ``[A-Za-z0-9_-]``, so one id in 64
-    used to begin with a dash — and ``palaia-hub token revoke <id>`` then
+    used to begin with a dash — and ``palaia token revoke <id>`` then
     read the id as an unknown option and refused to run. Redrawing keeps the
     id's length and alphabet unchanged; only its first character loses one
     of its 64 values.
@@ -186,7 +186,7 @@ class TokenStore:
     Args:
         home: directory holding ``tokens.yaml``. Defaults to the hub's data
             directory (``PALAIA_HOME`` or the platform data dir) so a
-            `palaia-hub token ...` CLI invocation and the running hub agree
+            `palaia token ...` CLI invocation and the running hub agree
             on where tokens live without extra wiring — mirrors
             :class:`palaia_hub.vault.registry.VaultRegistry`.
     """
@@ -216,7 +216,7 @@ class TokenStore:
         self.on_verified: Callable[[TokenRecord, bool], None] | None = None
         #: ``(inode, mtime_ns, size)`` of ``tokens.yaml`` as this store last
         #: read or wrote it; ``None`` when there was no file. The CLI
-        #: (``palaia-hub token create|revoke``) writes the same file from
+        #: (``palaia token create|revoke``) writes the same file from
         #: another process, so every read path compares this against the
         #: file first and reloads on a change — otherwise a token revoked on
         #: the host kept working in the running hub until its restart, and
