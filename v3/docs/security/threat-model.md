@@ -271,6 +271,18 @@ guard cannot resolve gets no curator writes at all (fail-closed). *Enforced
 by* `server/src/palaia_hub/curator/targets.py`; *proven by*
 `server/tests/curator/test_canonical_targets.py` (issue #603).
 
+The guard only covers what the session reaches through MCP, so the default
+session is given nothing else (issue #604): `claude -p --restricted --tools ""
+--strict-mcp-config --permission-mode dontAsk`. No built-in tool (shell, file
+reads and edits, web, subagents), none of the user's or project's settings
+files (permission rules, hooks, plugins), no other MCP server, and anything
+outside the allowed curator tools is denied. The session runs in a fresh
+empty directory without the hub's `PALAIA_*` environment. A `config.yaml`
+that still spells out an earlier default is read as today's default; a
+command the owner wrote themselves is theirs to confine. *Enforced by*
+`server/src/palaia_hub/curator/session.py`; *proven by*
+`server/tests/curator/test_session_and_prompt.py`.
+
 ### 7.3a The Telegram connector (B7)
 
 New in issue #411, running in the hub since issue #439, and the first
