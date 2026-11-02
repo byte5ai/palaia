@@ -6,8 +6,9 @@
 # the "equivalently standard, justified in an ADR note" alternative to
 # pi-gen; the reasoning lives in v3/decisions/005-pi-appliance-image-base.md).
 # Customizes it offline (loop-mount + chroot, arm64 emulated via
-# binfmt_misc/qemu-user-static) to add Docker, the palaia.service unit, and
-# nothing else — SSH stays exactly as the base image ships it (disabled by
+# binfmt_misc/qemu-user-static) to add Docker, the palaia.service unit, the
+# port-80 forwarder (palaia-http.socket/.service, issue #620), and nothing
+# else — SSH stays exactly as the base image ships it (disabled by
 # default; see README.md for how an owner enables it).
 #
 # Runs the customization step TWICE, against two independent copies of the
@@ -215,13 +216,18 @@ EOF
         mv "${resolv_backup}" "${rootfs}/etc/resolv.conf"
     fi
 
-    echo "build.sh[run ${run_id}]: installing the palaia unit..."
+    echo "build.sh[run ${run_id}]: installing the palaia units..."
     install -m 644 "${SCRIPT_DIR}/systemd/palaia.service" "${rootfs}/etc/systemd/system/palaia.service"
+    # Issue #620: port 80 → the hub's 8420, outside the container (see the
+    # socket unit's own comment). The service has no [Install] section; the
+    # socket starts it on the first connection.
+    install -m 644 "${SCRIPT_DIR}/systemd/palaia-http.socket" "${rootfs}/etc/systemd/system/palaia-http.socket"
+    install -m 644 "${SCRIPT_DIR}/systemd/palaia-http.service" "${rootfs}/etc/systemd/system/palaia-http.service"
 
     # `systemctl --root=<path>` works entirely offline (pure [Install]
     # symlink math against the given tree) — no chroot/emulation needed for
     # this step, unlike installing the docker.io package itself above.
-    systemctl --root="${rootfs}" enable docker.service palaia.service
+    systemctl --root="${rootfs}" enable docker.service palaia.service palaia-http.socket
     # Explicit and idempotent, even though the base image already ships
     # ssh.service un-enabled by default (see README.md's "Enabling SSH"
     # section) — this line is what inspect.sh's "SSH off" assertion is

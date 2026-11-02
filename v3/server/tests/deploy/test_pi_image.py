@@ -71,6 +71,8 @@ def test_pi_image_directory_layout() -> None:
         "inspect.sh",
         "pin-base-image.sh",
         "systemd/palaia.service",
+        "systemd/palaia-http.socket",
+        "systemd/palaia-http.service",
     ):
         path = PI_IMAGE_ROOT / name
         assert path.is_file(), f"missing {path} — SPEC-603 deliverable"
@@ -220,6 +222,176 @@ def test_the_release_cut_dispatches_the_pi_image_build_on_the_new_tag() -> None:
     )
     releasing = (Path(__file__).resolve().parents[3] / "RELEASING.md").read_text(encoding="utf-8")
     assert "v3-pi-image.yml" in releasing
+
+
+# ---------------------------------------------------------------------------
+# Issue #620: http://palaia.local/ without a port. A socket on the box binds
+# port 80 and systemd-socket-proxyd forwards to the container's own port,
+# outside the container, which keeps its SPEC-502 hardening.
+# ---------------------------------------------------------------------------
+
+SYSTEMD_DIR = PI_IMAGE_ROOT / "systemd"
+HTTP_SOCKET = SYSTEMD_DIR / "palaia-http.socket"
+HTTP_SERVICE = SYSTEMD_DIR / "palaia-http.service"
+#: Where Raspberry Pi OS (Debian trixie, merged /usr) ships the proxy, in
+#: the `systemd` package itself — see inspect.sh's matching check.
+PROXYD = "/usr/lib/systemd/systemd-socket-proxyd"
+
+
+def _unit_lines(path: Path) -> list[str]:
+    """The unit's directive lines, comments and blanks dropped."""
+    lines = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if line and not line.startswith(("#", ";")):
+            lines.append(line)
+    return lines
+
+
+def _values(path: Path, key: str) -> list[str]:
+    prefix = f"{key}="
+    return [line[len(prefix) :] for line in _unit_lines(path) if line.startswith(prefix)]
+
+
+def _container_public_port() -> str:
+    """The port nginx listens on inside the image (`PUBLIC_PORT`), read from
+    the Dockerfile so the forwarder cannot drift from it."""
+    dockerfile = (DEPLOY_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    match = re.search(r"\bPUBLIC_PORT=(\d+)", dockerfile)
+    assert match, "v3/deploy/Dockerfile no longer sets PUBLIC_PORT — update this test"
+    return match.group(1)
+
+
+def test_the_port_80_socket_listens_on_80_only() -> None:
+    assert _values(HTTP_SOCKET, "ListenStream") == ["80"]
+
+
+def test_a_web_server_on_the_box_keeps_port_80() -> None:
+    """An owner's own web server (nginx, lighttpd, Pi-hole) must win port 80;
+    the forwarder then fails on its own and the hub stays on its port. That
+    needs the socket ordered after multi-user.target, which is only legal
+    with DefaultDependencies=no (otherwise sockets.target → basic.target →
+    multi-user.target and this ordering form a cycle)."""
+    assert _values(HTTP_SOCKET, "DefaultDependencies") == ["no"]
+    after = " ".join(_values(HTTP_SOCKET, "After")).split()
+    assert "multi-user.target" in after
+    assert _values(HTTP_SOCKET, "WantedBy") == ["multi-user.target"]
+    # DefaultDependencies=no drops these too; a socket still needs them.
+    assert "sysinit.target" in " ".join(_values(HTTP_SOCKET, "Requires")).split()
+    assert "shutdown.target" in " ".join(_values(HTTP_SOCKET, "Conflicts")).split()
+
+
+def test_the_forwarder_targets_the_containers_own_port_on_loopback() -> None:
+    port = _container_public_port()
+    assert _values(HTTP_SERVICE, "ExecStart") == [f"{PROXYD} 127.0.0.1:{port}"], (
+        "palaia-http.service must forward to the hub's own port on this box's "
+        f"loopback (127.0.0.1:{port}; palaia.service runs the container on the host network)"
+    )
+    assert _values(HTTP_SERVICE, "Type") == ["notify"]
+    requires = " ".join(_values(HTTP_SERVICE, "Requires")).split()
+    assert "palaia-http.socket" in requires
+
+
+def test_the_forwarder_holds_no_privilege() -> None:
+    assert _values(HTTP_SERVICE, "DynamicUser") == ["yes"]
+    assert _values(HTTP_SERVICE, "NoNewPrivileges") == ["yes"]
+    assert _values(HTTP_SERVICE, "CapabilityBoundingSet") == [""], (
+        "the proxy only accepts and connects out; systemd binds port 80 for it"
+    )
+    assert not [v for v in _values(HTTP_SERVICE, "AmbientCapabilities") if v]
+    assert not _values(HTTP_SERVICE, "User"), "DynamicUser, never a fixed (root) user"
+    assert not _values(HTTP_SERVICE, "PrivateNetwork"), "the proxy must reach 127.0.0.1"
+
+
+def test_the_hub_and_the_forwarder_do_not_depend_on_each_other() -> None:
+    """Port 80 taken, or the forwarder broken, must never take the hub down —
+    and a stopped hub must not stop the socket."""
+    for unit in (HTTP_SOCKET, HTTP_SERVICE):
+        for key in ("Requires", "Requisite", "BindsTo", "PartOf", "Upholds"):
+            for value in _values(unit, key):
+                assert "palaia.service" not in value.split(), f"{unit.name}: {key}={value}"
+    palaia = (SYSTEMD_DIR / "palaia.service").read_text(encoding="utf-8")
+    assert "palaia-http" not in palaia
+
+
+def test_build_sh_installs_both_forwarder_units_and_enables_the_socket() -> None:
+    build_sh = (PI_IMAGE_ROOT / "build.sh").read_text(encoding="utf-8")
+    for name in ("palaia-http.socket", "palaia-http.service"):
+        assert re.search(
+            rf'install -m 644 "\$\{{SCRIPT_DIR\}}/systemd/{re.escape(name)}" '
+            rf'"\$\{{rootfs\}}/etc/systemd/system/{re.escape(name)}"',
+            build_sh,
+        ), f"build.sh no longer installs {name}"
+    assert re.search(r"systemctl --root=.* enable .*palaia-http\.socket", build_sh), (
+        "build.sh no longer enables palaia-http.socket — nothing would answer on port 80"
+    )
+
+
+def test_inspect_sh_checks_the_forwarder_against_the_real_unit_lines() -> None:
+    """Every exact line inspect.sh requires of the forwarder units must be a
+    line of those units — otherwise a correct image fails inspection, or the
+    check drifted from what the image ships."""
+    inspect_sh = (PI_IMAGE_ROOT / "inspect.sh").read_text(encoding="utf-8")
+    assert "multi-user.target.wants/palaia-http.socket" in inspect_sh
+    assert PROXYD in inspect_sh
+    required = dict(
+        re.findall(r"grep -qx '([^']+)' \"\$\{(HTTP_SOCKET|HTTP_SERVICE)\}\"", inspect_sh)
+    )
+    by_unit = {"HTTP_SOCKET": HTTP_SOCKET, "HTTP_SERVICE": HTTP_SERVICE}
+    found = {var: line for line, var in required.items()}
+    assert set(found) == {"HTTP_SOCKET", "HTTP_SERVICE"}, (
+        "inspect.sh should check one exact line of each forwarder unit "
+        "(the socket's port, the service's target)"
+    )
+    for var, line in found.items():
+        assert line in _unit_lines(by_unit[var]), f"inspect.sh requires {line!r} of {var}"
+
+
+_SYSTEMD_ANALYZE = shutil.which("systemd-analyze")
+
+
+@pytest.mark.skipif(
+    _SYSTEMD_ANALYZE is None or not Path(PROXYD).exists(),
+    reason="needs systemd-analyze and systemd-socket-proxyd (a systemd Linux host)",
+)
+def test_the_forwarder_units_pass_systemd_analyze_verify() -> None:
+    assert _SYSTEMD_ANALYZE is not None
+    result = subprocess.run(
+        [_SYSTEMD_ANALYZE, "verify", str(HTTP_SOCKET), str(HTTP_SERVICE)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.skipif(
+    _SYSTEMD_ANALYZE is None or not Path(PROXYD).exists(),
+    reason="needs systemd-analyze and systemd-socket-proxyd (a systemd Linux host)",
+)
+def test_enabling_the_socket_creates_no_ordering_cycle_at_boot(tmp_path: Path) -> None:
+    """Pull the socket into the host's multi-user.target the way
+    `systemctl enable` does and let systemd build the boot transaction.
+    With default dependencies this exact unit produces 'Found ordering
+    cycle … dependency on palaia-http.socket'."""
+    assert _SYSTEMD_ANALYZE is not None
+    wants = tmp_path / "multi-user.target.wants"
+    wants.mkdir()
+    for unit in (HTTP_SOCKET, HTTP_SERVICE):
+        shutil.copy(unit, tmp_path / unit.name)
+    (wants / HTTP_SOCKET.name).symlink_to(tmp_path / HTTP_SOCKET.name)
+    result = subprocess.run(
+        [_SYSTEMD_ANALYZE, "verify", "multi-user.target"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={"PATH": "/usr/bin:/bin", "SYSTEMD_UNIT_PATH": f"{tmp_path}:"},
+    )
+    output = result.stdout + result.stderr
+    cycle_lines = [
+        line for line in output.splitlines() if "palaia-http" in line and "cycle" in line.lower()
+    ] + [line for line in output.splitlines() if "dependency on palaia-http" in line]
+    assert not cycle_lines, "\n".join(cycle_lines)
 
 
 def test_readme_states_a_size_budget_matching_build_sh() -> None:

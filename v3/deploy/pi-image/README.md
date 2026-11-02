@@ -6,8 +6,8 @@ image, boot, open the browser. No terminal.
 
 This is packaging only — nothing here changes the hub product itself. It
 takes the exact container image [`v3/deploy/`](../) already ships
-(`ghcr.io/byte5ai/palaia-hub:stable`) and preinstalls it, Docker, and one
-systemd unit onto Raspberry Pi OS Lite.
+(`ghcr.io/byte5ai/palaia-hub:stable`) and preinstalls it, Docker, the
+`palaia.service` unit and a port-80 forwarder onto Raspberry Pi OS Lite.
 
 ## What the image ships
 
@@ -29,7 +29,23 @@ systemd unit onto Raspberry Pi OS Lite.
   appliance is always a dedicated Linux host, so this has none of the
   desktop-Docker caveats `docker-compose.yml`'s own `network_mode: host`
   comment documents for a shared machine. First boot: open
-  `http://palaia.local:8420/`.
+  `http://palaia.local/` (or `http://palaia.local:8420/`).
+- **Port 80 → 8420** (issue #620): `palaia-http.socket` binds port 80 on
+  the Pi and `palaia-http.service` forwards each connection to the hub's
+  own port 8420 (`systemd-socket-proxyd`, part of the base image's
+  systemd), so `http://palaia.local/` works without a port. It lives on
+  the box, outside the container: the container still runs non-root with
+  every capability dropped and cannot bind a port below 1024 itself — the
+  same split OctoPi uses (OctoPrint on 5000, port 80 in front of it). The
+  forwarder holds no privilege either (systemd binds the port and hands it
+  over; the proxy runs as a throwaway user in a tight sandbox). The
+  socket starts after the rest of the boot, so a web server you install
+  on the Pi yourself keeps port 80; the forwarder then just doesn't start
+  and the hub stays on `:8420`. Neither unit depends on the other. One
+  side effect: connections through port 80 reach the hub from the Pi's own
+  loopback, so the hub's failed-sign-in limit counts all of them as one
+  caller (`palaia_hub.security.client_ip`); `:8420` still sees each
+  device's own address.
 - **The same `:stable` release channel** the container has always had
   (SPEC-501) — `PALAIA_CHANNEL` is baked into the image at
   `v3-release.yml`'s build time, read back by `GET /api/update/check`.
@@ -62,8 +78,8 @@ automatically.
 What `build.sh` actually proves, and what it doesn't:
 
 - **Proven, and checked by CI on every run**: the *customization step*
-  (installing Docker, dropping in `palaia.service`, enabling/disabling
-  units) is deterministic. `build.sh` runs that step twice, against two
+  (installing Docker, dropping in `palaia.service` and the port-80
+  forwarder, enabling/disabling units) is deterministic. `build.sh` runs that step twice, against two
   independent copies of the same checksum-verified base image, and diffs
   a sha256 manifest of the resulting rootfs (every file's path and
   content hash, excluding the handful of paths that are legitimately
@@ -123,7 +139,8 @@ run of `.github/workflows/v3-pi-image.yml` (never on a PR — this is slow):
 1. **Reproducibility** — `build.sh`'s own double-build-and-diff, above.
 2. **Rootfs inspection** (`inspect.sh`, loop-mounted read-only) — Docker
    enabled, `palaia.service` enabled and running the `:stable` image with
-   host networking, SSH not enabled and no `/boot` ssh marker file.
+   host networking, `palaia-http.socket` enabled on port 80 and forwarding
+   to `127.0.0.1:8420`, SSH not enabled and no `/boot` ssh marker file.
 3. **Size budget** — the compressed image against the number above.
 
 What CI *cannot* verify — the image never actually boots in CI, on real

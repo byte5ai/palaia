@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # SPEC-603 acceptance: "rootfs inspection assertions green" — loop-mounts a
 # built (uncompressed) .img read-only and checks the four things the SPEC
-# names: Docker enabled, palaia unit enabled, mDNS on, SSH off. Exits
-# non-zero with a clear reason on the first assertion that fails.
+# names: Docker enabled, palaia unit enabled, mDNS on, SSH off — plus the
+# port-80 forwarder of issue #620. Exits non-zero with a clear reason on the
+# first assertion that fails.
 #
 # Usage: sudo ./inspect.sh /path/to/palaia-appliance.img
 set -euo pipefail
@@ -82,6 +83,27 @@ if grep -rq 'PALAIA_MDNS_ENABLED=0' "${ROOTFS}/etc/systemd/system/" 2>/dev/null;
     fail "found PALAIA_MDNS_ENABLED=0 — the appliance image must not disable mDNS"
 fi
 pass "mDNS announcer is on (host networking, not disabled)"
+
+# --- Port 80 forwarder (issue #620) -----------------------------------------
+# http://palaia.local/ without a port: palaia-http.socket binds port 80 on
+# the box and palaia-http.service forwards to the container's 8420. Both
+# live outside the container, which keeps its hardening untouched.
+HTTP_SOCKET="${ROOTFS}/etc/systemd/system/palaia-http.socket"
+HTTP_SERVICE="${ROOTFS}/etc/systemd/system/palaia-http.service"
+[ -f "${HTTP_SOCKET}" ] || fail "palaia-http.socket unit file is missing — nothing answers on port 80"
+[ -f "${HTTP_SERVICE}" ] || fail "palaia-http.service unit file is missing — port 80 would accept and never forward"
+if [ -L "${ROOTFS}/etc/systemd/system/multi-user.target.wants/palaia-http.socket" ]; then
+    pass "palaia-http.socket is enabled (multi-user.target.wants symlink present)"
+else
+    fail "palaia-http.socket is not enabled — no multi-user.target.wants symlink found"
+fi
+grep -qx 'ListenStream=80' "${HTTP_SOCKET}" \
+    || fail "palaia-http.socket does not listen on port 80"
+grep -qx 'ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8420' "${HTTP_SERVICE}" \
+    || fail "palaia-http.service does not forward to the hub on 127.0.0.1:8420"
+[ -x "${ROOTFS}/usr/lib/systemd/systemd-socket-proxyd" ] \
+    || fail "systemd-socket-proxyd is missing from the image — palaia-http.service cannot start"
+pass "port 80 forwards to the hub (palaia-http.socket → 127.0.0.1:8420)"
 
 # --- SSH off -----------------------------------------------------------------
 if [ -L "${ROOTFS}/etc/systemd/system/multi-user.target.wants/ssh.service" ] \
