@@ -103,8 +103,21 @@ no dates filled in before the release.
 - [ ] Commit the version bump + changelog entry, PR it through the normal
       process (this file's own repository is still `CONTRIBUTING.md`-governed —
       a feature branch, a PR, conventional commits).
+- [ ] Run the batch on the merge commit: dispatch
+      `.github/workflows/v3-ci-batch.yml` on `main` and wait until it is
+      green, with no other merge in between. Pull requests run only the
+      light checks; the batch runs the full server suite, the e2e
+      scenarios, the dashboard and docs-site builds, the signed MCP bundle
+      and the dependency audits. Read the dependency-audit job's summary
+      here: a high or critical advisory in something a user runs blocks the
+      release (`docs/security/dependencies.md`). A red batch is fixed (or
+      the cause reverted) through a new PR, and the batch runs again on the
+      new merge commit.
 - [ ] Tag + release: dispatch `.github/workflows/v3-cut-release.yml` on
-      the merge commit with `expected_version: 3.0.0`. It creates the
+      the merge commit with `expected_version: 3.0.0`. Its release gate
+      (`tools/release_batch_gate.py`) refuses a commit that is not on
+      `main` or has no `v3-ci-batch.yml` run on it with every job green; it
+      never starts a batch itself. It creates the
       `v3.3.0.0` tag (yes — the leading `3.` is the `v3` track's own fixed
       tag prefix, not a repeated major version; `v3-release.yml`'s
       tag-parsing strips exactly `refs/tags/v3.` and keeps the rest, so
@@ -178,7 +191,7 @@ no dates filled in before the release.
       palaia-homepage repo per its `DOCS-HOSTING.md`), and the dashboard's
       docs links (`web/src/lib/docs.ts`, pinned to `site` + `base` by
       `web/src/lib/docs.test.ts` — issue #322) resolve there. Nothing in
-      *this* repository deploys it: `v3-ci.yml`'s `docs-site` job only
+      *this* repository deploys it: `v3-ci-batch.yml`'s `docs-site` job only
       builds and link-checks `dist/`, so the content changes a release
       carries (connect pages, install guide, changelog links) reach the
       live site only when the homepage repo picks up the new build.

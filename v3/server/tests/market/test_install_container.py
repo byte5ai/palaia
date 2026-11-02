@@ -27,7 +27,9 @@ from palaia_hub.vault import VaultRegistry
 
 from .test_install import _consent, _running
 
-pytestmark = pytest.mark.anyio
+# Real Docker containers: deselected on pull requests, run in v3-ci-batch.yml
+# (the `integration` marker, v3/pyproject.toml).
+pytestmark = [pytest.mark.anyio, pytest.mark.integration]
 
 IMAGE_TAG = "palaia-test-fixture-addon:latest"
 

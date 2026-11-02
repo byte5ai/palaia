@@ -41,7 +41,9 @@ from vault_helpers import TEST_ATTRIBUTION, EngineFactory
 
 from palaia_hub.vault import VaultEngine
 
-pytestmark = pytest.mark.anyio
+# Performance budgets over sustained writes: deselected on pull requests, run in v3-ci-batch.yml
+# (the `integration` marker, v3/pyproject.toml).
+pytestmark = [pytest.mark.anyio, pytest.mark.integration]
 
 #: Notes seeded into the vault before the scale run measures anything.
 SCALE = int(os.environ.get("PALAIA_VAULT_SCALE", "0"))

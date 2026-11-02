@@ -3,8 +3,9 @@
 Opt-in — every test here spends real money on real model calls through the
 real ``claude`` CLI, so the whole module skips unless ``PALAIA_EFFECTIVENESS=1``
 and the CLI is on PATH. That gate is also why it is excluded from CI (the
-``python`` job in ``.github/workflows/v3-ci.yml`` runs pytest without the flag,
-so these skip there by construction — no ignore list to keep in sync).
+``python`` jobs in ``.github/workflows/v3-ci.yml`` and ``v3-ci-batch.yml`` run
+pytest without the flag, so these skip there by construction — no ignore list
+to keep in sync).
 
 Read :mod:`harness` first: it explains why the prompts never name a tool, why
 the evidence is collected server-side, and why each probe runs several times

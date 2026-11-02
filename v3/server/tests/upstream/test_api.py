@@ -22,7 +22,9 @@ from palaia_hub.vault import VaultRegistry
 
 from .conftest import FIXTURE_BEARER_TOKEN, HttpUpstream
 
-pytestmark = pytest.mark.anyio
+# Real upstream MCP server processes: deselected on pull requests, run in v3-ci-batch.yml
+# (the `integration` marker, v3/pyproject.toml).
+pytestmark = [pytest.mark.anyio, pytest.mark.integration]
 
 BASE_URL = "https://testserver"
 SECRET = "sk-never-echo-this-back-8123"

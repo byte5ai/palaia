@@ -29,7 +29,13 @@ from pathlib import Path
 import pytest
 
 _CLAUDE = shutil.which("claude")
-pytestmark = pytest.mark.skipif(_CLAUDE is None, reason="claude CLI not on PATH")
+# Drives the real Claude Code CLI against a real hub process: deselected on
+# pull requests, run in v3-ci-batch.yml (the `integration` marker,
+# v3/pyproject.toml).
+pytestmark = [
+    pytest.mark.skipif(_CLAUDE is None, reason="claude CLI not on PATH"),
+    pytest.mark.integration,
+]
 
 _SERVER_SCRIPT = Path(__file__).parent / "_e2e_server.py"
 _STARTUP_TIMEOUT = 15.0

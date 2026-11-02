@@ -15,7 +15,7 @@ ___________  |  | _____  |__|____
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/byte5ai/palaia?include_prereleases&label=release)](https://github.com/byte5ai/palaia/releases)
-[![v3 CI](https://github.com/byte5ai/palaia/actions/workflows/v3-ci.yml/badge.svg)](https://github.com/byte5ai/palaia/actions/workflows/v3-ci.yml)
+[![v3 CI](https://github.com/byte5ai/palaia/actions/workflows/v3-ci-batch.yml/badge.svg?branch=main)](https://github.com/byte5ai/palaia/actions/workflows/v3-ci-batch.yml)
 [![Container image](https://img.shields.io/badge/image-ghcr.io%2Fbyte5ai%2Fpalaia--hub-blue?logo=docker&logoColor=white)](v3/deploy/README.md)
 
 [Get started](#get-started-in-60-seconds) · [What it does](#what-it-does-for-you) · [Docs](v3/site/docs/src/content/docs/index.md) · [How it works](v3/docs/how-it-works.md) · [Coming from v2?](v3/docs/migrate-from-v2.md)

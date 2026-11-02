@@ -23,7 +23,9 @@ from palaia_hub.upstream.models import UpstreamConfig
 from palaia_hub.upstream.secrets import SecretStore
 from palaia_hub.upstream.service import UpstreamService
 
-pytestmark = pytest.mark.anyio
+# Real upstream MCP server processes: deselected on pull requests, run in v3-ci-batch.yml
+# (the `integration` marker, v3/pyproject.toml).
+pytestmark = [pytest.mark.anyio, pytest.mark.integration]
 
 STDIO_SECRET = "stdio-secret-value-9182"
 

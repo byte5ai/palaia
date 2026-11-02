@@ -22,7 +22,12 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
 from webhook_receiver import LocalReceiver
+
+# Starts real hub processes: deselected on pull requests, run in v3-ci-batch.yml
+# (the `integration` marker, v3/pyproject.toml).
+pytestmark = pytest.mark.integration
 
 _STARTUP_TIMEOUT = 10.0
 _SHUTDOWN_TIMEOUT = 10.0

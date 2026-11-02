@@ -25,10 +25,13 @@ machine.
 
 | Check | Command | Where |
 |---|---|---|
-| The lockfile matches the manifests | `uv lock --check` | CI, every push |
-| Python advisories | `pip-audit` against the exported lockfile | CI, every push (advisory job) |
-| Node advisories, dashboard | `npm audit` in `v3/web` | CI, every push (advisory job) |
-| Node advisories, build tooling | `npm audit` in `v3/tools/build-mcpb` | CI, every push (advisory job) |
+| The lockfile matches the manifests | `uv lock --check` | CI, every pull request and every batch run |
+| Python advisories | `pip-audit` against the exported lockfile | CI batch run (advisory job) |
+| Node advisories, dashboard | `npm audit` in `v3/web` | CI batch run (advisory job) |
+| Node advisories, build tooling | `npm audit` in `v3/tools/build-mcpb` | CI batch run (advisory job) |
+
+The batch run is `v3-ci-batch.yml`, dispatched on `main` after a series of
+merges and required green before every release.
 
 The advisory job **reports without gating**, and that is a deliberate,
 uncomfortable choice: a third party publishing an advisory at 3am would

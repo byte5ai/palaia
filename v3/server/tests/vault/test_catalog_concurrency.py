@@ -27,7 +27,9 @@ from palaia_hub.vault import VaultEngine
 from palaia_hub.vault.doctor import VaultDoctor
 from palaia_hub.vault.models import Note
 
-pytestmark = pytest.mark.anyio
+# A stress run over racing threads: deselected on pull requests, run in v3-ci-batch.yml
+# (the `integration` marker, v3/pyproject.toml).
+pytestmark = [pytest.mark.anyio, pytest.mark.integration]
 
 
 class _CountingSink:
