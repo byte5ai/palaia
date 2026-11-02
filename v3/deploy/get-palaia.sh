@@ -132,12 +132,84 @@ else
     fi
     $SUDO systemctl enable --now tailscaled >/dev/null 2>&1 || true
     # After a reboot, start Docker only once tailscaled is up, so the container
-    # finds its tailnet address to bind to (issue #400).
+    # usually finds its tailnet address to bind to (issue #400). tailscaled
+    # being up does not mean the address is there, though: it needs the
+    # control server first. When it is late, Docker's start fails ("cannot
+    # assign requested address") and Docker never tries again — its restart
+    # policy covers a container that exits, not one that never started, and
+    # the failed start can leave it detached from its network. A small boot
+    # unit waits for the address, attaches the container again and repeats
+    # that one failed start (issue #614), without holding Docker up for other
+    # containers.
     if [ -d /etc/systemd/system ]; then
-        $SUDO mkdir -p /etc/systemd/system/docker.service.d
+        $SUDO mkdir -p /etc/systemd/system/docker.service.d /opt/palaia
         printf '[Unit]\nAfter=tailscaled.service\nWants=tailscaled.service\n' \
             | $SUDO tee /etc/systemd/system/docker.service.d/palaia-after-tailscale.conf >/dev/null
+        $SUDO tee /opt/palaia/start-on-tailnet.sh >/dev/null <<'PALAIA_START_ON_TAILNET'
+#!/bin/sh
+# palaia v3 — start the hub once its tailnet address is up (issue #614).
+#
+# Written by get-palaia.sh and run at boot by
+# palaia-start-on-tailnet@<container>.service. The container publishes its
+# port on this server's tailnet address only. If Docker starts it before
+# Tailscale has that address, the start fails with "cannot assign requested
+# address" and Docker does not retry. This waits until every address the
+# container binds to exists, then repeats exactly that failed start. A running
+# container, one stopped on purpose, and one that failed for another reason
+# are left alone.
+set -u
+NAME="${1:-palaia-hub}"
+INTERVAL="${PALAIA_START_INTERVAL:-5}"
+
+addresses_up() {
+    for addr in $(docker inspect --format '{{range $p, $b := .HostConfig.PortBindings}}{{range $b}}{{.HostIp}} {{end}}{{end}}' "$NAME" 2>/dev/null); do
+        case "$addr" in 0.0.0.0|127.*|*:*) continue ;; esac
+        ip -4 -o addr show 2>/dev/null | grep -q " inet ${addr}/" || return 1
+    done
+    return 0
+}
+
+# The failed start can leave the container detached from its network (seen
+# with Docker 29); a plain start would then run it without its published
+# ports. Attach it again first.
+reattach() {
+    mode="$(docker inspect --format '{{.HostConfig.NetworkMode}}' "$NAME" 2>/dev/null)" || return 0
+    case "$mode" in default) mode=bridge ;; ""|host|none|container:*) return 0 ;; esac
+    docker inspect --format '{{json .NetworkSettings.Networks}}' "$NAME" 2>/dev/null | grep -q "\"${mode}\"" && return 0
+    docker network connect "$mode" "$NAME" >/dev/null 2>&1 || true
+}
+
+while :; do
+    state="$(docker inspect --format '{{.State.Running}}|{{.State.Error}}' "$NAME" 2>/dev/null)" || exit 0
+    case "$state" in "true|"*) exit 0 ;; esac
+    if addresses_up; then
+        case "$state" in
+            *"cannot assign requested address"*)
+                reattach
+                if docker start "$NAME" >/dev/null 2>&1; then
+                    echo "started ${NAME}: its tailnet address is up"
+                    exit 0
+                fi
+                ;;
+            *) exit 0 ;;
+        esac
+    fi
+    sleep "$INTERVAL"
+done
+PALAIA_START_ON_TAILNET
+        $SUDO chmod 755 /opt/palaia/start-on-tailnet.sh
+        printf '%s\n' '[Unit]' \
+            'Description=Start palaia (%i) once its tailnet address is up' \
+            'After=docker.service tailscaled.service' \
+            'Wants=docker.service' \
+            '' '[Service]' \
+            'Type=simple' \
+            'ExecStart=/bin/sh /opt/palaia/start-on-tailnet.sh %i' \
+            '' '[Install]' \
+            'WantedBy=multi-user.target' \
+            | $SUDO tee /etc/systemd/system/palaia-start-on-tailnet@.service >/dev/null
         $SUDO systemctl daemon-reload >/dev/null 2>&1 || true
+        $SUDO systemctl enable "palaia-start-on-tailnet@${CONTAINER_NAME}.service" >/dev/null 2>&1 || true
     fi
 
     # The setup page is needed for a fresh join, and for cloud access too.
