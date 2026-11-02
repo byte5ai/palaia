@@ -54,6 +54,26 @@ die()  { err "$@"; exit 1; }
 SUDO=""
 [ "$(id -u)" = "0" ] || SUDO="sudo"
 
+# Tailscale's own installer ends with "Log in to start using Tailscale by
+# running: tailscale up". Here the setup page (or the key) does that login, and
+# a `tailscale up` typed in the console would start one outside palaia's flow.
+# So its output goes to a log and reaches the screen only when it fails; a
+# download that fails stops here instead of piping nothing into sh (issue #616).
+install_tailscale() {
+    ts_dir="$(mktemp -d)"
+    if ! curl -fsSL https://tailscale.com/install.sh -o "${ts_dir}/install.sh"; then
+        rm -rf "${ts_dir}"
+        die "could not download Tailscale's installer from tailscale.com. Check the network and run this again."
+    fi
+    if $SUDO sh "${ts_dir}/install.sh" >"${ts_dir}/install.log" 2>&1 && command -v tailscale >/dev/null 2>&1; then
+        rm -rf "${ts_dir}"
+        return 0
+    fi
+    err "installing Tailscale failed. Its last lines:"
+    tail -n 20 "${ts_dir}/install.log" | sed 's/^/    /' >&2
+    die "fix what they name and run this again (the whole log: ${ts_dir}/install.log)."
+}
+
 # --- Clean-up on every exit: the key file and a temporary firewall rule -------
 KEYFILE=""
 UFW_OPENED=0
@@ -128,7 +148,7 @@ if [ "${PALAIA_NO_TAILSCALE:-0}" = "1" ]; then
 else
     if ! command -v tailscale >/dev/null 2>&1; then
         log "installing Tailscale ..."
-        curl -fsSL https://tailscale.com/install.sh | $SUDO sh
+        install_tailscale
     fi
     $SUDO systemctl enable --now tailscaled >/dev/null 2>&1 || true
     # After a reboot, start Docker only once tailscaled is up, so the container
