@@ -41,16 +41,33 @@ store already supports, don't invent"). What each store already supports:
   notes, the YAML stores) is written via
   :func:`palaia_hub.vault.atomic.atomic_write_bytes` — a temp file plus
   ``os.replace`` — so a plain read mid-write can only ever see the complete
-  old content or the complete new content, never a torn mix. A vault's own
-  ``.git`` history is git's content-addressed object store, immutable once
-  written; only refs move, and a ref update is itself a single ``rename``.
+  old content or the complete new content, never a torn mix.
+* A vault's ``.git`` is one repository whose files must agree with each
+  other: every commit a ref names has to be in the archived object store
+  (issue #605 — a commit landing between "objects archived" and "refs
+  archived" used to restore as ``invalid sha1 pointer``). Two things git
+  itself guarantees make that hold here. Objects are written before the
+  ref that names them moves, and are never changed afterwards; so the
+  repository's refs, ``HEAD`` and the rest of its metadata are archived
+  *first* and its ``objects/`` *last* (:func:`_git_dir_walk`) — every
+  object an archived ref can reach already existed when the ref was read.
+  Objects only ever disappear through git's maintenance (``gc``: repack,
+  prune), and git serializes that through its own ``gc.pid`` lock; the
+  backup holds that lock for the time it reads one repository
+  (:func:`_git_maintenance_paused`), so a ``git gc`` started meanwhile —
+  the vault's automatic one or the doctor's — skips instead of deleting
+  objects out from under the archive. A commit made during the backup is
+  simply not in it, or its objects are present without a ref naming them,
+  which git treats as harmless.
 
-So every *individual* file in the archive is internally consistent. What is
-**not** claimed: that the archive is one atomic snapshot *across* stores —
-two different stores written to in the same second could land a heartbeat
-apart in the archive. For a personal single-hub deployment with no
-distributed transaction spanning multiple stores, that gap is not a real
-risk; it is written down here, not glossed over, exactly as the SPEC asks.
+So every *individual* file and every vault repository in the archive is
+internally consistent. What is **not** claimed: that the archive is one
+atomic snapshot *across* stores — two different stores written to in the
+same second could land a heartbeat apart in the archive, and a vault's notes
+can be a write ahead of or behind its history (the next write commits the
+difference). For a personal single-hub deployment with no distributed
+transaction spanning multiple stores, that gap is not a real risk; it is
+written down here, not glossed over, exactly as the SPEC asks.
 
 **Where it never touches disk.** The archive is built entirely in memory and
 on the wire: SQLite snapshots live in a Python ``bytes`` object just long
@@ -70,11 +87,12 @@ import contextlib
 import logging
 import os
 import queue
+import socket
 import sqlite3
 import tarfile
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from pathlib import Path
 
 from .index.db import INDEX_RELATIVE_PATH
@@ -109,6 +127,21 @@ _CHUNK_SIZE = 256 * 1024
 #: and not yet sent, so a slow client cannot make this module buffer an
 #: unbounded amount of a hub's data in memory.
 _QUEUE_DEPTH = 4
+
+#: How long a backup waits for a ``git gc`` already running in a vault before
+#: it gives up with a message (issue #605). A vault's gc takes seconds; this
+#: only bounds a pathological one.
+_GIT_GC_WAIT_SECONDS = 120.0
+_GIT_GC_POLL_SECONDS = 0.5
+
+#: git's own staleness rule for ``gc.pid`` (``builtin/gc.c``): a lock file
+#: older than this is ignored by every ``git gc``, so it is ignored here too.
+_GIT_GC_PID_STALE_SECONDS = 12 * 3600
+
+#: ``gc.pid.lock`` exists only for the instant git takes or hands over the gc
+#: lock. One this old is crash residue — and while it exists no ``git gc`` can
+#: start at all (git dies on it), so the backup needs no lock of its own.
+_GIT_GC_LOCKFILE_STALE_SECONDS = 10.0
 
 
 class BackupError(RuntimeError):
@@ -179,12 +212,16 @@ def _snapshot_sqlite(path: Path) -> bytes:
         source.close()
 
 
-def _sorted_walk(home: Path) -> Iterator[Path]:
+def _sorted_walk(home: Path) -> Generator[Path, None, None]:
     """Every directory and file under ``home``, deterministically ordered.
 
     ``followlinks=False``: a hub home never legitimately contains a symlink
     to outside itself, and following one could walk arbitrarily far off the
     home this archive is supposed to be scoped to.
+
+    A git repository (a vault's ``.git``) is not walked in plain order but by
+    :func:`_git_dir_walk` — metadata first, objects last, under git's gc
+    lock — see this module's docstring for why (issue #605).
     """
     for dirpath, dirnames, filenames in os.walk(home, followlinks=False):
         dirnames.sort()
@@ -193,41 +230,192 @@ def _sorted_walk(home: Path) -> Iterator[Path]:
             yield current
         for name in sorted(filenames):
             yield current / name
+        for name in [d for d in dirnames if _is_git_dir(current / d)]:
+            dirnames.remove(name)
+            yield from _git_dir_walk(current / name)
+
+
+def _plain_walk(top: Path, *, skip: Path | None = None) -> Iterator[Path]:
+    """Directories and files under ``top`` (not ``top`` itself), sorted, never
+    following a symlink and never entering ``skip``."""
+    for dirpath, dirnames, filenames in os.walk(top, followlinks=False):
+        current = Path(dirpath)
+        dirnames[:] = sorted(d for d in dirnames if current / d != skip)
+        if current != top:
+            yield current
+        for name in sorted(filenames):
+            yield current / name
+
+
+def _is_git_dir(path: Path) -> bool:
+    """A real (not symlinked) git directory: ``.git`` with an object store."""
+    return (
+        path.name == ".git"
+        and not path.is_symlink()
+        and (path / "objects").is_dir()
+        and (path / "HEAD").is_file()
+    )
+
+
+def _git_dir_walk(git_dir: Path) -> Generator[Path, None, None]:
+    """One repository's paths in the order that keeps it restorable.
+
+    Everything but ``objects/`` first — refs, ``HEAD``, ``packed-refs``,
+    config, logs — then ``objects/``, with git's maintenance held off for the
+    whole repository (:func:`_git_maintenance_paused`). Lock files (git's
+    in-flight ``*.lock``, the backup's own ``gc.pid``) and git's temporary
+    object files (``tmp_*``) are left out: they are not repository content,
+    and restoring one would only get in git's way.
+    """
+    objects = git_dir / "objects"
+    with _git_maintenance_paused(git_dir):
+        yield git_dir
+        for path in _plain_walk(git_dir, skip=objects):
+            if path.name.endswith(".lock") or path == git_dir / "gc.pid":
+                continue
+            yield path
+        yield objects
+        for path in _plain_walk(objects):
+            if path.name.startswith("tmp_"):
+                continue
+            yield path
+
+
+def _gc_holder(pidfile: Path, host: str) -> str | None:
+    """Who holds git's gc lock (``gc.pid``) right now, or ``None``.
+
+    Mirrors ``lock_repo_for_gc`` in git's ``builtin/gc.c``: a ``gc.pid``
+    counts while it is younger than 12 hours, names a process, and that
+    process is alive on this host — or the host is another machine, which
+    git gives the benefit of the doubt.
+    """
+    try:
+        age = time.time() - pidfile.stat().st_mtime
+        raw = pidfile.read_text(encoding="utf-8", errors="replace").strip()
+    except FileNotFoundError:
+        return None
+    if age > _GIT_GC_PID_STALE_SECONDS:
+        return None
+    pid_text, _, locking_host = raw.partition(" ")
+    if not pid_text.isdigit() or not locking_host:
+        return None
+    if locking_host != host:
+        return raw
+    try:
+        os.kill(int(pid_text), 0)
+    except ProcessLookupError:
+        return None
+    except PermissionError:
+        return raw
+    return raw
+
+
+def _take_gc_lock(git_dir: Path, mine: str, host: str) -> bool | None:
+    """Try once to take git's gc lock the way ``git gc`` does.
+
+    Returns ``True`` when the backup now holds ``gc.pid``, ``None`` when no
+    lock is needed because a stale ``gc.pid.lock`` already stops every
+    ``git gc`` from starting, and ``False`` when a gc is running or taking
+    the lock right now.
+    """
+    pidfile = git_dir / "gc.pid"
+    lockfile = git_dir / "gc.pid.lock"
+    try:
+        fd = os.open(lockfile, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    except FileExistsError:
+        try:
+            age = time.time() - lockfile.stat().st_mtime
+        except FileNotFoundError:
+            return False
+        if age >= _GIT_GC_LOCKFILE_STALE_SECONDS and _gc_holder(pidfile, host) is None:
+            return None
+        return False
+    committed = False
+    try:
+        if _gc_holder(pidfile, host) is not None:
+            return False
+        os.write(fd, mine.encode("utf-8"))
+        os.close(fd)
+        fd = -1
+        os.replace(lockfile, pidfile)
+        committed = True
+        return True
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        if not committed:
+            with contextlib.suppress(FileNotFoundError):
+                lockfile.unlink()
+
+
+@contextlib.contextmanager
+def _git_maintenance_paused(git_dir: Path) -> Iterator[None]:
+    """Hold git's own gc lock for the time the backup reads ``git_dir``.
+
+    Every ``git gc`` — the vault's automatic ``gc --auto`` and the doctor's
+    scheduled one — checks ``gc.pid`` first and skips (``--auto``) or refuses
+    while it names a live process. That is the only path by which objects
+    leave a vault's store, so holding it keeps every object the archived
+    refs reach on disk until the archive has read it (issue #605). A gc that
+    is already running is waited for, up to :data:`_GIT_GC_WAIT_SECONDS`.
+    """
+    host = socket.gethostname()
+    mine = f"{os.getpid()} {host}"
+    deadline = time.monotonic() + _GIT_GC_WAIT_SECONDS
+    while (held := _take_gc_lock(git_dir, mine, host)) is False:
+        if time.monotonic() >= deadline:
+            raise BackupError(
+                f"git maintenance is still running in {git_dir.parent.name}; "
+                "try the backup again in a few minutes"
+            )
+        time.sleep(_GIT_GC_POLL_SECONDS)
+    try:
+        yield
+    finally:
+        if held:
+            pidfile = git_dir / "gc.pid"
+            with contextlib.suppress(OSError):
+                if pidfile.read_text(encoding="utf-8") == mine:
+                    pidfile.unlink()
 
 
 def _add_tree(tar: tarfile.TarFile, home: Path) -> None:
     sqlite_bases: set[Path] = set()
-    for path in _sorted_walk(home):
-        rel = path.relative_to(home)
-        rel_posix = rel.as_posix()
-        if _is_excluded_index_path(rel_posix):
-            continue
-        if path.is_dir():
-            info = tar.gettarinfo(str(path), arcname=rel_posix)
-            tar.addfile(info)
-            continue
-        if path.is_symlink():
-            # No legitimate use in a hub home; never followed, never stored.
-            continue
-        if _looks_like_sqlite(path):
-            data = _snapshot_sqlite(path)
-            # The live file's owner, like every other member: a restore that
-            # keeps ownership (tar run as root, the documented way) must hand
-            # the database back to the user palaia runs as, not to root.
-            info = tar.gettarinfo(str(path), arcname=rel_posix)
-            info.size = len(data)
-            info.mode = 0o600
-            tar.addfile(info, _BytesReader(data))
-            sqlite_bases.add(path)
-            continue
-        base_name = _strip_sqlite_sibling_suffix(path.name)
-        if base_name != path.name and (path.parent / base_name) in sqlite_bases:
-            # Represented by the snapshot above — its pages are exactly
-            # what this write-ahead/journal file holds.
-            continue
+    with contextlib.closing(_sorted_walk(home)) as walk:
+        for path in walk:
+            _add_member(tar, home, path, sqlite_bases)
+
+
+def _add_member(tar: tarfile.TarFile, home: Path, path: Path, sqlite_bases: set[Path]) -> None:
+    rel_posix = path.relative_to(home).as_posix()
+    if _is_excluded_index_path(rel_posix):
+        return
+    if path.is_dir():
         info = tar.gettarinfo(str(path), arcname=rel_posix)
-        with path.open("rb") as handle:
-            tar.addfile(info, handle)
+        tar.addfile(info)
+        return
+    if path.is_symlink():
+        # No legitimate use in a hub home; never followed, never stored.
+        return
+    if _looks_like_sqlite(path):
+        data = _snapshot_sqlite(path)
+        # The live file's owner, like every other member: a restore that
+        # keeps ownership (tar run as root, the documented way) must hand
+        # the database back to the user palaia runs as, not to root.
+        info = tar.gettarinfo(str(path), arcname=rel_posix)
+        info.size = len(data)
+        info.mode = 0o600
+        tar.addfile(info, _BytesReader(data))
+        sqlite_bases.add(path)
+        return
+    base_name = _strip_sqlite_sibling_suffix(path.name)
+    if base_name != path.name and (path.parent / base_name) in sqlite_bases:
+        # Represented by the snapshot above — its pages are exactly what
+        # this write-ahead/journal file holds.
+        return
+    info = tar.gettarinfo(str(path), arcname=rel_posix)
+    with path.open("rb") as handle:
+        tar.addfile(info, handle)
 
 
 class _BytesReader:
