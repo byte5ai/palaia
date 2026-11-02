@@ -100,6 +100,9 @@ Expiry is advisory: an overdue vault stays readable and writable, and the hub
 doctor reports it (`ephemeral-expired`). Closing is always an explicit owner
 action and moves the whole vault directory (notes, git history, `.palaia/`)
 to `<hub home>/archive/vaults/<name>-<UTC timestamp>/` — nothing is deleted.
+The vault stays registered until that move is complete: if it fails (a full
+or read-only disk), the directory stays where it was and the vault keeps
+working as before, its tools, index and watcher included.
 Both keys are written only when the manifest is created; the engine never
 rewrites an existing manifest.
 

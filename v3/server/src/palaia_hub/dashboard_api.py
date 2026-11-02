@@ -39,6 +39,7 @@ an error — it is not a graph edge until the target note exists.
 from __future__ import annotations
 
 import dataclasses
+import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
@@ -85,6 +86,8 @@ from .vault.watcher import VaultWatcher
 # lock-in."). The welcome note's wikilink to itself would be silly, so the
 # example note links to it instead, demonstrating that a link works before
 # its target note is read again.
+logger = logging.getLogger("palaia_hub.dashboard_api")
+
 _TEMPLATE_NOTES: tuple[tuple[str, str], ...] = (
     (
         "Welcome to this memory",
@@ -583,10 +586,15 @@ def build_dashboard_router(
                     f"by hand."
                 ),
             )
-        if dynamic_gateway is not None and any(
-            v.key == vault_key for v in dynamic_gateway.config.vaults
-        ):
-            await dynamic_gateway.remove_vault(vault_key)
+        mount = (
+            next((v for v in dynamic_gateway.config.vaults if v.key == vault_key), None)
+            if dynamic_gateway is not None
+            else None
+        )
+        profile_paths: list[str] = []
+        if dynamic_gateway is not None and mount is not None:
+            profile_paths = await dynamic_gateway.remove_vault(vault_key)
+        curated = curator is not None and vault_key in curator.runners
         if curator is not None:
             curator.remove_vault(vault_key)
         watcher = watchers.pop(vault_key, None) if watchers is not None else None
@@ -595,8 +603,65 @@ def build_dashboard_router(
         index = indexes.pop(vault_key, None) if indexes is not None else None
         if index is not None:
             await index.close()
-        archived = await registry.archive(vault_key)
+        try:
+            archived = await registry.archive(vault_key)
+        except OSError as exc:
+            # Issue #609: the registry kept the vault; put back everything
+            # released above so it works exactly as before the attempt.
+            await _reattach(
+                vault_key,
+                mount,
+                profile_paths,
+                index=index is not None,
+                watcher=watcher is not None,
+                curated=curated,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f"could not move vault {vault_key!r} into the archive: {exc}. Nothing "
+                    f"was lost: the vault is still open and reachable, as before. Fix: "
+                    f"check the free space and permissions of {registry.archive_dir}, then "
+                    f"close it again."
+                ),
+            ) from exc
         return CloseVaultOut(key=vault_key, archived_to=str(archived))
+
+    async def _reattach(
+        vault_key: str,
+        mount: VaultMountConfig | None,
+        profile_paths: list[str],
+        *,
+        index: bool,
+        watcher: bool,
+        curated: bool,
+    ) -> None:
+        """Give a vault back the services :func:`close_vault` released, in the
+        order :func:`create_vault` attaches them. Each step is logged and
+        skipped on failure, so one broken service never keeps the others
+        from coming back."""
+        engine = await registry.get(vault_key)
+        reopened: VaultIndex | None = None
+        try:
+            if index and indexes is not None:
+                reopened = VaultIndex(engine)
+                await reopened.open()
+                reopened.start_findings_scan()
+                indexes[vault_key] = reopened
+            if watcher and watchers is not None:
+                restarted = VaultWatcher(engine)
+                await restarted.start()
+                watchers[vault_key] = restarted
+            if mount is not None and dynamic_gateway is not None:
+                if curated and curator is not None:
+                    await curator.add_vault(engine, mount)
+                await dynamic_gateway.add_vault(
+                    mount,
+                    EngineVaultService(engine, reopened),
+                    profile_paths=profile_paths or [DEFAULT_GATEWAY_PROFILE],
+                )
+        except Exception:
+            logger.exception("could not fully restore vault %s after a failed close", vault_key)
 
     @router.get("/api/vaults", response_model=list[VaultOut])
     async def list_vaults() -> list[VaultOut]:
