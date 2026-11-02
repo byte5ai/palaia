@@ -49,7 +49,11 @@ public-facing; nothing here prescribes design.
 - The jargon lint applies to all `.md` content — plain words, no protocol
   names in user-facing text.
 - `palaia.local` is the hub's real mDNS name (works only on the user's
-  home network) — not a placeholder, do not "fix" it into a domain.
+  home network) — not a placeholder, do not "fix" it into a domain. A
+  Docker install answers there with its port, `http://palaia.local:8420/`
+  (the container cannot listen on port 80; issues #619, #620), and only
+  when it runs on the host network — the Linux one-liner and compose do;
+  Docker Desktop cannot.
 
 ## Contact seam
 

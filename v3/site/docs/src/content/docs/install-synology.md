@@ -35,6 +35,15 @@ Container Manager's next step asks how you want to provide the project's setup. 
 #   cd v3/deploy && docker compose up -d
 #   docker compose logs -f      # prints the reachable URL on startup
 #
+# Then open http://palaia.local:8420/ from any device on the same network
+# (http://localhost:8420/ on this machine). The hub runs on the host network
+# so that name reaches your other devices — see v3/deploy/README.md, "mDNS".
+#
+# Docker Desktop (macOS/Windows) runs containers inside a hidden virtual
+# machine, where the host network is not your network. There: delete the
+# `network_mode: host` line and the PALAIA_CLOUD_BIND line below, remove the
+# `#` in front of the `ports:` block, and open http://localhost:8420/.
+#
 # Data (vault, index, config) lives in the `palaia_home` named volume, so it
 # survives `docker compose down` / container recreation — only
 # `docker compose down -v` discards it.
@@ -44,12 +53,15 @@ services:
     # final 3.0.0 release only. Until then, use `:beta` here.
     image: ghcr.io/byte5ai/palaia-hub:stable
     container_name: palaia-hub
-    ports:
-      - "8420:8420"
-      # The cloud entry — palaia's AI connection only, for a tunnel on this
-      # machine (Tailscale Funnel, cloudflared). Loopback: never reachable
-      # from another device.
-      - "127.0.0.1:8422:8422"
+    # The host network: the hub's own name announcement (palaia.local)
+    # reaches the local network only from here; Docker's bridge network does
+    # not forward it. Port 8420 answers on this machine's addresses exactly
+    # as a published `8420:8420` would.
+    network_mode: host
+    # Docker Desktop only (see the header): publish the ports instead.
+    # ports:
+    #   - "8420:8420"
+    #   - "127.0.0.1:8422:8422"
     volumes:
       - palaia_home:/data
     environment:
@@ -64,6 +76,12 @@ services:
       # store's own update button. Leave this as-is; it describes this
       # file, not a preference to change.
       PALAIA_DEPLOYMENT: compose
+      # The cloud entry — palaia's AI connection only, for a tunnel on this
+      # machine (Tailscale Funnel, cloudflared) — listens on loopback only:
+      # never reachable from another device. Docker Desktop: delete this
+      # line together with `network_mode: host` (the `ports:` block does
+      # the same there).
+      PALAIA_CLOUD_BIND: "127.0.0.1"
     restart: unless-stopped
     # SPEC-502 container posture. The image already runs as a non-root user
     # (see Dockerfile: `USER palaia`); this block closes what is left.
@@ -95,15 +113,6 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 3
-    # mDNS (advertising http://palaia.local) needs multicast to reach the
-    # LAN, which Docker's default bridge network does not forward. On a
-    # Linux host, uncomment the line below to put the container directly on
-    # the host's network stack so palaia.local resolves for other devices
-    # on the LAN. Not supported this way on Docker Desktop (macOS/Windows);
-    # the printed URL in `docker compose logs` always works there instead.
-    # When enabled, also remove the `ports:` mapping above — host
-    # networking exposes PALAIA_PORT directly.
-    # network_mode: host
 
 volumes:
   palaia_home:
@@ -136,7 +145,7 @@ You reached Container Manager just now through your NAS's own address in a brows
 http://<your-NAS-address>:8420
 ```
 
-The container also tries to advertise itself as `http://palaia.local` on your network, the same as every other install path — whether that resolves depends on how Synology's own networking handles it, the same caveat [Install it](/install/)'s network section covers for other setups. Either way, the address above always works.
+The compose file runs the container on the NAS's own network, so it also announces itself by name: `http://palaia.local:8420` opens it from your other devices too, the same as every other Linux install. Whether that name resolves depends on how your network handles it — some routers keep it from crossing between separate networks, the caveat [Install it](/install/#finding-it-on-your-network-palaialocal) covers. Either way, the address above always works.
 
 From there, a short setup wizard takes over — see [Get palaia running](/onboarding/) for what that looks like, or [Your first shared memory](/first-shared-memory/) for the full walkthrough once it's done.
 

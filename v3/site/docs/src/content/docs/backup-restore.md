@@ -210,11 +210,17 @@ docker run --rm \
                 chown -R 1000:1000 /data"
 
 docker run -d --name palaia-hub \
-  -p 8420:8420 -v palaia_home:/data --restart unless-stopped \
+  --network host -e PALAIA_CLOUD_BIND=127.0.0.1 \
+  -v palaia_home:/data --restart unless-stopped \
   --security-opt no-new-privileges:true --cap-drop ALL \
   --read-only --tmpfs /tmp --tmpfs /run \
   ghcr.io/byte5ai/palaia-hub:stable
 ```
+
+That last command is the Linux one. With Docker Desktop (macOS/Windows),
+start it again with the Docker Desktop command from [Install it](/install/)
+instead — the same, with `-p 8420:8420` in place of the `--network host`
+line.
 
 <!-- rc-channel-note -->
 > **Release candidate:** until `3.0.0` is final there is no `stable` image yet. Where a

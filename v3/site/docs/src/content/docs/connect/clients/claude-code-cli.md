@@ -12,7 +12,7 @@ Time: about one command · 1 min.
 Paste this into a terminal where the tool is already set up. It adds the connection; nothing else changes.
 
 ```bash
-claude mcp add --transport http palaia http://palaia.local/mcp/default --header "Authorization: Bearer <paste-your-token>"
+claude mcp add --transport http palaia http://palaia.local:8420/mcp/default --header "Authorization: Bearer <paste-your-token>"
 ```
 
 Replace `<paste-your-token>` with the token the dashboard shows when you click **Issue token** on its connect page — it is shown once, so copy it then. Every request needs it; without it the hub turns the tool away.
@@ -23,7 +23,7 @@ If you would rather not touch a terminal, paste this to the AI itself and let it
 
 ```text
 Please connect yourself to my palaia hub as an MCP server:
-http://palaia.local/mcp/default
+http://palaia.local:8420/mcp/default
 Send the header "Authorization: Bearer <paste-your-token>" with every request.
 Then run a test recall and tell me what you found.
 ```

@@ -73,13 +73,14 @@ function bashFences(text) {
 }
 
 /**
- * The three "one thing to paste" commands the onboarding page shows,
- * read from `v3/deploy/README.md`'s own "Quick start" section — the exact
- * three ```bash fences that section has always had, in order: the
- * `docker run` one-liner (with the SPEC-502 hardening flags), the
- * `docker compose up -d` pair, and the convenience `curl | bash` script.
- * Each is sanity-checked against a substring only that command could
- * contain, so a reordering (not just a removal) is caught too.
+ * The "one thing to paste" commands the onboarding page shows, read from
+ * `v3/deploy/README.md`'s own "Quick start" section — its four ```bash
+ * fences, in order: the Linux `docker run` one-liner (host network, so
+ * `palaia.local` reaches the local network — issue #619), the Docker
+ * Desktop one (the port published instead), the `docker compose up -d`
+ * pair, and the convenience `curl | bash` script. Each is sanity-checked
+ * against substrings only that command could contain, so a reordering (not
+ * just a removal) is caught too.
  */
 export function loadDeploySnippets() {
   const readmePath = path.join(DEPLOY_ROOT, "README.md");
@@ -87,16 +88,18 @@ export function loadDeploySnippets() {
   const fences = bashFences(readme);
 
   const checks = [
-    ["docker run", "docker run"],
-    ["cd v3/deploy && docker compose up -d", "docker compose up -d"],
-    ["curl -fsSL", "curl -fsSL"],
+    ["docker run", "--network host"],
+    ["docker run", "-p 8420:8420"],
+    ["cd v3/deploy && docker compose up -d"],
+    ["curl -fsSL"],
   ];
-  checks.forEach(([needle], index) => {
+  checks.forEach((needles, index) => {
     const fence = fences[index];
-    if (!fence || !fence.includes(needle)) {
+    const missing = needles.find((needle) => !fence || !fence.includes(needle));
+    if (missing !== undefined) {
       throw new Error(
         `deploy-snippets: expected ${readmePath}'s Quick start fence #${index} to contain ` +
-          `${JSON.stringify(needle)} — the section's shape changed; update this extractor ` +
+          `${JSON.stringify(missing)} — the section's shape changed; update this extractor ` +
           `to match (never hand-copy the command instead).`,
       );
     }
@@ -104,8 +107,9 @@ export function loadDeploySnippets() {
 
   return {
     dockerRun: fences[0],
-    compose: fences[1],
-    curlInstall: fences[2],
+    dockerRunDesktop: fences[1],
+    compose: fences[2],
+    curlInstall: fences[3],
   };
 }
 

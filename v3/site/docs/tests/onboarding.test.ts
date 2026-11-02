@@ -29,21 +29,53 @@ describe("onboarding page snippets", () => {
     // — the only way that can be true without maintaining a duplicate is
     // if the extractor actually pulled the text out of it.
     expect(readme).toContain(snippets.dockerRun);
+    expect(readme).toContain(snippets.dockerRunDesktop);
     expect(readme).toContain(snippets.compose);
     expect(readme).toContain(snippets.curlInstall);
   });
 
-  it("the docker run command matches docker-compose.yml's image and port", () => {
+  it("both docker run commands match docker-compose.yml's image and network (issue #619)", () => {
     const compose = readFileSync(path.join(DEPLOY_ROOT, "docker-compose.yml"), "utf8");
-    const { dockerRun } = loadDeploySnippets();
+    const { dockerRun, dockerRunDesktop } = loadDeploySnippets();
 
     const imageMatch = compose.match(/image:\s*(\S+)/);
     expect(imageMatch, "docker-compose.yml has an image: line").not.toBeNull();
     expect(dockerRun).toContain(imageMatch![1]);
+    expect(dockerRunDesktop).toContain(imageMatch![1]);
 
-    const portMatch = compose.match(/"(\d+):(\d+)"/);
-    expect(portMatch, "docker-compose.yml maps a port").not.toBeNull();
-    expect(dockerRun).toContain(`-p ${portMatch![1]}:${portMatch![2]}`);
+    // Linux: the host network, so palaia.local reaches the local network,
+    // with the cloud entry kept on loopback — the same as compose.
+    expect(compose).toMatch(/^\s+network_mode: host$/m);
+    expect(dockerRun).toContain("--network host");
+    const bind = compose.match(/PALAIA_CLOUD_BIND:\s*"([^"]+)"/);
+    expect(bind, "docker-compose.yml keeps the cloud entry on loopback").not.toBeNull();
+    expect(dockerRun).toContain(`-e PALAIA_CLOUD_BIND=${bind![1]}`);
+    expect(dockerRun).not.toContain("-p ");
+
+    // Docker Desktop: the port compose's own Docker Desktop block publishes.
+    const portMatch = compose.match(/#\s+-\s+"(\d+):(\d+)"/);
+    expect(portMatch, "docker-compose.yml documents the Docker Desktop ports").not.toBeNull();
+    expect(dockerRunDesktop).toContain(`-p ${portMatch![1]}:${portMatch![2]}`);
+    expect(dockerRunDesktop).not.toContain("--network host");
+  });
+
+  it("the Install it page shows the same two docker run commands", () => {
+    // install.md is hand-written prose around the commands; the commands
+    // themselves must be the README's, character for character.
+    const page = readFileSync(
+      path.join(process.cwd(), "src", "content", "docs", "install.md"),
+      "utf8",
+    );
+    const { dockerRun, dockerRunDesktop } = loadDeploySnippets();
+    expect(page).toContain(dockerRun);
+    expect(page).toContain(dockerRunDesktop);
+  });
+
+  it("the two docker run commands differ only in their network line", () => {
+    const { dockerRun, dockerRunDesktop } = loadDeploySnippets();
+    const rest = (command: string) =>
+      command.split("\n").filter((line) => !/--network host|-p 8420:8420/.test(line));
+    expect(rest(dockerRun)).toEqual(rest(dockerRunDesktop));
   });
 
   it("the compose command matches the real docker-compose.yml's own usage line", () => {
@@ -178,13 +210,14 @@ describe("onboarding page snippets", () => {
   });
 
   it("throws instead of returning an empty snippet if the source shape ever changes", () => {
-    // A cheap regression guard: the real file, today, always yields three
+    // A cheap regression guard: the real file, today, always yields four
     // non-empty fences in this order. If a future edit to README.md's
     // Quick start section reorders or removes one, this extractor's own
     // substring checks (see its module docstring) must fail loudly rather
     // than this test silently passing on empty strings.
     const snippets = loadDeploySnippets();
     expect(snippets.dockerRun.length).toBeGreaterThan(0);
+    expect(snippets.dockerRunDesktop.length).toBeGreaterThan(0);
     expect(snippets.compose.length).toBeGreaterThan(0);
     expect(snippets.curlInstall.length).toBeGreaterThan(0);
   });

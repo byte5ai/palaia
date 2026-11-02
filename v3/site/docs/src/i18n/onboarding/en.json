@@ -37,7 +37,7 @@
     "step2Body": "palaia joins a <em>tailnet</em> — a small private network of just your own devices (via <a href=\"https://tailscale.com/\">Tailscale</a>, free for personal use), so your hub is reachable from your phone and laptop but never from the open internet. You need a free Tailscale account and the Tailscale app on the device you will use. No key to create: just make up a setup code of 12 letters and digits, like <code>K7QM-R2XD-9FTP</code>. You type it once, on palaia's setup page.",
     "step3H3": "Paste this file, fill in your code, create the server",
     "step3Body": "Copy the file below into the provider's <strong>Cloud config</strong> / <strong>User data</strong> field. Change the one line it marks — <code>PALAIA_SETUP_CODE=\"setup-code-REPLACE_ME\"</code> near the top — to your code from step 2. Nothing else needs editing. Then create the server.",
-    "afterNote": "A few minutes after the server boots, open <code>http://&lt;server-address&gt;:8420/</code>, enter your code, click <strong>Connect with Tailscale</strong> and log in. The page shows your hub's private address and then closes itself for good. If it does not come up, the server's <code>/var/log/cloud-init-output.log</code> has the full log of what ran."
+    "afterNote": "A few minutes after the server boots, open <code>http://&lt;server-address&gt;:8420/</code>, enter your code, click <strong>Connect with Tailscale</strong> and log in. The page shows your hub's private address — usually <code>http://palaia-hub/</code> — and then closes itself for good. If it does not come up, the server's <code>/var/log/cloud-init-output.log</code> has the full log of what ran."
   },
   "existing": {
     "h2": "Already have a server? One command over SSH",
@@ -48,7 +48,7 @@
     "fine": "The developer options below install the same hub on any of these:",
     "machineRaspberry": "<strong>Raspberry Pi</strong> or another small always-on box — works today with 64-bit Raspberry Pi OS and Docker installed, then the Docker command below. A flash-and-boot card image that skips even those steps is <a href=\"https://github.com/byte5ai/palaia/issues/280\">planned and tracked in the open</a>.",
     "machineSynology": "<strong>Synology NAS</strong> — its Container Manager runs a Compose file as a \"project\"; no terminal on the NAS itself. See the <a href=\"%BASE%/install-synology/\">step-by-step Synology walkthrough</a>.",
-    "machineDesktop": "<strong>Mac or Windows</strong> — install <a href=\"https://www.docker.com/products/docker-desktop/\">Docker Desktop</a> once, then the Docker command below is the whole install. (Best for trying palaia out — for everyday use a box that stays on wins.)"
+    "machineDesktop": "<strong>Mac or Windows</strong> — install <a href=\"https://www.docker.com/products/docker-desktop/\">Docker Desktop</a> once, then the Docker Desktop command below is the whole install. (Best for trying palaia out — for everyday use a box that stays on wins.)"
   },
   "dev": {
     "h2": "For developers: Docker & Compose",
@@ -58,7 +58,8 @@
     "tabCompose": "Compose file",
     "tabStores": "Self-hosting app stores",
     "dockerH3": "One command",
-    "dockerBody": "With Docker installed (Docker Desktop on macOS/Windows, or Docker Engine on Linux), this is the whole install:",
+    "dockerBody": "On a Linux machine with Docker Engine (a home server, a NAS, a Raspberry Pi), this is the whole install — palaia then answers at http://palaia.local:8420/ from every device on your network:",
+    "dockerDesktopBody": "With Docker Desktop on macOS or Windows, use this one instead and open http://localhost:8420/ on that computer — from inside Docker Desktop a name like palaia.local cannot reach your network:",
     "curlFine": "Want a script that installs Docker and Tailscale for you and prints the address at the end? That is the <a href=\"#already-have-a-server\">one command over SSH</a> above — <code>curl … get.palaia.ai | sh</code>.",
     "composeH3": "A file you keep",
     "composeBody": "Prefer a config file you can edit and check in, or already run other containers this way? Clone the repository and start it with Compose:",
@@ -70,7 +71,7 @@
   },
   "open": {
     "h2": "Then open your hub",
-    "body": "On a cloud or SSH setup, open <code>http://&lt;your-tailnet-address&gt;:8420/</code> from any device on your tailnet (the setup prints the address when it finishes). On a machine on your own network, open <code>http://palaia.local</code> — or, if that address does not resolve yet (some setups need one network flag; see <a href=\"%BASE%/install/#finding-it-on-your-network-palaialocal\">Install it</a> for the one-line fix), the <code>http://&lt;host&gt;:8420</code> address printed to the container's own log, which always works."
+    "body": "On a cloud or SSH setup, open the address the setup printed when it finished — usually <code>http://palaia-hub/</code> — from any device on your tailnet. On a Linux machine on your own network, open <code>http://palaia.local:8420/</code> from any device there — or, if that name does not resolve (some networks block it; see <a href=\"%BASE%/install/#finding-it-on-your-network-palaialocal\">Install it</a>), the <code>http://&lt;host&gt;:8420</code> address printed to the container's own log, which always works. With Docker Desktop, open <code>http://localhost:8420/</code>."
   },
   "wizard": {
     "h2": "The wizard takes over",

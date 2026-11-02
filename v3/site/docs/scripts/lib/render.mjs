@@ -5,10 +5,10 @@
 // protocol name outside a code span, "your memory" rather than the
 // in-house word for it, "sign in" rather than the standard's name.
 
-// A real address the wizard actually assigns by default (MASTERPLAN §9:
-// mDNS puts the dashboard at http://palaia.local) — a placeholder that
-// reads as genuine rather than <your-hub-address>.
-export const PLACEHOLDER_ORIGIN = "http://palaia.local";
+// A real address a hub on your own network actually answers at (the
+// container's name announcement, with its port: issue #619) — a
+// placeholder that reads as genuine rather than <your-hub-address>.
+export const PLACEHOLDER_ORIGIN = "http://palaia.local:8420";
 export const PLACEHOLDER_PROFILE = "default";
 export const PLACEHOLDER_ISSUER = "https://palaia.example.com";
 

@@ -173,6 +173,12 @@ const STORES = [
           <button type="button" class="op-copy" data-copy-target="op-code-docker">{t.ai.copy}</button>
         </div>
         <code id="op-code-docker" class="op-copy-source" hidden>{snippets.dockerRun}</code>
+        <p>{t.dev.dockerDesktopBody}</p>
+        <div class="op-snippet">
+          <pre><code>{snippets.dockerRunDesktop}</code></pre>
+          <button type="button" class="op-copy" data-copy-target="op-code-docker-desktop">{t.ai.copy}</button>
+        </div>
+        <code id="op-code-docker-desktop" class="op-copy-source" hidden>{snippets.dockerRunDesktop}</code>
         <p class="op-fine" set:html={html(t.dev.curlFine)} />
       </section>
 

@@ -143,11 +143,16 @@ drop the cloud entry.
 docker rm -f palaia-hub          # stop, if it exists
 # (unpack step above)
 docker run -d --name palaia-hub \
-  -p 8420:8420 -v palaia_home:/data --restart unless-stopped \
+  --network host -e PALAIA_CLOUD_BIND=127.0.0.1 \
+  -v palaia_home:/data --restart unless-stopped \
   --security-opt no-new-privileges:true --cap-drop ALL \
   --read-only --tmpfs /tmp --tmpfs /run \
   ghcr.io/byte5ai/palaia-hub:stable
 ```
+
+That is the Linux one-liner (`v3/deploy/README.md`, Quick start); with
+Docker Desktop use its `-p 8420:8420` variant instead of the
+`--network host` line.
 
 ### Compose variant
 
