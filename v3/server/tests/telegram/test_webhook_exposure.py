@@ -29,6 +29,7 @@ from palaia_hub.app import create_app
 from palaia_hub.config import DashboardSettings, HubConfig, OAuthSettings
 from palaia_hub.oauth import AuthorizationServer, set_owner_password
 from palaia_hub.oauth.login import SESSION_COOKIE
+from palaia_hub.static import WEB_DIST_ENV
 from palaia_hub.telegram.models import TelegramSettings
 from palaia_hub.telegram.runtime import TelegramRuntime
 from palaia_hub.telegram.service import TelegramService
@@ -141,15 +142,72 @@ def test_the_webhook_is_secret_gated_not_session_gated(tmp_path: Path) -> None:
     assert len(vault.captures) == 1
 
 
-@pytest.mark.parametrize("path", ["/telegram/webhook/nobody", "/telegram/elsewhere"])
-def test_an_unknown_telegram_path_is_a_plain_404(tmp_path: Path, path: str) -> None:
-    app, server = _gated_app(tmp_path, _runtime(FakeVault()))
+SHELL_MARKER = "<!doctype html><title>palaia dashboard shell</title>"
+
+
+@pytest.fixture(params=["no dashboard", "built dashboard"])
+def dashboard(
+    request: pytest.FixtureRequest, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> bool:
+    """Both ways a hub runs (issue #611): a checkout without a dashboard
+    build, and the packaged image, which always has one. Set explicitly,
+    so the outcome never depends on whether ``v3/web/dist`` happens to
+    exist in the checkout running the tests."""
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    built = request.param == "built dashboard"
+    if built:
+        (dist / "index.html").write_text(SHELL_MARKER, encoding="utf-8")
+    monkeypatch.setenv(WEB_DIST_ENV, str(dist))
+    return built
+
+
+@pytest.mark.parametrize("path", ["/telegram/webhook/nobody", "/telegram/webhook"])
+def test_an_unknown_webhook_path_is_a_plain_404(tmp_path: Path, dashboard: bool, path: str) -> None:
+    """Under ``/telegram/webhook`` only a configured bot answers. Anything
+    else there is a plain 404 — with or without a dashboard build, and
+    never the dashboard shell — even carrying the real secret."""
+    vault = FakeVault()
+    app, server = _gated_app(tmp_path, _runtime(vault))
     try:
         with TestClient(app) as client:
-            response = client.post(path, json={}, headers={SECRET_HEADER: HOOK_SECRET})
+            posted = client.post(path, json={}, headers={SECRET_HEADER: HOOK_SECRET})
+            fetched = client.get(path)
     finally:
         server.store.close()
-    assert response.status_code == 404
+    assert posted.status_code == 404
+    # A GET is refused too: 405 where the bot route's pattern matches but
+    # only takes POST (no dashboard to try next), 404 otherwise.
+    assert fetched.status_code in (404, 405)
+    assert SHELL_MARKER not in fetched.text
+    assert vault.captures == []
+
+
+def test_another_telegram_path_is_a_dashboard_address(tmp_path: Path, dashboard: bool) -> None:
+    """Only ``/telegram/webhook`` is a backend surface (``static.py``);
+    ``/telegram`` and below are dashboard addresses (issue #570: ``/telegram``
+    redirects to Settings › Telegram, and the dashboard shows its own
+    not-found page for the rest). So a POST there never reaches the
+    webhook: with a build the dashboard refuses the method, without one
+    nothing is there at all."""
+    vault = FakeVault()
+    app, server = _gated_app(tmp_path, _runtime(vault))
+    try:
+        with TestClient(app) as client:
+            posted = client.post(
+                "/telegram/elsewhere", json={}, headers={SECRET_HEADER: HOOK_SECRET}
+            )
+            fetched = client.get("/telegram/elsewhere")
+    finally:
+        server.store.close()
+    assert vault.captures == []
+    if dashboard:
+        assert posted.status_code == 405
+        assert fetched.status_code == 200
+        assert fetched.text == SHELL_MARKER
+    else:
+        assert posted.status_code == 404
+        assert fetched.status_code == 404
 
 
 # ------------------------------------------ bad secrets are throttled (cloud)
