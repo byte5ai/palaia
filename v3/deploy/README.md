@@ -144,8 +144,8 @@ machine's tailnet name — `palaia`, or `palaia-1` when the name is
 taken. The installer also publishes the hub on port 80 of the tailnet address
 (`-p <tailnet-address>:80:8420`, next to `:8420`), so the address is
 `http://palaia/`; the full name (`palaia.<tailnet>.ts.net`) is printed
-next to it. Docker's forwarding keeps each caller's own tailnet address, so the
-hub's per-device sign-in limits stay per device, and the container needs no
+next to it. Docker forwards the port in the kernel, so each caller keeps its
+own tailnet address (see the next paragraph) and the container needs no
 extra permission for it. It does so only when nothing listens on port 80 there
 yet (checked with `ss` before the start; a listener on every address counts,
 one on another single address such as `127.0.0.1:80` does not). When port 80 is
@@ -154,6 +154,20 @@ says why; with MagicDNS off it is the tailnet IP and port, with the reason too.
 The boot unit below starts the same container, so the publish survives reboots.
 Open that address for the first sign-in: palaia issues its sign-in for the
 address it was first set up at.
+
+**Each device keeps its own address** (issue #621). Tailscale marks every
+packet it forwards from `tailscale0` and masquerades marked packets on the way
+out (its subnet-router SNAT, on by default). Whenever its rule comes before
+Docker's in the forward chain — after every restart or update of `tailscaled`
+— the hub would see every device as the Docker bridge's address, and its limit
+on failed sign-ins would count all of them together. The installer therefore
+writes `/opt/palaia/tailnet-source-palaia.nft`, an nftables table of its own
+(`ip palaia_source_palaia`) that clears Tailscale's mark for palaia's published
+ports on the tailnet address only, and loads it now and at every boot with
+`palaia-tailnet-source@palaia.service`. Tailscale's settings stay as they are,
+and so does everything else it forwards: an exit node or subnet routes on the
+same server still get its SNAT. The installer adds the `nftables` package if
+`nft` is missing; when it cannot, it says so and goes on.
 
 **Where the data lives.** Same as every other install path: the
 `palaia_home` named Docker volume, holding everything under `/data`

@@ -51,6 +51,13 @@ the `:beta` channel.
   loopback address, as it already did on the tailnet path. (#619)
 - Port 80 on the Pi keeps each device's own address, so the limit on
   failed sign-ins still counts per device there.
+- **Every device on your tailnet keeps its own address.** After a restart or
+  update of Tailscale on the server, palaia saw all tailnet devices under one
+  address, so with cloud access on, ten failed sign-ins from one device locked
+  every device out for up to a minute. The installer now adds a firewall rule
+  of its own that keeps each device's address for palaia's ports, and loads
+  it at every boot; Tailscale's own settings stay as they are. Earlier
+  candidates had this too. (#621)
 
 ## 3.0.0-rc7 — 2026-11-02 (release candidate)
 
