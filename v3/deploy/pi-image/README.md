@@ -7,14 +7,14 @@ image, boot, open the browser. No terminal.
 This is packaging only — nothing here changes the hub product itself. It
 takes the exact container image [`v3/deploy/`](../) already ships
 (`ghcr.io/byte5ai/palaia-hub:stable`) and preinstalls it, Docker, the
-`palaia.service` unit and a port-80 forwarder onto Raspberry Pi OS Lite.
+`palaia.service` unit and a port-80 redirect onto Raspberry Pi OS Lite.
 
 ## What the image ships
 
 - **Raspberry Pi OS Lite (arm64)**, unmodified except for what's below —
   see [Base image](#base-image) for exactly which build and why.
 - **Docker** (`docker.io` from the base image's own apt archive), enabled
-  at boot.
+  at boot, and **nftables** (the `nft` tool for the port-80 redirect).
 - **`palaia.service`** ([`systemd/palaia.service`](systemd/palaia.service)),
   enabled at boot: runs `ghcr.io/byte5ai/palaia-hub:stable` with
   `--network host` and the exact same [SPEC-502 hardening
@@ -22,7 +22,11 @@ takes the exact container image [`v3/deploy/`](../) already ships
   (`--security-opt no-new-privileges:true --cap-drop ALL --read-only
   --tmpfs /tmp --tmpfs /run`) — one posture, never a forked copy (checked
   by `server/tests/deploy/test_pi_image.py`, the same drift-test pattern
-  `test_cloud_init.py` already applies to `cloud-init.yaml`).
+  `test_cloud_init.py` already applies to `cloud-init.yaml`). On the host
+  network the container's cloud entry (port 8422, the door a public tunnel
+  points at) would listen on every address of the Pi, so the unit sets
+  `PALAIA_CLOUD_BIND=127.0.0.1`: a tunnel reaches it on loopback, nothing
+  on the LAN does.
 - **mDNS**: the container's own announcer
   ([`mdns_announce.py`](../mdns_announce.py)) reaches the LAN because
   `palaia.service` runs the container on the host network stack — a Pi
@@ -30,22 +34,28 @@ takes the exact container image [`v3/deploy/`](../) already ships
   desktop-Docker caveats `docker-compose.yml`'s own `network_mode: host`
   comment documents for a shared machine. First boot: open
   `http://palaia.local/` (or `http://palaia.local:8420/`).
-- **Port 80 → 8420** (issue #620): `palaia-http.socket` binds port 80 on
-  the Pi and `palaia-http.service` forwards each connection to the hub's
-  own port 8420 (`systemd-socket-proxyd`, part of the base image's
-  systemd), so `http://palaia.local/` works without a port. It lives on
-  the box, outside the container: the container still runs non-root with
-  every capability dropped and cannot bind a port below 1024 itself — the
-  same split OctoPi uses (OctoPrint on 5000, port 80 in front of it). The
-  forwarder holds no privilege either (systemd binds the port and hands it
-  over; the proxy runs as a throwaway user in a tight sandbox). The
-  socket starts after the rest of the boot, so a web server you install
-  on the Pi yourself keeps port 80; the forwarder then just doesn't start
-  and the hub stays on `:8420`. Neither unit depends on the other. One
-  side effect: connections through port 80 reach the hub from the Pi's own
-  loopback, so the hub's failed-sign-in limit counts all of them as one
-  caller (`palaia_hub.security.client_ip`); `:8420` still sees each
-  device's own address.
+- **Port 80 → 8420** (issue #620): after the rest of the boot,
+  `palaia-http-redirect.service` runs
+  [`http-redirect.sh`](http-redirect.sh), which adds a kernel redirect of
+  incoming TCP port 80 to the hub's own port 8420, so `http://palaia.local/`
+  works without a port. It lives on the box, outside the container: the
+  container still runs non-root with every capability dropped and cannot
+  bind a port below 1024 itself — the same split OctoPi uses (OctoPrint on
+  5000, port 80 in front of it). A redirect rather than a proxy, because the
+  hub then still sees each device's own address, which its failed-sign-in
+  limit is keyed on (SPEC-502); through a proxy every caller would share
+  one limit. The rule sits in an nftables table of its own (`inet
+  palaia_http`, IPv4 and IPv6 in one rule, only for traffic addressed to
+  the Pi), never touches Docker's rules, and `systemctl stop
+  palaia-http-redirect` removes it as a whole. If something already
+  listens on port 80 at that point — a web server you installed on the Pi
+  yourself — the script leaves port 80 alone and logs one line saying so;
+  the hub stays on `:8420`. Neither unit depends on the other.
+  `nftables.service` stays disabled (Debian's default): its stock
+  `/etc/nftables.conf` flushes the whole ruleset, Docker's rules included.
+  IPv6 note: nginx in the container listens on IPv4 only, so a redirected
+  IPv6 connection is refused just as it was before; `palaia.local` is
+  announced with its IPv4 address only.
 - **The same `:stable` release channel** the container has always had
   (SPEC-501) — `PALAIA_CHANNEL` is baked into the image at
   `v3-release.yml`'s build time, read back by `GET /api/update/check`.
@@ -78,8 +88,8 @@ automatically.
 What `build.sh` actually proves, and what it doesn't:
 
 - **Proven, and checked by CI on every run**: the *customization step*
-  (installing Docker, dropping in `palaia.service` and the port-80
-  forwarder, enabling/disabling units) is deterministic. `build.sh` runs that step twice, against two
+  (installing Docker and nftables, dropping in `palaia.service` and the
+  port-80 redirect, enabling/disabling units) is deterministic. `build.sh` runs that step twice, against two
   independent copies of the same checksum-verified base image, and diffs
   a sha256 manifest of the resulting rootfs (every file's path and
   content hash, excluding the handful of paths that are legitimately
@@ -139,8 +149,10 @@ run of `.github/workflows/v3-pi-image.yml` (never on a PR — this is slow):
 1. **Reproducibility** — `build.sh`'s own double-build-and-diff, above.
 2. **Rootfs inspection** (`inspect.sh`, loop-mounted read-only) — Docker
    enabled, `palaia.service` enabled and running the `:stable` image with
-   host networking, `palaia-http.socket` enabled on port 80 and forwarding
-   to `127.0.0.1:8420`, SSH not enabled and no `/boot` ssh marker file.
+   host networking and its cloud entry on loopback,
+   `palaia-http-redirect.service` enabled and redirecting port 80 to 8420
+   only when port 80 is free, `nft` present and `nftables.service` off, SSH
+   not enabled and no `/boot` ssh marker file.
 3. **Size budget** — the compressed image against the number above.
 
 What CI *cannot* verify — the image never actually boots in CI, on real

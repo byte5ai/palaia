@@ -40,6 +40,10 @@ http {
     server {
         listen ${PUBLIC_PORT};
         server_name _;
+        # Issue #620: nginx's own redirects (a directory without its trailing
+        # slash) stay relative. Absolute, they would name this listener's port
+        # (8420) to a browser that came in on port 80.
+        absolute_redirect off;
 
         # Everything the hub owns today (SPEC-101: /api/health, /api/info;
         # SPEC-105 onward: the MCP mount point) is proxied straight through.

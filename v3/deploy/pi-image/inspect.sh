@@ -2,8 +2,8 @@
 # SPEC-603 acceptance: "rootfs inspection assertions green" — loop-mounts a
 # built (uncompressed) .img read-only and checks the four things the SPEC
 # names: Docker enabled, palaia unit enabled, mDNS on, SSH off — plus the
-# port-80 forwarder of issue #620. Exits non-zero with a clear reason on the
-# first assertion that fails.
+# port-80 redirect of issue #620 and the cloud entry kept on loopback.
+# Exits non-zero with a clear reason on the first assertion that fails.
 #
 # Usage: sudo ./inspect.sh /path/to/palaia-appliance.img
 set -euo pipefail
@@ -84,26 +84,42 @@ if grep -rq 'PALAIA_MDNS_ENABLED=0' "${ROOTFS}/etc/systemd/system/" 2>/dev/null;
 fi
 pass "mDNS announcer is on (host networking, not disabled)"
 
-# --- Port 80 forwarder (issue #620) -----------------------------------------
-# http://palaia.local/ without a port: palaia-http.socket binds port 80 on
-# the box and palaia-http.service forwards to the container's 8420. Both
-# live outside the container, which keeps its hardening untouched.
-HTTP_SOCKET="${ROOTFS}/etc/systemd/system/palaia-http.socket"
-HTTP_SERVICE="${ROOTFS}/etc/systemd/system/palaia-http.service"
-[ -f "${HTTP_SOCKET}" ] || fail "palaia-http.socket unit file is missing — nothing answers on port 80"
-[ -f "${HTTP_SERVICE}" ] || fail "palaia-http.service unit file is missing — port 80 would accept and never forward"
-if [ -L "${ROOTFS}/etc/systemd/system/multi-user.target.wants/palaia-http.socket" ]; then
-    pass "palaia-http.socket is enabled (multi-user.target.wants symlink present)"
+# --- Port 80 redirect (issue #620) -----------------------------------------
+# http://palaia.local/ without a port: palaia-http-redirect.service adds a
+# kernel redirect of incoming port 80 to the container's 8420 (nftables,
+# its own table) unless something else already listens on port 80. It lives
+# outside the container, which keeps its hardening untouched.
+REDIRECT_UNIT="${ROOTFS}/etc/systemd/system/palaia-http-redirect.service"
+REDIRECT_SCRIPT="${ROOTFS}/usr/local/lib/palaia/http-redirect"
+[ -f "${REDIRECT_UNIT}" ] || fail "palaia-http-redirect.service unit file is missing — nothing leads port 80 to the hub"
+[ -x "${REDIRECT_SCRIPT}" ] || fail "/usr/local/lib/palaia/http-redirect is missing or not executable"
+if [ -L "${ROOTFS}/etc/systemd/system/multi-user.target.wants/palaia-http-redirect.service" ]; then
+    pass "palaia-http-redirect.service is enabled (multi-user.target.wants symlink present)"
 else
-    fail "palaia-http.socket is not enabled — no multi-user.target.wants symlink found"
+    fail "palaia-http-redirect.service is not enabled — no multi-user.target.wants symlink found"
 fi
-grep -qx 'ListenStream=80' "${HTTP_SOCKET}" \
-    || fail "palaia-http.socket does not listen on port 80"
-grep -qx 'ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8420' "${HTTP_SERVICE}" \
-    || fail "palaia-http.service does not forward to the hub on 127.0.0.1:8420"
-[ -x "${ROOTFS}/usr/lib/systemd/systemd-socket-proxyd" ] \
-    || fail "systemd-socket-proxyd is missing from the image — palaia-http.service cannot start"
-pass "port 80 forwards to the hub (palaia-http.socket → 127.0.0.1:8420)"
+grep -qF 'fib daddr type local tcp dport 80 redirect to :${HUB_PORT}' "${REDIRECT_SCRIPT}" \
+    || fail "the http-redirect script no longer redirects incoming port 80"
+grep -qx 'HUB_PORT=8420' "${REDIRECT_SCRIPT}" \
+    || fail "the http-redirect script does not redirect to the hub's port 8420"
+grep -qF "ss -Hltn 'sport = :80'" "${REDIRECT_SCRIPT}" \
+    || fail "the http-redirect script no longer checks whether port 80 is taken"
+[ -x "${ROOTFS}/usr/sbin/nft" ] || fail "nft is missing from the image — nftables did not install"
+[ -x "${ROOTFS}/usr/bin/ss" ] || [ -x "${ROOTFS}/bin/ss" ] || fail "ss is missing from the image"
+# Debian's nftables.service loads /etc/nftables.conf, which starts with
+# `flush ruleset` — it would wipe Docker's rules and this redirect.
+if [ -L "${ROOTFS}/etc/systemd/system/sysinit.target.wants/nftables.service" ] \
+    || [ -L "${ROOTFS}/etc/systemd/system/multi-user.target.wants/nftables.service" ]; then
+    fail "nftables.service is enabled — its default config flushes the whole ruleset"
+fi
+pass "port 80 leads to the hub (palaia-http-redirect.service → :8420, nftables.service off)"
+
+# --- Cloud entry on loopback only ---------------------------------------------
+# On the host network the container's cloud entry (8422) must not listen on
+# the Pi's LAN addresses; a tunnel reaches it on loopback.
+grep -q -- '-e PALAIA_CLOUD_BIND=127.0.0.1' "${PALAIA_UNIT}" \
+    || fail "palaia.service does not keep the cloud entry on loopback (PALAIA_CLOUD_BIND=127.0.0.1)"
+pass "the cloud entry listens on loopback only"
 
 # --- SSH off -----------------------------------------------------------------
 if [ -L "${ROOTFS}/etc/systemd/system/multi-user.target.wants/ssh.service" ] \

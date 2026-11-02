@@ -118,6 +118,35 @@ def test_the_proxy_forwards_the_host_header_with_its_port() -> None:
     assert "proxy_set_header Host $host;" not in text
 
 
+def _directives(text: str) -> list[str]:
+    """Directive lines, comments dropped (they may mention directives)."""
+    return [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+
+
+def test_nginx_own_redirects_on_the_private_door_stay_relative() -> None:
+    """Issue #620: a browser that reached the hub on port 80 (the Pi image's
+    redirect, the tailnet's `tailscale serve --http=80`) must never be sent
+    to `:8420` by a redirect nginx makes itself — with `absolute_redirect`
+    on (nginx's default), the Location names this listener's port."""
+    outside, _ = _blocks()
+    assert "absolute_redirect off;" in _directives(outside)
+
+
+def test_the_template_issues_no_redirect_that_needs_an_absolute_location() -> None:
+    """`absolute_redirect off` only stays harmless while nothing in the
+    template builds its own redirect target. The hub's redirects pass through
+    the proxy unchanged (only a Location starting with the `proxy_pass` URL is
+    rewritten, `proxy_redirect default`)."""
+    directives = _directives(TEMPLATE.read_text(encoding="utf-8"))
+    assert not [d for d in directives if re.match(r"return\s+30[12378]\b", d)]
+    assert not [d for d in directives if d.startswith("rewrite ")]
+    assert not [d for d in directives if d.startswith("proxy_redirect ")]
+
+
 def _forwarded_proto_map() -> dict[str, str]:
     """The `map` that picks the private door's `X-Forwarded-Proto`, as written."""
     text = TEMPLATE.read_text(encoding="utf-8")

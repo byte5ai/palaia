@@ -21,9 +21,15 @@ Type=simple
 # see install.sh's own comment) — server/tests/deploy/test_pi_image.py
 # checks this file for drift against install.sh the same way
 # test_cloud_init.py already does for cloud-init.yaml.
+#
+# PALAIA_CLOUD_BIND=127.0.0.1: on the host network the container's cloud
+# entry (port 8422, the one door a public tunnel points at) would otherwise
+# listen on every address of this Pi. A tunnel reaches it on loopback, so
+# that is the only address it listens on.
 ExecStartPre=-/usr/bin/docker rm -f palaia-hub
 ExecStart=/usr/bin/docker run --rm --name palaia-hub \
     --network host \
+    -e PALAIA_CLOUD_BIND=127.0.0.1 \
     -v palaia_home:/data \
     --security-opt no-new-privileges:true \
     --cap-drop ALL \

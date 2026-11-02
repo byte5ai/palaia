@@ -72,12 +72,16 @@ the Pi's IP address directly (visible on your router's client list, or a
 monitor plugged into the Pi) as a fallback, with and without `:8420`.
 
 If `:8420` answers but `http://palaia.local/` does not, the port-80
-forwarder is the suspect: record `systemctl status palaia-http.socket
-palaia-http.service` (SSH or monitor+keyboard) and file it.
+redirect is the suspect: record `systemctl status palaia-http-redirect`
+and `sudo nft list table inet palaia_http` (SSH or monitor+keyboard) and
+file it.
 
 Also check, once the wizard has loaded at `http://palaia.local/`: the
-address bar still shows no port after the wizard's own redirects, and the
-connect page's MCP address reads `http://palaia.local/mcp/…` (no `:8420`).
+address bar still shows no port after the wizard's own redirects, the
+connect page's MCP address reads `http://palaia.local/mcp/…` (no `:8420`),
+and the page load shows up in `docker logs palaia-hub` (nginx's access
+lines) with your device's own address, not `127.0.0.1` — the hub's
+failed-sign-in limit depends on it.
 
 ## Resource measurements (feeds #280 + the HA add-on decision)
 
