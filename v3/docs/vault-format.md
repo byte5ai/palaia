@@ -434,6 +434,11 @@ Rules:
 - `[entity]` and `[why]` are MANDATORY — a capture missing either is routed to
   `review/` by the curator, never guessed at.
 - `capture_id` = `"cap-" + sha256(permalink)[:10]`, engine-derived if absent.
+  A capture permalink is used once per vault: a later capture about the same
+  subject takes the next free suffix (`inbox/<slug>-2`, …), also after the
+  earlier capture was curated and its file deleted (the vault's git history
+  remembers the path). So a `capture_id` names exactly one capture for the
+  vault's lifetime, and an old provenance line never verifies a new capture.
 - `status: uncurated` keeps the capture fully searchable immediately.
 - Lifecycle: `uncurated` → (curator) → deleted-after-verification, or
   `curation-failed` after 3 attempts (failures appended as

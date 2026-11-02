@@ -511,7 +511,7 @@ class EngineVaultService:
         slug = pl.slugify(what_it_concerns) or "capture"
         relative = f"inbox/{slug}.md"
         suffix = 2
-        while self._path_exists(relative):
+        while await self._capture_path_taken(relative):
             relative = f"inbox/{slug}-{suffix}.md"
             suffix += 1
         permalink = relative[: -len(".md")]
@@ -530,6 +530,10 @@ class EngineVaultService:
                 body=body,
                 title=what_it_concerns,
                 frontmatter=frontmatter,
+                # The permalink the id was derived from (format spec §7), not
+                # one minted from the title: that could fall back to a retired
+                # capture's permalink once its file is gone (issue #602).
+                permalink=permalink,
                 must_create=True,
             )
         except _ENGINE_CALLER_ERRORS as exc:
@@ -688,6 +692,21 @@ class EngineVaultService:
 
     def _path_exists(self, relative: str) -> bool:
         return any(entry.path == relative for entry in self._engine.catalog.values())
+
+    async def _capture_path_taken(self, relative: str) -> bool:
+        """Whether a new capture must not use ``relative``.
+
+        A capture's id is derived from its permalink (format spec §7), so a
+        path an earlier capture used must never be handed out again — not
+        even after the curator retired that capture and deleted its file.
+        The new capture would inherit the old id, and verification would
+        take the old capture's provenance line as proof that the new
+        content was saved (issue #602). The vault's git history is the
+        lifetime record of every path; it survives retirement and restarts.
+        """
+        if self._path_exists(relative):
+            return True
+        return await asyncio.to_thread(self._engine.git.path_in_history, relative)
 
     async def edit(
         self,
