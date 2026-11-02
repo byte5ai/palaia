@@ -580,3 +580,25 @@ def test_the_dockerfile_installs_dependencies_before_the_project_sources() -> No
         if line.startswith("RUN uv sync") and "--no-install-project" not in line
     )
     assert no_project < sources < full_sync
+
+
+_WORKFLOWS_DIR = _WORKFLOW_PATH.parent
+#: Every workflow the v3 line runs (v3-*.yml) plus the track-label workflow
+#: that labels v3 items; ci.yml and publish.yml are v2's and out of scope.
+_V3_RUNNER_WORKFLOWS = sorted(
+    [*_WORKFLOWS_DIR.glob("v3-*.yml"), _WORKFLOWS_DIR / "track-label.yml"]
+)
+
+
+@pytest.mark.parametrize("path", _V3_RUNNER_WORKFLOWS, ids=lambda p: p.name)
+def test_every_v3_workflow_job_pins_its_runner_image(path: Path) -> None:
+    """A ``*-latest`` runner silently moves to a new OS (ubuntu-latest became
+    Ubuntu 26.04 and dropped `qemu-user-static`, which broke the rc7 Pi image
+    build). The CI standard (CI001) pins the image instead."""
+    jobs = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"]
+    floating = {
+        name: job.get("runs-on")
+        for name, job in jobs.items()
+        if "-latest" in str(job.get("runs-on", ""))
+    }
+    assert not floating, f"{path.name}: jobs on a floating runner image: {floating}"
