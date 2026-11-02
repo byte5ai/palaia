@@ -692,6 +692,36 @@ class VaultEngine:
             relative += NOTE_SUFFIX
         return relative
 
+    def _linked_part(self, relative: str) -> str | None:
+        """The first part of ``relative`` (below the vault root) that is a
+        symbolic link on disk, or ``None``."""
+        current = self.root
+        for part in relative.split("/"):
+            if not part:
+                continue
+            current = current / part
+            if current.is_symlink():
+                return current.relative_to(self.root).as_posix()
+        return None
+
+    def _note_file(self, relative: str) -> Path:
+        """``root / relative`` for reading or changing it — refused when any
+        part of it below the vault root is a symbolic link (issue #606).
+
+        Links are not vault content (the scan never follows one, issue #398),
+        and one can lead outside the vault: a write through it used to land
+        the file outside and fail only afterwards, at git staging. Checked
+        before every filesystem access, so a refused call leaves everything
+        — inside the vault and outside — untouched.
+        """
+        linked = self._linked_part(relative)
+        if linked is not None:
+            raise InvalidPathError(
+                f"path {relative!r} goes through the symbolic link {linked!r}, which can "
+                f"lead outside the vault. Fix: use a real folder inside the vault."
+            )
+        return self.root / relative
+
     def resolve(self, reference: str) -> CatalogEntry:
         """Resolve a reference to a note (format spec §3.2 resolution order).
 
@@ -769,7 +799,7 @@ class VaultEngine:
         return await asyncio.to_thread(self._read_note_sync, entry.path)
 
     def _read_note_sync(self, relative: str) -> Note:
-        path = self.root / relative
+        path = self._note_file(relative)
         try:
             data = path.read_bytes()
         except FileNotFoundError as exc:
@@ -819,7 +849,7 @@ class VaultEngine:
             raise NoteNotFoundError(
                 f"directory {relative!r} is engine-private or VCS storage, not vault content."
             )
-        base = self.root if not segments else self.root / "/".join(segments)
+        base = self.root if not segments else self._note_file("/".join(segments))
         if not base.exists() or not base.is_dir():
             raise NoteNotFoundError(
                 f"directory {relative!r} does not exist in vault {self.name!r}. "
@@ -955,7 +985,7 @@ class VaultEngine:
         operation: Operation,
     ) -> tuple[WriteResult, list[ChangeEvent]]:
         relative = self.normalize_path(path)
-        target = self.root / relative
+        target = self._note_file(relative)
         exists = target.exists()
         existing: Note | None = self._read_note_sync(relative) if exists else None
 
@@ -1247,14 +1277,15 @@ class VaultEngine:
         if destination == relative:
             note = self._read_note_sync(relative)
             return WriteResult(note=note, commit=None, operation="move"), []
-        target = self.root / destination
+        source = self._note_file(relative)
+        target = self._note_file(destination)
         if target.exists():
             raise NoteExistsError(
                 f"cannot move {relative!r} to {destination!r}: a note already exists there. "
                 f"Fix: choose another path or delete the existing note first."
             )
         self._sweep_external_edits()
-        atomic_move(self.root / relative, target)
+        atomic_move(source, target)
         previous = self._catalog_drop(relative)
         note = self._read_note_sync(destination)
         self._catalog_put(
@@ -1303,7 +1334,7 @@ class VaultEngine:
     def _delete_note_sync(
         self, relative: str, attribution: Attribution, summary: str | None
     ) -> tuple[WriteResult, list[ChangeEvent]]:
-        target = self.root / relative
+        target = self._note_file(relative)
         if not target.exists():
             raise NoteNotFoundError(
                 f"note {relative!r} does not exist in vault {self.name!r}. "
@@ -1415,14 +1446,14 @@ class VaultEngine:
             folder = relative.rsplit("/", 1)[0] if "/" in relative else ""
             stem = pl.slugify(new_title) or _stem(relative)
             candidate_path = f"{folder}/{stem}{NOTE_SUFFIX}" if folder else f"{stem}{NOTE_SUFFIX}"
-            if candidate_path != relative and not (self.root / candidate_path).exists():
-                atomic_move(self.root / relative, self.root / candidate_path)
+            if candidate_path != relative and not self._note_file(candidate_path).exists():
+                atomic_move(self._note_file(relative), self._note_file(candidate_path))
                 self._catalog_drop(relative)
                 changed.append(relative)
                 target_relative = candidate_path
 
         data = atomic_write_text(
-            self.root / target_relative, fm.render(renamed_frontmatter, note.body)
+            self._note_file(target_relative), fm.render(renamed_frontmatter, note.body)
         )
         changed.append(target_relative)
         renamed = self._note_from_bytes(target_relative, data)
@@ -1509,7 +1540,8 @@ class VaultEngine:
 
         rewritten: dict[str, int] = {}
         for path in list(self._entries):
-            if path == skip:
+            if path == skip or self._linked_part(path) is not None:
+                # A note behind a link is not vault content (issue #606).
                 continue
             file_path = self.root / path
             try:
@@ -1716,7 +1748,7 @@ class VaultEngine:
             updated.setdefault("type", "note")
             updated.setdefault("created", fm.utc_now_iso())
             updated["modified"] = fm.utc_now_iso()
-            data = atomic_write_text(self.root / entry.path, fm.render(updated, note.body))
+            data = atomic_write_text(self._note_file(entry.path), fm.render(updated, note.body))
             rewritten = self._note_from_bytes(entry.path, data)
             self._catalog_put(_entry_from_note(rewritten, self.root / entry.path))
             assigned.append(minted)
