@@ -6,6 +6,7 @@ dashboard policy a second time."""
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -16,7 +17,7 @@ TEMPLATE = Path(__file__).resolve().parents[3] / "deploy" / "nginx.conf.template
 def _blocks() -> tuple[str, dict[str, str]]:
     """(server-level text outside any location, {location header: body})."""
     text = TEMPLATE.read_text(encoding="utf-8")
-    server = text[text.index("server {") : text.index("listen ${CLOUD_PORT};")]
+    server = text[text.index("server {") : text.index("listen ${CLOUD_LISTEN};")]
     locations: dict[str, str] = {}
     outside = []
     depth = 0
@@ -155,7 +156,7 @@ def test_a_plain_http_visit_on_the_private_door_stays_http(sent: str | None) -> 
 
 def _cloud_block() -> str:
     text = TEMPLATE.read_text(encoding="utf-8")
-    return text[text.index("listen ${CLOUD_PORT};") :]
+    return text[text.index("listen ${CLOUD_LISTEN};") :]
 
 
 def _cloud_pattern() -> re.Pattern[str]:
@@ -214,5 +215,45 @@ def test_the_cloud_entry_tells_the_hub_who_is_calling() -> None:
     trusted = set(re.findall(r"set_real_ip_from (\S+);", cloud))
     assert trusted == {"127.0.0.0/8", "::1", "172.16.0.0/12"}
     text = TEMPLATE.read_text(encoding="utf-8")
-    private = text[: text.index("listen ${CLOUD_PORT};")]
+    private = text[: text.index("listen ${CLOUD_LISTEN};")]
     assert "set_real_ip_from" not in private
+
+
+ENTRYPOINT = TEMPLATE.parent / "entrypoint.sh"
+
+
+def _listen_address(env: dict[str, str]) -> str:
+    """CLOUD_LISTEN as entrypoint.sh's own defaults block computes it."""
+    text = ENTRYPOINT.read_text(encoding="utf-8")
+    block = text[text.index(': "${PUBLIC_PORT:=8420}"') : text.index("export PUBLIC_PORT")]
+    result = subprocess.run(  # noqa: S603 - fixed argv, the script's own text
+        ["bash", "-c", f'set -eu\n{block}\nprintf %s "$CLOUD_LISTEN"'],  # noqa: S607
+        env={"PATH": "/usr/bin:/bin", **env},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout
+
+
+def test_the_cloud_entry_listens_on_every_container_address_by_default() -> None:
+    # Docker's bridge network: only the loopback port the installer and
+    # compose publish reaches it.
+    assert _listen_address({}) == "8422"
+
+
+def test_on_the_host_network_the_cloud_entry_listens_on_loopback_only() -> None:
+    # Issue #619: the host-network commands set PALAIA_CLOUD_BIND, so the
+    # local network never reaches the cloud entry directly.
+    assert _listen_address({"PALAIA_CLOUD_BIND": "127.0.0.1"}) == "127.0.0.1:8422"
+    assert _listen_address({"PALAIA_CLOUD_BIND": "127.0.0.1", "CLOUD_PORT": "9422"}) == (
+        "127.0.0.1:9422"
+    )
+
+
+def test_every_template_variable_is_rendered_by_the_entrypoint() -> None:
+    used = set(re.findall(r"\$\{([A-Z_]+)\}", TEMPLATE.read_text(encoding="utf-8")))
+    rendered_line = next(
+        line for line in ENTRYPOINT.read_text(encoding="utf-8").splitlines() if "envsubst" in line
+    )
+    assert used == set(re.findall(r"\$\{([A-Z_]+)\}", rendered_line))
