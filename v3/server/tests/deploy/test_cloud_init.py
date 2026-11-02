@@ -194,8 +194,11 @@ def test_hub_port_is_bound_to_the_tailnet_address_only() -> None:
     assert 'LOOPBACK_PUBLISH="-p 127.0.0.1:${PORT}:8420"' in installer
     assert '-p "127.0.0.1:${CLOUD_PORT}:8422"' in installer
     assert '-p "${PORT}:8420"' not in installer
+    # Port 80 of the tailnet address too, when it is free (#620) — never on
+    # every address.
+    assert 'HTTP_PUBLISH="-p ${BIND_ADDR}:80:8420"' in installer
     published = re.findall(r'-p "?([^\s"]+:84\d\d)\b', installer)
-    assert len(published) == 3, published
+    assert len(published) == 4, published
     for spec in published:
         assert spec.startswith(("${BIND_ADDR}:", "127.0.0.1:")), spec
     # The firewall rule is scoped to the tailscale interface, and the file

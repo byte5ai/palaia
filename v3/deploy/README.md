@@ -124,7 +124,8 @@ if you allowed it, then starts the hub with the exact hardening flags
 [`install.sh`](install.sh) uses (`--security-opt no-new-privileges:true
 --cap-drop ALL --read-only --tmpfs /tmp --tmpfs /run` — never a forked copy of
 that list, checked by `server/tests/deploy/test_cloud_init.py`'s drift test).
-The dashboard port is published on the tailnet address only, plus two
+The dashboard port is published on the tailnet address only (8420, and port 80
+there too when it is free — see "Opening it by name" below), plus two
 loopback-only ports for a tunnel on the server itself: `127.0.0.1:8422`, the
 cloud entry, and `127.0.0.1:8420`, the whole hub (for the deliberate "open"
 mode). An active `ufw` gets a rule for the tailnet; an inactive one is switched
@@ -140,16 +141,19 @@ setup page's "Done" screen give palaia's address on the tailnet as a name, not
 a number. With MagicDNS on (the default for Tailscale networks created since
 October 2022) that is the
 machine's tailnet name — `palaia-hub`, or `palaia-hub-1` when the name is
-taken — and Tailscale forwards plain HTTP port 80 of that name to the hub's
-loopback port (`tailscale serve --bg --http=80 http://127.0.0.1:8420`), so the
-address is `http://palaia-hub/`; the full name (`palaia-hub.<tailnet>.ts.net`)
-is printed next to it. Tailscale keeps that setting across reboots, and the
-forward is answered inside `tailscaled`, so it needs no firewall rule and is
-reachable from the tailnet only. When port 80 of that name already serves
-something else, it is left alone and the address keeps its port
-(`http://palaia-hub:8420/`); with MagicDNS off it is the tailnet IP and port,
-and the installer says why. Open that address for the first sign-in: palaia
-issues its sign-in for the address it was first set up at.
+taken. The installer also publishes the hub on port 80 of the tailnet address
+(`-p <tailnet-address>:80:8420`, next to `:8420`), so the address is
+`http://palaia-hub/`; the full name (`palaia-hub.<tailnet>.ts.net`) is printed
+next to it. Docker's forwarding keeps each caller's own tailnet address, so the
+hub's per-device sign-in limits stay per device, and the container needs no
+extra permission for it. It does so only when nothing listens on port 80 there
+yet (checked with `ss` before the start; a listener on every address counts,
+one on another single address such as `127.0.0.1:80` does not). When port 80 is
+taken, the address keeps its port (`http://palaia-hub:8420/`) and the installer
+says why; with MagicDNS off it is the tailnet IP and port, with the reason too.
+The boot unit below starts the same container, so the publish survives reboots.
+Open that address for the first sign-in: palaia issues its sign-in for the
+address it was first set up at.
 
 **Where the data lives.** Same as every other install path: the
 `palaia_home` named Docker volume, holding everything under `/data`
