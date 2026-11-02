@@ -10,6 +10,77 @@ ADRs, phase-gate records, SPEC index docs, CI and release plumbing) are left
 out on purpose; they moved the project forward but nothing in them is a
 capability a user would notice.
 
+## 3.0.0-rc7 — 2026-11-02 (release candidate)
+
+The fixes from a pre-test of `rc6` (an AI assistant guiding a fresh install,
+real reboots) and from an independent pre-build review. Still a
+pre-release — the `:beta` channel.
+
+### Security
+
+- **AI apps can finish connecting.** After you signed in and clicked
+  **Allow**, the browser stayed on palaia's page instead of returning to the
+  Claude app, claude.ai or ChatGPT: the sign-in pages' security policy
+  blocked the step back to the app. The pages now allow exactly that step,
+  to the app address palaia has checked against the app's registration, and
+  nothing else. (#613)
+- **The curator session gets only palaia's curator tools** — no built-in
+  tools, none of your Claude Code settings, no other MCP servers, a fresh
+  working directory and none of the hub's `PALAIA_*` variables. A
+  `config.yaml` that still spells out the old default command gets the new
+  one automatically. Needs Claude Code 2.1.248 or later. (#604)
+- **The curator's guards judge the note a change really lands on.** Any name
+  for an inbox capture or a pending review proposal (title, alias, path,
+  `memory://`, `./inbox`) is refused, and a curator edit can only add tags,
+  never remove them. (#603)
+- **Bad tokens no longer stall the hub.** Invalid or malformed tokens on the
+  AI connection are checked off the main loop on a small bounded pool;
+  strings that are not shaped like a palaia token cost no password hashing,
+  and a connected app is no longer queued behind a flood of bad tokens.
+  Revoking a token still applies to the very next request. (#608)
+- **Only one first owner.** Two simultaneous first-run requests can no
+  longer both create the owner account; one succeeds, the other gets a
+  conflict, and the first owner cannot be silently replaced. (#607)
+- palaia no longer reads or writes a note through a symbolic link inside a
+  memory; such a path is refused before anything changes, inside or outside
+  the memory. (#606)
+- Node dependency advisories resolved: Astro 7.4.4 on the docs site,
+  node-forge 1.4.2 in the extension tooling shipped in the image, current
+  Vite, Vitest, undici and zod in the dashboard toolchain; the two
+  advisories without an upstream fix are documented with their exposure in
+  `docs/security/dependencies.md`. (#610)
+
+### Install
+
+- **palaia comes back after a reboot even when the tailnet address is
+  late.** If Tailscale's control server was slow at boot, Docker could not
+  start the hub and never tried again. A small boot unit now waits for the
+  address, reattaches the container's network and starts it; a hub you
+  stopped on purpose stays stopped. (#614)
+- **The installer no longer tells you to run `tailscale up`.** Tailscale's
+  own install messages stay off the screen unless that install fails; then
+  its last lines are shown. A failed download of Tailscale's installer now
+  stops the install with a message. (#616)
+
+### Memories and backups
+
+- **A backup taken while palaia writes restores a working history.** Each
+  memory's git repository is archived with its references before its
+  objects, and git's own maintenance lock is held while the backup reads
+  it. (#605)
+- **Closing a temporary memory whose files cannot be moved into the archive
+  no longer drops it:** it stays registered and keeps working (tools,
+  search index, file watcher) until the move succeeds. (#609)
+- **A new capture about the same subject gets its own identity.** It no
+  longer reuses a retired capture's name and id, so an old curated note can
+  no longer pass as proof that new content was saved. (#602)
+
+### Dashboard
+
+- **Overview no longer reports a working search as unfinished:** the pill
+  says "Search works · search index N% built", uses the right unit, and
+  updates by itself until the index is built. (#612)
+
 ## 3.0.0-rc6 — 2026-10-24 (release candidate)
 
 The fixes from an independent code review of `rc5` and from a full

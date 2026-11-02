@@ -65,12 +65,26 @@ What is actually claimed, and why it holds:
 - **Everything else** (`config.yaml`, `vaults.yaml`, notes, the YAML
   stores) is written via `palaia_hub.vault.atomic.atomic_write_bytes` — a
   temp file plus `os.replace` — so a read mid-write can only ever see the
-  whole old content or the whole new content. A vault's `.git` history is
-  git's own content-addressed, effectively-immutable object store.
+  whole old content or the whole new content.
+- **A vault's `.git`** has to agree with itself: every commit a ref names
+  must be in the archived object store. The archive takes the repository's
+  refs, `HEAD` and other metadata first and its `objects/` last — git
+  writes objects before the ref that names them and never changes them
+  afterwards, so every object an archived ref can reach is already on disk.
+  Objects only disappear through git's maintenance (`git gc`), which git
+  serializes with its own `gc.pid` lock; the backup holds that lock while
+  it reads the repository, so the vault's automatic gc and the doctor's
+  scheduled one skip instead of deleting objects mid-archive (a gc already
+  running is waited for, up to two minutes). A commit made during the
+  backup is simply not in it. See
+  `server/tests/backup/test_git_consistency.py`, which commits and runs
+  `git gc` mid-archive and checks the restored repository with
+  `git fsck --full`.
 
 **Not claimed:** that the archive is one atomic snapshot *across* stores.
 Two stores written to in the same second could land a moment apart in one
-archive. For a single-operator personal hub with no distributed
+archive, and a vault's notes can be a write ahead of its history (the next
+write commits the difference). For a single-operator personal hub with no distributed
 transaction spanning multiple stores, that gap is not a real exposure —
 see `docs/security/threat-model.md` §8, item 9.
 

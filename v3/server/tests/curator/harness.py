@@ -90,7 +90,9 @@ def build_harness(
 ) -> CuratorHarness:
     service = EngineVaultService(engine)
     active_captures = ActiveCaptures()
-    middleware = curator_profile_middleware([mount], active_captures=active_captures)
+    middleware = curator_profile_middleware(
+        [mount], active_captures=active_captures, engines={mount.key: engine}
+    )
     gateway = build_gateway(
         GatewayConfig(vaults=[mount], profiles=[curator_profile([mount.key])]),
         {mount.key: service},

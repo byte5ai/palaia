@@ -135,6 +135,7 @@ outside the hub to a person, so it carries a second fence of its own — see
 | A profile switched to `semantic_routing` losing its verifier | The router served in its place carries the profile's own `auth`; a cloud/open mount that would come up unauthenticated is refused *before* anything is mounted or recorded (issue #315) | `server/src/palaia_hub/gateway/semantic_routing.py`, `server/src/palaia_hub/gateway/dynamic.py`, `server/tests/gateway/test_dynamic.py` |
 | A token reaching a vault it was not scoped to | Per-token, per-profile scopes checked inside the gateway, not at the edge | `server/src/palaia_hub/auth/scopes.py`, `server/tests/auth/test_scopes.py` |
 | A stolen token file | Tokens are argon2id-hashed at rest; the plaintext is shown once at creation and never logged | `server/src/palaia_hub/auth/store.py`, `server/tests/test_logging_redaction.py` |
+| Invalid bearer tokens stalling the hub | Token verification's argon2 work runs off the event loop on a two-thread pool, so a flood of bad tokens cannot hold up health, dashboard or other requests; a string not shaped like a `plt_` token is refused without argon2; a token that verified is remembered in memory (by its SHA-256 digest, never on disk) for five minutes so a connected client is not queued behind the flood, while revocation, rotation and outside changes to `tokens.yaml` are checked on every request (issue #608) | `server/src/palaia_hub/auth/store.py`, `server/tests/auth/test_verify_off_loop.py` |
 | A browser session used as MCP auth | The admin gate deliberately never looks at `/mcp/*`; MCP clients authenticate with their own tokens | `server/src/palaia_hub/admin_session.py`, `server/tests/test_admin_session.py` |
 | Tool arguments reflected into results | Reflection reaches only the caller that supplied it; every renderer downstream escapes, and credential-shaped text is masked before it can be logged | `server/tests/security/test_injection_surfaces.py` |
 | An MCP App page rendering hostile content | Each app escapes what it inserts, and every page carries its own restrictive `<meta>` policy | `server/src/palaia_hub/gateway/apps/shell.py`, `server/tests/gateway/test_apps_shell.py` |
@@ -189,7 +190,7 @@ See [§8](#8-accepted-risks-and-open-gaps).
 | Clickjacking / sniffing / referrer leakage | A content-security policy per surface, `nosniff`, `no-referrer`, `DENY` framing, and HSTS when the request arrived over TLS | `server/src/palaia_hub/security/headers.py`, `server/tests/security/test_security_headers.py` |
 | Script injection through vault content in the dashboard | The dashboard renders note bodies as text (React escapes); `dangerouslySetInnerHTML` appears nowhere in `web/src` | `server/tests/security/test_injection_surfaces.py` |
 | Locking the operator out of a fresh hub | The gate stays open until a way in exists (an owner account or a provider), then latches closed on the next call | `server/src/palaia_hub/admin_session.py`, `server/tests/test_admin_session.py` |
-| Planting an owner password into a fresh hub | The wizard's `POST /api/auth/owner` creates the one owner account only while none exists (409 after), is held to the cross-site rule above like every other change, and signs the creating browser in on the spot; changing an existing account needs the terminal (issue #342) | `server/src/palaia_hub/oauth/owner_api.py`, `server/src/palaia_hub/security/cross_site.py`, `server/tests/oauth/test_owner_api.py` |
+| Planting an owner password into a fresh hub | The wizard's `POST /api/auth/owner` creates the one owner account only while none exists (409 after; the check and the insert are one store transaction, so of two concurrent first-run requests exactly one wins and the other cannot replace it, issue #607), is held to the cross-site rule above like every other change, and signs the creating browser in on the spot; changing an existing account needs the terminal (issue #342) | `server/src/palaia_hub/oauth/owner_api.py`, `server/src/palaia_hub/security/cross_site.py`, `server/tests/oauth/test_owner_api.py` |
 | A full-home backup archive read by anyone but the owner (secrets, signing keys, every vault, in one download) | `GET /api/backup` (SPEC-604) sits behind the same admin gate as everything else in this table — no separate opt-in, no route that exists without it; the archive is built and streamed straight to the response body and never written to a temp file server-side, so there is no on-disk copy to leave world-readable even briefly; the dashboard's "Back up" button carries an explicit "store this like a password" warning | `server/src/palaia_hub/backup.py`, `server/src/palaia_hub/backup_api.py`, `server/tests/backup/test_routes.py`, `web/src/routes/Home.tsx` |
 | The full archive — secret store *and* its key — sent to a destination nobody vetted for key material (issue #297) | A backup target declares at class level whether it moves the full archive and whether its destination is secret-safe; `BackupTarget.run` refuses the mismatch **before building a byte**, so the rule is an invariant rather than a comment a future notes-only git target could be written around | `server/src/palaia_hub/backup_targets.py`, `server/tests/backup/test_targets.py::test_a_target_that_would_move_the_full_archive_somewhere_unsafe_is_refused` |
 | A hub backing itself up into its own home — every archive nesting the last, all of them lost with that one disk | The local-directory target resolves its destination against the hub home on every run and refuses one inside it, naming the fix | `server/src/palaia_hub/backup_targets.py`, `server/tests/backup/test_targets.py::test_a_directory_inside_the_hub_home_is_refused` |
@@ -260,6 +261,27 @@ its own guard middleware, so a prompt-injected curator cannot reach tools it
 was not given. *Enforced by* `server/src/palaia_hub/curator/profile.py` and
 `server/src/palaia_hub/curator/middleware.py`; *proven by*
 `server/tests/curator/test_guard_matrix.py`.
+
+The guard judges the note a write or edit really changes, not the words the
+call used: the vault resolves the reference (permalink, title, alias, path,
+`memory://` form, `./inbox`) and the call then goes on addressed by exactly
+that note, so every name for an inbox capture or an existing `review/`
+proposal gets the same refusal. An edit may only add tags. A vault the
+guard cannot resolve gets no curator writes at all (fail-closed). *Enforced
+by* `server/src/palaia_hub/curator/targets.py`; *proven by*
+`server/tests/curator/test_canonical_targets.py` (issue #603).
+
+The guard only covers what the session reaches through MCP, so the default
+session is given nothing else (issue #604): `claude -p --restricted --tools ""
+--strict-mcp-config --permission-mode dontAsk`. No built-in tool (shell, file
+reads and edits, web, subagents), none of the user's or project's settings
+files (permission rules, hooks, plugins), no other MCP server, and anything
+outside the allowed curator tools is denied. The session runs in a fresh
+empty directory without the hub's `PALAIA_*` environment. A `config.yaml`
+that still spells out an earlier default is read as today's default; a
+command the owner wrote themselves is theirs to confine. *Enforced by*
+`server/src/palaia_hub/curator/session.py`; *proven by*
+`server/tests/curator/test_session_and_prompt.py`.
 
 ### 7.3a The Telegram connector (B7)
 

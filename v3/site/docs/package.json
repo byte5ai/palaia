@@ -19,11 +19,11 @@
   },
   "dependencies": {
     "@astrojs/starlight": "^0.41.9",
-    "astro": "^7.2.7"
+    "astro": "^7.4.4"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
-    "@astrojs/markdown-remark": "7.2.4",
+    "@astrojs/markdown-remark": "7.3.5",
     "@eslint/js": "^10.0.1",
     "esbuild": "^0.28.2",
     "eslint": "^10.9.0",

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import stat
 import subprocess
 from pathlib import Path
@@ -68,6 +69,84 @@ def test_cleanup_removes_a_key_the_caller_cannot_see_without_sudo(tmp_path: Path
     finally:
         hidden.chmod(0o700)
     assert not key.exists()
+
+
+HELPERS = (
+    'log()  { echo "palaia: $*"; }\n'
+    'err()  { echo "palaia: ERROR: $*" >&2; }\n'
+    'die()  { err "$@"; exit 1; }\n'
+)
+TS_HINT = "Installation complete! Log in to start using Tailscale by running:\n\ntailscale up\n"
+
+
+def _tailscale_install(
+    tmp_path: Path, script: str, *, download_ok: bool = True
+) -> subprocess.CompletedProcess[str]:
+    """Run install_tailscale() with `curl` handing back ``script`` as
+    Tailscale's installer (or failing to download it)."""
+    source = tmp_path / "ts-install.sh"
+    source.write_text(script, encoding="utf-8")
+    fetch = (
+        f'while [ "$#" -gt 0 ]; do [ "$1" = "-o" ] && out="$2"; shift; done\ncp "{source}" "$out"\n'
+    )
+    _stub(tmp_path, "curl", fetch if download_ok else "exit 22\n")
+    # Only the tools the function needs, so a `tailscale` on the machine
+    # running the tests cannot stand in for the one the install must leave.
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    for tool in ("sh", "mktemp", "rm", "cp", "cat", "tail", "sed", "mkdir", "chmod", "printf"):
+        found = shutil.which(tool)
+        assert found, f"{tool} is needed to run this test"
+        (tools / tool).symlink_to(found)
+    return subprocess.run(
+        ["sh", "-c", HELPERS + _function("install_tailscale") + "install_tailscale\necho after\n"],
+        env={"PATH": f"{tmp_path / 'bin'}{os.pathsep}{tools}", "SUDO": ""},
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+
+def test_tailscale_install_keeps_its_login_hint_off_the_screen(tmp_path: Path) -> None:
+    """Tailscale's "run tailscale up" hint contradicts the setup page (#616)."""
+    tailscale = tmp_path / "bin" / "tailscale"
+    result = _tailscale_install(
+        tmp_path,
+        f"printf '#!/bin/sh\\n' > '{tailscale}'; chmod +x '{tailscale}'\n"
+        "echo 'Installing Tailscale for ubuntu noble, using method apt'\n"
+        f"printf '%s' '{TS_HINT}'\n",
+    )
+    assert result.returncode == 0, result.stderr
+    assert "tailscale up" not in result.stdout + result.stderr
+    assert "Installation complete" not in result.stdout + result.stderr
+    assert result.stdout.strip().endswith("after")
+
+
+def test_a_failed_tailscale_install_shows_its_error(tmp_path: Path) -> None:
+    result = _tailscale_install(
+        tmp_path,
+        "echo 'Installing Tailscale'\necho 'E: Unable to locate package tailscale'\nexit 100\n",
+    )
+    assert result.returncode != 0
+    assert "E: Unable to locate package tailscale" in result.stderr
+    assert "installing Tailscale failed" in result.stderr
+    assert "after" not in result.stdout
+
+
+def test_a_tailscale_install_that_leaves_no_tailscale_is_a_failure(tmp_path: Path) -> None:
+    """Exit 0 is not enough: the installer needs the `tailscale` command."""
+    result = _tailscale_install(tmp_path, "echo 'Unsupported, nothing installed'\nexit 0\n")
+    assert result.returncode != 0
+    assert "Unsupported, nothing installed" in result.stderr
+    assert "after" not in result.stdout
+
+
+def test_a_failed_download_of_tailscales_installer_stops_the_install(tmp_path: Path) -> None:
+    result = _tailscale_install(tmp_path, "", download_ok=False)
+    assert result.returncode != 0
+    assert "could not download Tailscale's installer" in result.stderr
+    assert "after" not in result.stdout
 
 
 UFW_ACTIVE = (

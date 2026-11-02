@@ -15,7 +15,9 @@ registry file stays a pointer list and the vault itself remains the truth.
 from __future__ import annotations
 
 import asyncio
+import errno
 import logging
+import os
 import re
 import shutil
 from collections.abc import Iterator, Mapping
@@ -302,6 +304,12 @@ class VaultRegistry:
         files first — its index, its watcher, any gateway mount — because a
         move across filesystems is a copy plus delete.
 
+        The vault stays registered until its files are safely in the
+        archive (issue #609): when the move fails, the directory is where it
+        was, a half-made copy is removed, the registration (live and in
+        ``vaults.yaml``) is untouched and the next :meth:`get` reopens the
+        engine. The caller re-attaches whatever it released.
+
         Returns:
             the archived directory.
         """
@@ -310,7 +318,8 @@ class VaultRegistry:
             raise VaultNotFoundError(
                 f"no vault named {name!r} is registered. Fix: check the name with names()."
             )
-        engine = self._engines.get(name)
+        # Dropped, not only closed: if the move fails, get() opens it afresh.
+        engine = self._engines.pop(name, None)
         if engine is not None:
             await engine.close()
         moment = (now or datetime.now(tz=UTC)).astimezone(UTC)
@@ -320,10 +329,24 @@ class VaultRegistry:
             suffix += 1
             target = target.with_name(f"{name}-{moment.strftime('%Y%m%dT%H%M%SZ')}-{suffix}")
         source = record.path.expanduser()
-        self.unregister(name)
+        copied = False
         if source.exists():
             target.parent.mkdir(parents=True, exist_ok=True)
-            await asyncio.to_thread(shutil.move, str(source), str(target))
+            copied = await asyncio.to_thread(_move_or_copy_tree, source, target)
+        self.unregister(name)
+        if copied:
+            # The archive is complete; the original is now only a duplicate.
+            try:
+                await asyncio.to_thread(shutil.rmtree, source)
+            except OSError as exc:
+                logger.warning(
+                    "archived vault %s to %s, but could not remove the original at %s: %s "
+                    "— delete it by hand",
+                    name,
+                    target,
+                    source,
+                    exc,
+                )
         logger.info("archived vault %s: %s -> %s", name, source, target)
         return target
 
@@ -340,6 +363,30 @@ class VaultRegistry:
         for engine in list(self._engines.values()):
             await engine.close()
         self._engines.clear()
+
+
+def _move_or_copy_tree(source: Path, target: Path) -> bool:
+    """Put ``source`` at ``target`` so that a failure leaves ``source`` whole.
+
+    A rename on the same filesystem is atomic: done or not done. Across
+    filesystems it becomes a full copy, and only a *complete* copy counts —
+    a failure removes the partial one and leaves ``source`` as it was.
+    Unlike :func:`shutil.move`, the original is not deleted here: returns
+    ``True`` when ``source`` was copied and still has to be removed, once the
+    caller has committed to the archive.
+    """
+    try:
+        os.rename(source, target)
+        return False
+    except OSError as exc:
+        if exc.errno != errno.EXDEV:
+            raise
+    try:
+        shutil.copytree(source, target, symlinks=True)
+    except BaseException:
+        shutil.rmtree(target, ignore_errors=True)
+        raise
+    return True
 
 
 def _is_relative_to(child: Path, parent: Path) -> bool:

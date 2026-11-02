@@ -40,6 +40,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
+from ..security.headers import OAUTH_PAGE_CSP, oauth_page_csp
 from .errors import OAuthError
 from .login import (
     CSRF_COOKIE,
@@ -250,9 +251,17 @@ def build_oauth_router(server: AuthorizationServer) -> APIRouter:
             # Issue #328: nothing is minted on a GET. The page's form echoes
             # the reviewed request and the session's CSRF token; only the
             # POST below issues a code.
+            #
+            # Issue #613: the POST's answer is a 303 to the client's
+            # redirect_uri (a code on Allow, access_denied on Deny), and
+            # browsers check that hop against this page's form-action. The
+            # URI was validated against the registration a moment ago.
             return HTMLResponse(
                 _consent_page(outcome, csrf=request.cookies.get(CSRF_COOKIE, "")),
-                headers=NO_STORE,
+                headers={
+                    **NO_STORE,
+                    "Content-Security-Policy": oauth_page_csp(outcome.redirect_uri),
+                },
             )
         assert isinstance(outcome, AuthorizeRedirect)  # noqa: S101 - exhaustive union
         return RedirectResponse(outcome.location, status_code=303, headers=NO_STORE)
@@ -383,6 +392,15 @@ def build_oauth_router(server: AuthorizationServer) -> APIRouter:
 
     if not server.idp_configured:
 
+        def _sign_in_csp(next_url: str) -> str:
+            # Issue #613: the form's 303 goes to `next`; an authorization
+            # request that then fails is redirected on to the client, and
+            # that hop is still checked against this page's form-action.
+            if not _is_safe_next(next_url):
+                return OAUTH_PAGE_CSP
+            target = server.stored_redirect_uri(next_url)
+            return OAUTH_PAGE_CSP if target is None else oauth_page_csp(target)
+
         @router.get(LOGIN_PATH)
         async def login_form(request: Request) -> Response:
             """The owner sign-in form."""
@@ -392,7 +410,7 @@ def build_oauth_router(server: AuthorizationServer) -> APIRouter:
                 _login_page(
                     next_url=next_url if _is_safe_next(next_url) else "", csrf=csrf, error=""
                 ),
-                headers=NO_STORE,
+                headers={**NO_STORE, "Content-Security-Policy": _sign_in_csp(next_url)},
             )
             _set_cookie(response, CSRF_COOKIE, csrf, secure=request_is_https(request), max_age=600)
             return response
@@ -410,6 +428,7 @@ def build_oauth_router(server: AuthorizationServer) -> APIRouter:
                     next_url,
                     "This sign-in form expired. Please try again.",
                     secure=request_is_https(request),
+                    csp=_sign_in_csp(next_url),
                 )
             username = str(form.get("username", "") or "")
             password = str(form.get("password", "") or "")
@@ -420,6 +439,7 @@ def build_oauth_router(server: AuthorizationServer) -> APIRouter:
                     next_url,
                     "Sign-in failed. Check the username and password.",
                     secure=request_is_https(request),
+                    csp=_sign_in_csp(next_url),
                 )
             target = next_url if _is_safe_next(next_url) else "/"
             # The login form's own short-lived CSRF cookie is replaced here
@@ -540,18 +560,20 @@ def _quote(value: str) -> str:
     return quote(value, safe="")
 
 
-def _login_failure(next_url: str, message: str, *, secure: bool) -> Response:
+def _login_failure(next_url: str, message: str, *, secure: bool, csp: str) -> Response:
     """Re-render the form with a message and a fresh CSRF token.
 
     One message for every failure reason (wrong username, wrong password, no
     account configured, expired form) — see
-    :func:`palaia_hub.oauth.login.verify_owner_password`.
+    :func:`palaia_hub.oauth.login.verify_owner_password`. ``csp`` is the same
+    policy the first rendering carried (issue #613), since the next attempt
+    posts from this page.
     """
     csrf = new_csrf_token()
     response = HTMLResponse(
         _login_page(next_url=next_url if _is_safe_next(next_url) else "", csrf=csrf, error=message),
         status_code=401,
-        headers=NO_STORE,
+        headers={**NO_STORE, "Content-Security-Policy": csp},
     )
     _set_cookie(response, CSRF_COOKIE, csrf, secure=secure, max_age=600)
     return response

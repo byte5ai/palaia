@@ -13,12 +13,15 @@ rendered at all.
 
 **Two policies, because they are two different pages.**
 
-* :data:`OAUTH_PAGE_CSP` covers the sign-in form and the authorization
-  error page. Those are server-rendered HTML with one inline ``<style>``
-  block and *no script at all*, so the policy can be maximal: no scripts, no
-  frames, no connections, no images beyond ``data:``. Anything injected into
-  one of those pages therefore cannot execute, cannot phone home, and cannot
-  be framed by an attacker's page.
+* :data:`OAUTH_PAGE_CSP` covers the sign-in form, the consent page and the
+  authorization error page. Those are server-rendered HTML with one inline
+  ``<style>`` block and *no script at all*, so the policy can be maximal: no
+  scripts, no frames, no connections, no images beyond ``data:``. Anything
+  injected into one of those pages therefore cannot execute, cannot phone
+  home, and cannot be framed by an attacker's page. Its ``form-action`` is
+  ``'self'`` plus, on a page whose form can end at an AI app, that app's
+  validated redirect origin (:func:`oauth_page_csp`, issue #613) — browsers
+  check ``form-action`` against every redirect after a submission too.
 * :data:`DASHBOARD_CSP` covers the built single-page app. Vite emits the
   app as external ``<script type="module">`` and ``<link rel=stylesheet>``
   files from the same origin, so ``script-src 'self'`` needs no ``unsafe-
@@ -47,8 +50,10 @@ carry their own ``<meta>`` policy instead.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Awaitable, Callable
 from typing import Any
+from urllib.parse import urlsplit
 
 Scope = dict[str, Any]
 Receive = Callable[[], Awaitable[dict[str, Any]]]
@@ -73,15 +78,70 @@ DASHBOARD_CSP = (
 
 #: Policy for the authorization server's own HTML pages: no script, no
 #: network, no framing.
-OAUTH_PAGE_CSP = (
+_OAUTH_PAGE_DIRECTIVES = (
     "default-src 'none'; "
     "style-src 'unsafe-inline'; "
     "img-src data:; "
     "object-src 'none'; "
     "frame-ancestors 'none'; "
     "base-uri 'none'; "
-    "form-action 'self'"
 )
+OAUTH_PAGE_CSP = _OAUTH_PAGE_DIRECTIVES + "form-action 'self'"
+
+#: What a host in a ``form-action`` source may consist of: a DNS name or an
+#: IPv4 address. Anything else is left out rather than escaped — a source
+#: expression has no escaping, and a character like ``;`` or a space would
+#: start a new directive. An IPv6 literal (``http://[::1]:8765``) is left out
+#: too: CSP's source grammar has no form for it, and Chromium ignores such a
+#: source as invalid, so a client whose redirect URI is an IPv6 loopback
+#: address cannot be let through by ``form-action`` at all.
+_SOURCE_HOST_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$")
+
+
+def form_action_source(redirect_uri: str) -> str | None:
+    """The ``form-action`` source that lets a form's redirect reach ``redirect_uri``.
+
+    Issue #613: browsers apply ``form-action`` to every redirect that follows
+    a form submission, not only to the form's own target. The consent page
+    posts to this origin, and the answer is a 303 to the AI app's
+    ``redirect_uri`` on its own origin — so with ``form-action 'self'`` alone
+    the browser blocks the last hop and no app can finish connecting. On a
+    redirect, browsers match a source by origin and ignore its path, so the
+    origin of the URI is the narrowest source that works.
+
+    Only for a ``redirect_uri`` the authorization server has already
+    validated against the client's registration; this function only shapes
+    it. Returns ``None`` for anything that does not reduce to a plain
+    ``http``/``https`` origin.
+    """
+    parts = urlsplit(redirect_uri)
+    if parts.scheme not in ("https", "http"):
+        return None
+    host = parts.hostname or ""
+    if not _SOURCE_HOST_RE.match(host):
+        return None
+    try:
+        port = parts.port
+    except ValueError:
+        return None
+    return f"{parts.scheme}://{host}" + (f":{port}" if port is not None else "")
+
+
+def oauth_page_csp(*redirect_uris: str) -> str:
+    """:data:`OAUTH_PAGE_CSP`, with the forms' redirects allowed to reach ``redirect_uris``.
+
+    For the pages whose form can end at an AI app (issue #613): the consent
+    page (Allow, and Deny's error redirect) and the sign-in page on its way
+    back into an authorization request. Every other directive stays as it
+    is, and so does ``form-action`` for anything not named here.
+    """
+    sources = []
+    for uri in redirect_uris:
+        source = form_action_source(uri)
+        if source is not None and source not in sources:
+            sources.append(source)
+    return _OAUTH_PAGE_DIRECTIVES + " ".join(["form-action 'self'", *sources])
+
 
 #: Policy for surfaces nothing should ever render: the REST API and the MCP
 #: mounts. Everything is denied; the header exists so a response that is
@@ -185,5 +245,7 @@ __all__ = [
     "HSTS_VALUE",
     "OAUTH_PAGE_CSP",
     "SecurityHeadersMiddleware",
+    "form_action_source",
+    "oauth_page_csp",
     "policy_for_path",
 ]

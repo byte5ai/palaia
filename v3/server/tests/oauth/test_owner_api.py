@@ -12,16 +12,29 @@ request a browser marks as coming from another site.
 
 from __future__ import annotations
 
+import asyncio
+import threading
 from pathlib import Path
 
+import httpx
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from palaia_hub.app import create_app
 from palaia_hub.auth.store import TokenStore
 from palaia_hub.config import HubConfig, OAuthSettings
 from palaia_hub.oauth import AuthorizationServer, OAuthStore
-from palaia_hub.oauth.login import CSRF_COOKIE, SESSION_COOKIE
+from palaia_hub.oauth import login as login_module
+from palaia_hub.oauth.errors import OAuthError
+from palaia_hub.oauth.login import (
+    CSRF_COOKIE,
+    SESSION_COOKIE,
+    LoginThrottle,
+    set_owner_password,
+    verify_owner_password,
+)
+from palaia_hub.oauth.owner_api import build_owner_router
 from palaia_hub.vault import VaultRegistry
 
 ISSUER = "https://hub.test"
@@ -174,5 +187,110 @@ def test_without_a_sign_in_server_the_account_goes_straight_into_the_store(
     try:
         owner = store.get_owner()
         assert owner is not None and owner[0] == "owner"
+    finally:
+        store.close()
+
+
+# --------------------------------------------------------------- issue #607
+#
+# The route used to check "no owner yet", then spend a password hash in a
+# worker thread, then *replace* whatever owner the store held. Two first-run
+# requests could both pass the check; both answered 201 and the later one
+# silently replaced the other's account (and, with a sign-in server, its
+# session). The barrier below holds both requests inside the hash — after
+# the check, before the write — which is exactly that schedule.
+
+
+def _race_two_owner_posts(app: FastAPI, monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, int]]:
+    barrier = threading.Barrier(2, timeout=10)
+    real_hash = login_module.hash_password
+
+    def hash_after_both_checked(password: str) -> str:
+        barrier.wait()
+        return real_hash(password)
+
+    monkeypatch.setattr(login_module, "hash_password", hash_after_both_checked)
+
+    async def race() -> list[tuple[str, int]]:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url=ISSUER) as client:
+
+            async def post(username: str) -> tuple[str, int]:
+                response = await client.post(
+                    "/api/auth/owner",
+                    json={"username": username, "password": PASSWORD + username},
+                )
+                return username, response.status_code
+
+            return list(await asyncio.gather(post("first-owner"), post("second-owner")))
+
+    return asyncio.run(race())
+
+
+def _assert_exactly_one_owner_won(results: list[tuple[str, int]], store: OAuthStore) -> None:
+    assert sorted(status for _, status in results) == [201, 409], results
+    winner = next(name for name, status in results if status == 201)
+    loser = next(name for name, status in results if status == 409)
+    owner = store.get_owner()
+    assert owner is not None and owner[0] == winner, "the losing request replaced the winner"
+    signed_in = verify_owner_password(store, winner, PASSWORD + winner, throttle=LoginThrottle())
+    assert signed_in == winner
+    with pytest.raises(OAuthError):
+        verify_owner_password(store, loser, PASSWORD + loser, throttle=LoginThrottle())
+
+
+def test_two_concurrent_first_owner_requests_create_exactly_one_owner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app = FastAPI()
+    app.include_router(build_owner_router(None, home=tmp_path))
+
+    results = _race_two_owner_posts(app, monkeypatch)
+
+    store = OAuthStore(tmp_path)
+    store.open()
+    try:
+        _assert_exactly_one_owner_won(results, store)
+    finally:
+        store.close()
+
+
+def test_with_a_sign_in_server_the_race_also_leaves_the_winner_in_place(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = HubConfig(
+        mode="cloud", host="127.0.0.1", oauth=OAuthSettings(enabled=True, issuer=ISSUER)
+    )
+    server = AuthorizationServer.build(config, {"default": ["vault:work:read"]}, home=tmp_path)
+    app = FastAPI()
+    app.include_router(build_owner_router(server))
+    try:
+        results = _race_two_owner_posts(app, monkeypatch)
+        _assert_exactly_one_owner_won(results, server.store)
+    finally:
+        server.store.close()
+
+
+def test_the_terminal_command_still_replaces_an_existing_owner(tmp_path: Path) -> None:
+    """Deliberate replacement stays possible where the hub runs — only the
+    open first-run route is create-if-absent."""
+    store = OAuthStore(tmp_path)
+    store.open()
+    try:
+        set_owner_password(store, "ada", PASSWORD, now=1)
+        set_owner_password(store, "grace", PASSWORD + "-new", now=2)
+        owner = store.get_owner()
+        assert owner is not None and owner[0] == "grace"
+    finally:
+        store.close()
+
+
+def test_the_store_refuses_a_second_first_owner(tmp_path: Path) -> None:
+    store = OAuthStore(tmp_path)
+    store.open()
+    try:
+        assert store.create_owner("ada", "hash-a", 1) is True
+        assert store.create_owner("mallory", "hash-m", 2) is False
+        assert store.get_owner() == ("ada", "hash-a")
     finally:
         store.close()

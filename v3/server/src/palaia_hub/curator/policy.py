@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Collection, Mapping
+from dataclasses import dataclass
 from typing import Any
 
 #: The seven actions a curator session may use, verbatim from SPEC-206 rule
@@ -85,6 +86,28 @@ _OVERWRITE_ARGUMENT_NAMES: tuple[str, ...] = (
 _OVERWRITE_MODE_VALUES: frozenset[str] = frozenset({"overwrite", "replace", "force"})
 
 
+@dataclass(frozen=True, slots=True)
+class MutationTarget:
+    """The note a curator ``write`` or ``edit`` would really change.
+
+    A call can name one note many ways: permalink, title, alias, path,
+    path suffix, ``memory://`` form, or a folder spelled ``./inbox``. The
+    raw argument alone cannot tell whether it lands in ``inbox/`` or
+    ``review/``; the vault's own resolution can (issue #603). Filled in by
+    :mod:`palaia_hub.curator.targets` from the real vault.
+
+    Attributes:
+        path: the canonical vault-relative note path the call would create
+            or change; ``None`` when the vault resolves no note for it (the
+            call then fails on its own, with the vault's error).
+        tags: the edit target's current tags, lowercase as the vault keeps
+            them; an edit may only add to them.
+    """
+
+    path: str | None
+    tags: tuple[str, ...] = ()
+
+
 def provenance_line(capture_id: str) -> str:
     """The exact provenance line a curator write must carry for ``capture_id``."""
     return f"{PROVENANCE_PREFIX}{capture_id}"
@@ -95,7 +118,8 @@ def provenance_ids(text: str) -> set[str]:
     return {match.group("capture_id") for match in _PROVENANCE_RE.finditer(text or "")}
 
 
-def _folder_argument(arguments: Mapping[str, Any]) -> str:
+def folder_argument(arguments: Mapping[str, Any]) -> str:
+    """The folder a ``write`` names, whichever alias it used (empty: the root)."""
     for name in _FOLDER_ARGUMENT_NAMES:
         value = arguments.get(name)
         if isinstance(value, str) and value.strip():
@@ -136,11 +160,27 @@ def _overwrite_rejection(arguments: Mapping[str, Any]) -> str | None:
     return None
 
 
+def _lands_in(prefix: str, raw: str, target: MutationTarget | None) -> bool:
+    """Does the call land in ``prefix`` — by its raw argument or as the vault resolves it?
+
+    Both are checked: the raw form still refuses when no vault resolution
+    is at hand, and the resolved path catches every other spelling of the
+    same place (issue #603).
+    """
+    if _in_reserved_folder(raw, prefix):
+        return True
+    return (
+        target is not None and target.path is not None and _in_reserved_folder(target.path, prefix)
+    )
+
+
 def _write_rejection(
-    arguments: Mapping[str, Any], expected_captures: Collection[str]
+    arguments: Mapping[str, Any],
+    expected_captures: Collection[str],
+    target: MutationTarget | None,
 ) -> str | None:
-    folder = _folder_argument(arguments)
-    if _in_reserved_folder(folder, INBOX_PREFIX):
+    folder = folder_argument(arguments)
+    if _lands_in(INBOX_PREFIX, folder, target):
         return (
             "rejected: the curator never writes into inbox/. That folder is the "
             "capture's own home (vault-format §7) — file the knowledge where it "
@@ -159,16 +199,20 @@ def _write_rejection(
     return _provenance_rejection(body_text, expected_captures, what="every note you write")
 
 
-def _edit_rejection(arguments: Mapping[str, Any], expected_captures: Collection[str]) -> str | None:
-    target = arguments.get("permalink")
-    target_text = target if isinstance(target, str) else ""
-    if _in_reserved_folder(target_text, INBOX_PREFIX):
+def _edit_rejection(
+    arguments: Mapping[str, Any],
+    expected_captures: Collection[str],
+    target: MutationTarget | None,
+) -> str | None:
+    reference = arguments.get("permalink")
+    target_text = reference if isinstance(reference, str) else ""
+    if _lands_in(INBOX_PREFIX, target_text, target):
         return (
             "rejected: the curator never edits inbox/ content (vault-format §7). "
             "The capture is the input, not the workspace — write the knowledge "
             "into the vault instead; the runner retires the capture itself."
         )
-    if _in_reserved_folder(target_text, REVIEW_PREFIX):
+    if _lands_in(REVIEW_PREFIX, target_text, target):
         return (
             "rejected: the curator may create new proposals in review/ but never "
             "edit existing ones — approving your own proposal is exactly what "
@@ -188,10 +232,45 @@ def _edit_rejection(arguments: Mapping[str, Any], expected_captures: Collection[
             "only edit the curator may make. Nothing else on an existing note is "
             "INGEST."
         )
+    if (tags_message := _tags_rejection(arguments.get("tags"), target)) is not None:
+        return tags_message
     append_text = append if isinstance(append, str) else ""
     return _provenance_rejection(
         append_text, expected_captures, what="everything you append to an existing note"
     )
+
+
+def _tags_rejection(tags: Any, target: MutationTarget | None) -> str | None:
+    """An edit's ``tags`` replace the whole list, so only a superset is additive.
+
+    Issue #603: ``tags=[]`` on an otherwise valid append erased the note's
+    tags. Without the note's current tags at hand there is no way to tell
+    an addition from a removal, so the change is refused (fail-closed).
+    """
+    if tags is None:
+        return None
+    if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
+        return (
+            "rejected: tags must be a list of strings. The curator may only add "
+            "tags to a note, so pass the note's current tags plus the new ones — "
+            "or leave tags out and append observations instead."
+        )
+    if target is None or target.path is None:
+        return (
+            "rejected: the curator may only add tags, and this call's current tags "
+            "could not be checked against. Leave tags out and append observations, "
+            "or describe the tag change in a review/ proposal."
+        )
+    kept = {tag.strip().lower() for tag in tags}
+    removed = [tag for tag in target.tags if tag not in kept]
+    if removed:
+        return (
+            f"rejected: edit(tags=...) replaces the whole tag list, and this one "
+            f"drops {removed!r}. The curator only adds: pass every current tag "
+            f"({list(target.tags)!r}) plus the new ones, or describe the removal "
+            "in a review/ proposal for a human to approve."
+        )
+    return None
 
 
 def _provenance_rejection(
@@ -224,6 +303,7 @@ def rejection_for(
     arguments: Mapping[str, Any] | None = None,
     *,
     expected_captures: Collection[str] = (),
+    target: MutationTarget | None = None,
 ) -> str | None:
     """``None`` if a curator session may make this call; else why it may not.
 
@@ -239,6 +319,12 @@ def rejection_for(
             provenance line is accepted" — the honest fallback for a curator
             session this process did not launch itself (see
             :class:`ActiveCaptures`).
+        target: for ``write``/``edit``, the note the vault says the call
+            would really change (:class:`MutationTarget`). The reserved-folder
+            guards then judge that canonical path as well as the raw
+            argument, and a tag change is checked against the current tags.
+            Omitted, only the raw arguments are judged and any tag change on
+            an edit is refused.
 
     The returned string is the message the model sees. It always says what
     was refused *and* what to do instead: per the SPEC's prompt, "a rejected
@@ -253,9 +339,9 @@ def rejection_for(
             "and belong in a review/ proposal a human approves."
         )
     if action == "write":
-        return _write_rejection(arguments, expected_captures)
+        return _write_rejection(arguments, expected_captures, target)
     if action == "edit":
-        return _edit_rejection(arguments, expected_captures)
+        return _edit_rejection(arguments, expected_captures, target)
     return None
 
 
@@ -300,6 +386,8 @@ __all__ = [
     "PROVENANCE_PREFIX",
     "REVIEW_PREFIX",
     "ActiveCaptures",
+    "MutationTarget",
+    "folder_argument",
     "provenance_ids",
     "provenance_line",
     "rejection_for",

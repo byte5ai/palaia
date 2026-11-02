@@ -85,6 +85,9 @@ class FakeVaultService:
 
     def __init__(self) -> None:
         self._notes: dict[str, NoteRecord] = {}
+        #: Every inbox permalink a capture ever used, deleted ones included —
+        #: the real adapter reads this from git history (issue #602).
+        self._capture_permalinks: set[str] = set()
         #: What :meth:`similar_notes` answers (issue #187). There are no
         #: vectors here to measure a real similarity with, so — like the
         #: real adapter without an index — it answers nothing unless a test
@@ -97,6 +100,8 @@ class FakeVaultService:
     def seed(self, note: NoteRecord) -> None:
         """Directly insert a note (fixture setup helper, bypasses write())."""
         self._notes[note.permalink] = note
+        if note.permalink.startswith("inbox/"):
+            self._capture_permalinks.add(note.permalink)
 
     async def status(self) -> VaultStatus:
         return VaultStatus(
@@ -249,9 +254,10 @@ class FakeVaultService:
         slug = _slugify(what_it_concerns)
         permalink = f"inbox/{slug}"
         suffix = 2
-        while permalink in self._notes:
+        while permalink in self._notes or permalink in self._capture_permalinks:
             permalink = f"inbox/{slug}-{suffix}"
             suffix += 1
+        self._capture_permalinks.add(permalink)
         capture_id = inbox_shape.capture_id_for(permalink)
         body = inbox_shape.compose_capture_body(
             what_it_concerns=what_it_concerns,

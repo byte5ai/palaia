@@ -20,7 +20,7 @@ export const Callouts: Story = () => (
     >
       Backups contain your access keys, so palaia only offers them after you sign in.
     </Callout>
-    <Callout tone="info" title="Search index: 12 of 40 notes ready">
+    <Callout tone="info" title="Search index 30% built">
       Search already works; the rest follows in a minute.
     </Callout>
     <Callout tone="ok" title="First note saved">

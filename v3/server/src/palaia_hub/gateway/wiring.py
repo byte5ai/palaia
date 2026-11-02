@@ -124,7 +124,7 @@ NOTE_FINDINGS_TIMEOUT_SECONDS = 1.0
 _SIMILAR_EXCLUDED_TYPES: tuple[str, ...] = ("meta", "proposal")
 
 
-def _tag_list(value: Any) -> list[str]:
+def tag_list(value: Any) -> list[str]:
     """Normalize a frontmatter ``tags`` value (list or comma-string) to a
     lowercase list, per vault-format.md §2.1."""
     if value is None:
@@ -132,6 +132,17 @@ def _tag_list(value: Any) -> list[str]:
     if isinstance(value, str):
         return [tag.strip().lower() for tag in value.split(",") if tag.strip()]
     return [str(tag).strip().lower() for tag in value if str(tag).strip()]
+
+
+def note_path_for(title: str, folder: str = "") -> str:
+    """The vault-relative path the ``write`` tool creates for ``title`` in ``folder``.
+
+    One definition for the write itself and for the curator guard, which
+    has to judge where a write would really land (issue #603).
+    """
+    folder = folder.strip("/")
+    slug = pl.slugify(title) or "note"
+    return f"{folder}/{slug}.md" if folder else f"{slug}.md"
 
 
 def _folder_of(path: str) -> str:
@@ -177,7 +188,7 @@ def _note_to_record(note: Note) -> NoteRecord:
         permalink=note.permalink or note.path,
         title=note.title,
         type=str(frontmatter.get("type", "note")),
-        tags=_tag_list(frontmatter.get("tags")),
+        tags=tag_list(frontmatter.get("tags")),
         folder=_folder_of(note.path),
         modified=str(frontmatter.get("modified") or ""),
         created=str(frontmatter.get("created") or ""),
@@ -459,9 +470,7 @@ class EngineVaultService:
         type: str = "note",  # noqa: A002 - matches the vault-format field name
         tags: list[str] | None = None,
     ) -> NoteRecord:
-        folder = folder.strip("/")
-        slug = pl.slugify(title) or "note"
-        relative = f"{folder}/{slug}.md" if folder else f"{slug}.md"
+        relative = note_path_for(title, folder)
         frontmatter: dict[str, Any] = {"type": type}
         if tags is not None:
             frontmatter["tags"] = list(tags)
@@ -511,7 +520,7 @@ class EngineVaultService:
         slug = pl.slugify(what_it_concerns) or "capture"
         relative = f"inbox/{slug}.md"
         suffix = 2
-        while self._path_exists(relative):
+        while await self._capture_path_taken(relative):
             relative = f"inbox/{slug}-{suffix}.md"
             suffix += 1
         permalink = relative[: -len(".md")]
@@ -530,6 +539,10 @@ class EngineVaultService:
                 body=body,
                 title=what_it_concerns,
                 frontmatter=frontmatter,
+                # The permalink the id was derived from (format spec §7), not
+                # one minted from the title: that could fall back to a retired
+                # capture's permalink once its file is gone (issue #602).
+                permalink=permalink,
                 must_create=True,
             )
         except _ENGINE_CALLER_ERRORS as exc:
@@ -689,6 +702,21 @@ class EngineVaultService:
     def _path_exists(self, relative: str) -> bool:
         return any(entry.path == relative for entry in self._engine.catalog.values())
 
+    async def _capture_path_taken(self, relative: str) -> bool:
+        """Whether a new capture must not use ``relative``.
+
+        A capture's id is derived from its permalink (format spec §7), so a
+        path an earlier capture used must never be handed out again — not
+        even after the curator retired that capture and deleted its file.
+        The new capture would inherit the old id, and verification would
+        take the old capture's provenance line as proof that the new
+        content was saved (issue #602). The vault's git history is the
+        lifetime record of every path; it survives retirement and restarts.
+        """
+        if self._path_exists(relative):
+            return True
+        return await asyncio.to_thread(self._engine.git.path_in_history, relative)
+
     async def edit(
         self,
         permalink: str,
@@ -831,4 +859,4 @@ if TYPE_CHECKING:
     # the VaultService protocol exactly like FakeVaultService does.
     _typecheck: VaultService = EngineVaultService(cast(VaultEngine, None))
 
-__all__ = ["EngineVaultService"]
+__all__ = ["EngineVaultService", "note_path_for", "tag_list"]

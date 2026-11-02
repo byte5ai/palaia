@@ -32,7 +32,7 @@ async def _run(vault_root: Path, port: int) -> None:
     gateway = build_gateway(
         GatewayConfig(vaults=[mount], profiles=[curator_profile([mount.key])]),
         {mount.key: EngineVaultService(engine)},
-        profile_middleware=curator_profile_middleware([mount]),
+        profile_middleware=curator_profile_middleware([mount], engines={mount.key: engine}),
     )
     app = create_app(HubConfig(auth_enabled=False), gateway=gateway)
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_config=None))

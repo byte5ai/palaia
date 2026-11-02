@@ -50,7 +50,7 @@ import logging
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from ..auth.hashing import spend_constant_time_miss, verify_secret
 from ..config import HubConfig, OAuthSettings, palaia_home
@@ -440,6 +440,40 @@ class AuthorizationServer:
             "invalid_request",
             "redirect_uri is required because this client registered more than one.",
         )
+
+    def stored_redirect_uri(self, next_url: str) -> str | None:
+        """Where a sign-in that continues to ``next_url`` may end, if anywhere.
+
+        Issue #613: the sign-in form's 303 goes to ``next_url``, and when that
+        is an authorization request that fails after redirect validation (a
+        wrong ``response_type``, scope or PKCE parameter), the next hop is the
+        client's ``redirect_uri`` — still within the redirect chain of the
+        sign-in form, so the form's ``form-action`` must allow it.
+
+        Answered from **stored** registrations only: a DCR client, or a CIMD
+        client resolved before. A first-time CIMD client is not fetched here —
+        the sign-in page is shown before anyone is signed in, and fetching a
+        caller-chosen URL for a stranger is exactly what :meth:`authorize`
+        refuses to do (see its comment). For that client this returns
+        ``None``; its normal path is unaffected, because a valid request
+        always stops at the consent page, which carries its own policy.
+
+        Returns the validated redirect URI, or ``None``.
+        """
+        parts = urlsplit(next_url)
+        if parts.scheme or parts.netloc or parts.path != AUTHORIZE_PATH:
+            return None
+        query = dict(parse_qsl(parts.query))
+        client_id = query.get("client_id", "").strip()
+        if not client_id:
+            return None
+        client = self.store.get_client(client_id)
+        if client is None or client.is_machine:
+            return None
+        try:
+            return self._resolve_redirect_uri(client, query.get("redirect_uri"))
+        except OAuthError:
+            return None
 
     def _authorize_url(self, params: Mapping[str, str]) -> str:
         """Rebuild this authorization request as a relative URL, for the login hop."""

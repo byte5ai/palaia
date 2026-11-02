@@ -126,10 +126,21 @@ own update banner (see "Updates" above); nothing here needs re-pasting.
 
 **Reboots.** The container is bound to the server's tailnet address, so
 after a reboot it can only start once `tailscaled` has that address. The
-file installs a systemd drop-in that starts Docker after `tailscaled`; if
-the address still arrives late, Docker's `--restart unless-stopped` retries
-the start with a short back-off — a minute or two of "connection refused"
-after a reboot is that retry, not a broken install (issue #400).
+installer adds a systemd drop-in that starts Docker after `tailscaled`
+(issue #400). The address can still arrive later, when Tailscale's control
+server is slow to answer at boot; Docker's start then fails ("cannot assign
+requested address") and Docker does not try again — `--restart
+unless-stopped` restarts a container that exits, not one that never
+started. A failed start can also leave the container detached from its
+network, so a plain `docker start` would run it without its ports. The
+installer therefore also enables
+`palaia-start-on-tailnet@palaia-hub.service`: it waits for the address,
+attaches the container to its network again if needed and repeats that one
+failed start, and leaves a running container, or one you stopped yourself,
+alone (issue #614). A minute of "connection refused" right
+after a reboot is the server still starting, not a broken install;
+`journalctl -u palaia-start-on-tailnet@palaia-hub` shows when the unit
+started palaia.
 
 **Backing up.** `docker run --rm -v palaia_home:/data -v
 $(pwd):/backup alpine tar czf /backup/palaia-backup.tar.gz -C /data .`

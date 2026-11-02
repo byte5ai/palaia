@@ -8,6 +8,7 @@ SPEC's own role block, verbatim.
 
 from __future__ import annotations
 
+import json
 import sys
 
 import pytest
@@ -73,6 +74,77 @@ async def test_the_prompt_arrives_on_stdin_and_the_exit_code_is_reported() -> No
     assert result.exit_code == 0
     assert result.stdout.strip() == "curate this"
     assert not result.failed
+
+
+def _flag_value(command: tuple[str, ...], flag: str) -> str:
+    assert flag in command, f"{flag} missing from {command}"
+    return command[command.index(flag) + 1]
+
+
+def test_the_default_command_gives_the_session_only_the_curator_tools() -> None:
+    """Issue #604: ``--allowed-tools`` only grants; these flags take the rest away."""
+    command = DEFAULT_RUNNER_COMMAND
+    assert "--restricted" in command  # no user/project/local settings, no bypass
+    assert _flag_value(command, "--tools") == ""  # no built-in tools at all
+    assert "--strict-mcp-config" in command  # no other MCP server
+    assert _flag_value(command, "--permission-mode") == "dontAsk"  # unlisted = denied
+    assert _flag_value(command, "--allowed-tools") == "{allowed_tools}"
+    assert "--dangerously-skip-permissions" not in command
+
+
+def test_an_earlier_default_spelled_out_in_config_yaml_gets_todays_default() -> None:
+    """Hubs set up before #604 carry the old default verbatim in config.yaml."""
+    superseded = [
+        "claude",
+        "-p",
+        "--mcp-config",
+        "{mcp_config}",
+        "--strict-mcp-config",
+        "--allowed-tools",
+        "{allowed_tools}",
+        "--output-format",
+        "text",
+    ]
+    config = HubConfig.model_validate({"curator": {"runner_command": superseded}})
+    assert tuple(config.curator.runner_command) == DEFAULT_RUNNER_COMMAND
+    custom = ["my-cli", "--prompt-on-stdin", "--mcp={mcp_config}"]
+    config = HubConfig.model_validate({"curator": {"runner_command": custom}})
+    assert config.curator.runner_command == custom
+
+
+def test_the_generated_config_file_spells_out_todays_default(tmp_path) -> None:  # noqa: ANN001
+    from palaia_hub.config import ensure_default_config, load_config
+
+    path = tmp_path / "config.yaml"
+    ensure_default_config(path)
+    assert "--restricted" in path.read_text(encoding="utf-8")
+    assert tuple(load_config(tmp_path).curator.runner_command) == DEFAULT_RUNNER_COMMAND
+
+
+@pytest.mark.anyio
+async def test_a_session_runs_in_a_fresh_directory_without_the_hubs_variables(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:  # noqa: ANN001
+    """Issue #604: nothing of the hub's cwd or ``PALAIA_*`` environment reaches it."""
+    monkeypatch.setenv("PALAIA_CURATOR_TOKEN", "plt_must_not_leak")
+    monkeypatch.setenv("PALAIA_HOME", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "hub-file.txt").write_text("hub data")
+    script = (
+        "import json, os; print(json.dumps({'cwd': os.getcwd(), 'files': os.listdir('.'), "
+        "'palaia': sorted(k for k in os.environ if k.startswith('PALAIA_')), "
+        "'extra': os.environ.get('EXTRA_FOR_CLI')}))"
+    )
+    runner = SubprocessSessionRunner(
+        command=[sys.executable, "-c", script], env={"EXTRA_FOR_CLI": "kept"}
+    )
+    result = await runner.run(REQUEST)
+    assert result.exit_code == 0, result.stderr
+    seen = json.loads(result.stdout)
+    assert seen["palaia"] == []
+    assert seen["extra"] == "kept"
+    assert seen["files"] == []
+    assert seen["cwd"] != str(tmp_path)
 
 
 @pytest.mark.anyio

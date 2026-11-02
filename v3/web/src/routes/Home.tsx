@@ -49,9 +49,36 @@ import {
   WarningIcon,
 } from "../shell/icons";
 
+/** Issue 612: two different things. `notes` are in the full-text index and
+ * can be found by their words right away; `ready`/`pending`/`failed` count
+ * the search index's parts (embedding chunks — a note has one or more), which
+ * add finding notes by meaning and are built in the background. */
 interface IndexProgress {
+  notes: number;
   ready: number;
   pending: number;
+  failed: number;
+}
+
+async function loadIndex(vaultKeys: string[]): Promise<IndexProgress> {
+  const statuses = await Promise.all(vaultKeys.map((key) => api.indexStatus(key).catch(() => null)));
+  const progress: IndexProgress = { notes: 0, ready: 0, pending: 0, failed: 0 };
+  for (const status of statuses) {
+    if (!status) continue;
+    progress.notes += status.notes;
+    // Not being built: switched off, or it can't run here — never "in progress".
+    if (!status.embeds.enabled || !status.embeds.available) continue;
+    progress.ready += status.embeds.ready;
+    progress.pending += status.embeds.pending;
+    progress.failed += status.embeds.failed;
+  }
+  return progress;
+}
+
+/** Same arithmetic as the hub's `embed_progress` (SPEC-210). */
+function indexPercent(progress: IndexProgress): number {
+  const total = progress.ready + progress.pending + progress.failed;
+  return total === 0 ? 100 : Math.round((100 * progress.ready) / total);
 }
 
 type BackupState = BackupTargetsResponse | "needs-sign-in" | null | undefined;
@@ -133,16 +160,8 @@ export function Home() {
         const inbox = await Promise.all(list.map((v) => api.inboxStatus(v.key).catch(() => null)));
         if (cancelled) return;
         setToFile(inbox.reduce((sum, status) => sum + (status?.count ?? 0), 0));
-        const indexes = await Promise.all(list.map((v) => api.indexStatus(v.key).catch(() => null)));
-        if (cancelled) return;
-        let ready = 0;
-        let pending = 0;
-        for (const status of indexes) {
-          if (!status || !status.embeds.enabled) continue;
-          ready += status.embeds.ready;
-          pending += status.embeds.pending;
-        }
-        setIndex({ ready, pending });
+        const progress = await loadIndex(list.map((v) => v.key));
+        if (!cancelled) setIndex(progress);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -221,6 +240,35 @@ export function Home() {
       window.clearTimeout(timer);
     };
   }, [firstMemoryAt]);
+
+  // Issue 612: while the search index is being built, follow it — backing
+  // off like the poll above — and stop once nothing is pending.
+  const indexBuilding = (index?.pending ?? 0) > 0;
+  const vaultKeys = (vaults ?? []).map((vault) => vault.key).join("\n");
+  useEffect(() => {
+    if (!indexBuilding || !vaultKeys) return;
+    let cancelled = false;
+    let delay = POLL_INITIAL_MS;
+    let timer = 0;
+    const keys = vaultKeys.split("\n");
+    const tick = () => {
+      loadIndex(keys)
+        .then((progress) => {
+          if (!cancelled) setIndex(progress);
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (cancelled) return;
+          delay = nextPollDelay(delay);
+          timer = window.setTimeout(tick, delay);
+        });
+    };
+    timer = window.setTimeout(tick, delay);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [indexBuilding, vaultKeys]);
 
   const activeTokens = (tokens ?? []).filter((token) => !token.revoked_at);
   const connected = activeTokens
@@ -330,9 +378,12 @@ export function Home() {
                     {count(toFile, "note", "notes")} to file
                   </StatusPill>
                 ) : null}
-                {index && index.pending > 0 ? (
-                  <StatusPill tone="info">
-                    Search index: {index.ready} of {index.ready + index.pending} notes ready
+                {index && indexBuilding ? (
+                  <StatusPill
+                    tone="info"
+                    title={`Your ${count(index.notes, "note", "notes")} can be found by their words now. The search index adds finding them by meaning; it is still being built.`}
+                  >
+                    Search works · search index {indexPercent(index)}% built
                   </StatusPill>
                 ) : null}
               </div>

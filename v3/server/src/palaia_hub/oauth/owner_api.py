@@ -49,7 +49,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .errors import OAuthError
 from .keys import now_seconds
-from .login import CSRF_COOKIE, SESSION_COOKIE, new_csrf_token, set_owner_password
+from .login import (
+    CSRF_COOKIE,
+    SESSION_COOKIE,
+    OwnerExistsError,
+    create_owner_password,
+    new_csrf_token,
+)
 from .routes import request_is_https
 from .service import AuthorizationServer
 from .store import OAuthStore
@@ -65,6 +71,14 @@ class OwnerAccountState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     configured: bool
+
+
+def _already_has_owner() -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail="this hub already has an owner account. Fix: to change its "
+        "password, run `palaia-hub oauth set-password` where the hub runs.",
+    )
 
 
 class CreateOwnerRequest(BaseModel):
@@ -110,16 +124,17 @@ def build_owner_router(
 
         409 once an account exists. A request another site's page made
         through this browser never gets here (``security.cross_site``).
+
+        The early check only saves a password hash on the common case; the
+        decision is :func:`create_owner_password`'s single store transaction
+        (issue #607), so two concurrent first-run requests cannot both win
+        and the later one can never replace the earlier one's account.
         """
         if store().get_owner() is not None:
-            raise HTTPException(
-                status_code=409,
-                detail="this hub already has an owner account. Fix: to change its "
-                "password, run `palaia-hub oauth set-password` where the hub runs.",
-            )
+            raise _already_has_owner()
         try:
             await asyncio.to_thread(
-                set_owner_password,
+                create_owner_password,
                 store(),
                 body.username,
                 body.password,
@@ -131,6 +146,8 @@ def build_owner_router(
             session, expires_at = await asyncio.to_thread(
                 server.sign_in, body.username.strip(), body.password
             )
+        except OwnerExistsError as exc:
+            raise _already_has_owner() from exc
         except OAuthError as exc:
             raise HTTPException(status_code=400, detail=exc.description) from exc
         max_age = max(0, expires_at - server.now())

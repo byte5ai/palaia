@@ -29,16 +29,34 @@ in a process and then at most once every :data:`LAST_USED_FLUSH_SECONDS` per
 token, never on every request, and ``tokens.yaml`` (which the CLI also writes)
 keeps its format and is never touched by a verify. The file holds only public
 token ids and timestamps; losing or corrupting it only loses those times.
+
+**Verification cost** (issue #608): an argon2 verify takes a noticeable
+fraction of a second, and every bearer token presented on the public MCP
+surface reaches :meth:`TokenStore.averify`. So that work never runs on the
+event loop: it goes to a small process-wide pool of :data:`HASH_WORKERS`
+threads, which bounds how much of the machine invalid tokens can occupy. A
+string that is not shaped like a palaia token is refused without argon2 at
+all — the shape is public, so skipping the work reveals nothing — while a
+well-formed token with an unknown id still pays the dummy verify that makes
+"no such id" cost the same as "wrong secret". A token that verified is
+remembered in memory by its SHA-256 digest for :data:`VERIFIED_TTL_SECONDS`,
+so a connected client is not queued behind a flood of bad tokens; revocation,
+rotation and outside changes to ``tokens.yaml`` are checked on every request
+regardless, and nothing of the cache is ever written to disk.
 """
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import json
 import logging
 import re
 import secrets
 import time
+from collections import OrderedDict
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -62,6 +80,30 @@ TOKEN_PREFIX = "plt"
 #: per request. The in-memory time the dashboard reads is always exact; only
 #: the time remembered across a restart can be this much behind.
 LAST_USED_FLUSH_SECONDS = 300
+
+#: How many argon2 verifies run at once, process-wide (module docstring,
+#: "Verification cost"). Small on purpose: each one is CPU- and
+#: memory-heavy, and a hub serves a handful of clients, not a crowd.
+HASH_WORKERS = 2
+
+#: How long a token that verified is remembered, so its next requests skip
+#: argon2. Revocation and rotation still apply on every request.
+VERIFIED_TTL_SECONDS = 300.0
+
+#: At most this many verified tokens are remembered; the oldest goes first.
+VERIFIED_CACHE_MAX = 1024
+
+_hash_pool = ThreadPoolExecutor(max_workers=HASH_WORKERS, thread_name_prefix="palaia-token-hash")
+
+
+async def _off_loop(fn: Callable[..., Any], *args: Any) -> Any:
+    """Run an argon2 call on the bounded hash pool, not on the event loop."""
+    return await asyncio.get_running_loop().run_in_executor(_hash_pool, fn, *args)
+
+
+def _cache_key(token: str) -> bytes:
+    return hashlib.sha256(token.encode("utf-8")).digest()
+
 
 # vault:<key>:read|write, plus the hub-level families' own scope shapes
 # (stash:read|write, directory:read|write, messenger:read|send) — the only
@@ -159,6 +201,9 @@ class TokenStore:
         self._seen: set[str] = set()
         # token_id -> monotonic time its last-use time was last written.
         self._flushed_at: dict[str, float] = {}
+        # sha256(token) -> (token_id, stored hash, monotonic expiry) of a token
+        # that verified recently (module docstring, "Verification cost").
+        self._verified: OrderedDict[bytes, tuple[str, str, float]] = OrderedDict()
         #: SPEC-201's ``client.connected`` hook point: called with
         #: ``(record, is_first_use)`` after every *successful* verify(),
         #: ``is_first_use`` true exactly once per token per process
@@ -363,14 +408,14 @@ class TokenStore:
         """Verify a presented token; return its record if valid and live.
 
         ``None`` covers every rejection reason alike (malformed, unknown id,
-        wrong secret, revoked) — the caller (an
-        :class:`~palaia_hub.auth.verifier.PalaiaTokenVerifier`) turns that
-        into the same 401 either way, never distinguishing *why* a token
-        failed to a client.
+        wrong secret, revoked) — the caller turns that into the same 401
+        either way, never distinguishing *why* a token failed to a client.
+
+        Synchronous, with argon2 on the calling thread: for the CLI and
+        tests. The hub's request path uses :meth:`averify`.
         """
         parsed = _parse_token(token)
         if parsed is None:
-            spend_constant_time_miss()
             return None
         token_id, secret = parsed
         self._refresh()
@@ -378,10 +423,58 @@ class TokenStore:
         if record is None:
             spend_constant_time_miss()
             return None
-        if not verify_secret(secret, record.hash):
+        if not verify_secret(secret, record.hash) or record.is_revoked:
             return None
-        if record.is_revoked:
+        return self._accept(token_id, record)
+
+    async def averify(self, token: str) -> TokenRecord | None:
+        """:meth:`verify` for the event loop (module docstring, "Verification cost").
+
+        The argon2 work runs on the bounded hash pool; everything else —
+        reading the records, the last-use bookkeeping and the
+        ``client.connected`` hook — stays on the loop, so none of this
+        store's state is touched from another thread.
+        """
+        parsed = _parse_token(token)
+        if parsed is None:
             return None
+        token_id, secret = parsed
+        self._refresh()
+        record = self._records.get(token_id)
+        if record is None:
+            await _off_loop(spend_constant_time_miss)
+            return None
+        key = _cache_key(token)
+        if not self._recently_verified(key, token_id, record.hash):
+            if not await _off_loop(verify_secret, secret, record.hash):
+                return None
+        # The await may have let a revoke, a rotation or an outside change in.
+        self._refresh()
+        current = self._records.get(token_id)
+        if current is None or current.hash != record.hash or current.is_revoked:
+            self._verified.pop(key, None)
+            return None
+        self._remember_verified(key, token_id, current.hash)
+        return self._accept(token_id, current)
+
+    def _recently_verified(self, key: bytes, token_id: str, stored_hash: str) -> bool:
+        entry = self._verified.get(key)
+        if entry is None:
+            return False
+        cached_id, cached_hash, expires = entry
+        if cached_id != token_id or cached_hash != stored_hash or expires <= time.monotonic():
+            del self._verified[key]
+            return False
+        return True
+
+    def _remember_verified(self, key: bytes, token_id: str, stored_hash: str) -> None:
+        self._verified[key] = (token_id, stored_hash, time.monotonic() + VERIFIED_TTL_SECONDS)
+        self._verified.move_to_end(key)
+        while len(self._verified) > VERIFIED_CACHE_MAX:
+            self._verified.popitem(last=False)
+
+    def _accept(self, token_id: str, record: TokenRecord) -> TokenRecord:
+        """Bookkeeping for a token that verified: last use and the hook."""
         is_first_use = token_id not in self._seen
         self._seen.add(token_id)
         self._last_used[token_id] = _now()
@@ -398,4 +491,12 @@ class TokenStore:
         return record
 
 
-__all__ = ["CreatedToken", "LAST_USED_FILE", "TOKEN_PREFIX", "TokenError", "TokenStore"]
+__all__ = [
+    "HASH_WORKERS",
+    "LAST_USED_FILE",
+    "TOKEN_PREFIX",
+    "VERIFIED_TTL_SECONDS",
+    "CreatedToken",
+    "TokenError",
+    "TokenStore",
+]

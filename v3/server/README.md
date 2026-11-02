@@ -314,7 +314,10 @@ on the event bus (`curator.*`), and anything that did not land also raises a
 # config.yaml — off by default: the curator runs a model
 curator:
   enabled: true
-  runner_command: [claude, -p, --mcp-config, '{mcp_config}', --strict-mcp-config,
+  # The default: nothing but palaia's curator tools — no built-in tools, none of
+  # your Claude Code settings, no other MCP server (needs Claude Code 2.1.248+).
+  runner_command: [claude, -p, --restricted, --tools, '', --mcp-config, '{mcp_config}',
+                   --strict-mcp-config, --permission-mode, dontAsk,
                    --allowed-tools, '{allowed_tools}', --output-format, text]
   debounce_seconds: 30      # a burst of captures is one pass
   interval_seconds: 900     # fallback for captures written into inbox/ by hand

@@ -9,6 +9,7 @@ Covers the manifest round trip in the engine, the three dashboard routes
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -284,6 +285,38 @@ def test_close_archives_the_vault_and_unmounts_it_live(hub: _Hub) -> None:
         again = client.post("/api/vaults", json={"key": "trip", "ephemeral": True})
         assert again.status_code == 200
         assert again.json()["note_count"] == 1  # just the manifest
+
+
+@pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0, reason="root ignores directory permissions"
+)
+def test_a_close_that_cannot_archive_leaves_the_vault_working(hub: _Hub) -> None:
+    """Issue #609: the archive move fails (destination not writable) after
+    the route already released the vault's index, watcher and gateway mount.
+    Everything comes back; the vault is usable as before the attempt."""
+    with hub.client as client:
+        _two_vaults(hub, client)
+        hub.registry.archive_dir.mkdir(parents=True)
+        hub.registry.archive_dir.chmod(0o500)
+        try:
+            response = client.post("/api/vaults/trip/close", json={"confirm": "trip"})
+        finally:
+            hub.registry.archive_dir.chmod(0o700)
+
+        assert response.status_code == 500, response.text
+        assert "Nothing was lost" in response.json()["detail"]
+        assert "trip" in hub.registry
+        assert "trip" in VaultRegistry(hub.registry.home).names()  # after a restart too
+        assert client.get("/api/vaults/trip/notes/scratch").status_code == 200
+        assert "trip" in hub.indexes and "trip" in hub.watchers
+        assert {v.key for v in hub.gateway.config.vaults} == {"work", "trip"}
+        default = next(p for p in hub.gateway.config.profiles if p.path == "default")
+        assert "trip" in default.vaults
+
+        # With the destination fixed, the same close goes through.
+        again = client.post("/api/vaults/trip/close", json={"confirm": "trip"})
+        assert again.status_code == 200, again.text
+        assert "trip" not in hub.registry
 
 
 def test_close_needs_the_exact_confirmation(hub: _Hub) -> None:

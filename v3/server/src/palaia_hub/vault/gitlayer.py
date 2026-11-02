@@ -341,6 +341,17 @@ class GitRepo:
             return []
         return _parse_log(result.stdout)
 
+    def path_in_history(self, path: str) -> bool:
+        """True when any commit reachable from HEAD ever touched ``path``.
+
+        Also true for a path that was deleted since: the history, not the
+        current tree, is what remembers that a path was once used.
+        """
+        result = self._run(
+            ["rev-list", "--max-count=1", "HEAD", "--", path], check=False, read_only=True
+        )
+        return result.returncode == 0 and bool(result.stdout.strip())
+
     def path_at_head(self, path: str) -> bool:
         """True when ``path`` is tracked in the current commit."""
         result = self._run(["cat-file", "-e", f"HEAD:{path}"], check=False, read_only=True)

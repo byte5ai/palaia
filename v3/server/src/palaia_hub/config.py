@@ -59,18 +59,43 @@ APP_NAME = "palaia-hub"
 # than imported from palaia_hub.curator.session: this module must stay
 # importable without pulling in the curator package (which imports the
 # gateway, which imports fastmcp) — config load happens first, always.
-# palaia_hub.curator.session.DEFAULT_RUNNER_COMMAND is the same list, and a
-# test asserts the two never drift apart.
+# palaia_hub.curator.session.DEFAULT_RUNNER_COMMAND is the same list (and
+# says what each flag takes away), and a test asserts the two never drift
+# apart.
 _DEFAULT_CURATOR_COMMAND: tuple[str, ...] = (
     "claude",
     "-p",
+    "--restricted",
+    "--tools",
+    "",
     "--mcp-config",
     "{mcp_config}",
     "--strict-mcp-config",
+    "--permission-mode",
+    "dontAsk",
     "--allowed-tools",
     "{allowed_tools}",
     "--output-format",
     "text",
+)
+
+# Defaults earlier releases shipped. The generated config.yaml spells the
+# default out, so a hub set up by one of those releases still carries it
+# verbatim; that exact list is read as "the default" and gets today's, so the
+# confinement of issue #604 reaches existing hubs too. A command the owner
+# changed is left alone.
+_SUPERSEDED_CURATOR_COMMANDS: tuple[tuple[str, ...], ...] = (
+    (
+        "claude",
+        "-p",
+        "--mcp-config",
+        "{mcp_config}",
+        "--strict-mcp-config",
+        "--allowed-tools",
+        "{allowed_tools}",
+        "--output-format",
+        "text",
+    ),
 )
 
 _ENV_PREFIX = "PALAIA_"
@@ -340,12 +365,19 @@ curator:
   # command's stdin; {mcp_config}, {allowed_tools}, {endpoint}, {vault} and
   # {capture_id} are filled in per session. Any CLI that reads a prompt from
   # stdin works here — this is not tied to one provider.
+  # The default gives the session nothing but palaia's curator tools: no
+  # built-in tools, none of your Claude Code settings or other MCP servers.
   runner_command:
     - claude
     - -p
+    - --restricted
+    - --tools
+    - ''
     - --mcp-config
     - '{mcp_config}'
     - --strict-mcp-config
+    - --permission-mode
+    - dontAsk
     - --allowed-tools
     - '{allowed_tools}'
     - --output-format
@@ -873,6 +905,14 @@ class CuratorSettings(BaseModel):
     #: ``http://<host>:<port>`` from the settings above, which is right for
     #: the normal case (the session runs on the same machine as the hub).
     endpoint: str | None = None
+
+    @field_validator("runner_command")
+    @classmethod
+    def _upgrade_superseded_default(cls, value: list[str]) -> list[str]:
+        """An earlier release's default, spelled out in config.yaml, is the default."""
+        if tuple(value) in _SUPERSEDED_CURATOR_COMMANDS:
+            return list(_DEFAULT_CURATOR_COMMAND)
+        return value
 
 
 class MarketSettings(BaseModel):

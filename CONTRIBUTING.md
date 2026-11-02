@@ -49,7 +49,7 @@ Open a [GitHub Issue](https://github.com/byte5ai/palaia/issues). Include:
 |------|---------|
 | Direct push to main / v2-maintenance | Blocked |
 | Pull request required | Yes |
-| CI must pass | Yes — on `main`: `ci-required` and `v3-ci-required`, branch up to date; on `v2-maintenance`: `test (3.9)`–`test (3.12)` and `test-plugin` |
+| CI must pass | Yes — on `main`: `v3-ci-required`; on `v2-maintenance`: `test (3.9)`–`test (3.12)` and `test-plugin` |
 | Force push | Blocked |
 | Owner bypass | Yes (emergencies only) |
 
@@ -116,7 +116,7 @@ is not involved.
 
 - `just test` passes and `just lint` is clean (`v3-ci.yml` runs the light part of them on every PR
   that touches `v3/`: lint, typecheck and the unit tests; the rest runs in the batch, see below)
-- The two gate checks are green: `ci-required` (from `ci.yml`) and `v3-ci-required` (from `v3-ci.yml`).
+- The gate check `v3-ci-required` (from `v3-ci.yml`) is green.
   Both run on every PR to `main`; each fails if one of its lanes failed or was cancelled, and
   passes when the lanes passed or were skipped because their area was untouched
 - New features need tests
@@ -153,7 +153,7 @@ ClawHub, npm) live in `CONTRIBUTING.md` on `v2-maintenance`.
 | `v3-release.yml` | `v3.*` tags, manual dispatch | Hub container image (`edge` by dispatch on `main`, `stable`/`beta` on tags) |
 | `v3-cut-release.yml` | Manual dispatch | Tags a v3 release and triggers the image builds; refuses a commit that is not on `main` or has no green `v3-ci-batch.yml` run |
 | `v3-pi-image.yml` | `v3.*` tags, manual dispatch | Raspberry Pi appliance image |
-| `ci.yml` | Every push/PR to `main` or `v2-maintenance`; on `main` the lanes skip when only `v3/**` changed | v2: ruff + pytest (3.9-3.12) + plugin vitest; gate check `ci-required` |
+| `ci.yml` | Every push/PR to `main` or `v2-maintenance`; on `main` the lanes skip when only `v3/**` changed | v2: ruff + pytest (3.9-3.12) + plugin vitest; its `ci-required` is not a required check on `main` (v2 is retired) |
 | `publish.yml` | `v2.*` tags | v2 PyPI publish (all v2 tags) + npm publish (stable only) |
 | `track-label.yml` | New issues/PRs, manual dispatch | Adds the `v2` or `v3` label to every issue and PR that has neither |
 

@@ -29,10 +29,12 @@ from .profile import (
     allowed_tool_specs,
     curator_profile_middleware,
     curator_tool_actions,
+    curator_tool_vaults,
 )
 from .runner import CuratorRunner
 from .service import CuratorScheduler
 from .session import SessionRunner, SubprocessSessionRunner
+from .targets import EngineMutationTargets
 
 #: ``EventBus.on`` — how the scheduler subscribes to ``inbox.captured``.
 SchedulerSubscribe = Callable[[Callable[[Envelope], None]], Callable[[], None]]
@@ -120,6 +122,9 @@ class CuratorWiring:
         for item in self.profile_middleware.get(CURATOR_PROFILE_PATH, []):
             if isinstance(item, CuratorScopeMiddleware):
                 item.add_tool_actions(curator_tool_actions([mount]))
+                item.add_vault(
+                    mount.key, curator_tool_vaults([mount]), EngineMutationTargets(engine)
+                )
 
     def remove_vault(self, key: str) -> None:
         """Stop curating ``key``, live — the inverse of :meth:`add_vault`.
@@ -232,7 +237,9 @@ def build_curator(
         runners=runners,
         appliers=appliers,
         active_captures=active_captures,
-        profile_middleware=curator_profile_middleware(mounts, active_captures=active_captures),
+        profile_middleware=curator_profile_middleware(
+            mounts, active_captures=active_captures, engines=engines
+        ),
         stash_store=stash_store,
         _session_runner=runner,
         _audit=audit,
