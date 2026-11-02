@@ -12,7 +12,7 @@ Time: about a couple of minutes.
 Paste this into a terminal where the tool is already set up. It adds the connection; nothing else changes.
 
 ```bash
-http://palaia.local/mcp/default
+http://palaia.local:8420/mcp/default
 Authorization: Bearer <paste-your-token>
 ```
 
@@ -24,7 +24,7 @@ If you would rather not touch a terminal, paste this to the AI itself and let it
 
 ```text
 Please connect yourself to my palaia hub as an MCP server:
-http://palaia.local/mcp/default
+http://palaia.local:8420/mcp/default
 Send the header "Authorization: Bearer <paste-your-token>" with every request.
 Then run a test recall and tell me what you found.
 ```

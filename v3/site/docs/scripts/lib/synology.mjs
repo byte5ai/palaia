@@ -121,10 +121,11 @@ export function renderSynologyPage() {
     "http://<your-NAS-address>:8420",
     "```",
     "",
-    "The container also tries to advertise itself as `http://palaia.local` on your network, the same as every " +
-      "other install path — whether that resolves depends on how Synology's own networking handles it, the " +
-      "same caveat [Install it](/install/)'s network section covers for other setups. Either way, the address " +
-      "above always works.",
+    "The compose file runs the container on the NAS's own network, so it also announces itself by name: " +
+      "`http://palaia.local:8420` opens it from your other devices too, the same as every other Linux install. " +
+      "Whether that name resolves depends on how your network handles it — some routers keep it from crossing " +
+      "between separate networks, the caveat [Install it](/install/#finding-it-on-your-network-palaialocal) " +
+      "covers. Either way, the address above always works.",
     "",
     "From there, a short setup wizard takes over — see [Get palaia running](/onboarding/) for what that looks " +
       "like, or [Your first shared memory](/first-shared-memory/) for the full walkthrough once it's done.",

@@ -51,13 +51,22 @@ inline so it isn't a surprise partway through setup.
 
 ## "`palaia.local` doesn't resolve on my network"
 
-Expected in a couple of common setups — Docker Desktop on macOS/Windows
-runs containers inside a hidden VM that this kind of network advertisement
-can't reach past, and it needs a specific network setting turned on even
-on Linux. See [Install it](/install/)'s mDNS section for exactly
+First check the address: for a Docker install it is
+`http://palaia.local:8420/`, with the port — without `:8420` the browser
+knocks on a door of the machine that palaia does not answer at. If that
+still doesn't open, it is expected in a couple of
+common setups: Docker Desktop on macOS/Windows runs containers inside a
+hidden VM that this kind of network announcement can't reach past; a
+container started with `-p 8420:8420` on Linux (rather than the Linux
+command on [Install it](/install/), which shares the machine's own network)
+can't reach past Docker's own network either; and some routers keep the
+name from crossing between separate networks, such as a guest Wi-Fi. See
+[Install it](/install/#finding-it-on-your-network-palaialocal) for exactly
 which setups it works on. It's always a convenience, never a requirement —
 your hub's regular address (shown in its startup log, and in the dashboard)
-always works.
+always works. On a server set up with the `get.palaia.ai` command, use the
+address the setup printed instead (usually `http://palaia-hub/`); that
+server is reached over your tailnet, not by this name.
 
 ## "How do I know a save actually happened?"
 

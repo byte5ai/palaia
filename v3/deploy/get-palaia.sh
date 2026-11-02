@@ -100,6 +100,65 @@ ufw_allows_everyone() {
     $SUDO ufw status 2>/dev/null | grep -Eq "^$1(/tcp)?[[:space:]]+ALLOW( IN)?[[:space:]]+Anywhere([[:space:]]|$)"
 }
 
+# Port 80 of the tailnet address too, so palaia opens as http://palaia-hub/,
+# without a port number (#620). Docker publishes it straight to the
+# container's front door: its forwarding keeps each caller's own tailnet
+# address, so the hub's per-device sign-in limits stay per device, and the
+# container needs no extra permission. Only when nothing listens there yet —
+# on every address (0.0.0.0, [::], *) or on the given address itself; a
+# listener on another single address (say 127.0.0.1:80) is no conflict.
+# Without an address (before the join, when the tailnet address does not
+# exist yet) only the every-address listeners count.
+port80_free() {
+    listeners="$($SUDO ss -Hltn "sport = :80" 2>/dev/null | awk '{print $4}')" || listeners=""
+    for listener in $listeners; do
+        case "$listener" in
+            "0.0.0.0:80"|"*:80"|"[::]:80") return 1 ;;
+        esac
+        if [ -n "$1" ] && [ "$listener" = "${1}:80" ]; then
+            return 1
+        fi
+    done
+    return 0
+}
+
+# Sets HTTP_PUBLISH (the port-80 publish, or nothing) and PORT80 (1 when
+# palaia answers on port 80 of the tailnet address). Never without Tailscale:
+# that path (BIND_ADDR 0.0.0.0) stays as it is.
+choose_port80() {
+    HTTP_PUBLISH=""
+    PORT80=0
+    [ "$BIND_ADDR" != "0.0.0.0" ] || return 0
+    if [ "$PORT" = "80" ]; then
+        PORT80=1
+    elif port80_free "$BIND_ADDR"; then
+        HTTP_PUBLISH="-p ${BIND_ADDR}:80:8420"
+        PORT80=1
+    fi
+}
+
+# The last line: where to open palaia. On the tailnet that is a name, not a
+# number (#619): with MagicDNS on, the machine's tailnet name — without a port
+# when the hub is on port 80 there too (#620), so http://palaia-hub/. The
+# setup page shows the same address on its "Done" screen. The first sign-in
+# fixes the address palaia issues its sign-in for, so the name is what to open
+# from the start. Without an answer the address stays the one in URL.
+report_address() {
+    full_url=""
+    url_note=""
+    if [ "$BIND_ADDR" != "0.0.0.0" ]; then
+        out="$($SUDO python3 /opt/palaia/setup-page.py address \
+            --port "$PORT" --port-80 "${PORT80:-0}" </dev/null 2>/dev/null)" || out=""
+        name_url="$(printf '%s\n' "$out" | sed -n 's/^address=//p' | tail -n1)"
+        full_url="$(printf '%s\n' "$out" | sed -n 's/^full_address=//p' | tail -n1)"
+        url_note="$(printf '%s\n' "$out" | sed -n 's/^address_note=//p' | tail -n1)"
+        [ -z "$name_url" ] || URL="$name_url"
+    fi
+    log "done ✓  Open ${URL} from any device on your tailnet to finish setup."
+    [ -z "$full_url" ] || log "  full name: ${full_url}"
+    [ -z "$url_note" ] || log "  ${url_note}"
+}
+
 # The key, if any, goes into a file only root can read; Tailscale reads it
 # from there (`--auth-key=file:`), so it is never a command-line argument.
 if [ -n "${PALAIA_TSKEY_FILE:-}" ]; then
@@ -265,6 +324,14 @@ PALAIA_START_ON_TAILNET
 # `cloud_url=https://...` (exit 0) or `cloud_url=` (exit 3: not set up);
 # `--check-only` just reports.
 #
+# palaia's private address is a name, not a number (issues #619, #620): with
+# MagicDNS on, the machine's tailnet name — and no port number when the
+# installer also publishes the hub on port 80 of the tailnet address, which it
+# does only when port 80 is free there (`--port-80 1`). So `http://palaia-hub/`.
+# `setup-page.py address --port N --port-80 0|1` prints `address=`,
+# `full_address=` and `address_note=` lines; the "Done" screen shows the same
+# address. Nothing here changes Tailscale's settings.
+#
 # Standard library only — python3 is on every image that runs cloud-init.
 # The code comes from the PALAIA_SETUP_CODE environment variable, not the
 # command line, so it never shows up in a process list. Without one, a fresh
@@ -295,6 +362,15 @@ MAX_CLIENTS = 32  # concurrent connections; more are dropped, not queued
 CLIENT_TIMEOUT = 10  # seconds a connection may take to send its request
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O, 1/I look-alikes
 FUNNEL_PORTS = (443, 8443, 10000)  # the only HTTPS ports Funnel offers
+NO_MAGICDNS_NOTE = (
+    "Your Tailscale network has MagicDNS turned off, so palaia has no name there "
+    "and is opened by its number; turn MagicDNS on under DNS in Tailscale's admin "
+    "console to open it by name."
+)
+PORT_80_BUSY_NOTE = (
+    "Port 80 on this server's tailnet address is already used by another program, "
+    "so palaia keeps its port number."
+)
 
 
 def log(message):
@@ -451,6 +527,49 @@ class Cloud:
             self.proc.terminate()
 
 
+# --- the private address (MagicDNS name) ---------------------------------------
+
+
+def tailnet_name():
+    """(short, full) MagicDNS name of this machine, e.g. ("palaia-hub",
+    "palaia-hub.tail1234.ts.net"); None when the tailnet has MagicDNS off.
+
+    The short name comes from the name Tailscale gave the machine, which is
+    `palaia-hub-1` when another machine already has `palaia-hub`.
+    """
+    status = tailscale_json("status")
+    full = str((status.get("Self") or {}).get("DNSName") or "").rstrip(".")
+    if not full or not (status.get("CurrentTailnet") or {}).get("MagicDNSEnabled"):
+        return None
+    return full.split(".", 1)[0], full
+
+
+def private_address(hub_port, port_80):
+    """Where palaia opens on the tailnet: (address, full address, note).
+
+    `http://palaia-hub/` when the installer publishes the hub on port 80 of the
+    tailnet address too (`port_80`), `http://palaia-hub:<port>/` when port 80 is
+    taken there, and the tailnet IP with the port when MagicDNS is off.
+    """
+    names = tailnet_name()
+    if names is None:
+        ip = tailnet_ip() or "<tailnet address>"
+        return f"http://{ip}:{hub_port}/", "", NO_MAGICDNS_NOTE
+    short, full = names
+    if port_80:
+        return f"http://{short}/", f"http://{full}/", ""
+    return f"http://{short}:{hub_port}/", f"http://{full}:{hub_port}/", PORT_80_BUSY_NOTE
+
+
+def address_main(args):
+    address, full, note = private_address(args.port, args.port_80)
+    log(f"palaia's private address: {address}")
+    print(f"address={address}", flush=True)
+    print(f"full_address={full}", flush=True)
+    print(f"address_note={note}", flush=True)
+    return 0
+
+
 def cloud_main(args):
     cloud = Cloud(args.target)
     if args.check_only:
@@ -475,6 +594,7 @@ class State:
         self.port = port
         self.login_url = None
         self.ip = None
+        self.address = None  # (address, full address, note) once joined
         self.failed = None
         self.proc = None
         self.cloud = None  # a Cloud while the cloud step runs
@@ -677,7 +797,7 @@ def connect_body(state, code):
 
 
 def done_body(state):
-    url = f"http://{state.ip}:{state.port}/"
+    url, full, note = state.address or (f"http://{state.ip}:{state.port}/", "", "")
     cloud = state.cloud
     if cloud is None:
         cloud_line = ""
@@ -698,7 +818,9 @@ def done_body(state):
         f"{cloud_line}"
         f'<p>In a minute or two, palaia opens at <a href="{html.escape(url)}">'
         f"{html.escape(url)}</a> on any device with the Tailscale app turned on.</p>"
-        '<p class="muted">This setup page closes itself now.</p>'
+        + (f'<p class="muted">Full name: <code>{html.escape(full)}</code></p>' if full else "")
+        + (f'<p class="muted">{html.escape(note)}</p>' if note else "")
+        + '<p class="muted">This setup page closes itself now.</p>'
     )
 
 
@@ -826,8 +948,11 @@ def page_main(args):
         while time.monotonic() < deadline and not state.failed:
             ip = tailnet_ip()
             if ip:
+                # The address first: setting state.ip shows "Done", and that
+                # screen must name palaia's address, not just its number.
+                state.address = private_address(args.hub_port, args.port_80)
                 state.ip = ip
-                log(f"joined the tailnet as {ip}.")
+                log(f"joined the tailnet as {ip}; palaia's address: {state.address[0]}")
                 if args.cloud_target:
                     state.cloud = Cloud(args.cloud_target)
                     state.cloud.run(max(1, int(deadline - time.monotonic())))
@@ -867,9 +992,16 @@ def main(argv=None):
         parser.add_argument("--wait", type=int, default=600, help="seconds to wait for approval")
         parser.add_argument("--check-only", action="store_true", help="only report, change nothing")
         return cloud_main(parser.parse_args(argv[1:]))
+    port_80_help = "1 when the hub is also published on port 80 of the tailnet address"
+    if argv[:1] == ["address"]:
+        parser = argparse.ArgumentParser(description="Print palaia's private address.")
+        parser.add_argument("--port", type=int, default=8420, help="where palaia answers")
+        parser.add_argument("--port-80", type=int, choices=(0, 1), default=0, help=port_80_help)
+        return address_main(parser.parse_args(argv[1:]))
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8420, help="where this page listens")
     parser.add_argument("--hub-port", type=int, default=8420, help="where palaia will answer")
+    parser.add_argument("--port-80", type=int, choices=(0, 1), default=0, help=port_80_help)
     parser.add_argument("--bind", default="0.0.0.0")
     parser.add_argument("--hostname", default="palaia-hub")
     parser.add_argument("--login-server", default="", help="a self-hosted control server")
@@ -920,14 +1052,22 @@ PALAIA_SETUP_PAGE
         # stdin is detached: when this script arrives through `| sh`, its own
         # text is what stdin carries.
         export PALAIA_SETUP_CODE="${PALAIA_SETUP_CODE:-}"
+        # Its "Done" screen names palaia's address, without a port when the
+        # hub will be on port 80 too. The tailnet address does not exist yet,
+        # so only a listener on every address can take port 80 now; the
+        # installer checks again before it starts the hub.
+        PAGE_PORT80=0
+        if [ "$PORT" = "80" ] || port80_free ""; then
+            PAGE_PORT80=1
+        fi
         SETUP_OK=1
         # shellcheck disable=SC2086
         if [ -n "$SUDO" ]; then
             $SUDO --preserve-env=PALAIA_SETUP_CODE python3 /opt/palaia/setup-page.py \
-                --port "$PORT" --hub-port "$PORT" --hostname "$HOSTNAME_TS" $LOGIN_ARG $CLOUD_ARG </dev/null || SETUP_OK=0
+                --port "$PORT" --hub-port "$PORT" --port-80 "$PAGE_PORT80" --hostname "$HOSTNAME_TS" $LOGIN_ARG $CLOUD_ARG </dev/null || SETUP_OK=0
         else
             python3 /opt/palaia/setup-page.py \
-                --port "$PORT" --hub-port "$PORT" --hostname "$HOSTNAME_TS" $LOGIN_ARG $CLOUD_ARG </dev/null || SETUP_OK=0
+                --port "$PORT" --hub-port "$PORT" --port-80 "$PAGE_PORT80" --hostname "$HOSTNAME_TS" $LOGIN_ARG $CLOUD_ARG </dev/null || SETUP_OK=0
         fi
         cleanup
         [ "$SETUP_OK" = "1" ] || die "the setup page closed without joining the tailnet. Run this command again for a new page and code."
@@ -1007,25 +1147,60 @@ LOOPBACK_PUBLISH=""
 if [ "$BIND_ADDR" != "0.0.0.0" ]; then
     LOOPBACK_PUBLISH="-p 127.0.0.1:${PORT}:8420"
 fi
-log "starting ${CONTAINER_NAME} on ${BIND_ADDR}:${PORT} ..."
-# shellcheck disable=SC2086
-$DOCKER run -d \
-    --name "${CONTAINER_NAME}" \
-    -p "${BIND_ADDR}:${PORT}:8420" \
-    $LOOPBACK_PUBLISH \
-    -p "127.0.0.1:${CLOUD_PORT}:8422" \
-    -e PALAIA_CLOUD_URL_HINT="${CLOUD_URL}" \
-    -e PALAIA_CLOUD_HOST_PORT="${CLOUD_PORT}" \
-    -e PALAIA_HUB_HOST_PORT="${PORT}" \
-    -e PALAIA_SELF_RESTART=1 \
-    -v "${VOLUME}:/data" \
-    --restart unless-stopped \
-    --security-opt no-new-privileges:true \
-    --cap-drop ALL \
-    --read-only \
-    --tmpfs /tmp \
-    --tmpfs /run \
-    "${IMAGE}" >/dev/null
+# Port 80 of the tailnet address as well, when it is free (#620). Checked only
+# now: a previous palaia container held it, and that one is gone above.
+choose_port80
+
+run_hub() {
+    # shellcheck disable=SC2086
+    $DOCKER run -d \
+        --name "${CONTAINER_NAME}" \
+        -p "${BIND_ADDR}:${PORT}:8420" \
+        $HTTP_PUBLISH \
+        $LOOPBACK_PUBLISH \
+        -p "127.0.0.1:${CLOUD_PORT}:8422" \
+        -e PALAIA_CLOUD_URL_HINT="${CLOUD_URL}" \
+        -e PALAIA_CLOUD_HOST_PORT="${CLOUD_PORT}" \
+        -e PALAIA_HUB_HOST_PORT="${PORT}" \
+        -e PALAIA_SELF_RESTART=1 \
+        -v "${VOLUME}:/data" \
+        --restart unless-stopped \
+        --security-opt no-new-privileges:true \
+        --cap-drop ALL \
+        --read-only \
+        --tmpfs /tmp \
+        --tmpfs /run \
+        "${IMAGE}" >/dev/null
+}
+
+# Starts the hub. When port 80 turns out to be taken after all (something
+# grabbed it since the check), once more without it rather than failing the
+# install: palaia then keeps its port number. Any other failure stops here,
+# with Docker's own message.
+start_hub() {
+    start_err="$(mktemp)"
+    if run_hub 2>"$start_err"; then
+        rm -f "$start_err"
+        return 0
+    fi
+    if [ -n "$HTTP_PUBLISH" ] \
+        && grep -Eq "$(printf '%s' "$BIND_ADDR" | sed 's/[.]/[.]/g'):80([^0-9]|\$)" "$start_err"; then
+        log "port 80 on ${BIND_ADDR} is taken after all — starting palaia with its port number only."
+        $DOCKER rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+        HTTP_PUBLISH=""
+        PORT80=0
+        if run_hub 2>"$start_err"; then
+            rm -f "$start_err"
+            return 0
+        fi
+    fi
+    cat "$start_err" >&2
+    rm -f "$start_err"
+    return 1
+}
+
+log "starting ${CONTAINER_NAME} on ${BIND_ADDR}:${PORT}${HTTP_PUBLISH:+ and ${BIND_ADDR}:80} ..."
+start_hub || die "could not start ${CONTAINER_NAME} (Docker's message is above). Run this again; your data is kept."
 
 # --- Readiness --------------------------------------------------------------
 # The dashboard's static page answers even when the hub behind it does not,
@@ -1061,4 +1236,4 @@ if [ "$ok" != "1" ]; then
     exit 1
 fi
 log "image ${DIGEST:-$IMAGE}"
-log "done ✓  Open ${URL} from any device on your tailnet to finish setup."
+report_address

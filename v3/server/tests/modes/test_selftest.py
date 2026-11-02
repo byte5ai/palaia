@@ -387,7 +387,7 @@ async def test_the_whole_check_has_one_deadline() -> None:
 def _cloud_entry_regex() -> re.Pattern[str]:
     """The cloud server block's location regex, as written in the template."""
     text = TEMPLATE.read_text(encoding="utf-8")
-    block = text[text.index("listen ${CLOUD_PORT};") :]
+    block = text[text.index("listen ${CLOUD_LISTEN};") :]
     match = re.search(r"location ~ (\S+) \{", block)
     assert match, "the cloud entry's location regex is gone from nginx.conf.template"
     return re.compile(match.group(1).replace("\\\\", "\\"))

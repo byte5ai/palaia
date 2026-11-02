@@ -41,7 +41,7 @@ Think Home Assistant, for your AI tools.
 </p>
 
 > [!NOTE]
-> **palaia v3 is a release candidate (`3.0.0-rc7`).** Everything below works and is
+> **palaia v3 is a release candidate (`3.0.0-rc8`).** Everything below works and is
 > tested. Try it, keep backups, and [tell us what breaks](https://github.com/byte5ai/palaia/issues).
 > palaia v2 is [retired](#already-using-palaia-v2) and gets critical fixes only.
 
@@ -69,7 +69,7 @@ prerequisite list.
 
 ```bash
 docker run -d --name palaia-hub \
-  -p 8420:8420 \
+  --network host -e PALAIA_CLOUD_BIND=127.0.0.1 \
   -v palaia_home:/data \
   --restart unless-stopped \
   --security-opt no-new-privileges:true --cap-drop ALL \
@@ -77,10 +77,13 @@ docker run -d --name palaia-hub \
   ghcr.io/byte5ai/palaia-hub:beta
 ```
 
-Then open **`http://<your-machine>:8420`** in a browser (on many home networks
-`http://palaia.local` works too). palaia's setup opens by itself and takes it from
-there: your first memory, your account, cloud access if you want it, your first AI
-app. No config files, no second command.
+Then open **`http://palaia.local:8420`** in a browser on any device on the same
+network (or `http://<your-machine>:8420` if your network blocks the name). That is
+the command for a Linux machine; with Docker Desktop on a Mac or Windows PC, replace
+the `--network host …` line with `-p 8420:8420` and open `http://localhost:8420`.
+palaia's setup opens by itself and takes it from there: your first memory, your
+account, cloud access if you want it, your first AI app. No config files, no second
+command.
 
 Once `3.0.0` is final, use `:stable` instead of `:beta`. Updating later is one click
 in the dashboard.

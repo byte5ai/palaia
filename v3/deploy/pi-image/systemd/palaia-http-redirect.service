@@ -1,0 +1,30 @@
+[Unit]
+Description=palaia: let port 80 lead to the hub on 8420
+Documentation=https://github.com/byte5ai/palaia/blob/main/v3/deploy/pi-image/README.md
+# Issue #620: http://palaia.local/ without a port. A kernel redirect of
+# incoming port 80 to the hub's own 8420 (see the script's comment for why
+# not a proxy). The container keeps its hardening; nothing in it changes.
+#
+# Runs after the rest of the boot, so a web server the owner installed on
+# this box has port 80 by then and the script leaves it alone. (systemd
+# does not order multi-user.target after a unit it wants when that unit is
+# already ordered after it, so this is no cycle.)
+After=network.target multi-user.target
+# Deliberately no Requires=/BindsTo=/PartOf= on palaia.service, in either
+# direction: if this skips or fails, the hub stays on 8420.
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/lib/palaia/http-redirect start
+ExecStop=/usr/local/lib/palaia/http-redirect stop
+# Changing the ruleset is all it does.
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

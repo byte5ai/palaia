@@ -24,6 +24,14 @@
 # `cloud_url=https://...` (exit 0) or `cloud_url=` (exit 3: not set up);
 # `--check-only` just reports.
 #
+# palaia's private address is a name, not a number (issues #619, #620): with
+# MagicDNS on, the machine's tailnet name — and no port number when the
+# installer also publishes the hub on port 80 of the tailnet address, which it
+# does only when port 80 is free there (`--port-80 1`). So `http://palaia-hub/`.
+# `setup-page.py address --port N --port-80 0|1` prints `address=`,
+# `full_address=` and `address_note=` lines; the "Done" screen shows the same
+# address. Nothing here changes Tailscale's settings.
+#
 # Standard library only — python3 is on every image that runs cloud-init.
 # The code comes from the PALAIA_SETUP_CODE environment variable, not the
 # command line, so it never shows up in a process list. Without one, a fresh
@@ -54,6 +62,15 @@ MAX_CLIENTS = 32  # concurrent connections; more are dropped, not queued
 CLIENT_TIMEOUT = 10  # seconds a connection may take to send its request
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O, 1/I look-alikes
 FUNNEL_PORTS = (443, 8443, 10000)  # the only HTTPS ports Funnel offers
+NO_MAGICDNS_NOTE = (
+    "Your Tailscale network has MagicDNS turned off, so palaia has no name there "
+    "and is opened by its number; turn MagicDNS on under DNS in Tailscale's admin "
+    "console to open it by name."
+)
+PORT_80_BUSY_NOTE = (
+    "Port 80 on this server's tailnet address is already used by another program, "
+    "so palaia keeps its port number."
+)
 
 
 def log(message):
@@ -210,6 +227,49 @@ class Cloud:
             self.proc.terminate()
 
 
+# --- the private address (MagicDNS name) ---------------------------------------
+
+
+def tailnet_name():
+    """(short, full) MagicDNS name of this machine, e.g. ("palaia-hub",
+    "palaia-hub.tail1234.ts.net"); None when the tailnet has MagicDNS off.
+
+    The short name comes from the name Tailscale gave the machine, which is
+    `palaia-hub-1` when another machine already has `palaia-hub`.
+    """
+    status = tailscale_json("status")
+    full = str((status.get("Self") or {}).get("DNSName") or "").rstrip(".")
+    if not full or not (status.get("CurrentTailnet") or {}).get("MagicDNSEnabled"):
+        return None
+    return full.split(".", 1)[0], full
+
+
+def private_address(hub_port, port_80):
+    """Where palaia opens on the tailnet: (address, full address, note).
+
+    `http://palaia-hub/` when the installer publishes the hub on port 80 of the
+    tailnet address too (`port_80`), `http://palaia-hub:<port>/` when port 80 is
+    taken there, and the tailnet IP with the port when MagicDNS is off.
+    """
+    names = tailnet_name()
+    if names is None:
+        ip = tailnet_ip() or "<tailnet address>"
+        return f"http://{ip}:{hub_port}/", "", NO_MAGICDNS_NOTE
+    short, full = names
+    if port_80:
+        return f"http://{short}/", f"http://{full}/", ""
+    return f"http://{short}:{hub_port}/", f"http://{full}:{hub_port}/", PORT_80_BUSY_NOTE
+
+
+def address_main(args):
+    address, full, note = private_address(args.port, args.port_80)
+    log(f"palaia's private address: {address}")
+    print(f"address={address}", flush=True)
+    print(f"full_address={full}", flush=True)
+    print(f"address_note={note}", flush=True)
+    return 0
+
+
 def cloud_main(args):
     cloud = Cloud(args.target)
     if args.check_only:
@@ -234,6 +294,7 @@ class State:
         self.port = port
         self.login_url = None
         self.ip = None
+        self.address = None  # (address, full address, note) once joined
         self.failed = None
         self.proc = None
         self.cloud = None  # a Cloud while the cloud step runs
@@ -436,7 +497,7 @@ def connect_body(state, code):
 
 
 def done_body(state):
-    url = f"http://{state.ip}:{state.port}/"
+    url, full, note = state.address or (f"http://{state.ip}:{state.port}/", "", "")
     cloud = state.cloud
     if cloud is None:
         cloud_line = ""
@@ -457,7 +518,9 @@ def done_body(state):
         f"{cloud_line}"
         f'<p>In a minute or two, palaia opens at <a href="{html.escape(url)}">'
         f"{html.escape(url)}</a> on any device with the Tailscale app turned on.</p>"
-        '<p class="muted">This setup page closes itself now.</p>'
+        + (f'<p class="muted">Full name: <code>{html.escape(full)}</code></p>' if full else "")
+        + (f'<p class="muted">{html.escape(note)}</p>' if note else "")
+        + '<p class="muted">This setup page closes itself now.</p>'
     )
 
 
@@ -585,8 +648,11 @@ def page_main(args):
         while time.monotonic() < deadline and not state.failed:
             ip = tailnet_ip()
             if ip:
+                # The address first: setting state.ip shows "Done", and that
+                # screen must name palaia's address, not just its number.
+                state.address = private_address(args.hub_port, args.port_80)
                 state.ip = ip
-                log(f"joined the tailnet as {ip}.")
+                log(f"joined the tailnet as {ip}; palaia's address: {state.address[0]}")
                 if args.cloud_target:
                     state.cloud = Cloud(args.cloud_target)
                     state.cloud.run(max(1, int(deadline - time.monotonic())))
@@ -626,9 +692,16 @@ def main(argv=None):
         parser.add_argument("--wait", type=int, default=600, help="seconds to wait for approval")
         parser.add_argument("--check-only", action="store_true", help="only report, change nothing")
         return cloud_main(parser.parse_args(argv[1:]))
+    port_80_help = "1 when the hub is also published on port 80 of the tailnet address"
+    if argv[:1] == ["address"]:
+        parser = argparse.ArgumentParser(description="Print palaia's private address.")
+        parser.add_argument("--port", type=int, default=8420, help="where palaia answers")
+        parser.add_argument("--port-80", type=int, choices=(0, 1), default=0, help=port_80_help)
+        return address_main(parser.parse_args(argv[1:]))
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8420, help="where this page listens")
     parser.add_argument("--hub-port", type=int, default=8420, help="where palaia will answer")
+    parser.add_argument("--port-80", type=int, choices=(0, 1), default=0, help=port_80_help)
     parser.add_argument("--bind", default="0.0.0.0")
     parser.add_argument("--hostname", default="palaia-hub")
     parser.add_argument("--login-server", default="", help="a self-hosted control server")

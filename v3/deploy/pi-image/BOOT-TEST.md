@@ -7,8 +7,8 @@ that only a physical Pi can prove, and the measurements
 [#280](https://github.com/byte5ai/palaia/issues/280) needs before the
 Home Assistant add-on question can be decided.
 
-Everything below references only what `build.sh`/`systemd/palaia.service`
-actually do — if a step here describes something the image doesn't do,
+Everything below references only what `build.sh` and the units in
+`systemd/` actually do — if a step here describes something the image doesn't do,
 that's a bug in this file, not a step to perform anyway.
 
 ## What you need
@@ -54,7 +54,8 @@ Start a stopwatch at power-on.
 | First boot begins | Pi's activity LED starts flickering | seconds |
 | Filesystem expansion / first-boot services | LED activity continues, can take longer on a slower card | ~30-90s |
 | `palaia.service` starts, pulls the image | Nothing visible on the Pi itself — see the network-dependency note below | varies with your network |
-| `http://palaia.local:8420/` answers | Load it from your second device | record the wall-clock time from power-on |
+| `http://palaia.local/` answers | Load it from your second device | record the wall-clock time from power-on |
+| `http://palaia.local:8420/` answers too | Same device | the hub's own port; must work whether or not port 80 does |
 
 **Note on first-run network dependency**: `palaia.service`'s `docker run`
 pulls `ghcr.io/byte5ai/palaia-hub:stable` from GHCR the first time it
@@ -65,10 +66,22 @@ SPEC's scope). Record whether your test network's speed made this
 noticeable, and roughly how long the pull itself took, separate from the
 OS boot time above.
 
-If `http://palaia.local:8420/` never answers: check `README.md`'s mDNS
-caveat (same-LAN-segment requirement) before assuming something is
-broken — try the Pi's IP address directly (visible on your router's
-client list, or a monitor plugged into the Pi) as a fallback.
+If neither address answers: check `README.md`'s mDNS caveat
+(same-LAN-segment requirement) before assuming something is broken — try
+the Pi's IP address directly (visible on your router's client list, or a
+monitor plugged into the Pi) as a fallback, with and without `:8420`.
+
+If `:8420` answers but `http://palaia.local/` does not, the port-80
+redirect is the suspect: record `systemctl status palaia-http-redirect`
+and `sudo nft list table inet palaia_http` (SSH or monitor+keyboard) and
+file it.
+
+Also check, once the wizard has loaded at `http://palaia.local/`: the
+address bar still shows no port after the wizard's own redirects, the
+connect page's MCP address reads `http://palaia.local/mcp/…` (no `:8420`),
+and the page load shows up in `docker logs palaia-hub` (nginx's access
+lines) with your device's own address, not `127.0.0.1` — the hub's
+failed-sign-in limit depends on it.
 
 ## Resource measurements (feeds #280 + the HA add-on decision)
 
@@ -97,11 +110,12 @@ local` from the timeline above.
 
 ## Pass/fail
 
-- Pass: `http://palaia.local:8420/` answers from a second device without
-  any terminal use, the wizard loads, and the measurements above are
-  recorded for at least one Pi model.
+- Pass: `http://palaia.local/` and `http://palaia.local:8420/` both answer
+  from a second device without any terminal use, the wizard loads, and
+  the measurements above are recorded for at least one Pi model.
 - Fail (file an issue, don't just note it here): image doesn't boot,
-  service doesn't start, mDNS doesn't resolve within ~5 minutes of the
+  service doesn't start, port 80 doesn't answer while `:8420` does,
+  mDNS doesn't resolve within ~5 minutes of the
   dashboard itself being reachable by IP (ruling out "not booted yet" as
   the cause), or SSH is somehow already enabled on a fresh flash with no
   "Edit settings" used.

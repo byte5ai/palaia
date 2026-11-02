@@ -13,10 +13,19 @@ set -euo pipefail
 : "${CLOUD_PORT:=8422}"
 : "${PALAIA_HOST:=127.0.0.1}"
 : "${PALAIA_PORT:=8421}"
-export PUBLIC_PORT CLOUD_PORT PALAIA_HOST PALAIA_PORT
+# Where the cloud entry listens (issue #619). Empty: every address of the
+# container's own network, which on Docker's bridge network only the ports
+# published with `-p` reach (the installer and compose publish it on the
+# host's loopback). On the host network every address is the machine's
+# own, the local network included, so the host-network commands set
+# PALAIA_CLOUD_BIND=127.0.0.1: only a tunnel on the machine itself
+# reaches it, as on every other install path.
+: "${PALAIA_CLOUD_BIND:=}"
+CLOUD_LISTEN="${PALAIA_CLOUD_BIND:+${PALAIA_CLOUD_BIND}:}${CLOUD_PORT}"
+export PUBLIC_PORT CLOUD_PORT CLOUD_LISTEN PALAIA_HOST PALAIA_PORT
 
 mkdir -p /tmp/nginx/body /tmp/nginx/proxy /tmp/nginx/fastcgi /tmp/nginx/uwsgi /tmp/nginx/scgi
-envsubst '${PUBLIC_PORT} ${CLOUD_PORT} ${PALAIA_HOST} ${PALAIA_PORT}' \
+envsubst '${PUBLIC_PORT} ${CLOUD_LISTEN} ${PALAIA_HOST} ${PALAIA_PORT}' \
     < /opt/palaia/nginx.conf.template > /tmp/nginx/nginx.conf
 
 pids=()

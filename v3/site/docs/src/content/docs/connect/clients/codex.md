@@ -13,7 +13,7 @@ Paste this into a terminal where the tool is already set up. It adds the connect
 
 ```bash
 export PALAIA_TOKEN=<paste-your-token>
-codex mcp add palaia --url http://palaia.local/mcp/default --bearer-token-env-var PALAIA_TOKEN
+codex mcp add palaia --url http://palaia.local:8420/mcp/default --bearer-token-env-var PALAIA_TOKEN
 ```
 
 Replace `<paste-your-token>` with the token the dashboard shows when you click **Issue token** on its connect page — it is shown once, so copy it then. Every request needs it; without it the hub turns the tool away.
@@ -24,7 +24,7 @@ If you would rather not touch a terminal, paste this to the AI itself and let it
 
 ```text
 Please connect yourself to my palaia hub as an MCP server:
-http://palaia.local/mcp/default
+http://palaia.local:8420/mcp/default
 Send the header "Authorization: Bearer <paste-your-token>" with every request.
 Then run a test recall and tell me what you found.
 ```
@@ -39,7 +39,7 @@ Some setups read this from a file instead of a command. Save it as `palaia-codex
 # Paste this into ~/.codex/config.toml (or merge it into an existing
 # [mcp_servers] table).
 [mcp_servers.palaia]
-url = "http://palaia.local/mcp/default"
+url = "http://palaia.local:8420/mcp/default"
 bearer_token_env_var = "PALAIA_TOKEN"
 # Codex reads the token from that variable — set it where Codex starts:
 #   export PALAIA_TOKEN=<paste-your-token>

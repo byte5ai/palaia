@@ -40,6 +40,10 @@ http {
     server {
         listen ${PUBLIC_PORT};
         server_name _;
+        # Issue #620: nginx's own redirects (a directory without its trailing
+        # slash) stay relative. Absolute, they would name this listener's port
+        # (8420) to a browser that came in on port 80.
+        absolute_redirect off;
 
         # Everything the hub owns today (SPEC-101: /api/health, /api/info;
         # SPEC-105 onward: the MCP mount point) is proxied straight through.
@@ -139,9 +143,11 @@ http {
     # forward everything without a path list of its own, and the hub itself
     # refuses this door entirely until cloud access is turned on (it sees
     # `X-Palaia-Entry: cloud`, which the private door above always clears).
-    # The installer publishes it on the server's loopback address only.
+    # The installer and compose publish it on the server's loopback address
+    # only; on the host network it listens there itself (PALAIA_CLOUD_BIND,
+    # entrypoint.sh).
     server {
-        listen ${CLOUD_PORT};
+        listen ${CLOUD_LISTEN};
         server_name _;
 
         # Who is calling, for the hub's limit on failed sign-ins per address:

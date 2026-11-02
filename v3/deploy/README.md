@@ -6,6 +6,28 @@ first-run wizard (later SPECs).
 
 ## Quick start
 
+On a Linux machine (a home server, a NAS, a Raspberry Pi):
+
+```bash
+docker run -d --name palaia-hub \
+  --network host -e PALAIA_CLOUD_BIND=127.0.0.1 \
+  -v palaia_home:/data \
+  --restart unless-stopped \
+  --security-opt no-new-privileges:true --cap-drop ALL \
+  --read-only --tmpfs /tmp --tmpfs /run \
+  ghcr.io/byte5ai/palaia-hub:stable
+```
+
+Then open `http://palaia.local:8420/` from any device on the same network
+(`http://localhost:8420/` on the machine itself). The container runs on the
+machine's own network, so its name announcement reaches your other devices
+(see [mDNS](#mdns-httppalaialocal8420) below); `PALAIA_CLOUD_BIND` keeps the
+cloud entry on the machine's loopback address, where only a tunnel on the
+machine itself reaches it.
+
+With Docker Desktop (macOS, Windows), whose containers run inside a hidden
+virtual machine, publish the port instead:
+
 ```bash
 docker run -d --name palaia-hub \
   -p 8420:8420 \
@@ -16,6 +38,9 @@ docker run -d --name palaia-hub \
   ghcr.io/byte5ai/palaia-hub:stable
 ```
 
+Then open `http://localhost:8420/`. A name like `palaia.local` cannot reach
+your network from inside Docker Desktop's virtual machine.
+
 <!-- rc-channel-note -->
 > **Release candidate:** until `3.0.0` is final there is no `stable` image yet. Where a
 > command or file on this page says `ghcr.io/byte5ai/palaia-hub:stable`, use
@@ -23,17 +48,18 @@ docker run -d --name palaia-hub \
 
 The five hardening flags are explained in [`docker-compose.yml`](docker-compose.yml)
 and in [Container posture](#container-posture) below; the container runs as a
-non-root user either way, and drops the rest.
+non-root user either way, and drops the rest. Both commands use the same
+five.
 
-Then open `http://localhost:8420/` (or the host's IP, from another
-machine). Or use compose:
+Or use compose (host network on Linux; its header says what to change for
+Docker Desktop):
 
 ```bash
 cd v3/deploy && docker compose up -d
 ```
 
 Or the convenience script (never required — see `install.sh`; it only
-wraps the `docker run` above). Piping a script from `main` into `bash` is
+wraps the `docker run` above, and picks the right one of the two). Piping a script from `main` into `bash` is
 the usual trade-off: to read it first, or to pin what you run, download it
 from a release tag instead —
 `curl -fsSLo install.sh https://get.palaia.ai/v3.<version>/docker`,
@@ -98,7 +124,8 @@ if you allowed it, then starts the hub with the exact hardening flags
 [`install.sh`](install.sh) uses (`--security-opt no-new-privileges:true
 --cap-drop ALL --read-only --tmpfs /tmp --tmpfs /run` — never a forked copy of
 that list, checked by `server/tests/deploy/test_cloud_init.py`'s drift test).
-The dashboard port is published on the tailnet address only, plus two
+The dashboard port is published on the tailnet address only (8420, and port 80
+there too when it is free — see "Opening it by name" below), plus two
 loopback-only ports for a tunnel on the server itself: `127.0.0.1:8422`, the
 cloud entry, and `127.0.0.1:8420`, the whole hub (for the deliberate "open"
 mode). An active `ufw` gets a rule for the tailnet; an inactive one is switched
@@ -108,6 +135,25 @@ way. The installer counts as done only when the hub's own health check answers
 through the container's front door; otherwise it prints the hub's last log lines.
 The hub is reachable from your own devices on the tailnet and nowhere else;
 with cloud access on, the internet sees the AI connection only.
+
+**Opening it by name** (issues #619, #620). The installer's last line and the
+setup page's "Done" screen give palaia's address on the tailnet as a name, not
+a number. With MagicDNS on (the default for Tailscale networks created since
+October 2022) that is the
+machine's tailnet name — `palaia-hub`, or `palaia-hub-1` when the name is
+taken. The installer also publishes the hub on port 80 of the tailnet address
+(`-p <tailnet-address>:80:8420`, next to `:8420`), so the address is
+`http://palaia-hub/`; the full name (`palaia-hub.<tailnet>.ts.net`) is printed
+next to it. Docker's forwarding keeps each caller's own tailnet address, so the
+hub's per-device sign-in limits stay per device, and the container needs no
+extra permission for it. It does so only when nothing listens on port 80 there
+yet (checked with `ss` before the start; a listener on every address counts,
+one on another single address such as `127.0.0.1:80` does not). When port 80 is
+taken, the address keeps its port (`http://palaia-hub:8420/`) and the installer
+says why; with MagicDNS off it is the tailnet IP and port, with the reason too.
+The boot unit below starts the same container, so the publish survives reboots.
+Open that address for the first sign-in: palaia issues its sign-in for the
+address it was first set up at.
 
 **Where the data lives.** Same as every other install path: the
 `palaia_home` named Docker volume, holding everything under `/data`
@@ -163,9 +209,9 @@ something CI claims:
       `http://<public-address>:8420/`.
 - [ ] Wait for the server to finish booting (a couple of minutes is
       typical for the package installs plus image pull).
-- [ ] From a device already on the same tailnet, open
-      `http://<tailnet-address>:8420/` and confirm the setup wizard
-      loads.
+- [ ] From a device already on the same tailnet, open the address the
+      setup page showed (`http://palaia-hub/` with MagicDNS on) and
+      confirm the setup wizard loads.
 - [ ] Confirm the same address is *not* reachable from a device that is
       not on the tailnet (e.g. a phone on mobile data).
 - [ ] If anything above did not come up, `/var/log/cloud-init-output.log`
@@ -192,30 +238,42 @@ No embedding models are baked into the image — that dependency arrives with
 SPEC-104 (index & hybrid search); models download on first use into the
 `/data` volume (`PALAIA_HOME`). The startup log line says so.
 
-## mDNS (`http://palaia.local`)
+## mDNS (`http://palaia.local:8420`)
 
 The container runs a small announcer (`mdns_announce.py`, python-zeroconf)
-that advertises `palaia.local` via mDNS. This is honestly limited by how
-container networking works, not by the announcer itself:
+that advertises `palaia.local` via mDNS, so the hub opens at
+`http://palaia.local:8420/` from other devices on the same network — the
+way Home Assistant's container opens at its host's name and `:8123`. The
+port stays: the container runs as a non-root user with every capability
+dropped, so it cannot listen on port 80 of the machine's own network
+(issue #620 tracks a forwarder outside the container where that is
+possible, e.g. the Pi image).
 
-- **Docker's default bridge network does not forward multicast traffic to
-  the host's LAN.** An mDNS advertisement made from inside a bridge-network
-  container is visible to nothing outside that container's own network
-  namespace.
-- **Fix on Linux:** run the container with `--network host` (or
-  `network_mode: host` in compose — see the commented line in
-  `docker-compose.yml`). The hub then binds directly to the host's network
-  stack and `palaia.local` resolves for other devices on the LAN that
-  support mDNS (most desktop OSes and phones do out of the box; some
-  routers block mDNS across VLANs).
-- **Not available the same way on Docker Desktop** (macOS/Windows): it runs
-  containers inside a VM, so `--network host` doesn't put the container on
-  your actual LAN. `palaia.local` will not resolve there.
+- **On Linux the container runs on the host network** (`--network host` in
+  the Quick start command, `network_mode: host` in `docker-compose.yml`).
+  Docker's default bridge network does not forward multicast traffic, so an
+  announcement made from a bridge-network container reaches nothing outside
+  it. On the host network the container sees every interface of the
+  machine; the announcer advertises only its local-network addresses
+  (never a Docker bridge, a virtual machine bridge or a VPN/tailnet
+  address), only on those interfaces, and checks them again every half
+  minute, so a network that comes up after the container, or a new DHCP
+  address, is picked up without a restart. Most desktop systems and phones
+  resolve `.local` names out of the box; some routers block mDNS between
+  separate networks (VLANs, guest Wi-Fi).
+- **The host network changes nothing about what is reachable:** port 8420
+  answers on the machine's addresses exactly as `-p 8420:8420` made it
+  answer; the hub's own port (8421) stays on loopback; and
+  `PALAIA_CLOUD_BIND=127.0.0.1` keeps the cloud entry (8422) on the
+  machine's loopback address, as the installer and compose publish it on
+  the bridge network.
+- **Not possible on Docker Desktop** (macOS/Windows): it runs containers
+  inside a VM, so even `--network host` doesn't put the container on your
+  actual network. Use its `-p 8420:8420` command and `http://localhost:8420/`.
 - **Always-available fallback:** the entrypoint prints the reachable
   `http://<ip>:<port>/` URL to stdout/stderr on every start (`docker logs`),
-  and the mDNS announcer separately logs whether it managed to determine an
-  address to advertise at all. Nothing about first-run depends on mDNS
-  working.
+  and the mDNS announcer logs which addresses it advertises, or that it
+  has none yet. Nothing about first-run depends on mDNS working.
 
 `PALAIA_MDNS_ENABLED=0` disables the announcer entirely (e.g. for a headless
 CI smoke test, or a host where mDNS is administratively blocked).
