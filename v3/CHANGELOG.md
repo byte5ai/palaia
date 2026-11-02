@@ -22,7 +22,10 @@ the `:beta` channel.
   network — instead of a number like `http://100.64.0.2:8420/`, and palaia's
   first-run setup and its sign-in use that name from the start. This needs
   MagicDNS, which Tailscale turns on for new networks; without it palaia
-  gives the number and says how to turn MagicDNS on. (#619)
+  gives the number and says how to turn MagicDNS on. A new server joins as
+  `palaia`; one already on your tailnet keeps its name (earlier installers
+  used `palaia-hub`), so its cloud address for ChatGPT and Claude stays the
+  same. (#619)
 - **No port number on the tailnet.** Port 80 on the server's tailnet
   address now leads to palaia as well, so `http://palaia/` needs no
   `:8420`. If another program already uses port 80 there, palaia leaves it
