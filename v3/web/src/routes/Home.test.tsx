@@ -6,6 +6,7 @@ import { ToastProvider } from "../components/Toast";
 import type {
   BackupTargetsResponse,
   FunnelStatus,
+  IndexStatus,
   RecentChange,
   SetupStatus,
   TokenInfo,
@@ -324,6 +325,67 @@ describe("Overview — the activity feed", () => {
     mockApi();
     mount();
     expect(await screen.findByText("No activity yet. New and changed notes appear here.")).toBeInTheDocument();
+  });
+});
+
+describe("Overview — search works while the search index is built (issue 612)", () => {
+  function indexStatus(ready: number, pending: number, notes = 2): IndexStatus {
+    return {
+      vault: "work",
+      schema_version: 1,
+      notes,
+      observations: 0,
+      relations: 0,
+      unresolved_relations: 0,
+      embeds: {
+        enabled: true,
+        available: true,
+        model: "m",
+        dim: 384,
+        total: ready + pending,
+        ready,
+        pending,
+        failed: 0,
+        reason: "",
+      },
+      embed_progress_percent: 0,
+      embed_summary: "",
+    };
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("says search already works and counts the index in percent, not notes", async () => {
+    // The backlog counts search-index parts, not notes: 5 parts for 2 notes.
+    mockApi();
+    vi.spyOn(api, "indexStatus").mockResolvedValue(indexStatus(0, 5, 2));
+    mount();
+
+    const pill = await screen.findByText("Search works · search index 0% built");
+    expect(pill).toHaveAttribute("title", expect.stringMatching(/^Your 2 notes can be found by their words now/));
+    expect(document.body.textContent).not.toMatch(/notes ready/);
+  });
+
+  it("follows the index as it is built and stops asking once it is done", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockApi();
+    const calls = vi
+      .spyOn(api, "indexStatus")
+      .mockResolvedValueOnce(indexStatus(0, 4))
+      .mockResolvedValueOnce(indexStatus(2, 2))
+      .mockResolvedValue(indexStatus(4, 0));
+    mount();
+
+    expect(await screen.findByText("Search works · search index 0% built")).toBeInTheDocument();
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(await screen.findByText("Search works · search index 50% built")).toBeInTheDocument();
+    await vi.advanceTimersByTimeAsync(5_000);
+    await waitFor(() => expect(screen.queryByText(/search index/i)).toBeNull());
+    const asked = calls.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(calls.mock.calls.length).toBe(asked);
   });
 });
 
