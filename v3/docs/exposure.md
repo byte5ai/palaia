@@ -183,6 +183,15 @@ which nothing should ever render (`palaia_hub.security.headers`). The
 packaged image's nginx repeats the same set on the static dashboard it
 serves directly.
 
+The sign-in and consent pages' forms may post only to the hub itself
+(`form-action 'self'`), with one addition: the origin of the AI app's
+redirect address, once the hub has checked it against the app's
+registration. Browsers apply `form-action` to the redirect that follows a
+form too, and the answer to **Allow** or **Deny** is exactly that redirect
+back to the app. An app whose redirect address is an IPv6 literal
+(`http://[::1]:…`) cannot be allowed this way: the policy language has no
+form for it.
+
 **`Strict-Transport-Security` is sent only when the request actually
 arrived over TLS** — learned from `X-Forwarded-Proto` behind a tunnel or
 reverse proxy, or from the connection itself. This is the one hardening
