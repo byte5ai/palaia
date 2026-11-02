@@ -18,13 +18,13 @@ the `:beta` channel.
 ### Install
 
 - **Open palaia by its name on your tailnet.** The installer and the setup
-  page now give `http://palaia-hub/` — the server's name on your Tailscale
+  page now give `http://palaia/` — the server's name on your Tailscale
   network — instead of a number like `http://100.64.0.2:8420/`, and palaia's
   first-run setup and its sign-in use that name from the start. This needs
   MagicDNS, which Tailscale turns on for new networks; without it palaia
   gives the number and says how to turn MagicDNS on. (#619)
 - **No port number on the tailnet.** Port 80 on the server's tailnet
-  address now leads to palaia as well, so `http://palaia-hub/` needs no
+  address now leads to palaia as well, so `http://palaia/` needs no
   `:8420`. If another program already uses port 80 there, palaia leaves it
   alone and keeps `:8420`, and says so. (#620)
 - **`palaia.local` on your home network with Docker on Linux.** The

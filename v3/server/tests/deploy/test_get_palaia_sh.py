@@ -352,12 +352,12 @@ def test_the_last_line_names_palaia_instead_of_its_number(tmp_path: Path, port80
     address step is told whether port 80 was really published."""
     lines = _report_address(
         tmp_path,
-        "address=http://palaia-hub/\nfull_address=http://palaia-hub.tail1234.ts.net/\naddress_note=\n",
+        "address=http://palaia/\nfull_address=http://palaia.tail1234.ts.net/\naddress_note=\n",
         port80=port80,
     )
     assert lines == [
-        DONE.format("http://palaia-hub/"),
-        "palaia:   full name: http://palaia-hub.tail1234.ts.net/",
+        DONE.format("http://palaia/"),
+        "palaia:   full name: http://palaia.tail1234.ts.net/",
     ]
     args = (tmp_path / "args.txt").read_text(encoding="utf-8").split()
     assert args == ["/opt/palaia/setup-page.py", "address", "--port", "8420", "--port-80", port80]
@@ -377,6 +377,21 @@ def test_no_answer_keeps_the_address_the_installer_had(tmp_path: Path) -> None:
 
 def test_without_tailscale_nothing_asks_tailscale(tmp_path: Path) -> None:
     """PALAIA_NO_TAILSCALE=1 binds 0.0.0.0 and has no setup page to ask."""
-    lines = _report_address(tmp_path, "address=http://palaia-hub/\n", bind="0.0.0.0")
+    lines = _report_address(tmp_path, "address=http://palaia/\n", bind="0.0.0.0")
     assert lines == [DONE.format("http://0.0.0.0:8420/")]
     assert not (tmp_path / "args.txt").exists()
+
+
+def test_a_new_server_joins_the_tailnet_as_palaia() -> None:
+    """The tailnet name is the address people type (#619): `http://palaia/`.
+
+    Both the key path (the installer's own `tailscale up`) and the setup page
+    (its `--hostname` default, which the installer passes through) use it; the
+    container keeps its own name `palaia-hub`.
+    """
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert re.search(r'^HOSTNAME_TS="\$\{PALAIA_TS_HOSTNAME:-palaia\}"$', text, re.MULTILINE)
+    assert 'parser.add_argument("--hostname", default="palaia")' in text
+    page = (SCRIPT.parent / "setup-page.py").read_text(encoding="utf-8")
+    assert 'parser.add_argument("--hostname", default="palaia")' in page
+    assert re.search(r'^CONTAINER_NAME="\$\{PALAIA_CONTAINER_NAME:-palaia-hub\}"$', text, re.MULTILINE)

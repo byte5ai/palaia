@@ -42,7 +42,7 @@ CONTAINER_NAME="${PALAIA_CONTAINER_NAME:-palaia-hub}"
 PORT="${PALAIA_INSTALL_PORT:-8420}"
 CLOUD_PORT="${PALAIA_CLOUD_PORT:-8422}"
 VOLUME="${PALAIA_VOLUME:-palaia_home}"
-HOSTNAME_TS="${PALAIA_TS_HOSTNAME:-palaia-hub}"
+HOSTNAME_TS="${PALAIA_TS_HOSTNAME:-palaia}"
 LOGIN_SERVER="${PALAIA_TS_LOGIN_SERVER:-}"
 CLOUD="${PALAIA_CLOUD:-1}"
 CLOUD_TARGET="http://127.0.0.1:${CLOUD_PORT}"
@@ -100,7 +100,7 @@ ufw_allows_everyone() {
     $SUDO ufw status 2>/dev/null | grep -Eq "^$1(/tcp)?[[:space:]]+ALLOW( IN)?[[:space:]]+Anywhere([[:space:]]|$)"
 }
 
-# Port 80 of the tailnet address too, so palaia opens as http://palaia-hub/,
+# Port 80 of the tailnet address too, so palaia opens as http://palaia/,
 # without a port number (#620). Docker publishes it straight to the
 # container's front door: its forwarding keeps each caller's own tailnet
 # address, so the hub's per-device sign-in limits stay per device, and the
@@ -139,7 +139,7 @@ choose_port80() {
 
 # The last line: where to open palaia. On the tailnet that is a name, not a
 # number (#619): with MagicDNS on, the machine's tailnet name — without a port
-# when the hub is on port 80 there too (#620), so http://palaia-hub/. The
+# when the hub is on port 80 there too (#620), so http://palaia/. The
 # setup page shows the same address on its "Done" screen. The first sign-in
 # fixes the address palaia issues its sign-in for, so the name is what to open
 # from the start. Without an answer the address stays the one in URL.
@@ -327,7 +327,7 @@ PALAIA_START_ON_TAILNET
 # palaia's private address is a name, not a number (issues #619, #620): with
 # MagicDNS on, the machine's tailnet name — and no port number when the
 # installer also publishes the hub on port 80 of the tailnet address, which it
-# does only when port 80 is free there (`--port-80 1`). So `http://palaia-hub/`.
+# does only when port 80 is free there (`--port-80 1`). So `http://palaia/`.
 # `setup-page.py address --port N --port-80 0|1` prints `address=`,
 # `full_address=` and `address_note=` lines; the "Done" screen shows the same
 # address. Nothing here changes Tailscale's settings.
@@ -423,7 +423,7 @@ def tailnet_ip():
 
 
 def dns_name():
-    """This machine's tailnet name, e.g. palaia-hub.tail1234.ts.net."""
+    """This machine's tailnet name, e.g. palaia.tail1234.ts.net."""
     return str((tailscale_json("status").get("Self") or {}).get("DNSName") or "").rstrip(".")
 
 
@@ -531,11 +531,11 @@ class Cloud:
 
 
 def tailnet_name():
-    """(short, full) MagicDNS name of this machine, e.g. ("palaia-hub",
-    "palaia-hub.tail1234.ts.net"); None when the tailnet has MagicDNS off.
+    """(short, full) MagicDNS name of this machine, e.g. ("palaia",
+    "palaia.tail1234.ts.net"); None when the tailnet has MagicDNS off.
 
     The short name comes from the name Tailscale gave the machine, which is
-    `palaia-hub-1` when another machine already has `palaia-hub`.
+    `palaia-1` when another machine already has `palaia`.
     """
     status = tailscale_json("status")
     full = str((status.get("Self") or {}).get("DNSName") or "").rstrip(".")
@@ -547,8 +547,8 @@ def tailnet_name():
 def private_address(hub_port, port_80):
     """Where palaia opens on the tailnet: (address, full address, note).
 
-    `http://palaia-hub/` when the installer publishes the hub on port 80 of the
-    tailnet address too (`port_80`), `http://palaia-hub:<port>/` when port 80 is
+    `http://palaia/` when the installer publishes the hub on port 80 of the
+    tailnet address too (`port_80`), `http://palaia:<port>/` when port 80 is
     taken there, and the tailnet IP with the port when MagicDNS is off.
     """
     names = tailnet_name()
@@ -1003,7 +1003,7 @@ def main(argv=None):
     parser.add_argument("--hub-port", type=int, default=8420, help="where palaia will answer")
     parser.add_argument("--port-80", type=int, choices=(0, 1), default=0, help=port_80_help)
     parser.add_argument("--bind", default="0.0.0.0")
-    parser.add_argument("--hostname", default="palaia-hub")
+    parser.add_argument("--hostname", default="palaia")
     parser.add_argument("--login-server", default="", help="a self-hosted control server")
     parser.add_argument("--cloud-target", default="", help="offer cloud access for this URL")
     parser.add_argument("--timeout", type=int, default=1800, help="seconds")

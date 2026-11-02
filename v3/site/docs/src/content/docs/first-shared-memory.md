@@ -33,7 +33,7 @@ click **Issue token** for this tool on its connect page — it is shown once,
 and every request needs it. Replace the address with your own hub's, too:
 the dashboard's connect page shows the exact one, starting with the address
 you opened it at — for a server set up with the `get.palaia.ai` command
-usually `http://palaia-hub/`.) It should report
+usually `http://palaia/`.) It should report
 back that the connection worked and that your memory is currently empty —
 that's expected, you haven't saved anything yet.
 

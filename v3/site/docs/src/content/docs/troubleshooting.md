@@ -65,7 +65,7 @@ name from crossing between separate networks, such as a guest Wi-Fi. See
 which setups it works on. It's always a convenience, never a requirement —
 your hub's regular address (shown in its startup log, and in the dashboard)
 always works. On a server set up with the `get.palaia.ai` command, use the
-address the setup printed instead (usually `http://palaia-hub/`); that
+address the setup printed instead (usually `http://palaia/`); that
 server is reached over your tailnet, not by this name.
 
 ## "How do I know a save actually happened?"

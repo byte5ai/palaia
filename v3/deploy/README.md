@@ -143,13 +143,13 @@ October 2022) that is the
 machine's tailnet name — `palaia-hub`, or `palaia-hub-1` when the name is
 taken. The installer also publishes the hub on port 80 of the tailnet address
 (`-p <tailnet-address>:80:8420`, next to `:8420`), so the address is
-`http://palaia-hub/`; the full name (`palaia-hub.<tailnet>.ts.net`) is printed
+`http://palaia/`; the full name (`palaia.<tailnet>.ts.net`) is printed
 next to it. Docker's forwarding keeps each caller's own tailnet address, so the
 hub's per-device sign-in limits stay per device, and the container needs no
 extra permission for it. It does so only when nothing listens on port 80 there
 yet (checked with `ss` before the start; a listener on every address counts,
 one on another single address such as `127.0.0.1:80` does not). When port 80 is
-taken, the address keeps its port (`http://palaia-hub:8420/`) and the installer
+taken, the address keeps its port (`http://palaia:8420/`) and the installer
 says why; with MagicDNS off it is the tailnet IP and port, with the reason too.
 The boot unit below starts the same container, so the publish survives reboots.
 Open that address for the first sign-in: palaia issues its sign-in for the
@@ -210,7 +210,7 @@ something CI claims:
 - [ ] Wait for the server to finish booting (a couple of minutes is
       typical for the package installs plus image pull).
 - [ ] From a device already on the same tailnet, open the address the
-      setup page showed (`http://palaia-hub/` with MagicDNS on) and
+      setup page showed (`http://palaia/` with MagicDNS on) and
       confirm the setup wizard loads.
 - [ ] Confirm the same address is *not* reachable from a device that is
       not on the tailnet (e.g. a phone on mobile data).

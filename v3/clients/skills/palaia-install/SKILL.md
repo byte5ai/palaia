@@ -163,7 +163,7 @@ their devices. The setup page does that in the browser, with no key to copy.
    **Let ChatGPT and Claude reach palaia**, their Tailscale network must allow
    it once: **Allow in Tailscale**, confirm, come back. **Keep it private** skips
    it. Explain before they choose; it can be turned on later.
-5. The page says "Done", shows palaia's address (a name, usually http://palaia-hub/;
+5. The page says "Done", shows palaia's address (a name, usually http://palaia/;
    a number only with MagicDNS off, and then says how to turn it on) and closes.
 
 A server already on their Tailscale network shows no page. For the cloud setup
