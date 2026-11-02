@@ -179,3 +179,61 @@ def test_only_a_rule_for_everyone_counts_as_open(tmp_path: Path, rules: str, all
         tmp_path,
     )
     assert (result.returncode == 0) is allowed, result.stderr
+
+
+def _report_address(tmp_path: Path, answer: str, bind: str = "100.64.0.7") -> list[str]:
+    """Run report_address() with `python3` standing in for setup-page.py."""
+    (tmp_path / "answer.txt").write_text(answer, encoding="utf-8")
+    _stub(
+        tmp_path,
+        "python3",
+        f'echo "$*" > "{tmp_path / "args.txt"}"\ncat "{tmp_path / "answer.txt"}"\n',
+    )
+    result = _run(
+        HELPERS + _function("report_address") + "report_address\n",
+        {"SUDO": "", "BIND_ADDR": bind, "PORT": "8420", "URL": f"http://{bind}:8420/"},
+        tmp_path,
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout.splitlines()
+
+
+DONE = "palaia: done ✓  Open {} from any device on your tailnet to finish setup."
+
+
+def test_the_last_line_names_palaia_instead_of_its_number(tmp_path: Path) -> None:
+    """#619/#620: the installer's last line is what the person opens, and the
+    first sign-in is tied to it — the name, without a port when Tailscale
+    forwards port 80, and the full name next to it."""
+    lines = _report_address(
+        tmp_path,
+        "address=http://palaia-hub/\nfull_address=http://palaia-hub.tail1234.ts.net/\naddress_note=\n",
+    )
+    assert lines == [
+        DONE.format("http://palaia-hub/"),
+        "palaia:   full name: http://palaia-hub.tail1234.ts.net/",
+    ]
+    # Tailscale forwards port 80 to the hub's loopback port, which the
+    # container must publish, or the name leads nowhere.
+    args = (tmp_path / "args.txt").read_text(encoding="utf-8").split()
+    assert args[:4] == ["/opt/palaia/setup-page.py", "address", "--target", "http://127.0.0.1:8420"]
+    assert 'LOOPBACK_PUBLISH="-p 127.0.0.1:${PORT}:8420"' in SCRIPT.read_text(encoding="utf-8")
+
+
+def test_without_magicdns_the_last_line_keeps_the_number_and_says_why(tmp_path: Path) -> None:
+    note = "Your Tailscale network has MagicDNS turned off, so palaia has no name there."
+    lines = _report_address(
+        tmp_path, f"address=http://100.64.0.7:8420/\nfull_address=\naddress_note={note}\n"
+    )
+    assert lines == [DONE.format("http://100.64.0.7:8420/"), f"palaia:   {note}"]
+
+
+def test_no_answer_keeps_the_address_the_installer_had(tmp_path: Path) -> None:
+    assert _report_address(tmp_path, "") == [DONE.format("http://100.64.0.7:8420/")]
+
+
+def test_without_tailscale_nothing_asks_tailscale(tmp_path: Path) -> None:
+    """PALAIA_NO_TAILSCALE=1 binds 0.0.0.0 and has no setup page to ask."""
+    lines = _report_address(tmp_path, "address=http://palaia-hub/\n", bind="0.0.0.0")
+    assert lines == [DONE.format("http://0.0.0.0:8420/")]
+    assert not (tmp_path / "args.txt").exists()

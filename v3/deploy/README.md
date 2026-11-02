@@ -135,6 +135,22 @@ through the container's front door; otherwise it prints the hub's last log lines
 The hub is reachable from your own devices on the tailnet and nowhere else;
 with cloud access on, the internet sees the AI connection only.
 
+**Opening it by name** (issues #619, #620). The installer's last line and the
+setup page's "Done" screen give palaia's address on the tailnet as a name, not
+a number. With MagicDNS on (the default for Tailscale networks created since
+October 2022) that is the
+machine's tailnet name — `palaia-hub`, or `palaia-hub-1` when the name is
+taken — and Tailscale forwards plain HTTP port 80 of that name to the hub's
+loopback port (`tailscale serve --bg --http=80 http://127.0.0.1:8420`), so the
+address is `http://palaia-hub/`; the full name (`palaia-hub.<tailnet>.ts.net`)
+is printed next to it. Tailscale keeps that setting across reboots, and the
+forward is answered inside `tailscaled`, so it needs no firewall rule and is
+reachable from the tailnet only. When port 80 of that name already serves
+something else, it is left alone and the address keeps its port
+(`http://palaia-hub:8420/`); with MagicDNS off it is the tailnet IP and port,
+and the installer says why. Open that address for the first sign-in: palaia
+issues its sign-in for the address it was first set up at.
+
 **Where the data lives.** Same as every other install path: the
 `palaia_home` named Docker volume, holding everything under `/data`
 (config, vault, index). Nothing about running the hub this way changes
@@ -189,9 +205,9 @@ something CI claims:
       `http://<public-address>:8420/`.
 - [ ] Wait for the server to finish booting (a couple of minutes is
       typical for the package installs plus image pull).
-- [ ] From a device already on the same tailnet, open
-      `http://<tailnet-address>:8420/` and confirm the setup wizard
-      loads.
+- [ ] From a device already on the same tailnet, open the address the
+      setup page showed (`http://palaia-hub/` with MagicDNS on) and
+      confirm the setup wizard loads.
 - [ ] Confirm the same address is *not* reachable from a device that is
       not on the tailnet (e.g. a phone on mobile data).
 - [ ] If anything above did not come up, `/var/log/cloud-init-output.log`

@@ -43,27 +43,50 @@ LOGIN_URL = "https://login.tailscale.com/a/test0123456789"
 CODE = "ABCD-EFGH-JKLM"
 
 FAKE_TAILSCALE = textwrap.dedent(
-    f"""\
+    """\
     #!/bin/sh
     # Fake tailscale: `up` prints a login link and waits for the marker;
-    # `ip -4` answers only once the marker exists.
+    # `ip -4` answers only once the marker exists. `status` reports MagicDNS
+    # on only when the `magicdns` file exists (it holds the machine's name);
+    # `serve` keeps its configuration in serve.json and logs every change.
     marker="$FAKE_TS_DIR/logged-in"
+    name="$(cat "$FAKE_TS_DIR/magicdns" 2>/dev/null || echo palaia-hub.tail1234.ts.net)"
     case "$1" in
       up)
-        printf '\\nTo authenticate, visit:\\n\\n\\t{LOGIN_URL}\\n\\n' >&2
+        printf '\\nTo authenticate, visit:\\n\\n\\t@LOGIN_URL@\\n\\n' >&2
         while [ ! -f "$marker" ]; do sleep 0.2; done
         echo Success. >&2
         exit 0 ;;
       ip)
         [ -f "$marker" ] && echo 100.64.0.7 && exit 0
         exit 1 ;;
+      status)
+        enabled=false
+        [ -f "$FAKE_TS_DIR/magicdns" ] && enabled=true
+        tailnet='{"Name": "t", "MagicDNSSuffix": "tail1234.ts.net", "MagicDNSEnabled": %s}'
+        printf '{"Self": {"DNSName": "%s."}, "CurrentTailnet": '"$tailnet"'}\\n' \\
+          "$name" "$enabled"
+        exit 0 ;;
+      serve)
+        config="$FAKE_TS_DIR/serve.json"
+        if [ "$2" = status ]; then
+          if [ -f "$config" ]; then cat "$config"; else echo '{}'; fi
+          exit 0
+        fi
+        echo "$*" >> "$FAKE_TS_DIR/serve-calls"
+        if [ -f "$FAKE_TS_DIR/serve-fails" ]; then echo "error: serve config denied" >&2; exit 1; fi
+        for arg in "$@"; do target="$arg"; done
+        web='{"%s:80": {"Handlers": {"/": {"Proxy": "%s"}}}}'
+        printf '{"TCP": {"80": {"HTTP": true}}, "Web": '"$web"'}\\n' "$name" "$target" > "$config"
+        exit 0 ;;
       logout)
         touch "$FAKE_TS_DIR/logged-out"
         exit 0 ;;
     esac
     exit 0
     """
-)
+).replace("@LOGIN_URL@", LOGIN_URL)
+MAGIC_NAME = "palaia-hub.tail1234.ts.net"
 
 
 def _free_port() -> int:
@@ -192,6 +215,109 @@ def test_after_login_it_reports_done_and_exits_zero(running, fake_ts: Path) -> N
     _, page = _get(f"http://127.0.0.1:{port}/connect?code={CODE}")
     assert "http://100.64.0.7:8420/" in page
     assert proc.wait(timeout=60) == 0
+
+
+def _done_page(proc: subprocess.Popen[str], port: int, fake_ts: Path) -> str:
+    _connect_page(port, CODE)
+    (fake_ts / "logged-in").touch()
+    for _ in range(50):
+        _, body = _get(f"http://127.0.0.1:{port}/status?code={CODE}")
+        if '"joined": true' in body:
+            break
+        time.sleep(0.2)
+    _, page = _get(f"http://127.0.0.1:{port}/connect?code={CODE}")
+    assert proc.wait(timeout=60) == 0
+    return page
+
+
+def _serve_calls(fake_ts: Path) -> list[str]:
+    calls = fake_ts / "serve-calls"
+    return calls.read_text(encoding="utf-8").splitlines() if calls.exists() else []
+
+
+def test_with_magicdns_done_names_palaia_without_a_port(running, fake_ts: Path) -> None:
+    """#619/#620: the "Done" screen gives a name, and Tailscale forwards port 80
+    of that name to the hub's loopback port — the first sign-in happens at the
+    address shown here, so it must be the name, not the number."""
+    proc, port = running
+    (fake_ts / "magicdns").write_text(MAGIC_NAME, encoding="utf-8")
+    page = _done_page(proc, port, fake_ts)
+    assert 'href="http://palaia-hub/"' in page
+    assert f"http://{MAGIC_NAME}/" in page
+    assert "100.64.0.7" not in page
+    assert _serve_calls(fake_ts) == ["serve --bg --yes --http=80 http://127.0.0.1:8420"]
+
+
+def test_port_80_used_by_another_service_is_left_alone(running, fake_ts: Path) -> None:
+    proc, port = running
+    (fake_ts / "magicdns").write_text(MAGIC_NAME, encoding="utf-8")
+    other = (
+        '{"TCP": {"80": {"HTTP": true}}, "Web": {"'
+        + MAGIC_NAME
+        + ':80": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:3000"}}}}}\n'
+    )
+    (fake_ts / "serve.json").write_text(other, encoding="utf-8")
+    page = _done_page(proc, port, fake_ts)
+    assert 'href="http://palaia-hub:8420/"' in page
+    assert "already used by another service" in page
+    assert _serve_calls(fake_ts) == []
+    assert (fake_ts / "serve.json").read_text(encoding="utf-8") == other
+
+
+def test_without_magicdns_done_gives_the_number_and_says_why(running, fake_ts: Path) -> None:
+    proc, port = running
+    page = _done_page(proc, port, fake_ts)
+    assert 'href="http://100.64.0.7:8420/"' in page
+    assert "MagicDNS turned off" in page
+    assert _serve_calls(fake_ts) == []
+
+
+def _address(fake_ts: Path) -> dict[str, str]:
+    env = {
+        **os.environ,
+        "PATH": f"{fake_ts / 'bin'}{os.pathsep}{os.environ['PATH']}",
+        "FAKE_TS_DIR": str(fake_ts),
+    }
+    out = subprocess.run(
+        [sys.executable, str(SETUP_PAGE), "address", "--target", "http://127.0.0.1:8420"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=True,
+    ).stdout
+    return dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
+
+
+def test_the_address_command_sets_up_port_80_once(fake_ts: Path) -> None:
+    """The installer asks again after the hub is up: same answer, no second change."""
+    (fake_ts / "logged-in").touch()
+    (fake_ts / "magicdns").write_text(MAGIC_NAME, encoding="utf-8")
+    first = _address(fake_ts)
+    assert first == {
+        "address": "http://palaia-hub/",
+        "full_address": f"http://{MAGIC_NAME}/",
+        "address_note": "",
+    }
+    assert _address(fake_ts) == first
+    assert len(_serve_calls(fake_ts)) == 1
+
+
+def test_a_taken_name_gives_the_name_tailscale_chose(fake_ts: Path) -> None:
+    (fake_ts / "logged-in").touch()
+    (fake_ts / "magicdns").write_text("palaia-hub-1.tail1234.ts.net", encoding="utf-8")
+    assert _address(fake_ts)["address"] == "http://palaia-hub-1/"
+
+
+def test_a_refused_port_80_forward_keeps_the_port_and_says_so(fake_ts: Path) -> None:
+    (fake_ts / "logged-in").touch()
+    (fake_ts / "magicdns").write_text(MAGIC_NAME, encoding="utf-8")
+    (fake_ts / "serve-fails").touch()
+    answer = _address(fake_ts)
+    assert answer["address"] == "http://palaia-hub:8420/"
+    assert answer["full_address"] == f"http://{MAGIC_NAME}:8420/"
+    assert "did not forward port 80" in answer["address_note"]
+    assert "serve config denied" in answer["address_note"]
 
 
 def test_timeout_exits_one_closes_the_port_and_drops_the_pending_login(fake_ts: Path) -> None:

@@ -163,7 +163,9 @@ their devices. The setup page does that in the browser, with no key to copy.
    **Let ChatGPT and Claude reach palaia**, their Tailscale network must allow
    it once: **Allow in Tailscale**, confirm, come back. **Keep it private** skips
    it. Explain before they choose; it can be turned on later.
-5. The page says "Done", shows palaia's private address and closes.
+5. The page says "Done", shows palaia's private address and closes. That address
+   is a name, usually http://palaia-hub/ (no port); a number only when their
+   Tailscale network has MagicDNS off, and the page then says how to turn it on.
 
 A server already on their Tailscale network shows no page. For the cloud setup
 the installer prints a `login.tailscale.com` link instead when the network still
@@ -199,7 +201,8 @@ paste a key into the chat. With the setup file, the key goes into its
 
 A running server is not a finished setup: say "palaia is running", never "done",
 until an AI app has saved and found a note. They open palaia's address (the
-installer's last line, port `8420`, Tailscale app on); its setup opens by itself
+name the setup page or the installer's last line showed, Tailscale app on) — that
+exact address, since the first sign-in is tied to it; its setup opens by itself
 and resumes where it stands after a reload or restart. If you used 3b, delete the
 saved password now. If you cannot see the page, ask what it shows; never read
 palaia's code to guess. One step at a time, in this order:
