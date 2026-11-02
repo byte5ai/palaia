@@ -1202,6 +1202,99 @@ start_hub() {
 log "starting ${CONTAINER_NAME} on ${BIND_ADDR}:${PORT}${HTTP_PUBLISH:+ and ${BIND_ADDR}:80} ..."
 start_hub || die "could not start ${CONTAINER_NAME} (Docker's message is above). Run this again; your data is kept."
 
+# --- Each tailnet device keeps its own address (issue #621) -----------------
+# Docker forwards the ports published on the tailnet address into the
+# container. Tailscale marks every packet it forwards from tailscale0 and
+# masquerades marked packets on the way out (its subnet-router SNAT, on by
+# default). Its rule decides only when it comes before Docker's in the
+# forward chain — after every restart or update of tailscaled — but then the
+# hub sees every device as the Docker bridge's address, and the limit on
+# failed sign-ins (SPEC-502) counts all of them together. A rule in a table of
+# palaia's own clears that mark for palaia's published ports only, after
+# Tailscale set it and before its masquerade. Tailscale's settings and
+# everything else it forwards stay as they are (an exit node or subnet routes
+# still need its SNAT). The mark is Tailscale's subnet-route mark, 0x40000 in
+# the byte 0xff0000 it claims (tsconst.LinuxSubnetRouteMark).
+SOURCE_TABLE="ip palaia_source_${CONTAINER_NAME}"
+SOURCE_RULES="/opt/palaia/tailnet-source-${CONTAINER_NAME}.nft"
+SOURCE_UNIT="palaia-tailnet-source@${CONTAINER_NAME}.service"
+SOURCE_UNIT_FILE="/etc/systemd/system/palaia-tailnet-source@.service"
+
+# The ruleset: palaia's published ports on the tailnet address, port 80 only
+# when palaia has it. Loading it again replaces the table in one transaction.
+tailnet_source_rules() {
+    ports="$PORT"
+    [ -z "$HTTP_PUBLISH" ] || ports="${PORT}, 80"
+    printf '%s\n' \
+        '# palaia v3 — each tailnet device keeps its own address (issue #621).' \
+        '#' \
+        "# Written by get-palaia.sh and loaded at boot by ${SOURCE_UNIT}." \
+        "# Tailscale masquerades the packets it forwards from tailscale0, so palaia's" \
+        "# container would see every device as the Docker bridge's address. This" \
+        "# clears Tailscale's mark for palaia's published ports (${ports} on" \
+        "# ${BIND_ADDR}) only, before its masquerade. Running get-palaia.sh again" \
+        '# rewrites this file.' \
+        "table ${SOURCE_TABLE}" \
+        "delete table ${SOURCE_TABLE}" \
+        "table ${SOURCE_TABLE} {" \
+        '    chain forward {' \
+        '        type filter hook forward priority filter + 10; policy accept;' \
+        "        iifname \"tailscale0\" ct status dnat ct original ip daddr ${BIND_ADDR} ct original proto-dst { ${ports} } meta mark & 0x00ff0000 == 0x00040000 meta mark set meta mark & 0xff00ffff" \
+        '    }' \
+        '}'
+}
+
+# The boot unit, one instance per container; $1 is the nft binary.
+tailnet_source_unit() {
+    printf '%s\n' '[Unit]' \
+        'Description=palaia (%i): tailnet devices keep their own address' \
+        'Documentation=https://github.com/byte5ai/palaia/issues/621' \
+        '' '[Service]' \
+        'Type=oneshot' \
+        'RemainAfterExit=yes' \
+        "ExecStart=$1 -f $(dirname "$SOURCE_RULES")/tailnet-source-%i.nft" \
+        "ExecStop=$1 delete table ip palaia_source_%i" \
+        '' '[Install]' \
+        'WantedBy=multi-user.target'
+}
+
+keep_tailnet_source() {
+    if [ "$BIND_ADDR" = "0.0.0.0" ]; then
+        # Not on the tailnet (any more): a rule from an earlier install goes.
+        if $SUDO test -f "$SOURCE_RULES"; then
+            $SUDO systemctl disable --now "$SOURCE_UNIT" >/dev/null 2>&1 || true
+            $SUDO nft delete table $SOURCE_TABLE >/dev/null 2>&1 || true
+            $SUDO rm -f "$SOURCE_RULES"
+        fi
+        return 0
+    fi
+    nft_bin="$($SUDO sh -c 'command -v nft' 2>/dev/null)" || nft_bin=""
+    if [ -z "$nft_bin" ]; then
+        log "installing nftables ..."
+        $SUDO apt-get install -y nftables >/dev/null 2>&1 || true
+        nft_bin="$($SUDO sh -c 'command -v nft' 2>/dev/null)" || nft_bin=""
+    fi
+    if [ -z "$nft_bin" ]; then
+        log "WARNING: nft is not available, so after a restart of Tailscale palaia can see every tailnet device under one address, and the limit on failed sign-ins then counts them together. Install nftables and run this again."
+        return 0
+    fi
+    $SUDO mkdir -p "$(dirname "$SOURCE_RULES")"
+    tailnet_source_rules | $SUDO tee "$SOURCE_RULES" >/dev/null
+    if [ -d "$(dirname "$SOURCE_UNIT_FILE")" ]; then
+        tailnet_source_unit "$nft_bin" | $SUDO tee "$SOURCE_UNIT_FILE" >/dev/null
+        $SUDO systemctl daemon-reload >/dev/null 2>&1 || true
+        $SUDO systemctl enable "$SOURCE_UNIT" >/dev/null 2>&1 || true
+        # restart, not start: a re-run must load the rewritten file.
+        if $SUDO systemctl restart "$SOURCE_UNIT" >/dev/null 2>&1; then
+            return 0
+        fi
+    elif $SUDO "$nft_bin" -f "$SOURCE_RULES" >/dev/null 2>&1; then
+        return 0
+    fi
+    log "WARNING: could not load ${SOURCE_RULES} (journalctl -u ${SOURCE_UNIT} shows why), so after a restart of Tailscale palaia can see every tailnet device under one address."
+}
+keep_tailnet_source
+
 # --- Readiness --------------------------------------------------------------
 # The dashboard's static page answers even when the hub behind it does not,
 # so success means the hub's own health check answers through the container's

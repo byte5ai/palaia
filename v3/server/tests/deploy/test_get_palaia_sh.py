@@ -398,3 +398,162 @@ def test_a_new_server_joins_the_tailnet_as_palaia() -> None:
     assert 'parser.add_argument("--hostname", default="palaia")' in text
     page = (SCRIPT.parent / "setup-page.py").read_text(encoding="utf-8")
     assert 'parser.add_argument("--hostname", default="palaia")' in page
+
+
+# --- #621: each tailnet device keeps its own address -------------------------
+
+
+def _source_settings() -> str:
+    """The installer's own SOURCE_* lines, so the tests use its paths and names."""
+    lines = re.findall(r"^SOURCE_[A-Z_]+=.*$", SCRIPT.read_text(encoding="utf-8"), re.M)
+    assert lines, "get-palaia.sh no longer sets SOURCE_RULES and friends"
+    return "\n".join(lines) + "\n"
+
+
+def _keep_tailnet_source(
+    tmp_path: Path, *, bind: str, http_publish: str, nft: bool = True, load_ok: bool = True
+) -> subprocess.CompletedProcess[str]:
+    """keep_tailnet_source() with stand-ins for systemctl, nft and apt-get, on
+    a PATH without the machine's own tools, under paths inside tmp_path."""
+    tools = tmp_path / "tools"
+    tools.mkdir(exist_ok=True)
+    for tool in ("sh", "cat", "tee", "mkdir", "dirname", "rm"):
+        found = shutil.which(tool)
+        assert found, f"{tool} is needed to run this test"
+        if not (tools / tool).exists():
+            (tools / tool).symlink_to(found)
+    calls = tmp_path / "calls.log"
+    _stub(
+        tmp_path,
+        "systemctl",
+        f'echo "systemctl $*" >> "{calls}"\n'
+        + ("" if load_ok else '[ "$1" = restart ] && exit 1\n'),
+    )
+    _stub(tmp_path, "apt-get", f'echo "apt-get $*" >> "{calls}"\nexit 100\n')
+    if nft:
+        _stub(tmp_path, "nft", f'echo "nft $*" >> "{calls}"\n')
+    (tmp_path / "systemd").mkdir(exist_ok=True)
+    paths = (
+        f'SOURCE_RULES="{tmp_path}/opt/tailnet-source-palaia.nft"\n'
+        f'SOURCE_UNIT_FILE="{tmp_path}/systemd/palaia-tailnet-source@.service"\n'
+    )
+    return subprocess.run(
+        [
+            "sh",
+            "-c",
+            HELPERS
+            + 'CONTAINER_NAME="palaia"\n'
+            + _source_settings()
+            + paths
+            + _function("tailnet_source_rules")
+            + _function("tailnet_source_unit")
+            + _function("keep_tailnet_source")
+            + "keep_tailnet_source\necho after\n",
+        ],
+        env={
+            "PATH": f"{tmp_path / 'bin'}{os.pathsep}{tools}",
+            "SUDO": "",
+            "BIND_ADDR": bind,
+            "PORT": "8420",
+            "HTTP_PUBLISH": http_publish,
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+
+def _calls(tmp_path: Path) -> list[str]:
+    log = tmp_path / "calls.log"
+    return log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+
+
+@pytest.mark.parametrize(
+    ("http_publish", "ports"),
+    [("-p 100.64.0.7:80:8420", "{ 8420, 80 }"), ("", "{ 8420 }")],
+)
+def test_the_tailnet_rule_covers_exactly_the_ports_palaia_publishes(
+    tmp_path: Path, http_publish: str, ports: str
+) -> None:
+    """Port 80 only when palaia has it: another program's port 80 is not ours
+    to change."""
+    result = _keep_tailnet_source(tmp_path, bind="100.64.0.7", http_publish=http_publish)
+    assert result.returncode == 0, result.stderr
+    rules = (tmp_path / "opt" / "tailnet-source-palaia.nft").read_text(encoding="utf-8")
+    rule = next(line for line in rules.splitlines() if "meta mark set" in line)
+    assert "ct original ip daddr 100.64.0.7 " in rule
+    assert f"ct original proto-dst {ports} " in rule
+
+
+def test_the_tailnet_rule_is_loaded_now_and_at_every_boot(tmp_path: Path) -> None:
+    result = _keep_tailnet_source(tmp_path, bind="100.64.0.7", http_publish="")
+    assert result.returncode == 0, result.stderr
+    assert "WARNING" not in result.stdout
+    # restart, not start: a re-run must load the file it just rewrote.
+    assert _calls(tmp_path) == [
+        "systemctl daemon-reload",
+        "systemctl enable palaia-tailnet-source@palaia.service",
+        "systemctl restart palaia-tailnet-source@palaia.service",
+    ]
+    unit = (tmp_path / "systemd" / "palaia-tailnet-source@.service").read_text(encoding="utf-8")
+    assert "WantedBy=multi-user.target" in unit
+
+
+def test_the_boot_unit_loads_and_removes_what_the_installer_writes(tmp_path: Path) -> None:
+    """The unit names the file and the table through %i; both must be the ones
+    the installer uses for this container."""
+    result = _run(
+        HELPERS
+        + 'CONTAINER_NAME="palaia"\n'
+        + _source_settings()
+        + _function("tailnet_source_unit")
+        + "tailnet_source_unit /usr/sbin/nft\n"
+        + 'echo "rules=$SOURCE_RULES"\necho "table=$SOURCE_TABLE"\n',
+        {},
+        tmp_path,
+    )
+    assert result.returncode == 0, result.stderr
+    out = result.stdout.replace("%i", "palaia")
+    rules = re.search(r"^rules=(.*)$", out, re.M)
+    table = re.search(r"^table=(.*)$", out, re.M)
+    assert rules and table
+    assert f"ExecStart=/usr/sbin/nft -f {rules.group(1)}\n" in out
+    assert f"ExecStop=/usr/sbin/nft delete table {table.group(1)}\n" in out
+    assert "Type=oneshot\nRemainAfterExit=yes\n" in out
+
+
+def test_without_nft_the_install_goes_on_and_says_what_is_missing(tmp_path: Path) -> None:
+    result = _keep_tailnet_source(tmp_path, bind="100.64.0.7", http_publish="", nft=False)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().endswith("after")
+    assert "apt-get install -y nftables" in _calls(tmp_path)
+    assert "WARNING: nft is not available" in result.stdout
+    assert not (tmp_path / "opt").exists()
+
+
+def test_a_rule_that_does_not_load_is_reported(tmp_path: Path) -> None:
+    result = _keep_tailnet_source(tmp_path, bind="100.64.0.7", http_publish="", load_ok=False)
+    assert result.returncode == 0, result.stderr
+    assert "WARNING: could not load" in result.stdout
+    assert result.stdout.strip().endswith("after")
+
+
+def test_off_the_tailnet_a_rule_from_an_earlier_install_goes(tmp_path: Path) -> None:
+    """PALAIA_NO_TAILSCALE=1 after a tailnet install: nothing of #621 stays."""
+    (tmp_path / "opt").mkdir()
+    (tmp_path / "opt" / "tailnet-source-palaia.nft").write_text("old\n", encoding="utf-8")
+    result = _keep_tailnet_source(tmp_path, bind="0.0.0.0", http_publish="")
+    assert result.returncode == 0, result.stderr
+    assert not (tmp_path / "opt" / "tailnet-source-palaia.nft").exists()
+    assert _calls(tmp_path) == [
+        "systemctl disable --now palaia-tailnet-source@palaia.service",
+        "nft delete table ip palaia_source_palaia",
+    ]
+
+
+def test_without_tailscale_and_no_earlier_rule_nothing_is_touched(tmp_path: Path) -> None:
+    result = _keep_tailnet_source(tmp_path, bind="0.0.0.0", http_publish="")
+    assert result.returncode == 0, result.stderr
+    assert _calls(tmp_path) == []
+    assert not (tmp_path / "opt").exists()
