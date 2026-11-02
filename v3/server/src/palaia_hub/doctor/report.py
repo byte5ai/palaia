@@ -51,13 +51,13 @@ def _check_lines(check: CheckReport, max_findings: int) -> list[str]:
         lines.extend(_finding_lines(finding))
     hidden = len(check.findings) - max_findings
     if hidden > 0:
-        lines.append(f"           … and {hidden} more — see `palaia-hub doctor --json`.")
+        lines.append(f"           … and {hidden} more — see `palaia doctor --json`.")
     return lines
 
 
 def render_report(report: HubReport, *, max_findings: int = MAX_FINDINGS_SHOWN) -> str:
     """The whole pass as plain text, ending in what to do next."""
-    lines = ["palaia-hub doctor", ""]
+    lines = ["palaia doctor", ""]
     for check in report.checks:
         lines.extend(_check_lines(check, max_findings))
         lines.append("")
@@ -75,8 +75,7 @@ def render_report(report: HubReport, *, max_findings: int = MAX_FINDINGS_SHOWN) 
     repairable = report.repairable
     if repairable:
         lines.append(
-            f"{len(repairable)} of these can be fixed safely for you: "
-            f"run `palaia-hub doctor --fix`."
+            f"{len(repairable)} of these can be fixed safely for you: run `palaia doctor --fix`."
         )
     return "\n".join(lines).rstrip() + "\n"
 
@@ -85,7 +84,7 @@ def render_repairs(outcomes: Sequence[RepairOutcome]) -> str:
     """What ``--fix`` actually did, or an honest "nothing to fix"."""
     if not outcomes:
         return "Nothing needed fixing.\n"
-    lines = ["palaia-hub doctor --fix", ""]
+    lines = ["palaia doctor --fix", ""]
     for outcome in outcomes:
         marker = "fixed" if outcome.done else "left"
         subject = f" ({outcome.subject})" if outcome.subject else ""

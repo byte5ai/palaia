@@ -149,7 +149,7 @@ async def test_a_token_revoked_by_another_process_is_refused(tmp_path: Path) -> 
     verifier = HubTokenVerifier(hub)
     assert await verifier.verify_token(created.token) is not None
 
-    # `palaia-hub token revoke` writes the same file from another process.
+    # `palaia token revoke` writes the same file from another process.
     TokenStore(home=tmp_path).revoke(created.info.id)
 
     assert await verifier.verify_token(created.token) is None

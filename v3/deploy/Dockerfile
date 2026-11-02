@@ -6,7 +6,7 @@
 # copies the resulting `dist/` forward. Nothing here assumes a specific set
 # of routes or assets.
 #
-# Stage 2 (hub-build): installs the `palaia-hub` Python package (uv, from
+# Stage 2 (hub-build): installs the `palaia` Python package (uv, from
 # the v3 workspace) into a virtualenv, without dev dependencies.
 #
 # Stage 3 (mcpb-build): the `mcpb` CLI and template the hub builds each
@@ -73,12 +73,12 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/palaia/venv
 COPY v3/pyproject.toml v3/uv.lock ./
 COPY v3/server/pyproject.toml ./server/pyproject.toml
 COPY v3/sdk/pyproject.toml ./sdk/pyproject.toml
-RUN uv sync --frozen --no-dev --no-editable --package palaia-hub --extra embeddings --no-install-project
+RUN uv sync --frozen --no-dev --no-editable --package palaia --extra embeddings --no-install-project
 COPY v3/server/ ./server/
-RUN uv sync --frozen --no-dev --no-editable --package palaia-hub --extra embeddings
+RUN uv sync --frozen --no-dev --no-editable --package palaia --extra embeddings
 # python-zeroconf for the mDNS announcer (see mdns_announce.py in the
 # runtime stage). Pure Python, no extra system deps — installed straight
-# into the hub's venv but kept out of `palaia-hub`'s own dependency set
+# into the hub's venv but kept out of `palaia`'s own dependency set
 # since it is a deploy-only concern, not a hub feature.
 RUN uv pip install --python "${UV_PROJECT_ENVIRONMENT}" "zeroconf>=0.140,<1"
 

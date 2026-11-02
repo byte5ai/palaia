@@ -20,7 +20,7 @@ arch:
 # uses — no separate add-on build. HA pulls `image:<version>`, so the
 # release workflow publishes every release under its bare version as well
 # as `v3.<version>` (v3-release.yml, issue #394).
-image: ghcr.io/byte5ai/palaia-hub
+image: ghcr.io/byte5ai/palaia
 startup: application
 boot: auto
 # See EVALUATION.md's "What doesn't" section: trades Supervisor-managed

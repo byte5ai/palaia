@@ -1,5 +1,5 @@
 """SPEC-501 acceptance: "compose helper prints correct commands for the
-shipped compose file" — ``palaia-hub update``, driven through the real CLI
+shipped compose file" — ``palaia update``, driven through the real CLI
 parser."""
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ def test_update_with_no_channel_just_prints_the_two_commands(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     compose = tmp_path / "docker-compose.yml"
-    compose.write_text("image: ghcr.io/byte5ai/palaia-hub:stable\n", encoding="utf-8")
+    compose.write_text("image: ghcr.io/byte5ai/palaia:stable\n", encoding="utf-8")
 
     main(["update", "--file", str(compose)])
 
@@ -23,14 +23,14 @@ def test_update_with_no_channel_just_prints_the_two_commands(
     assert "docker compose pull" in out
     assert "docker compose up -d" in out
     # No channel requested — the file is untouched.
-    assert compose.read_text(encoding="utf-8") == "image: ghcr.io/byte5ai/palaia-hub:stable\n"
+    assert compose.read_text(encoding="utf-8") == "image: ghcr.io/byte5ai/palaia:stable\n"
 
 
 def test_update_with_a_channel_rewrites_the_file_and_prints_the_commands(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     compose = tmp_path / "docker-compose.yml"
-    compose.write_text("image: ghcr.io/byte5ai/palaia-hub:stable\n", encoding="utf-8")
+    compose.write_text("image: ghcr.io/byte5ai/palaia:stable\n", encoding="utf-8")
 
     main(["update", "--channel", "beta", "--file", str(compose)])
 
@@ -38,7 +38,7 @@ def test_update_with_a_channel_rewrites_the_file_and_prints_the_commands(
     assert "beta" in out
     assert "docker compose pull" in out
     assert "docker compose up -d" in out
-    assert compose.read_text(encoding="utf-8") == "image: ghcr.io/byte5ai/palaia-hub:beta\n"
+    assert compose.read_text(encoding="utf-8") == "image: ghcr.io/byte5ai/palaia:beta\n"
 
 
 def test_update_against_the_shipped_compose_file_prints_correct_commands(
@@ -53,7 +53,7 @@ def test_update_against_the_shipped_compose_file_prints_correct_commands(
     assert "docker compose pull" in lines
     assert "docker compose up -d" in lines
     # Read-only run (no --channel) must not have touched the real file.
-    assert "image: ghcr.io/byte5ai/palaia-hub:stable" in shipped.read_text(encoding="utf-8")
+    assert "image: ghcr.io/byte5ai/palaia:stable" in shipped.read_text(encoding="utf-8")
 
 
 def test_update_refuses_a_missing_compose_file(
@@ -72,7 +72,7 @@ def test_update_says_so_when_the_file_pins_no_hub_image(
     """Issue #371: this used to print "already on the 'beta' channel" and
     leave the file exactly as it was."""
     compose = tmp_path / "docker-compose.yml"
-    compose.write_text("image: mirror.example.com/byte5ai/palaia-hub:stable\n", encoding="utf-8")
+    compose.write_text("image: mirror.example.com/byte5ai/palaia:stable\n", encoding="utf-8")
 
     with pytest.raises(SystemExit) as exc_info:
         main(["update", "--channel", "beta", "--file", str(compose)])
@@ -83,8 +83,7 @@ def test_update_says_so_when_the_file_pins_no_hub_image(
     assert "nothing was changed" in captured.err
     assert "Fix:" in captured.err
     assert (
-        compose.read_text(encoding="utf-8")
-        == "image: mirror.example.com/byte5ai/palaia-hub:stable\n"
+        compose.read_text(encoding="utf-8") == "image: mirror.example.com/byte5ai/palaia:stable\n"
     )
 
 
@@ -92,9 +91,9 @@ def test_update_rewrites_a_quoted_image_line(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     compose = tmp_path / "docker-compose.yml"
-    compose.write_text('    image: "ghcr.io/byte5ai/palaia-hub:stable"\n', encoding="utf-8")
+    compose.write_text('    image: "ghcr.io/byte5ai/palaia:stable"\n', encoding="utf-8")
 
     main(["update", "--channel", "beta", "--file", str(compose)])
 
     assert "Set the image channel to 'beta'" in capsys.readouterr().out
-    assert compose.read_text(encoding="utf-8") == '    image: "ghcr.io/byte5ai/palaia-hub:beta"\n'
+    assert compose.read_text(encoding="utf-8") == '    image: "ghcr.io/byte5ai/palaia:beta"\n'

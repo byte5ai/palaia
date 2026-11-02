@@ -16,7 +16,7 @@ The long-running process everything else plugs into: one FastAPI app hosting
 with configuration, logging and health done once, properly.
 
 ## Deliverables
-1. `palaia_hub.app` — ASGI app factory; uvicorn entry `palaia-hub serve`;
+1. `palaia_hub.app` — ASGI app factory; uvicorn entry `palaia serve`;
    graceful shutdown (finish in-flight writes).
 2. **Config system**: single `config.yaml` in a platform data dir
    (`PALAIA_HOME` override), pydantic-validated, env-var overrides
@@ -31,7 +31,7 @@ with configuration, logging and health done once, properly.
    restate the version (v2's six-file sync pain must not return).
 
 ## Acceptance criteria
-- [ ] `palaia-hub serve` starts with zero config and serves /api/health green
+- [ ] `palaia serve` starts with zero config and serves /api/health green
 - [ ] invalid config → startup fails with a message naming file, key, and fix
 - [ ] a token passed through logging paths is redacted in output (test proves)
 - [ ] SIGTERM during a simulated slow request → request completes, then exit

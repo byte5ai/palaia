@@ -13,7 +13,7 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "palaia-hub",
+    "palaia",
     "palaia-v3-workspace",
 ]
 
@@ -1493,25 +1493,7 @@ wheels = [
 ]
 
 [[package]]
-name = "palaia-addon-sdk"
-version = "3.0.0rc8"
-source = { directory = "sdk" }
-dependencies = [
-    { name = "pydantic" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "pydantic", specifier = ">=2.7" }]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "mypy", specifier = ">=1.11" },
-    { name = "pytest", specifier = ">=8" },
-    { name = "ruff", specifier = ">=0.6" },
-]
-
-[[package]]
-name = "palaia-hub"
+name = "palaia"
 source = { editable = "server" }
 dependencies = [
     { name = "argon2-cffi" },
@@ -1574,6 +1556,24 @@ dev = [
 ]
 
 [[package]]
+name = "palaia-addon-sdk"
+version = "3.0.0rc8"
+source = { directory = "sdk" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.7" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.11" },
+    { name = "pytest", specifier = ">=8" },
+    { name = "ruff", specifier = ">=0.6" },
+]
+
+[[package]]
 name = "palaia-v3-workspace"
 version = "0.0.0"
 source = { virtual = "." }
@@ -1581,7 +1581,7 @@ source = { virtual = "." }
 [package.dev-dependencies]
 dev = [
     { name = "mypy" },
-    { name = "palaia-hub", extra = ["embeddings"] },
+    { name = "palaia", extra = ["embeddings"] },
     { name = "pytest" },
     { name = "ruff" },
 ]
@@ -1591,7 +1591,7 @@ dev = [
 [package.metadata.requires-dev]
 dev = [
     { name = "mypy", specifier = ">=1.11" },
-    { name = "palaia-hub", extras = ["embeddings"], editable = "server" },
+    { name = "palaia", extras = ["embeddings"], editable = "server" },
     { name = "pytest", specifier = ">=8" },
     { name = "ruff", specifier = ">=0.6" },
 ]

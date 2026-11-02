@@ -78,7 +78,7 @@ _NOT_FROM_DEPLOY: dict[str, str] = {
     "sudo tail -n 50 /var/log/cloud-init-output.log": (
         "a generic way to read the log; the path itself is anchored below"
     ),
-    "sudo docker logs --tail 50 palaia-hub": (
+    "sudo docker logs --tail 50 palaia": (
         "a generic way to read a container's log; the container name is anchored below"
     ),
     # Step 3 — reaching an existing server over SSH. Plain OpenSSH, nothing
@@ -127,8 +127,13 @@ _NOT_FROM_DEPLOY: dict[str, str] = {
 }
 
 #: Tokens inside a quote that name something palaia ships: absolute paths,
-#: the installer's environment variables, the container/host name, the port.
-_ANCHOR_RE = re.compile(r"(/(?:var|opt|etc)/[\w./-]+|\bPALAIA_[A-Z_]+|\bpalaia-hub\b|\b8420\b)")
+#: the installer's environment variables, the port.
+_ANCHOR_RE = re.compile(r"(/(?:var|opt|etc)/[\w./-]+|\bPALAIA_[A-Z_]+|\b8420\b)")
+
+#: The container a quoted `docker <verb> [options] <name>` line talks to. Its
+#: name is a plain word (`palaia`), so it is anchored to the installer's own
+#: default (`PALAIA_CONTAINER_NAME:-<name>}`), not to the word's mere presence.
+_CONTAINER_RE = re.compile(r"\bdocker\s+\w+(?:\s+--?[\w-]+(?:\s+\d+)?)*\s+([a-z][\w.-]*)\s*$")
 
 _INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
 _FENCE_RE = re.compile(r"^```[^\n]*\n(.*?)^```", re.MULTILINE | re.DOTALL)
@@ -172,7 +177,11 @@ def _placeholder_pattern(literal: str) -> re.Pattern[str]:
 
 
 def _anchor_tokens(literal: str) -> list[str]:
-    return _ANCHOR_RE.findall(literal)
+    tokens: list[str] = _ANCHOR_RE.findall(literal)
+    container = _CONTAINER_RE.search(literal)
+    if container:
+        tokens.append(f"PALAIA_CONTAINER_NAME:-{container.group(1)}}}")
+    return tokens
 
 
 _SSH_WRAPPED_RE = re.compile(r"ssh root@<address> '(.+)'")
@@ -277,13 +286,13 @@ def test_the_image_tag_is_never_named_by_the_skill() -> None:
     names no tag and adds no channel to the installer line — the literal
     published command installs the matching release as it is."""
     body = _skill_body()
-    assert not re.search(r"palaia-hub:[A-Za-z0-9]", body), (
+    assert not re.search(r"palaia:[A-Za-z0-9]", body), (
         "the skill hardcodes an image tag — it must follow v3/VERSION instead"
     )
     assert "PALAIA_CHANNEL" not in body
     get_palaia = GET_PALAIA_PATH.read_text(encoding="utf-8")
     assert 'CHANNEL="${PALAIA_CHANNEL:-$DEFAULT_CHANNEL}"' in get_palaia
-    assert "ghcr.io/byte5ai/palaia-hub:${CHANNEL}" in get_palaia
+    assert "ghcr.io/byte5ai/palaia:${CHANNEL}" in get_palaia
 
 
 def test_the_skill_never_puts_a_key_into_a_command_line() -> None:

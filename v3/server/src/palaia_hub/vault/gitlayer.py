@@ -47,7 +47,7 @@ _RECORD = "\x1e"
 
 _LOG_FORMAT = _UNIT.join(["%H", "%an", "%ae", "%aI", "%s", "%b"]) + _RECORD
 
-_COMMITTER_NAME = "palaia-hub"
+_COMMITTER_NAME = "palaia"
 _COMMITTER_EMAIL = "hub@palaia.local"
 
 # Every way git says "there was nothing to record" (working tree clean,

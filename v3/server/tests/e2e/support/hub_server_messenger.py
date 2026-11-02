@@ -1,4 +1,4 @@
-"""SPEC-407 e2e hub process: a real hub wired the exact way ``palaia-hub
+"""SPEC-407 e2e hub process: a real hub wired the exact way ``palaia
 serve`` wires one (:func:`palaia_hub.serve.build_production_app`, same
 convention as ``hub_server_oauth.py``/``hub_server_market.py`` and
 ``cli.py`` itself), mounting the session directory and messenger tool

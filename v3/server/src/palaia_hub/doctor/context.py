@@ -2,7 +2,7 @@
 
 :class:`DoctorContext` is deliberately a plain value: the checks never open
 a store, a vault or a database themselves. Two callers assemble one —
-:func:`open_doctor_context` for ``palaia-hub doctor`` (which opens
+:func:`open_doctor_context` for ``palaia doctor`` (which opens
 everything read-only, on a hub that may well not be running), and, later,
 the running hub for its dashboard surface, which already holds all of it.
 
@@ -82,7 +82,7 @@ async def _open_index(engine: VaultEngine) -> VaultIndex | None:
 def _resolve_profiles(config: HubConfig, vault_keys: Sequence[str]) -> tuple[str, ...] | None:
     """The profile paths this hub serves, or ``None`` if that cannot be said.
 
-    The same resolution ``palaia-hub serve`` uses to build the real gateway
+    The same resolution ``palaia serve`` uses to build the real gateway
     (SPEC-301's one source of truth), so a token bound to a profile is
     judged against the very list the running hub would mount.
 
@@ -108,7 +108,7 @@ def _resolve_profiles(config: HubConfig, vault_keys: Sequence[str]) -> tuple[str
 async def open_doctor_context(
     *, vault_keys: Sequence[str] = (), home: Path | None = None
 ) -> AsyncIterator[DoctorContext]:
-    """Open everything ``palaia-hub doctor`` needs, and close it afterwards.
+    """Open everything ``palaia doctor`` needs, and close it afterwards.
 
     Args:
         vault_keys: only look at these vaults. Empty (the default) means

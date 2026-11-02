@@ -27,13 +27,13 @@ FIXTURE = Path(__file__).resolve().parent / "fixtures" / "import-v2"
 #: Pulled out of the doc itself (inside its fenced ```bash block) rather than
 #: retyped here, so a change to the published command is caught the moment
 #: the doc and the CLI's actual argument parsing disagree.
-_COMMAND_RE = re.compile(r"```bash\n(palaia-hub import v2 [^\n]+)\n```")
+_COMMAND_RE = re.compile(r"```bash\n(palaia import v2 [^\n]+)\n```")
 
 
 def _published_command() -> list[str]:
     text = DOC.read_text(encoding="utf-8")
     match = _COMMAND_RE.search(text)
-    assert match, f"no `palaia-hub import v2 ...` fenced command found in {DOC}"
+    assert match, f"no `palaia import v2 ...` fenced command found in {DOC}"
     return match.group(1).split()
 
 
@@ -51,7 +51,7 @@ def test_published_command_round_trips_the_golden_v2_fixture(
     argv = _published_command()
     # argv[3] is the placeholder source path ("/path/to/.palaia"); swap in
     # the real golden fixture, same as a reader would swap in their own path.
-    assert argv[:3] == ["palaia-hub", "import", "v2"]
+    assert argv[:3] == ["palaia", "import", "v2"]
     argv[3] = str(FIXTURE)
     vault_root = tmp_path / "vault"
     vault_index = argv.index("--vault")

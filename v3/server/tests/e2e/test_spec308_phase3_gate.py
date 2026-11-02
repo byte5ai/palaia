@@ -23,7 +23,7 @@ once, then read back by **two differently-authenticated real clients**:
 
 Both spawn a real hub subprocess (``support/hub_server_market.py`` — real
 ``VaultEngine``, real ``AuthorizationServer``, real ``build_production_app``
-wiring exactly as ``palaia-hub serve`` runs it, real ``uvicorn`` socket) and
+wiring exactly as ``palaia serve`` runs it, real ``uvicorn`` socket) and
 a real second FastMCP server as the marketplace's fixture upstream
 (``tests/upstream/fixture_http_server.py``, SPEC-302's own fixture, reused
 by path — the same cross-package-by-path convention

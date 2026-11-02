@@ -285,7 +285,7 @@ with `sudo tail -n 50 /var/log/cloud-init-output.log`:
 - **Ends with `done ✓  Open`, yet the page does not open** — the device must be
   on the same Tailscale network with the app on. Right after a restart a minute of
   "connection refused" is normal. Still refused after five minutes: read
-  `sudo docker logs --tail 50 palaia-hub` and translate it.
+  `sudo docker logs --tail 50 palaia` and translate it.
 
 ## What not to do
 

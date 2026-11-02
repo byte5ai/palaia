@@ -320,7 +320,7 @@ def build_setup_router(
             raise HTTPException(
                 status_code=409,
                 detail="this hub cannot restart itself here. Fix: restart it where it runs "
-                "(for the container: `docker restart palaia-hub`).",
+                "(for the container: `docker restart palaia`).",
             )
         if event_bus is not None:
             publish_event(event_bus, "hub.restarting", origin="hub", data={})

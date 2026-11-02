@@ -9,13 +9,13 @@ first-run wizard (later SPECs).
 On a Linux machine (a home server, a NAS, a Raspberry Pi):
 
 ```bash
-docker run -d --name palaia-hub \
+docker run -d --name palaia \
   --network host -e PALAIA_CLOUD_BIND=127.0.0.1 \
   -v palaia_home:/data \
   --restart unless-stopped \
   --security-opt no-new-privileges:true --cap-drop ALL \
   --read-only --tmpfs /tmp --tmpfs /run \
-  ghcr.io/byte5ai/palaia-hub:stable
+  ghcr.io/byte5ai/palaia:stable
 ```
 
 Then open `http://palaia.local:8420/` from any device on the same network
@@ -29,13 +29,13 @@ With Docker Desktop (macOS, Windows), whose containers run inside a hidden
 virtual machine, publish the port instead:
 
 ```bash
-docker run -d --name palaia-hub \
+docker run -d --name palaia \
   -p 8420:8420 \
   -v palaia_home:/data \
   --restart unless-stopped \
   --security-opt no-new-privileges:true --cap-drop ALL \
   --read-only --tmpfs /tmp --tmpfs /run \
-  ghcr.io/byte5ai/palaia-hub:stable
+  ghcr.io/byte5ai/palaia:stable
 ```
 
 Then open `http://localhost:8420/`. A name like `palaia.local` cannot reach
@@ -43,8 +43,8 @@ your network from inside Docker Desktop's virtual machine.
 
 <!-- rc-channel-note -->
 > **Release candidate:** until `3.0.0` is final there is no `stable` image yet. Where a
-> command or file on this page says `ghcr.io/byte5ai/palaia-hub:stable`, use
-> `ghcr.io/byte5ai/palaia-hub:beta` for now.
+> command or file on this page says `ghcr.io/byte5ai/palaia:stable`, use
+> `ghcr.io/byte5ai/palaia:beta` for now.
 
 The five hardening flags are explained in [`docker-compose.yml`](docker-compose.yml)
 and in [Container posture](#container-posture) below; the container runs as a
@@ -140,7 +140,7 @@ with cloud access on, the internet sees the AI connection only.
 setup page's "Done" screen give palaia's address on the tailnet as a name, not
 a number. With MagicDNS on (the default for Tailscale networks created since
 October 2022) that is the
-machine's tailnet name — `palaia-hub`, or `palaia-hub-1` when the name is
+machine's tailnet name — `palaia`, or `palaia-1` when the name is
 taken. The installer also publishes the hub on port 80 of the tailnet address
 (`-p <tailnet-address>:80:8420`, next to `:8420`), so the address is
 `http://palaia/`; the full name (`palaia.<tailnet>.ts.net`) is printed
@@ -159,7 +159,7 @@ address it was first set up at.
 `palaia_home` named Docker volume, holding everything under `/data`
 (config, vault, index). Nothing about running the hub this way changes
 where or how that volume is managed — `docker volume inspect
-palaia_home`, `docker exec palaia-hub ls /data`, and ordinary Docker
+palaia_home`, `docker exec palaia ls /data`, and ordinary Docker
 volume backup tooling all work exactly as they do for the compose or
 one-liner install.
 
@@ -167,7 +167,7 @@ one-liner install.
 (cloud-init's own rule). To update the hub afterward, connect over the
 tailnet (SSH, or Tailscale SSH if you enabled it) and use the same two
 commands any other install uses — `docker pull` the new image tag, then
-recreate the container — or run `palaia-hub update` from the dashboard's
+recreate the container — or run `palaia update` from the dashboard's
 own update banner (see "Updates" above); nothing here needs re-pasting.
 
 **Reboots.** The container is bound to the server's tailnet address, so
@@ -180,12 +180,12 @@ unless-stopped` restarts a container that exits, not one that never
 started. A failed start can also leave the container detached from its
 network, so a plain `docker start` would run it without its ports. The
 installer therefore also enables
-`palaia-start-on-tailnet@palaia-hub.service`: it waits for the address,
+`palaia-start-on-tailnet@palaia.service`: it waits for the address,
 attaches the container to its network again if needed and repeats that one
 failed start, and leaves a running container, or one you stopped yourself,
 alone (issue #614). A minute of "connection refused" right
 after a reboot is the server still starting, not a broken install;
-`journalctl -u palaia-start-on-tailnet@palaia-hub` shows when the unit
+`journalctl -u palaia-start-on-tailnet@palaia` shows when the unit
 started palaia.
 
 **Backing up.** `docker run --rm -v palaia_home:/data -v
@@ -226,7 +226,7 @@ Multi-stage build (`Dockerfile`):
    generic on purpose: the dashboard is still a skeleton (SPEC-109 lands the
    real app); this stage just builds whatever `npm run build` currently
    produces.
-2. **hub-build** — installs the `palaia-hub` package from the `v3` uv
+2. **hub-build** — installs the `palaia` package from the `v3` uv
    workspace into a venv, `--no-dev`.
 3. **runtime** — `python:3.12-slim` + `nginx-light` as the single public
    entry point. nginx serves the built dashboard as static files and
@@ -292,12 +292,12 @@ pretend otherwise. What it does ship:
   one whose channel tag momentarily 404s, reports `cannot_check`, never
   an error page. The dashboard's "Update available" banner is driven by
   this endpoint and nothing else.
-- **`palaia-hub update`** — the compose helper (deliverable #4): edits
+- **`palaia update`** — the compose helper (deliverable #4): edits
   the pinned image tag in a compose file to a different channel
   (`--channel stable|beta`) and prints the two commands to actually
   recreate the container:
   ```bash
-  palaia-hub update --channel stable --file docker-compose.yml
+  palaia update --channel stable --file docker-compose.yml
   docker compose pull
   docker compose up -d
   ```
@@ -363,13 +363,13 @@ surviving container recreation) rather than something a unit test proves.
 Recommended check, on a fresh Linux VM with only Docker installed:
 
 ```bash
-docker build -f v3/deploy/Dockerfile -t palaia-hub:local .
-docker images palaia-hub:local            # check compressed size < 400MB
-docker run -d --name palaia-hub -p 8420:8420 -v palaia_home:/data palaia-hub:local
+docker build -f v3/deploy/Dockerfile -t palaia:local .
+docker images palaia:local            # check compressed size < 400MB
+docker run -d --name palaia -p 8420:8420 -v palaia_home:/data palaia:local
 curl -f http://localhost:8420/api/health  # {"status": "ok", ...}
-docker inspect --format '{{.State.Health.Status}}' palaia-hub   # "healthy" once past start_period
-docker restart palaia-hub                 # recreate-equivalent: container comes back, /data intact
-docker exec palaia-hub ls /data           # config.yaml present from before restart
+docker inspect --format '{{.State.Health.Status}}' palaia   # "healthy" once past start_period
+docker restart palaia                 # recreate-equivalent: container comes back, /data intact
+docker exec palaia ls /data           # config.yaml present from before restart
 ```
 
 ## Container posture
@@ -400,9 +400,9 @@ the runtime rather than of the code.
 
 ```bash
 cd v3/deploy && docker compose up -d
-docker inspect palaia-hub --format '{{.HostConfig.ReadonlyRootfs}} {{.HostConfig.CapDrop}} {{.HostConfig.SecurityOpt}}'
-docker exec palaia-hub id                       # uid/gid of `palaia`, not 0
-docker exec palaia-hub touch /opt/palaia/nope   # must fail: read-only file system
+docker inspect palaia --format '{{.HostConfig.ReadonlyRootfs}} {{.HostConfig.CapDrop}} {{.HostConfig.SecurityOpt}}'
+docker exec palaia id                       # uid/gid of `palaia`, not 0
+docker exec palaia touch /opt/palaia/nope   # must fail: read-only file system
 curl -si http://localhost:8420/ | grep -i content-security-policy
 curl -si http://localhost:8420/oauth/login | head -1   # reaches the hub, not the SPA shell
 ```

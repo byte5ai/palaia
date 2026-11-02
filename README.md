@@ -68,13 +68,13 @@ You need [Docker](https://docs.docker.com/get-started/get-docker/). That is the 
 prerequisite list.
 
 ```bash
-docker run -d --name palaia-hub \
+docker run -d --name palaia \
   --network host -e PALAIA_CLOUD_BIND=127.0.0.1 \
   -v palaia_home:/data \
   --restart unless-stopped \
   --security-opt no-new-privileges:true --cap-drop ALL \
   --read-only --tmpfs /tmp --tmpfs /run \
-  ghcr.io/byte5ai/palaia-hub:beta
+  ghcr.io/byte5ai/palaia:beta
 ```
 
 Then open **`http://palaia.local:8420`** in a browser on any device on the same
@@ -99,7 +99,7 @@ in the dashboard.
 | Docker Compose or Portainer | [`docker-compose.yml`](v3/deploy/docker-compose.yml) |
 
 <!-- rc-channel-note -->
-> **Release candidate:** the files and packages in this table pin `ghcr.io/byte5ai/palaia-hub:stable`,
+> **Release candidate:** the files and packages in this table pin `ghcr.io/byte5ai/palaia:stable`,
 > which does not exist until `3.0.0` is final. Until then, change `:stable` to `:beta` in whatever you use.
 
 Stuck? See [Your first shared memory](v3/site/docs/src/content/docs/first-shared-memory.md)

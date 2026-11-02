@@ -106,7 +106,7 @@ describe("Settings hub (issue 570)", () => {
     stub({ restart_required: true, restart_supported: false });
     mount();
     expect(await screen.findByText("Restart palaia to apply your changes")).toBeInTheDocument();
-    expect(screen.getByText("docker restart palaia-hub")).toBeInTheDocument();
+    expect(screen.getByText("docker restart palaia")).toBeInTheDocument();
   });
 
   it("restarts after a confirmation", async () => {

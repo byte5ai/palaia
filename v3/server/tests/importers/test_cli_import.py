@@ -1,4 +1,4 @@
-"""CLI smoke tests: ``palaia-hub import v2|basic-memory``."""
+"""CLI smoke tests: ``palaia import v2|basic-memory``."""
 
 from __future__ import annotations
 

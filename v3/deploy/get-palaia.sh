@@ -37,8 +37,8 @@ set -eu
 # server/tests/test_version_drift.py keeps this line in step with v3/VERSION.
 DEFAULT_CHANNEL="beta"
 CHANNEL="${PALAIA_CHANNEL:-$DEFAULT_CHANNEL}"
-IMAGE="${PALAIA_IMAGE:-ghcr.io/byte5ai/palaia-hub:${CHANNEL}}"
-CONTAINER_NAME="${PALAIA_CONTAINER_NAME:-palaia-hub}"
+IMAGE="${PALAIA_IMAGE:-ghcr.io/byte5ai/palaia:${CHANNEL}}"
+CONTAINER_NAME="${PALAIA_CONTAINER_NAME:-palaia}"
 PORT="${PALAIA_INSTALL_PORT:-8420}"
 CLOUD_PORT="${PALAIA_CLOUD_PORT:-8422}"
 VOLUME="${PALAIA_VOLUME:-palaia_home}"
@@ -237,7 +237,7 @@ else
 # container, one stopped on purpose, and one that failed for another reason
 # are left alone.
 set -u
-NAME="${1:-palaia-hub}"
+NAME="${1:-palaia}"
 INTERVAL="${PALAIA_START_INTERVAL:-5}"
 
 addresses_up() {

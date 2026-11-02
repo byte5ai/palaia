@@ -88,7 +88,7 @@ an optional `install.sh` convenience script, and the mDNS announcer. See
 [`v3/deploy/README.md`](deploy/README.md) for the one-liner, the compose
 file, mDNS caveats (containerized networking honestly documented), and the
 manual verification checklist. Images are published to
-`ghcr.io/byte5ai/palaia-hub` by
+`ghcr.io/byte5ai/palaia` by
 [`.github/workflows/v3-release.yml`](../.github/workflows/v3-release.yml)
 (`edge` on `main`, `stable`/`beta` on `v3.*` tags, `linux/amd64` +
 `linux/arm64`).

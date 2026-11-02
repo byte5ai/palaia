@@ -16,10 +16,10 @@ write format-spec-valid v3 vault entries with preserved metadata. (Reading a
 user's own files has no license implications — ADR-002.)
 
 ## Deliverables
-1. `palaia-hub import v2 <path>`: reads a v2 `.palaia/` store (SQLite backend
+1. `palaia import v2 <path>`: reads a v2 `.palaia/` store (SQLite backend
    AND legacy tier directories hot/warm/cold), maps entries (type, scope, tags,
    timestamps, body) to v3 notes; tier → decay-score seed; provenance noted.
-2. `palaia-hub import basic-memory <path>`: maps their frontmatter/observations/
+2. `palaia import basic-memory <path>`: maps their frontmatter/observations/
    relations to ours per a documented mapping table (`docs/import-mappings.md`);
    unknown custom keys preserved as metadata.
 3. **Cold-embed as a visible background job:** embedding an imported vault takes

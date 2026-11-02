@@ -70,9 +70,9 @@ const WHATS_INCLUDED =
  * type this on. `docker cp` cannot read the container's /tmp (a tmpfs), so
  * the file comes out through standard output instead. */
 const DOCKER_BACKUP_COMMAND =
-  "docker exec palaia-hub sh -c 'palaia-hub backup --out /tmp/palaia-backup.tar.gz >&2 " +
+  "docker exec palaia sh -c 'palaia backup --out /tmp/palaia-backup.tar.gz >&2 " +
   "&& cat /tmp/palaia-backup.tar.gz && rm /tmp/palaia-backup.tar.gz' > palaia-backup.tar.gz";
-const PLAIN_BACKUP_COMMAND = "palaia-hub backup";
+const PLAIN_BACKUP_COMMAND = "palaia backup";
 
 const STORE_NAME: Record<string, string> = {
   umbrel: "umbrelOS",

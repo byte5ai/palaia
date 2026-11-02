@@ -18,7 +18,7 @@ carried knowledge, not just an envelope.
 Both agents connect to the same real hub subprocess
 (``support/hub_server_messenger.py`` — real ``VaultEngine``, real
 ``AuthorizationServer``, real ``build_production_app`` wiring exactly as
-``palaia-hub serve`` runs it, real ``uvicorn`` socket), on two different
+``palaia serve`` runs it, real ``uvicorn`` socket), on two different
 gateway profiles that both carry the one shared vault plus
 ``directory: true``/``messenger: true`` — the directory and the messenger
 are each exactly one hub-wide store (see the hub script's docstring), so a

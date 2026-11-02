@@ -24,11 +24,11 @@ over email or chat.
 You need to be signed in to the dashboard to download one. If the dashboard
 doesn't ask anyone to sign in (the default when palaia only runs on your own
 network), Settings › Backups offers **Turn on dashboard sign-in** instead,
-and shows how to write the same file on the server: `palaia-hub backup` on
+and shows how to write the same file on the server: `palaia backup` on
 a plain install, or for the Docker install
 
 ```sh
-docker exec palaia-hub sh -c 'palaia-hub backup --out /tmp/palaia-backup.tar.gz >&2 && cat /tmp/palaia-backup.tar.gz && rm /tmp/palaia-backup.tar.gz' > palaia-backup.tar.gz
+docker exec palaia sh -c 'palaia backup --out /tmp/palaia-backup.tar.gz >&2 && cat /tmp/palaia-backup.tar.gz && rm /tmp/palaia-backup.tar.gz' > palaia-backup.tar.gz
 ```
 
 The file comes out through the command's output because the container's
@@ -74,13 +74,13 @@ through your browser.
 On the machine palaia runs on, the same thing from the command line:
 
 ```bash
-palaia-hub backup --target nas     # one folder
-palaia-hub backup --all-targets    # every folder you've configured
-palaia-hub backup --list-targets   # which ones are configured, and how the last backup went
+palaia backup --target nas     # one folder
+palaia backup --all-targets    # every folder you've configured
+palaia backup --list-targets   # which ones are configured, and how the last backup went
 ```
 
-Running in Docker, put `docker exec palaia-hub` in front, e.g.
-`docker exec palaia-hub palaia-hub backup --target nas`.
+Running in Docker, put `docker exec palaia` in front, e.g.
+`docker exec palaia palaia backup --target nas`.
 
 ### Back up on a schedule
 
@@ -113,7 +113,7 @@ A few things it takes care of for you:
   backup is being written into that folder just tells you it's already on
   its way.
 
-If you used to run `palaia-hub backup --all-targets` from your own
+If you used to run `palaia backup --all-targets` from your own
 scheduler (a `cron` entry or a timer), remove it once `interval_hours` is
 set — two schedulers writing into one folder at the same moment can get in
 each other's way.
@@ -180,7 +180,7 @@ in your download, start it again.**
 If you installed on a server with `curl -fsSL https://get.palaia.ai | sh`:
 
 ```bash
-docker rm -f palaia-hub
+docker rm -f palaia
 
 docker run --rm \
   -v palaia_home:/data \
@@ -200,7 +200,7 @@ during the first install, run it the same way again
 If you installed with the one-line command from [Install it](/install/):
 
 ```bash
-docker rm -f palaia-hub
+docker rm -f palaia
 
 docker run --rm \
   -v palaia_home:/data \
@@ -209,12 +209,12 @@ docker run --rm \
                 tar xzf /backup/palaia-backup-YOUR-FILE.tar.gz -C /data && \
                 chown -R 1000:1000 /data"
 
-docker run -d --name palaia-hub \
+docker run -d --name palaia \
   --network host -e PALAIA_CLOUD_BIND=127.0.0.1 \
   -v palaia_home:/data --restart unless-stopped \
   --security-opt no-new-privileges:true --cap-drop ALL \
   --read-only --tmpfs /tmp --tmpfs /run \
-  ghcr.io/byte5ai/palaia-hub:stable
+  ghcr.io/byte5ai/palaia:stable
 ```
 
 That last command is the Linux one. With Docker Desktop (macOS/Windows),
@@ -224,8 +224,8 @@ line.
 
 <!-- rc-channel-note -->
 > **Release candidate:** until `3.0.0` is final there is no `stable` image yet. Where a
-> command or file on this page says `ghcr.io/byte5ai/palaia-hub:stable`, use
-> `ghcr.io/byte5ai/palaia-hub:beta` for now.
+> command or file on this page says `ghcr.io/byte5ai/palaia:stable`, use
+> `ghcr.io/byte5ai/palaia:beta` for now.
 
 If you installed with the docker-compose file:
 

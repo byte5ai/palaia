@@ -2,7 +2,7 @@
 
 Operational scripts that are not part of the running hub — they are run
 by hand (or in CI) by whoever operates the palaia curated marketplace
-index, not by `palaia-hub` itself.
+index, not by `palaia` itself.
 
 ## `sign_market_index.py` — curated index signing (SPEC-303)
 

@@ -18,7 +18,7 @@ import { ToastProvider } from "../../components/Toast";
 import type { SetupStatus } from "../../lib/api/client";
 import { Onboarding } from "./Onboarding";
 
-const PUBLIC = "https://palaia-hub.tail1234.ts.net";
+const PUBLIC = "https://palaia.tail1234.ts.net";
 
 function freshStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
   return {

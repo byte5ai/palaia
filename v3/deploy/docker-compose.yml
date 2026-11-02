@@ -20,8 +20,8 @@ services:
   hub:
     # rc-channel-note — release candidate: the `stable` tag is created by the
     # final 3.0.0 release only. Until then, use `:beta` here.
-    image: ghcr.io/byte5ai/palaia-hub:stable
-    container_name: palaia-hub
+    image: ghcr.io/byte5ai/palaia:stable
+    container_name: palaia
     # The host network: the hub's own name announcement (palaia.local)
     # reaches the local network only from here; Docker's bridge network does
     # not forward it. Port 8420 answers on this machine's addresses exactly
@@ -40,7 +40,7 @@ services:
       # dashboard's "Restart" button ends it.
       PALAIA_SELF_RESTART: "1"
       # SPEC-501: tells the dashboard's "Update available" banner which
-      # instructions to show — this file, so "run `palaia-hub update`,
+      # instructions to show — this file, so "run `palaia update`,
       # then `docker compose pull && docker compose up -d`" rather than a
       # store's own update button. Leave this as-is; it describes this
       # file, not a preference to change.

@@ -74,7 +74,7 @@ live; absence is fine — format-spec defaults apply), (c) the capture itself.
 > "targets":[…],"summary":"…","reason":"…"}
 
 ## Deliverables
-1. Curator runner (`palaia-hub curator run` + scheduled): event-driven via
+1. Curator runner (`palaia curator run` + scheduled): event-driven via
    SPEC-201 (`inbox.captured`, debounced) plus interval fallback; per-capture
    bounded LLM sessions via a **config-driven runner command** (default:
    headless `claude -p` with strict MCP config pointing only at the curator

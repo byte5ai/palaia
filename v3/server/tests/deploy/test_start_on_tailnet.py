@@ -23,7 +23,7 @@ INSTALLER = Path(__file__).resolve().parents[3] / "deploy" / "get-palaia.sh"
 
 BIND_ERROR = (
     "failed to set up container networking: driver failed programming external "
-    "connectivity on endpoint palaia-hub (abc): failed to bind host port "
+    "connectivity on endpoint palaia (abc): failed to bind host port "
     "100.64.0.3:8420/tcp: cannot assign requested address"
 )
 BINDINGS = "100.64.0.3 127.0.0.1 127.0.0.1 "
@@ -136,7 +136,7 @@ class Lab:
 
     def run(self, timeout: float = 20) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            ["sh", str(self.script), "palaia-hub"],
+            ["sh", str(self.script), "palaia"],
             env={
                 "PATH": f"{self.bin}{os.pathsep}{os.environ['PATH']}",
                 "PALAIA_START_INTERVAL": "0.05",
@@ -158,7 +158,7 @@ def test_a_start_that_failed_on_the_missing_address_is_repeated_once_it_is_up(
     result = lab.run()
     assert result.returncode == 0, result.stderr
     # Exactly one start, and only after the address appeared (4th look).
-    assert lab.started() == ["start palaia-hub (attached) after 4 address checks"]
+    assert lab.started() == ["start palaia (attached) after 4 address checks"]
 
 
 def test_a_container_the_failed_start_detached_is_attached_again_before_starting(
@@ -170,8 +170,8 @@ def test_a_container_the_failed_start_detached_is_attached_again_before_starting
     result = lab.run()
     assert result.returncode == 0, result.stderr
     assert lab.started() == [
-        "connect bridge palaia-hub",
-        "start palaia-hub (attached) after 2 address checks",
+        "connect bridge palaia",
+        "start palaia (attached) after 2 address checks",
     ]
 
 

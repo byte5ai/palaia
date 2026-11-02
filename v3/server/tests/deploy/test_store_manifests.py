@@ -37,7 +37,7 @@ STORES_ROOT = Path(__file__).resolve().parents[3] / "deploy" / "stores"
 # pins the hub image to (SPEC-501: "pinning the GHCR image by channel
 # tag"). A stable-listed app pins `stable`, never a moving `edge` build.
 PINNED_CHANNEL = "stable"
-PINNED_IMAGE = "ghcr.io/byte5ai/palaia-hub"
+PINNED_IMAGE = "ghcr.io/byte5ai/palaia"
 
 
 def _load_yaml(path: Path) -> Any:

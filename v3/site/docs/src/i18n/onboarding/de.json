@@ -53,7 +53,7 @@
   "dev": {
     "h2": "Für Entwickler: Docker & Compose",
     "fine": "Betreibst Du schon Container? Installier den hub direkt aus dem Image.",
-    "rcNote": "<strong>Release Candidate.</strong> Die Befehle hier nennen noch das <code>:stable</code>-Image, das erst veröffentlicht wird, wenn 3.0.0 final ist. Bis dahin nutz stattdessen <code>:beta</code> — z. B. <code>ghcr.io/byte5ai/palaia-hub:beta</code>. Die Cloud-Server-Datei und der <code>get.palaia.ai</code>-Einzeiler oben zielen schon auf <code>:beta</code>, dort gibt es also nichts zu ändern.",
+    "rcNote": "<strong>Release Candidate.</strong> Die Befehle hier nennen noch das <code>:stable</code>-Image, das erst veröffentlicht wird, wenn 3.0.0 final ist. Bis dahin nutz stattdessen <code>:beta</code> — z. B. <code>ghcr.io/byte5ai/palaia:beta</code>. Die Cloud-Server-Datei und der <code>get.palaia.ai</code>-Einzeiler oben zielen schon auf <code>:beta</code>, dort gibt es also nichts zu ändern.",
     "tabDocker": "Docker",
     "tabCompose": "Compose-Datei",
     "tabStores": "App-Stores selbst hosten",

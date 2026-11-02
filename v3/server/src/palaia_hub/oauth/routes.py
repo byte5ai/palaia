@@ -669,9 +669,9 @@ def _login_page(*, next_url: str, csrf: str, error: str) -> str:
             "</form>"
             "<details><summary>Forgot your password?</summary>"
             "<p class='hint'>Set a new one on the server palaia runs on:</p>"
-            "<p class='cmd'><code>palaia-hub oauth set-password --username &lt;name&gt;</code></p>"
+            "<p class='cmd'><code>palaia oauth set-password --username &lt;name&gt;</code></p>"
             "<p class='hint'>With Docker:</p>"
-            "<p class='cmd'><code>docker exec -it palaia-hub palaia-hub oauth set-password "
+            "<p class='cmd'><code>docker exec -it palaia palaia oauth set-password "
             "--username &lt;name&gt;</code></p>"
             "</details>"
         ),

@@ -25,7 +25,7 @@ deeper targets the **`v2-maintenance`** branch as its own PR.
    `v2-maintenance`, link to the migration guide). This is the sanctioned
    cross-reference, nothing else at root changes.
 2. `v3/docs/migrate-from-v2.md`: the complete migration guide — what
-   carries over (memories via `palaia-hub import v2`, with the real
+   carries over (memories via `palaia import v2`, with the real
    command), what changes (per-client reconnect, tokens are new, UI moves
    to the hub), what does not exist yet in v3 (be honest — audit v2's
    feature surface against v3 and LIST the gaps rather than hand-waving),

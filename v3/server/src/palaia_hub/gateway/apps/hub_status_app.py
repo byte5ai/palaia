@@ -70,7 +70,7 @@ _BODY_HTML = '<div id="root" class="stack"><div class="empty">Loading…</div></
 
 _SCRIPT_JS = r"""
 (function () {
-  var app = new window.McpAppLib.App({ name: "palaia-hub-status", version: "1.0.0" }, {});
+  var app = new window.McpAppLib.App({ name: "palaia-status", version: "1.0.0" }, {});
   var transport = new window.McpAppLib.PostMessageTransport(window.parent, window.parent);
   var root = document.getElementById("root");
 
@@ -228,7 +228,7 @@ def build_hub_status_server(deps: HubStatusDeps, *, auth: AuthProvider | None = 
     """
     server = FastMCP(
         auth=auth,
-        name="palaia-hub-status",
+        name="palaia-status",
         instructions=(
             "IDENTITY: this is the hub status tool — health, vaults, index/embed "
             "backlog and connected clients for this palaia hub. Call it first to "

@@ -294,8 +294,8 @@ describe("Backups (issue 438)", () => {
     expect(screen.queryByRole("alert")).toBeNull();
     // The server way, second: the Docker command streams the file out.
     expect(within(blocked).getByText("Back up from the server instead")).toBeInTheDocument();
-    expect(blocked).toHaveTextContent("docker exec palaia-hub sh -c");
-    expect(blocked).toHaveTextContent("palaia-hub backup");
+    expect(blocked).toHaveTextContent("docker exec palaia sh -c");
+    expect(blocked).toHaveTextContent("palaia backup");
 
     fireEvent.click(await within(blocked).findByRole("button", { name: "Turn on dashboard sign-in" }));
     await waitFor(() =>

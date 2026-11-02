@@ -134,7 +134,7 @@ const HISTORY_VERB: Record<string, string> = {
 /**
  * "Created by Claude Code CLI · 23 Oct, 15:35" from one commit: the author
  * is the AI app that made the change (`Attribution.git_author`), "human"
- * is the person in the dashboard, "palaia-hub" is palaia itself. The raw
+ * is the person in the dashboard, "palaia" is palaia itself. The raw
  * subject and commit id stay in the tooltip.
  */
 function describeCommit(commit: CommitSummary): { text: string; title: string } {
@@ -143,7 +143,7 @@ function describeCommit(commit: CommitSummary): { text: string; title: string } 
   const verb = HISTORY_VERB[summary.split(" ")[0]?.toLowerCase() ?? ""] ?? "Saved";
   const author = commit.author_name?.trim() ?? "";
   const who =
-    author === "human" ? "you" : author === "palaia-hub" || author === "" ? "palaia" : author;
+    author === "human" ? "you" : author === "palaia" || author === "" ? "palaia" : author;
   const when = commit.committed_at ? shortDateTime(commit.committed_at) : "";
   return {
     text: `${verb} by ${who}${when ? ` · ${when}` : ""}`,

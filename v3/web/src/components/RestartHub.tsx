@@ -9,7 +9,7 @@ import { ConfirmDialog } from "./Dialog";
 
 /** The command for a hub that cannot restart itself (no supervisor that
  * would bring it back), as the hub's own refusal names it. */
-export const RESTART_COMMAND = "docker restart palaia-hub";
+export const RESTART_COMMAND = "docker restart palaia";
 
 const POLL_MS = 1500;
 const GIVE_UP_MS = 90_000;

@@ -1,6 +1,6 @@
 name: v3 hub image
 
-# SPEC-112: builds/pushes the palaia-hub image to GHCR.
+# SPEC-112: builds/pushes the palaia image to GHCR.
 #   - `edge`                    on a manual dispatch on `main` (never on a
 #                               push: a merge must not start a multi-arch
 #                               build — runner minutes are spent per approved
@@ -51,7 +51,7 @@ permissions:
   packages: write
 
 env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/palaia-hub
+  IMAGE: ghcr.io/${{ github.repository_owner }}/palaia
 
 jobs:
   build-and-push:
@@ -174,7 +174,7 @@ jobs:
           # The same hardening flags install.sh / docker-compose.yml document
           # (SPEC-502), so the smoke proves the image boots *under them* on
           # arm64 too, not only on amd64 (issue #400).
-          docker run -d --name palaia-hub-arm64 --platform linux/arm64 \
+          docker run -d --name palaia-arm64 --platform linux/arm64 \
             -p 18420:8420 \
             --security-opt no-new-privileges:true --cap-drop ALL \
             --read-only --tmpfs /tmp --tmpfs /run \
@@ -183,7 +183,7 @@ jobs:
           until curl -fsS http://localhost:18420/api/health; do
             if [ "$(date +%s)" -ge "${deadline}" ]; then
               echo "arm64 image never became healthy within 10 minutes" >&2
-              docker logs palaia-hub-arm64 >&2 || true
+              docker logs palaia-arm64 >&2 || true
               exit 1
             fi
             sleep 5
@@ -220,4 +220,4 @@ jobs:
 
       - name: Clean up smoke-test container
         if: always()
-        run: docker rm -f palaia-hub-arm64 || true
+        run: docker rm -f palaia-arm64 || true

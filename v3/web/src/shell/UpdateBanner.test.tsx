@@ -25,7 +25,7 @@ const UPDATE_AVAILABLE: UpdateCheckResponse = {
   guidance: {
     kind: "command",
     message: "Run the update helper, then restart:",
-    commands: ["palaia-hub update", "docker compose pull", "docker compose up -d"],
+    commands: ["palaia update", "docker compose pull", "docker compose up -d"],
   },
 };
 
@@ -79,7 +79,7 @@ describe("UpdateBanner", () => {
     expect(screen.getByText(/0\.1\.0/)).toBeInTheDocument();
     expect(screen.getByText(/0\.2\.0/)).toBeInTheDocument();
     expect(screen.getByText(/run the update helper, then restart/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /palaia-hub update/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /palaia update/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /docker compose pull/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /docker compose up -d/i })).toBeInTheDocument();
   });

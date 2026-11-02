@@ -11,7 +11,7 @@ npm test                # vitest
 npm run test:a11y       # axe-core scan of the shell and every screen
 npm run lint            # eslint + the design-token lint + the generated-tokens check
 npm run typecheck       # tsc -b
-npm run build           # production build -> dist/ (served by palaia-hub)
+npm run build           # production build -> dist/ (served by palaia)
 npm run storybook       # Ladle: the living style guide for every component
 npm run storybook:build # static Ladle build -> build/
 npm run gen:tokens      # regenerate src/styles/tokens.css from ../design/tokens.json
@@ -56,7 +56,7 @@ npm run gen:api         # regenerate src/lib/api/schema.gen.ts from the hub's Op
 `npm run build` produces `dist/`; `palaia_hub.static.mount_dashboard`
 serves it with SPA fallback (any client-side route still resolves to
 `index.html`) whenever `PALAIA_WEB_DIST` (or the default `../web/dist`
-relative path) points at a real build — `palaia-hub serve` is one
+relative path) points at a real build — `palaia serve` is one
 process, one port, for both the API and the dashboard. In the packaged image
 nginx serves the build and proxies `/api`, `/mcp`, `/oauth`, `/.well-known`
 and `/telegram/webhook` to the hub.

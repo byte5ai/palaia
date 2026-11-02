@@ -38,7 +38,7 @@ def test_update_available_reaches_the_rest_response(
         guidance=UpdateGuidance(
             kind="command",
             message="Run the update helper, then restart:",
-            commands=("palaia-hub update", "docker compose pull", "docker compose up -d"),
+            commands=("palaia update", "docker compose pull", "docker compose up -d"),
         ),
     )
     monkeypatch.setattr(app_module, "check_for_update", _fake_check_for_update(seen, result))
@@ -51,7 +51,7 @@ def test_update_available_reaches_the_rest_response(
     assert body["state"] == "update_available"
     assert body["latest_version"] == "0.2.0"
     assert body["guidance"]["commands"] == [
-        "palaia-hub update",
+        "palaia update",
         "docker compose pull",
         "docker compose up -d",
     ]

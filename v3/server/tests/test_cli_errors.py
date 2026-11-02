@@ -22,7 +22,7 @@ def test_a_broken_config_is_one_line_and_exit_code_1_for_every_subcommand(
 
     assert exit_info.value.code == 1
     err = capsys.readouterr().err
-    assert err.startswith("palaia-hub: ")
+    assert err.startswith("palaia: ")
     assert "Traceback" not in err
 
 

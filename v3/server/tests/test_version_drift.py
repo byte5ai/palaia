@@ -154,7 +154,7 @@ def test_compose_pins_the_stable_channel_tag_not_a_literal_version() -> None:
     compose_text = (V3_ROOT / "deploy" / "docker-compose.yml").read_text(encoding="utf-8")
     match = re.search(r"image:\s*(\S+)", compose_text)
     assert match is not None, "docker-compose.yml has no image: line"
-    assert match.group(1) == "ghcr.io/byte5ai/palaia-hub:stable"
+    assert match.group(1) == "ghcr.io/byte5ai/palaia:stable"
 
 
 #: The install path people run without reading it first: get-palaia.sh is
@@ -188,12 +188,12 @@ def test_unattended_install_paths_pin_the_channel_matching_version() -> None:
 def test_cloud_init_names_no_image_of_its_own() -> None:
     """cloud-init.yaml runs get-palaia.sh, so the image choice lives there only."""
     text = (V3_ROOT / "deploy" / "cloud-init.yaml").read_text(encoding="utf-8")
-    assert "ghcr.io/byte5ai/palaia-hub" not in text
+    assert "ghcr.io/byte5ai/palaia" not in text
 
 
 def test_install_sh_defaults_to_the_stable_channel_tag() -> None:
     install_text = (V3_ROOT / "deploy" / "install.sh").read_text(encoding="utf-8")
-    assert 'IMAGE="${PALAIA_IMAGE:-ghcr.io/byte5ai/palaia-hub:stable}"' in install_text
+    assert 'IMAGE="${PALAIA_IMAGE:-ghcr.io/byte5ai/palaia:stable}"' in install_text
 
 
 @pytest.mark.parametrize(
@@ -206,7 +206,7 @@ def test_install_sh_defaults_to_the_stable_channel_tag() -> None:
 )
 def test_store_packages_pin_the_stable_channel_tag(compose_path: str) -> None:
     text = (V3_ROOT / "deploy" / "stores" / compose_path).read_text(encoding="utf-8")
-    assert "ghcr.io/byte5ai/palaia-hub:stable" in text, (
+    assert "ghcr.io/byte5ai/palaia:stable" in text, (
         f"{compose_path} must pin the stable channel tag, matching "
         "deploy/stores/README.md's shared contract"
     )
@@ -224,7 +224,7 @@ def test_home_assistant_addon_version_is_this_version() -> None:
             encoding="utf-8"
         )
     )
-    assert config["image"] == "ghcr.io/byte5ai/palaia-hub"
+    assert config["image"] == "ghcr.io/byte5ai/palaia"
     assert str(config["version"]) == _read_version_file(), (
         "deploy/stores/home-assistant/config.yaml `version` must equal v3/VERSION — "
         "it is the image tag HA pulls and the only thing HA compares for updates"

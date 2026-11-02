@@ -40,7 +40,7 @@ proposals, add tools, and change any of this — has its own sign-in,
 separate from anything an AI tool uses to connect. One person is set up as
 the administrator during first-run setup, right in the browser. palaia
 keeps exactly one such account: to change its password later, run
-`palaia-hub oauth set-password` where the hub runs, or connect a sign-in
+`palaia oauth set-password` where the hub runs, or connect a sign-in
 provider (GitHub, or your company's OpenID Connect) instead — then that
 provider's allow-list decides who may sign in.
 

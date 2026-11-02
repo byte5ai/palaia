@@ -93,7 +93,7 @@ startup depends on either; they exist purely to back the wizard's own UI
 set them) but are not yet exposed as form fields in the wizard itself —
 enabling OAuth sign-in for claude.ai/ChatGPT today means setting
 `oauth.enabled`/`oauth.issuer` in `config.yaml` by hand (the onboarding
-wizard's first step, or SPEC-108's `palaia-hub oauth set-password`, sets
+wizard's first step, or SPEC-108's `palaia oauth set-password`, sets
 the account itself). The wizard
 surfaces the *result* the moment it is configured (§4 below) even though
 it does not yet drive the configuration.

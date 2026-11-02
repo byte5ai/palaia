@@ -6,7 +6,7 @@ and httpx's in-process ASGI transport (which backs FastAPI's
 ``TestClient``) buffers an entire ASGI app call before handing back
 *any* of the response — it cannot observe an indefinite stream at all.
 So, like ``test_cli_serve.py``, these tests spawn a real
-``palaia-hub serve`` subprocess and read the response incrementally off
+``palaia serve`` subprocess and read the response incrementally off
 a real socket.
 """
 

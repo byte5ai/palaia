@@ -213,7 +213,7 @@ async def test_an_annotation_on_the_index_needs_one_manifest_request() -> None:
 
     assert result.state == "update_available"
     assert result.latest_version == "3.0.0"
-    assert requested["paths"] == ["/v2/byte5ai/palaia-hub/manifests/stable"]
+    assert requested["paths"] == ["/v2/byte5ai/palaia/manifests/stable"]
 
 
 @pytest.mark.anyio
@@ -227,8 +227,8 @@ async def test_an_annotation_only_on_the_platform_manifest_is_fetched_by_digest(
     assert result.state == "up_to_date"
     assert result.latest_version == "3.0.0-rc1"
     assert requested["paths"] == [
-        "/v2/byte5ai/palaia-hub/manifests/beta",
-        f"/v2/byte5ai/palaia-hub/manifests/{_AMD64_DIGEST}",
+        "/v2/byte5ai/palaia/manifests/beta",
+        f"/v2/byte5ai/palaia/manifests/{_AMD64_DIGEST}",
     ]
 
 
@@ -240,7 +240,7 @@ async def test_an_annotation_on_the_child_descriptor_spares_the_second_request()
 
     assert result.state == "up_to_date"
     assert result.latest_version == "3.0.0"
-    assert requested["paths"] == ["/v2/byte5ai/palaia-hub/manifests/stable"]
+    assert requested["paths"] == ["/v2/byte5ai/palaia/manifests/stable"]
 
 
 @pytest.mark.anyio
@@ -254,8 +254,8 @@ async def test_no_annotation_anywhere_is_cannot_check_with_the_honest_reason() -
     assert result.reason == "the 'stable' manifest carries no published version annotation"
     # It did look in the platform manifest before giving up.
     assert requested["paths"] == [
-        "/v2/byte5ai/palaia-hub/manifests/stable",
-        f"/v2/byte5ai/palaia-hub/manifests/{_AMD64_DIGEST}",
+        "/v2/byte5ai/palaia/manifests/stable",
+        f"/v2/byte5ai/palaia/manifests/{_AMD64_DIGEST}",
     ]
 
 
@@ -380,7 +380,7 @@ class TestUpdateGuidance:
         guidance = update_guidance("compose")
         assert guidance.kind == "command"
         assert guidance.commands == (
-            "palaia-hub update",
+            "palaia update",
             "docker compose pull",
             "docker compose up -d",
         )

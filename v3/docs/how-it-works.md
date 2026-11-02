@@ -103,7 +103,7 @@ ships in `3.0.0-rc8` unless it says it is planned; the full list is in
   ([backup & restore](backup-restore.md)). Backups can also run **on a schedule**
   into folders you name, shown under Settings › Backups, and a memory can be
   **pushed to a git repository** you own (notes only, never keys).
-- **A health check for the whole hub.** `palaia-hub doctor` checks memories,
+- **A health check for the whole hub.** `palaia doctor` checks memories,
   search, connected tools, configuration and storage, says what to do about each
   finding, and with `--fix` performs the repairs that cannot lose anything.
 - **Smart Nudges.** Short, rule-based hints attached to a memory tool's answer when
@@ -217,16 +217,16 @@ On the command line it is pull-and-recreate:
 
 <!-- rc-channel-note -->
 > **Release candidate:** until `3.0.0` is final there is no `stable` image yet. Where a
-> command or file on this page says `ghcr.io/byte5ai/palaia-hub:stable`, use
-> `ghcr.io/byte5ai/palaia-hub:beta` for now.
+> command or file on this page says `ghcr.io/byte5ai/palaia:stable`, use
+> `ghcr.io/byte5ai/palaia:beta` for now.
 
 ```bash
-docker pull ghcr.io/byte5ai/palaia-hub:stable
-docker stop palaia-hub && docker rm palaia-hub
+docker pull ghcr.io/byte5ai/palaia:stable
+docker stop palaia && docker rm palaia
 # re-run the same `docker run` command from the README's Quickstart
 ```
 
-With Compose, `palaia-hub update --channel stable --file docker-compose.yml` rewrites
+With Compose, `palaia update --channel stable --file docker-compose.yml` rewrites
 the pinned tag, then `docker compose pull && docker compose up -d`. Details and the
 channel semantics: [`deploy/README.md`](../deploy/README.md#updates-spec-501).
 

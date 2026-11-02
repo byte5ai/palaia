@@ -1,4 +1,4 @@
-"""``palaia-hub curator run/apply/token`` in-process (SPEC-206 deliverable #1)."""
+"""``palaia curator run/apply/token`` in-process (SPEC-206 deliverable #1)."""
 
 from __future__ import annotations
 

@@ -13,7 +13,7 @@ keywords:
   - assistant
 sources:
   - https://github.com/byte5ai/palaia
-  - https://github.com/byte5ai/palaia/pkgs/container/palaia-hub
+  - https://github.com/byte5ai/palaia/pkgs/container/palaia
 maintainers:
   - name: byte5
     # The one byte5 contact this repository actually attests (the project

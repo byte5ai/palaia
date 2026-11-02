@@ -141,13 +141,13 @@ def test_cloud_ready_needs_cloud_mode_https_sign_in_an_owner_and_a_profile(
 def test_hints_and_start_up_problems_are_passed_on(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("PALAIA_CLOUD_URL_HINT", "https://palaia-hub.tail1234.ts.net")
+    monkeypatch.setenv("PALAIA_CLOUD_URL_HINT", "https://palaia.tail1234.ts.net")
     report_problem("Sign-in did not start. Fix: create your first memory, then restart the hub.")
     try:
         body = _client(tmp_path).get("/api/setup").json()
     finally:
         PROBLEMS.clear()
-    assert body["cloud_url_hint"] == "https://palaia-hub.tail1234.ts.net"
+    assert body["cloud_url_hint"] == "https://palaia.tail1234.ts.net"
     assert body["problems"] == [
         "Sign-in did not start. Fix: create your first memory, then restart the hub."
     ]

@@ -44,7 +44,7 @@ it as a marker until a real screenshot exists.
 | 7 | `agents-messages.md` | The Agents screen: live directory on one side, a message thread open on the other (SPEC-405 deliverable #1) | Needs at least two active sessions and one exchanged message to look like anything |
 | 8 | `install-synology.md` | Container Manager's own overview screen right after opening it, showing the left-hand navigation (Project, Container, Image, Registry) (SPEC-602) | Capture on a real Synology device running Container Manager — see this page's own owner checklist (an HTML comment at the bottom of the generated file). This page is generated from `scripts/lib/synology.mjs` — edit the marker text there, not the `.md` file, then run `npm run gen:synology` |
 | 9 | `install-synology.md` | The project-creation step with the page's compose file pasted into Container Manager's text box, before continuing to the next step (SPEC-602) | Same device; the compose text should be exactly what the generated page shows — do not retype it. Generated page, see note above |
-| 10 | `install-synology.md` | The finished project showing status Running, with its one container (`palaia-hub`) listed (SPEC-602) | Same device, after starting the project. Generated page, see note above |
+| 10 | `install-synology.md` | The finished project showing status Running, with its one container (`palaia`) listed (SPEC-602) | Same device, after starting the project. Generated page, see note above |
 
 ## Format guidance, once a screenshot exists
 

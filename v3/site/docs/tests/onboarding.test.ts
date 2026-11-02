@@ -206,7 +206,7 @@ describe("onboarding page snippets", () => {
       path.join(__dirname, "..", "src", "i18n", "onboarding", "en.json"),
       "utf8",
     );
-    expect(en).toContain("palaia-hub:beta");
+    expect(en).toContain("palaia:beta");
   });
 
   it("throws instead of returning an empty snippet if the source shape ever changes", () => {

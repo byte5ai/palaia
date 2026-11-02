@@ -1,4 +1,4 @@
-"""``palaia-hub update``'s file-editing half (SPEC-501 deliverable #4).
+"""``palaia update``'s file-editing half (SPEC-501 deliverable #4).
 
 Inside a container, "self-update" is pull-and-recreate — something a
 container cannot portably do to itself. For a compose deployment, this
@@ -18,7 +18,7 @@ from typing import Literal
 #: ``v3/deploy/docker-compose.yml`` pins (see that file). A compose file
 #: pinning a different image is left untouched (see
 #: :func:`rewrite_compose_channel`'s docstring).
-DEFAULT_IMAGE = "ghcr.io/byte5ai/palaia-hub"
+DEFAULT_IMAGE = "ghcr.io/byte5ai/palaia"
 
 #: What :func:`rewrite_compose_channel` found (issue #371): the tag was
 #: switched, the file already pinned the channel, or no line pins the image

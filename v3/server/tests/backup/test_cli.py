@@ -1,4 +1,4 @@
-"""``palaia-hub backup`` (issue #317): the dashboard's archive, written locally.
+"""``palaia backup`` (issue #317): the dashboard's archive, written locally.
 
 The route refuses on a hub whose dashboard has no sign-in (the locked-mode
 default), so the CLI is the way such a hub is backed up — same bytes, same

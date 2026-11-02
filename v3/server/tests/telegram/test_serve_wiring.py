@@ -1,6 +1,6 @@
 """Issue #439: a hub whose ``config.yaml`` has a ``telegram:`` section actually
 runs the connector — through :func:`palaia_hub.serve.build_production_app`,
-the exact assembly ``palaia-hub serve`` runs, with only the Bot API faked.
+the exact assembly ``palaia serve`` runs, with only the Bot API faked.
 
 Modelled on ``tests/test_serve_messenger_spec403.py``: the real lifespan,
 real MCP clients over ``mcp_client_transport``, the real secret store, the

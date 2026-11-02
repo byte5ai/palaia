@@ -14,13 +14,13 @@ memories, search, connected AI tools, the configuration and the storage.
 It says what it found and what to do about each finding:
 
 ```bash
-palaia-hub doctor
+palaia doctor
 ```
 
 With `--fix` it also performs the repairs that cannot lose anything, such as
 clearing a lock left behind by a crash or rebuilding search from your notes,
 and then reports what it did. In the container, run it as
-`docker exec palaia-hub palaia-hub doctor`.
+`docker exec palaia palaia doctor`.
 
 ## "Sign-in fails immediately, every time, for every AI tool"
 

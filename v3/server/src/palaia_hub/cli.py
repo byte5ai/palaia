@@ -1,4 +1,4 @@
-"""``palaia-hub`` command-line entry point.
+"""``palaia`` command-line entry point.
 
 Subcommands: ``serve`` (load config, build the app, run it under uvicorn with
 graceful shutdown — in-flight requests drain on SIGTERM/SIGINT up to
@@ -9,7 +9,7 @@ the safe repairs), ``import`` (v2 / basic-memory), ``update`` (switch the
 compose file's channel) and ``backup``.
 
 Every subcommand shares one error boundary in :func:`main`: a broken
-``config.yaml`` or an unknown vault is a one-line ``palaia-hub: …`` message
+``config.yaml`` or an unknown vault is a one-line ``palaia: …`` message
 and exit code 1, never a traceback (issue #396).
 """
 
@@ -84,7 +84,7 @@ _SCOPE_HELP = (
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="palaia-hub")
+    parser = argparse.ArgumentParser(prog="palaia")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     serve_parser = subparsers.add_parser("serve", help="Run the hub daemon")
@@ -192,7 +192,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _add_oauth_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """The ``palaia-hub oauth ...`` admin surface (SPEC-203).
+    """The ``palaia oauth ...`` admin surface (SPEC-203).
 
     Deliberately CLI-only, not REST: setting the owner password and minting a
     machine identity change who can reach the hub, and MASTERPLAN §5.7 keeps
@@ -228,7 +228,7 @@ def _add_oauth_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPa
 
 
 def _add_curator_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """The ``palaia-hub curator ...`` surface (SPEC-206).
+    """The ``palaia curator ...`` surface (SPEC-206).
 
     ``run`` and ``apply`` are the same two passes the hub runs on a schedule
     when ``curator.enabled`` is on — exposed as commands so an operator can
@@ -255,7 +255,7 @@ def _add_curator_parser(subparsers: argparse._SubParsersAction[argparse.Argument
 
 
 def _add_doctor_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """The ``palaia-hub doctor`` surface (issue #296).
+    """The ``palaia doctor`` surface (issue #296).
 
     Runs on a hub that is not running: it opens everything read-only and
     never starts a background worker, so an operator whose hub will not
@@ -318,7 +318,7 @@ def serve(host: str | None = None, port: int | None = None) -> None:
     try:
         config = load_config()
     except ConfigError as exc:
-        print(f"palaia-hub: configuration error:\n{exc}", file=sys.stderr)
+        print(f"palaia: configuration error:\n{exc}", file=sys.stderr)
         raise SystemExit(1) from exc
 
     overrides: dict[str, object] = {}
@@ -332,13 +332,13 @@ def serve(host: str | None = None, port: int | None = None) -> None:
         try:
             config = apply_config_overrides(config, overrides)
         except ConfigError as exc:
-            print(f"palaia-hub: configuration error:\n{exc}", file=sys.stderr)
+            print(f"palaia: configuration error:\n{exc}", file=sys.stderr)
             raise SystemExit(1) from exc
 
     try:
         asyncio.run(_serve_async(config))
     except GatewaySettingsError as exc:
-        print(f"palaia-hub: {exc}", file=sys.stderr)
+        print(f"palaia: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
 
 
@@ -429,7 +429,7 @@ def _gateway_profiles_for_oauth(
             config, keys, default_profile=DEFAULT_GATEWAY_PROFILE, include_pending=True
         )
     except GatewaySettingsError as exc:
-        print(f"palaia-hub: {exc}", file=sys.stderr)
+        print(f"palaia: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
     if not profiles and config.oauth.profiles:
         profiles = [ProfileConfig(path=legacy) for legacy in config.oauth.profiles]
@@ -452,7 +452,7 @@ def _maybe_oauth_server(config: HubConfig) -> AuthorizationServer | None:
         return None
     if not config.oauth.issuer:
         print(
-            "palaia-hub: oauth.enabled is true but oauth.issuer is not set. Fix: set "
+            "palaia: oauth.enabled is true but oauth.issuer is not set. Fix: set "
             "`oauth.issuer` in config.yaml to the public https URL clients reach this "
             "hub at.",
             file=sys.stderr,
@@ -469,7 +469,7 @@ def _maybe_oauth_server(config: HubConfig) -> AuthorizationServer | None:
             "Sign-in is turned on, but this hub has no memory yet, so AI apps have "
             "nothing to connect to. Fix: create your first memory, then restart the hub."
         )
-        print(f"palaia-hub: {message}", file=sys.stderr)
+        print(f"palaia: {message}", file=sys.stderr)
         report_problem(message)
     server = AuthorizationServer.build(config, _profile_scopes(profiles))
     print(
@@ -492,12 +492,12 @@ def _oauth_set_password(username: str) -> None:
     password = getpass.getpass("New owner password: ")
     confirm = getpass.getpass("Repeat password: ")
     if password != confirm:
-        print("palaia-hub: the two passwords do not match.", file=sys.stderr)
+        print("palaia: the two passwords do not match.", file=sys.stderr)
         raise SystemExit(1)
     try:
         set_owner_password(store, username, password, now=now_seconds())
     except OAuthError as exc:
-        print(f"palaia-hub: {exc.description}", file=sys.stderr)
+        print(f"palaia: {exc.description}", file=sys.stderr)
         raise SystemExit(1) from exc
     print(f"Owner account set for {username!r}. Existing login sessions were cleared.")
 
@@ -506,7 +506,7 @@ def _oauth_machine_client(name: str, profile: str, scopes: list[str]) -> None:
     store, config = _oauth_server_for_admin()
     if not config.oauth.issuer:
         print(
-            "palaia-hub: oauth.issuer is not set, so a machine client cannot be "
+            "palaia: oauth.issuer is not set, so a machine client cannot be "
             "pinned to a resource. Fix: set `oauth.issuer` in config.yaml.",
             file=sys.stderr,
         )
@@ -519,7 +519,7 @@ def _oauth_machine_client(name: str, profile: str, scopes: list[str]) -> None:
             store, client_name=name, audience=audience, scopes=scopes, now=now_seconds()
         )
     except (KeyError, OAuthError) as exc:
-        print(f"palaia-hub: {exc}", file=sys.stderr)
+        print(f"palaia: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
     print(f"Provisioned machine client {provisioned.client.client_id!r} for {audience}.")
     print("Copy the secret now — it will not be shown again:")
@@ -556,7 +556,7 @@ def _token_create(name: str, profile: str, scopes: list[str]) -> None:
     try:
         created = store.create(name, profile, scopes)
     except TokenError as exc:
-        print(f"palaia-hub: {exc}", file=sys.stderr)
+        print(f"palaia: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
     print(f"Created token {created.info.id!r} for {name!r} (profile={profile!r}).")
     print("Copy it now — it will not be shown again:")
@@ -567,7 +567,7 @@ def _token_list() -> None:
     store = TokenStore()
     tokens = store.list_tokens()
     if not tokens:
-        print("No tokens yet. Create one with `palaia-hub token create`.")
+        print("No tokens yet. Create one with `palaia token create`.")
         return
     for info in tokens:
         status = "revoked" if info.revoked_at else "active"
@@ -581,7 +581,7 @@ def _token_revoke(token_id: str) -> None:
     try:
         info = store.revoke(token_id)
     except TokenError as exc:
-        print(f"palaia-hub: {exc}", file=sys.stderr)
+        print(f"palaia: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
     print(f"Revoked token {info.id!r} ({info.name!r}).")
 
@@ -636,7 +636,7 @@ def _curator_run(args: argparse.Namespace) -> None:
         print(json.dumps([report.model_dump() for report in reports], indent=2))
         return
     if not reports:
-        print("No vaults to curate. Create one first (`palaia-hub serve`, then the wizard).")
+        print("No vaults to curate. Create one first (`palaia serve`, then the wizard).")
         return
     for report in reports:
         print(report.summary())
@@ -667,7 +667,7 @@ def _curator_token(name: str) -> None:
     try:
         created = store.create(name, CURATOR_PROFILE_PATH, scopes)
     except TokenError as exc:
-        print(f"palaia-hub: {exc}", file=sys.stderr)
+        print(f"palaia: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
     print(f"Created curator token {created.info.id!r} (profile={CURATOR_PROFILE_PATH!r}).")
     print("Copy it now — it will not be shown again, and put it in the environment:")
@@ -794,7 +794,7 @@ def _import_basic_memory(args: argparse.Namespace) -> None:
 
 
 def _update_compose(channel: str | None, file_path: str) -> None:
-    """``palaia-hub update`` (SPEC-501 deliverable #4). Never runs the
+    """``palaia update`` (SPEC-501 deliverable #4). Never runs the
     recreate itself — a container cannot portably do that to itself, and
     this command may well be run from inside one. It only edits the
     compose file's pinned tag (when ``--channel`` is given) and prints the
@@ -803,7 +803,7 @@ def _update_compose(channel: str | None, file_path: str) -> None:
     path = Path(file_path)
     if not path.exists():
         print(
-            f"palaia-hub: no compose file at {path} — pass --file to point at yours.",
+            f"palaia: no compose file at {path} — pass --file to point at yours.",
             file=sys.stderr,
         )
         raise SystemExit(1)
@@ -819,7 +819,7 @@ def _update_compose(channel: str | None, file_path: str) -> None:
             # Issue #371: this used to be reported as "already on the
             # channel" while the file was left exactly as it was.
             print(
-                f"palaia-hub: {path} has no `image: {DEFAULT_IMAGE}:<tag>` line, so nothing "
+                f"palaia: {path} has no `image: {DEFAULT_IMAGE}:<tag>` line, so nothing "
                 f"was changed. Fix: if your compose file pins the hub image under another "
                 f"name (a mirror registry, a custom build), set its tag to {channel!r} by "
                 f"hand, then run the two commands below.",
@@ -832,7 +832,7 @@ def _update_compose(channel: str | None, file_path: str) -> None:
 
 
 def _backup(out: str | None) -> Path:
-    """``palaia-hub backup`` (issue #317): the dashboard's archive, written locally.
+    """``palaia backup`` (issue #317): the dashboard's archive, written locally.
 
     Streams :func:`palaia_hub.backup.iter_archive_bytes` — the exact bytes
     ``GET /api/backup`` would serve — into ``out`` (default: a timestamped
@@ -862,7 +862,7 @@ def _backup(out: str | None) -> Path:
 
 
 def _backup_command(args: argparse.Namespace) -> None:
-    """``palaia-hub backup`` — to a file here, or to a configured target.
+    """``palaia backup`` — to a file here, or to a configured target.
 
     Without ``--target``/``--all-targets`` this is exactly what it has
     always been (issue #317): one archive, written where ``--out`` says.
@@ -958,7 +958,7 @@ def _backup_to_targets(
             run = run_target(targets[name], home)
         except BackupTargetError as exc:
             failed += 1
-            print(f"palaia-hub: {exc}", file=sys.stderr)
+            print(f"palaia: {exc}", file=sys.stderr)
             continue
         pruned = f", deleted {len(run.pruned)} older" if run.pruned else ""
         print(
@@ -989,7 +989,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     try:
         _dispatch(args)
     except _USER_FACING_ERRORS as exc:
-        print(f"palaia-hub: {exc}", file=sys.stderr)
+        print(f"palaia: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
 
 

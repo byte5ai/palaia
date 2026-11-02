@@ -122,7 +122,7 @@ def test_commit_message_attribution_and_trailers(repo: GitRepo) -> None:
     assert entry.trailers["operation"] == "write"
     assert entry.trailers["permalink"] == "notes/a"
     assert entry.trailers["session"] == "s-42"
-    assert git(repo.root, "log", "-1", "--format=%cn").strip() == "palaia-hub"
+    assert git(repo.root, "log", "-1", "--format=%cn").strip() == "palaia"
 
 
 def test_human_attribution_marks_external_edits(repo: GitRepo) -> None:

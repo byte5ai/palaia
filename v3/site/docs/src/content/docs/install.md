@@ -14,25 +14,25 @@ install.
 On a Linux machine — a home server, a NAS, a Raspberry Pi:
 
 ```bash
-docker run -d --name palaia-hub \
+docker run -d --name palaia \
   --network host -e PALAIA_CLOUD_BIND=127.0.0.1 \
   -v palaia_home:/data \
   --restart unless-stopped \
   --security-opt no-new-privileges:true --cap-drop ALL \
   --read-only --tmpfs /tmp --tmpfs /run \
-  ghcr.io/byte5ai/palaia-hub:stable
+  ghcr.io/byte5ai/palaia:stable
 ```
 
 With Docker Desktop on macOS or Windows:
 
 ```bash
-docker run -d --name palaia-hub \
+docker run -d --name palaia \
   -p 8420:8420 \
   -v palaia_home:/data \
   --restart unless-stopped \
   --security-opt no-new-privileges:true --cap-drop ALL \
   --read-only --tmpfs /tmp --tmpfs /run \
-  ghcr.io/byte5ai/palaia-hub:stable
+  ghcr.io/byte5ai/palaia:stable
 ```
 
 The two differ in one line only. On Linux the container shares the
@@ -44,8 +44,8 @@ there the port is handed out instead.
 
 <!-- rc-channel-note -->
 > **Release candidate:** until `3.0.0` is final there is no `stable` image yet. Where a
-> command or file on this page says `ghcr.io/byte5ai/palaia-hub:stable`, use
-> `ghcr.io/byte5ai/palaia-hub:beta` for now.
+> command or file on this page says `ghcr.io/byte5ai/palaia:stable`, use
+> `ghcr.io/byte5ai/palaia:beta` for now.
 
 The five extra flags close off what a non-root container process could
 otherwise still reach — nothing about the install changes if you leave
@@ -125,7 +125,7 @@ handles network traffic:
 
 Either way, nothing about setup depends on this working: every startup
 prints the address that does work to the container's log
-(`docker logs palaia-hub`), and the wizard is reachable at that address
+(`docker logs palaia`), and the wizard is reachable at that address
 regardless.
 
 ## Later: updating
@@ -134,7 +134,7 @@ Phase one keeps this manual and honest about it — there is no silent
 in-place update:
 
 ```bash
-docker pull ghcr.io/byte5ai/palaia-hub:stable
+docker pull ghcr.io/byte5ai/palaia:stable
 docker compose up -d   # or the equivalent docker run, after docker rm
 ```
 

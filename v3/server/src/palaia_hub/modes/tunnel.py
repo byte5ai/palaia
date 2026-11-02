@@ -119,10 +119,10 @@ def cloudflared_guidance(
         label="cloudflared",
         config=config_text,
         commands=(
-            "cloudflared tunnel create palaia-hub",
+            "cloudflared tunnel create palaia",
             "# save the printed tunnel id and credentials path into the config above",
-            "cloudflared tunnel route dns palaia-hub " + hostname,
-            "cloudflared tunnel run --config config.yml palaia-hub",
+            "cloudflared tunnel route dns palaia " + hostname,
+            "cloudflared tunnel run --config config.yml palaia",
         ),
         note=(
             f"Makes {_scope(mode)} reachable at https://{hostname}/ once DNS and the tunnel are up."

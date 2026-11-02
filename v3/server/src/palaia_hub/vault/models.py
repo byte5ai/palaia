@@ -86,8 +86,8 @@ class Attribution:
         """
         if self.human:
             return "human", "human@palaia.local"
-        name = git_safe(self.agent or self.client or self.provider or "") or "palaia-hub"
-        local = re.sub(r"[^a-z0-9._-]+", "-", name.lower()).strip("-") or "palaia-hub"
+        name = git_safe(self.agent or self.client or self.provider or "") or "palaia"
+        local = re.sub(r"[^a-z0-9._-]+", "-", name.lower()).strip("-") or "palaia"
         return name, f"{local}@palaia.local"
 
 

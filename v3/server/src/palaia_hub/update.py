@@ -51,7 +51,7 @@ Deployment = Literal[
 #: (like the curated index's pinned public key, MASTERPLAN-consistent):
 #: this is palaia's own release, not a bring-your-own registry setting.
 DEFAULT_OWNER = "byte5ai"
-DEFAULT_IMAGE = "palaia-hub"
+DEFAULT_IMAGE = "palaia"
 DEFAULT_REGISTRY = "https://ghcr.io"
 
 DEFAULT_TIMEOUT_SECONDS = 6.0
@@ -125,7 +125,7 @@ def update_guidance(deployment: Deployment) -> UpdateGuidance:
             kind="command",
             message="Run the update helper on the machine running your compose file, "
             "then restart the container:",
-            commands=("palaia-hub update", "docker compose pull", "docker compose up -d"),
+            commands=("palaia update", "docker compose pull", "docker compose up -d"),
         )
     return UpdateGuidance(
         kind="manual",

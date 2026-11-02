@@ -1,6 +1,6 @@
 """Production app assembly (SPEC-210).
 
-Before this module, ``palaia-hub serve`` never wired an MCP gateway at all
+Before this module, ``palaia serve`` never wired an MCP gateway at all
 — ``cli.py``'s own prior docstring said so explicitly: the wizard's
 ``POST /api/vaults`` created a vault the dashboard could see, but no MCP
 client could ever reach it, restart or not, because there was no gateway
@@ -9,7 +9,7 @@ deliverable actually closes: not just *rebuildable* profiles, but the first
 *real* profile assembly a running hub uses.
 
 :func:`build_production_app` is the one place that does this wiring, used
-by both ``palaia-hub serve`` (:mod:`palaia_hub.cli`) and this SPEC's own
+by both ``palaia serve`` (:mod:`palaia_hub.cli`) and this SPEC's own
 e2e test — so the test exercises the exact code path production runs, not
 a parallel stand-in of it.
 
@@ -125,7 +125,7 @@ class ProductionApp:
     #: ``secret_store``, ``dynamic_gateway``) is already listed above.
     install_service: InstallService | None = None
     #: One filesystem watcher per opened vault (issue #316): what makes an
-    #: edit made outside the hub — Obsidian, `palaia-hub import` against a
+    #: edit made outside the hub — Obsidian, `palaia import` against a
     #: running hub, a `git pull` into the vault — reach the index without a
     #: restart. Started and stopped by the app's own lifespan; a vault the
     #: wizard creates later gets its watcher from the dashboard router.

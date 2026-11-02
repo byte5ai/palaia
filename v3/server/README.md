@@ -16,7 +16,7 @@ Python core of the palaia v3 hub daemon.
 - `palaia_hub.logging` — structured logging (human default, JSON via
   `log_format: json`), per-component levels, and a mandatory redaction
   filter that masks tokens/keys/secrets/passwords before they reach output.
-- `palaia_hub.cli` — the `palaia-hub` console script; `palaia-hub serve`
+- `palaia_hub.cli` — the `palaia` console script; `palaia serve`
   runs the app under uvicorn with graceful shutdown (in-flight requests
   finish before the process exits on SIGTERM/SIGINT).
 - `palaia_hub.__version__` is the single source of version truth;
@@ -230,11 +230,11 @@ oauth:
 ```
 
 ```bash
-uv run palaia-hub oauth set-password --username you   # the single local owner
-uv run palaia-hub oauth machine-client --name nightly-job \
+uv run palaia oauth set-password --username you   # the single local owner
+uv run palaia oauth machine-client --name nightly-job \
     --profile default --scope vault:work:read         # pinned, secret shown once
-uv run palaia-hub oauth clients                      # who is registered
-uv run palaia-hub oauth gc                            # prune orphans now
+uv run palaia oauth clients                      # who is registered
+uv run palaia oauth gc                            # prune orphans now
 ```
 
 Endpoints: `/.well-known/oauth-authorization-server` (also served at
@@ -325,10 +325,10 @@ curator:
 ```
 
 ```bash
-uv run palaia-hub curator token          # mint the curator's own token
+uv run palaia curator token          # mint the curator's own token
 export PALAIA_CURATOR_TOKEN=plt_…
-uv run palaia-hub curator run            # curate everything pending, now
-uv run palaia-hub curator apply          # apply approved proposals, now
+uv run palaia curator run            # curate everything pending, now
+uv run palaia curator apply          # apply approved proposals, now
 ```
 
 The runner command is provider-neutral config, not code: the prompt arrives on
@@ -345,10 +345,10 @@ search, connected clients, storage — and renders them with the fix named
 under every finding.
 
 ```bash
-uv run palaia-hub doctor                 # diagnose; changes nothing
-uv run palaia-hub doctor --vault work    # one vault only; repeatable
-uv run palaia-hub doctor --json          # the same report, machine-readable
-uv run palaia-hub doctor --fix           # also perform the safe repairs
+uv run palaia doctor                 # diagnose; changes nothing
+uv run palaia doctor --vault work    # one vault only; repeatable
+uv run palaia doctor --json          # the same report, machine-readable
+uv run palaia doctor --fix           # also perform the safe repairs
 ```
 
 Three rules hold it together, and the tests in `tests/doctor/` pin all three:
@@ -372,7 +372,7 @@ findings) makes it a health gate in a script.
 
 ```bash
 cd v3
-uv run palaia-hub serve
+uv run palaia serve
 ```
 
 Then `curl http://127.0.0.1:8420/api/health`.

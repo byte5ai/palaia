@@ -54,8 +54,8 @@ import pytest
 from palaia_hub.market.docker_runtime import docker_available
 
 V3_ROOT = Path(__file__).resolve().parents[3]
-IMAGE_TAG = "palaia-hub-rc-smoke:test"
-CONTAINER_NAME = "palaia-hub-rc-smoke-test"
+IMAGE_TAG = "palaia-rc-smoke:test"
+CONTAINER_NAME = "palaia-rc-smoke-test"
 #: A host port other than install.sh's own 8420 default, so this smoke run
 #: never collides with a developer's already-running hub. Fixed rather than
 #: randomized: every test function below that speaks HTTP to the container

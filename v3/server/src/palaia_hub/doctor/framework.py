@@ -20,7 +20,7 @@ framework rather than one long function:
    now unchecked.
 3. **Repairs are opt-in and safe.** Only a check that implements
    :class:`Repairable` can change anything, only when the caller asks
-   (``palaia-hub doctor --fix``), and only for repairs that cannot lose
+   (``palaia doctor --fix``), and only for repairs that cannot lose
    data — clearing a stale lock, sweeping crash residue, rebuilding the
    disposable index, narrowing file permissions. Nothing destructive is
    ever offered as a one-click fix, however tempting.

@@ -1,7 +1,7 @@
 """One place that assembles a working curator (SPEC-206).
 
 Both entry points — the hub's own scheduled curator
-(:func:`palaia_hub.serve.build_production_app`) and the ``palaia-hub curator``
+(:func:`palaia_hub.serve.build_production_app`) and the ``palaia curator``
 CLI — go through :func:`build_curator`, so "how the curator is put together"
 has one definition: same guards, same audit sinks, same runner command.
 """

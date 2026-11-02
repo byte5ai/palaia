@@ -89,8 +89,8 @@ export function renderSynologyPage() {
     // requires this note exactly while VERSION carries a pre-release suffix.
     "<!-- rc-channel-note -->",
     "> **Release candidate:** until `3.0.0` is final there is no `stable` image yet. Before you paste the",
-    "> file above, change its `image:` line from `ghcr.io/byte5ai/palaia-hub:stable` to",
-    "> `ghcr.io/byte5ai/palaia-hub:beta`.",
+    "> file above, change its `image:` line from `ghcr.io/byte5ai/palaia:stable` to",
+    "> `ghcr.io/byte5ai/palaia:beta`.",
     "",
     "## About that shared folder, and where your memory actually lives",
     "",
@@ -106,10 +106,10 @@ export function renderSynologyPage() {
       "— safe to skip, it isn't needed) and finish creating the project. Container Manager pulls the image " +
       "and starts the container; the project's status shows **Running** once it has.",
     "",
-    "<!-- screenshot: the finished project showing status Running, with its one container (palaia-hub) listed -->",
+    "<!-- screenshot: the finished project showing status Running, with its one container (palaia) listed -->",
     "",
     "If it doesn't reach **Running**, open the container's log from Container Manager itself — the " +
-      "**Container** section, select `palaia-hub`, then its **Log** (or **Details**) tab — rather than a " +
+      "**Container** section, select `palaia`, then its **Log** (or **Details**) tab — rather than a " +
       "terminal; the same startup message [Install it](/install/) describes shows up there.",
     "",
     "## Open the hub",

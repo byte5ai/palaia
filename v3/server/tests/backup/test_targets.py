@@ -104,7 +104,7 @@ def test_it_writes_a_restorable_archive_into_the_directory(home: Path, tmp_path:
 def test_the_archive_is_owner_only_and_no_partial_file_is_left_behind(
     home: Path, tmp_path: Path
 ) -> None:
-    """Mode 0600 like `palaia-hub backup`'s own output — this file can act
+    """Mode 0600 like `palaia backup`'s own output — this file can act
     as the hub — and the `.part` sibling is gone once the run completed."""
     destination = tmp_path / "backups"
     target = LocalDirectoryTarget(name="nas", directory=destination, keep_last=None)

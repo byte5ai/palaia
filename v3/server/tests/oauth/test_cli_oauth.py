@@ -1,4 +1,4 @@
-"""``palaia-hub oauth set-password / machine-client / clients / gc`` in-process.
+"""``palaia oauth set-password / machine-client / clients / gc`` in-process.
 
 The admin surface is CLI-only by design (see ``_add_oauth_parser``'s docstring
 in :mod:`palaia_hub.cli`), so these are the only entry points for setting the

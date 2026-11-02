@@ -61,7 +61,7 @@ def test_backup_is_mounted_with_no_opt_in_parameter_but_refuses_without_a_gate(
     assert response.status_code == 403
     detail = response.json()["detail"]
     assert detail == UNGATED_DETAIL
-    assert "palaia-hub backup" in detail
+    assert "palaia backup" in detail
     assert "Fix:" in detail
 
 
@@ -249,7 +249,7 @@ def test_the_target_routes_refuse_on_a_hub_with_no_sign_in(tmp_path: Path) -> No
     assert listed.status_code == 403
     assert listed.json()["detail"] == UNGATED_TARGETS_DETAIL
     assert ran.status_code == 403
-    assert "palaia-hub backup --target" in ran.json()["detail"]
+    assert "palaia backup --target" in ran.json()["detail"]
 
 
 # ------------------------------- last run, schedule and overlap (issue #438)

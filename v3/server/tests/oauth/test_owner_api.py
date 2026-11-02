@@ -1,7 +1,7 @@
 """Issue #342: the wizard's owner-account step has a server side.
 
 The docs promised an administrator sign-in as the first thing the wizard
-asks for; the only way to create the account was `palaia-hub oauth
+asks for; the only way to create the account was `palaia oauth
 set-password` in a terminal — the one thing the Synology guide's reader does
 not have. `POST /api/auth/owner` creates the single owner account while none
 exists, signs the creating browser in (the account's existence is what
