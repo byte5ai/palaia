@@ -10,6 +10,44 @@ ADRs, phase-gate records, SPEC index docs, CI and release plumbing) are left
 out on purpose; they moved the project forward but nothing in them is a
 capability a user would notice.
 
+## 3.0.0-rc8 — 2026-11-02 (release candidate)
+
+palaia opens by name, like other boxes at home do. Still a pre-release —
+the `:beta` channel.
+
+### Install
+
+- **Open palaia by its name on your tailnet.** The installer and the setup
+  page now give `http://palaia-hub/` — the server's name on your Tailscale
+  network — instead of a number like `http://100.64.0.2:8420/`, and palaia's
+  first-run setup and its sign-in use that name from the start. This needs
+  MagicDNS, which Tailscale turns on for new networks; without it palaia
+  gives the number and says how to turn MagicDNS on. (#619)
+- **No port number on the tailnet.** Port 80 on the server's tailnet
+  address now leads to palaia as well, so `http://palaia-hub/` needs no
+  `:8420`. If another program already uses port 80 there, palaia leaves it
+  alone and keeps `:8420`, and says so. (#620)
+- **`palaia.local` on your home network with Docker on Linux.** The
+  Docker command and the Compose file run the container on the machine's
+  own network, so its name announcement reaches your other devices:
+  `http://palaia.local:8420/`. The announcement now uses only the machine's
+  home-network addresses and picks up a network that comes up late. Docker
+  Desktop on macOS and Windows keeps its own command with the published
+  port; a name cannot leave its virtual machine. (#619)
+- **The Raspberry Pi image answers at `http://palaia.local/`**, without a
+  port, through a redirect on the Pi itself; the container is unchanged.
+  If another program already uses port 80, the Pi leaves it alone and
+  palaia stays on `:8420`. (#620)
+- The docs give every `palaia.local` address with the port it really needs,
+  and show both Docker commands. (#619)
+
+### Security
+
+- On the machine's own network the cloud entry stays on the machine's
+  loopback address, as it already did on the tailnet path. (#619)
+- Port 80 on the Pi keeps each device's own address, so the limit on
+  failed sign-ins still counts per device there.
+
 ## 3.0.0-rc7 — 2026-11-02 (release candidate)
 
 The fixes from a pre-test of `rc6` (an AI assistant guiding a fresh install,
