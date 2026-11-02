@@ -803,6 +803,26 @@ class OAuthStore:
                 (username, password_hash, now, now),
             )
 
+    def create_owner(self, username: str, password_hash: str, now: int) -> bool:
+        """Create the owner account only if none exists; ``False`` if one does.
+
+        The first-run counterpart of :meth:`set_owner` (issue #607): the
+        check and the insert are one ``BEGIN IMMEDIATE`` transaction, so of
+        two concurrent first-run requests — in this process or another one
+        on the same database — exactly one creates the account and the other
+        cannot replace it. Deliberate replacement stays :meth:`set_owner`'s,
+        used only by the terminal command.
+        """
+        with self._write() as conn:
+            if conn.execute("SELECT 1 FROM owner_account LIMIT 1").fetchone() is not None:
+                return False
+            conn.execute(
+                "INSERT INTO owner_account(username, password_hash, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?)",
+                (username, password_hash, now, now),
+            )
+        return True
+
     def get_owner(self) -> tuple[str, str] | None:
         """``(username, password_hash)`` of the owner account, if one exists."""
         with self._lock:

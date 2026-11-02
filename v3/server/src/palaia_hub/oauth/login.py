@@ -130,8 +130,12 @@ class LoginThrottle:
             self._states.pop(username, None)
 
 
-def set_owner_password(store: OAuthStore, username: str, password: str, *, now: int) -> None:
-    """Create or replace the owner account.
+class OwnerExistsError(Exception):
+    """:func:`create_owner_password` found an owner account already there."""
+
+
+def _check_owner_credentials(username: str, password: str) -> None:
+    """The rules every owner account follows, however it is created.
 
     Raises:
         OAuthError: ``invalid_request`` for an empty username or a password
@@ -148,8 +152,34 @@ def set_owner_password(store: OAuthStore, username: str, password: str, *, now: 
             "the owner password must be at least 12 characters. Fix: use a "
             "passphrase, or generate one with your password manager.",
         )
+
+
+def set_owner_password(store: OAuthStore, username: str, password: str, *, now: int) -> None:
+    """Create or replace the owner account — the terminal command's path.
+
+    Raises:
+        OAuthError: see :func:`_check_owner_credentials`.
+    """
+    _check_owner_credentials(username, password)
     store.set_owner(username.strip(), hash_password(password), now)
     logger.info("owner account set for %r (every existing login session was cleared)", username)
+
+
+def create_owner_password(store: OAuthStore, username: str, password: str, *, now: int) -> None:
+    """Create the owner account if the hub has none — the first-run path.
+
+    Never replaces an existing account (issue #607): the existence check and
+    the insert are one store transaction, so a concurrent first-run request
+    that passed an earlier check still loses here.
+
+    Raises:
+        OAuthError: see :func:`_check_owner_credentials`.
+        OwnerExistsError: an owner account exists already.
+    """
+    _check_owner_credentials(username, password)
+    if not store.create_owner(username.strip(), hash_password(password), now):
+        raise OwnerExistsError("this hub already has an owner account")
+    logger.info("owner account created for %r", username)
 
 
 def verify_owner_password(
@@ -202,6 +232,8 @@ __all__ = [
     "MAX_FAILED_ATTEMPTS",
     "SESSION_COOKIE",
     "LoginThrottle",
+    "OwnerExistsError",
+    "create_owner_password",
     "new_csrf_token",
     "set_owner_password",
     "verify_owner_password",
