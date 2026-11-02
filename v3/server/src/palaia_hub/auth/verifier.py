@@ -13,6 +13,11 @@ accepts, and a missing/invalid one gets fastmcp's own RFC 6750-compliant
 authorization server hands its issued JWTs to fastmcp's existing
 ``JWTVerifier`` instead of a :class:`PalaiaTokenVerifier` — a different
 ``TokenVerifier`` subclass on the same ``FastMCP(auth=...)`` parameter.
+
+Both verifiers call :meth:`TokenStore.averify`, never the synchronous
+:meth:`TokenStore.verify`: its argon2 work would otherwise run on the event
+loop, and every bearer token presented on the public MCP surface — valid or
+not — would stall the hub's other requests for as long (issue #608).
 Nothing downstream cares which one produced the ``AccessToken``:
 :mod:`palaia_hub.gateway.build` mounts whatever verifier it is given, and
 :mod:`palaia_hub.auth.enforcement` (the per-tool scope check) reads only
@@ -51,7 +56,7 @@ class PalaiaTokenVerifier(TokenVerifier):
         self._profile = profile
 
     async def verify_token(self, token: str) -> AccessToken | None:
-        record = self._store.verify(token)
+        record = await self._store.averify(token)
         if record is None or record.profile != self._profile:
             return None
         return AccessToken(
@@ -81,7 +86,7 @@ class HubTokenVerifier(TokenVerifier):
         self._store = store
 
     async def verify_token(self, token: str) -> AccessToken | None:
-        record = self._store.verify(token)
+        record = await self._store.averify(token)
         if record is None:
             return None
         return AccessToken(
