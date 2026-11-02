@@ -262,6 +262,15 @@ was not given. *Enforced by* `server/src/palaia_hub/curator/profile.py` and
 `server/src/palaia_hub/curator/middleware.py`; *proven by*
 `server/tests/curator/test_guard_matrix.py`.
 
+The guard judges the note a write or edit really changes, not the words the
+call used: the vault resolves the reference (permalink, title, alias, path,
+`memory://` form, `./inbox`) and the call then goes on addressed by exactly
+that note, so every name for an inbox capture or an existing `review/`
+proposal gets the same refusal. An edit may only add tags. A vault the
+guard cannot resolve gets no curator writes at all (fail-closed). *Enforced
+by* `server/src/palaia_hub/curator/targets.py`; *proven by*
+`server/tests/curator/test_canonical_targets.py` (issue #603).
+
 ### 7.3a The Telegram connector (B7)
 
 New in issue #411, running in the hub since issue #439, and the first

@@ -124,7 +124,7 @@ NOTE_FINDINGS_TIMEOUT_SECONDS = 1.0
 _SIMILAR_EXCLUDED_TYPES: tuple[str, ...] = ("meta", "proposal")
 
 
-def _tag_list(value: Any) -> list[str]:
+def tag_list(value: Any) -> list[str]:
     """Normalize a frontmatter ``tags`` value (list or comma-string) to a
     lowercase list, per vault-format.md §2.1."""
     if value is None:
@@ -132,6 +132,17 @@ def _tag_list(value: Any) -> list[str]:
     if isinstance(value, str):
         return [tag.strip().lower() for tag in value.split(",") if tag.strip()]
     return [str(tag).strip().lower() for tag in value if str(tag).strip()]
+
+
+def note_path_for(title: str, folder: str = "") -> str:
+    """The vault-relative path the ``write`` tool creates for ``title`` in ``folder``.
+
+    One definition for the write itself and for the curator guard, which
+    has to judge where a write would really land (issue #603).
+    """
+    folder = folder.strip("/")
+    slug = pl.slugify(title) or "note"
+    return f"{folder}/{slug}.md" if folder else f"{slug}.md"
 
 
 def _folder_of(path: str) -> str:
@@ -177,7 +188,7 @@ def _note_to_record(note: Note) -> NoteRecord:
         permalink=note.permalink or note.path,
         title=note.title,
         type=str(frontmatter.get("type", "note")),
-        tags=_tag_list(frontmatter.get("tags")),
+        tags=tag_list(frontmatter.get("tags")),
         folder=_folder_of(note.path),
         modified=str(frontmatter.get("modified") or ""),
         created=str(frontmatter.get("created") or ""),
@@ -459,9 +470,7 @@ class EngineVaultService:
         type: str = "note",  # noqa: A002 - matches the vault-format field name
         tags: list[str] | None = None,
     ) -> NoteRecord:
-        folder = folder.strip("/")
-        slug = pl.slugify(title) or "note"
-        relative = f"{folder}/{slug}.md" if folder else f"{slug}.md"
+        relative = note_path_for(title, folder)
         frontmatter: dict[str, Any] = {"type": type}
         if tags is not None:
             frontmatter["tags"] = list(tags)
@@ -850,4 +859,4 @@ if TYPE_CHECKING:
     # the VaultService protocol exactly like FakeVaultService does.
     _typecheck: VaultService = EngineVaultService(cast(VaultEngine, None))
 
-__all__ = ["EngineVaultService"]
+__all__ = ["EngineVaultService", "note_path_for", "tag_list"]

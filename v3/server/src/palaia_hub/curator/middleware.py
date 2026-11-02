@@ -30,9 +30,13 @@ import mcp.types as mt
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools.base import Tool, ToolResult
 
-from .policy import CURATOR_TOOL_ACTIONS, ActiveCaptures, rejection_for
+from .policy import CURATOR_TOOL_ACTIONS, ActiveCaptures, MutationTarget, rejection_for
+from .targets import MutationTargets
 
 logger = logging.getLogger("palaia_hub.curator.middleware")
+
+#: The curator actions that change a note, judged against their resolved target.
+_MUTATING_ACTIONS: frozenset[str] = frozenset({"write", "edit"})
 
 
 class CuratorScopeMiddleware(Middleware):
@@ -51,6 +55,11 @@ class CuratorScopeMiddleware(Middleware):
             (:class:`~palaia_hub.curator.policy.ActiveCaptures`) the runner
             registers each session against. Omitted, provenance checking is
             shape-only — see that class's docstring.
+        tool_vaults: ``{tool name: vault key}`` for the same tools.
+        targets: ``{vault key: resolver}`` — how each vault resolves the
+            note a write or edit names (issue #603). A write or edit on a
+            vault without one is refused: the guard cannot tell where it
+            would land, and the policy is fail-closed.
     """
 
     def __init__(
@@ -58,9 +67,13 @@ class CuratorScopeMiddleware(Middleware):
         tool_actions: Mapping[str, str],
         *,
         active_captures: ActiveCaptures | None = None,
+        tool_vaults: Mapping[str, str] | None = None,
+        targets: Mapping[str, MutationTargets] | None = None,
     ) -> None:
         self._tool_actions = dict(tool_actions)
         self._active_captures = active_captures or ActiveCaptures()
+        self._tool_vaults = dict(tool_vaults or {})
+        self._targets = dict(targets or {})
 
     @property
     def active_captures(self) -> ActiveCaptures:
@@ -81,6 +94,16 @@ class CuratorScopeMiddleware(Middleware):
         for a tool that no longer exists grants nothing.
         """
         self._tool_actions.update(tool_actions)
+
+    def add_vault(self, key: str, tool_vaults: Mapping[str, str], targets: MutationTargets) -> None:
+        """Make a runtime vault's writes and edits resolvable, live.
+
+        The counterpart of :meth:`add_tool_actions` for the target guard:
+        without it, a vault created at runtime could be read but its
+        writes and edits would be refused (fail-closed).
+        """
+        self._tool_vaults.update(tool_vaults)
+        self._targets[key] = targets
 
     def action_for(self, tool_name: str) -> str | None:
         """The base action ``tool_name`` maps to, or ``None`` if unknown here."""
@@ -114,12 +137,31 @@ class CuratorScopeMiddleware(Middleware):
                 f"The curator's surface is {', '.join(CURATOR_TOOL_ACTIONS)}, "
                 "on this vault's own tools only."
             )
+        target: MutationTarget | None = None
+        resolved_arguments: dict[str, object] | None = None
+        if action in _MUTATING_ACTIONS:
+            resolver = self._targets.get(self._tool_vaults.get(name, ""))
+            if resolver is None:
+                return _refusal(
+                    f"rejected: this curator profile cannot tell which note {name!r} "
+                    "would change, so it refuses the change rather than guess. Read "
+                    "and search still work; the hub needs a restart to curate this "
+                    "vault."
+                )
+            resolved = await resolver.resolve(action, arguments)
+            target, resolved_arguments = resolved.target, resolved.arguments
         message = rejection_for(
-            action, arguments, expected_captures=self._active_captures.current()
+            action, arguments, expected_captures=self._active_captures.current(), target=target
         )
         if message is not None:
             logger.info("curator guard refused %s (%s)", name, message.split(".", 1)[0])
             return _refusal(message)
+        if resolved_arguments is not None:
+            # The call goes on addressed by the note that was checked, so no
+            # other resolution of the same words can change a different note.
+            context = context.copy(
+                message=context.message.model_copy(update={"arguments": resolved_arguments})
+            )
         return await call_next(context)
 
 

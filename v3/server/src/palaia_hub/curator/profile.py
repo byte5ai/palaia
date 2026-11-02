@@ -26,7 +26,7 @@ exactly once — which is all it takes.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 
 from fastmcp.server.middleware import Middleware
 
@@ -37,9 +37,11 @@ from ..gateway.vault_protocol import (
     MEMORY_TOOL_ACTIONS,
     RECALL_TOOL_ACTIONS,
 )
+from ..vault import VaultEngine
 from .middleware import CuratorScopeMiddleware
 from .policy import CURATOR_TOOL_ACTIONS, ActiveCaptures
 from .session import MCP_SERVER_NAME
+from .targets import EngineMutationTargets
 
 # `CURATOR_PROFILE_PATH` (``"curator"``) is imported above and re-exported
 # here for every existing caller. The literal itself now lives in
@@ -80,6 +82,16 @@ def curator_tool_actions(vaults: Iterable[VaultMountConfig]) -> dict[str, str]:
     return mapping
 
 
+def curator_tool_vaults(vaults: Iterable[VaultMountConfig]) -> dict[str, str]:
+    """``{tool name as a client sees it: vault key}`` — the same names as
+    :func:`curator_tool_actions`, mapped to the vault each one acts on."""
+    mapping: dict[str, str] = {}
+    for vault in vaults:
+        for name in curator_tool_actions([vault]):
+            mapping[name] = vault.key
+    return mapping
+
+
 def allowed_tool_specs(
     vaults: Iterable[VaultMountConfig], *, server_name: str = MCP_SERVER_NAME
 ) -> tuple[str, ...]:
@@ -105,11 +117,24 @@ def curator_profile_middleware(
     vaults: Iterable[VaultMountConfig],
     *,
     active_captures: ActiveCaptures | None = None,
+    engines: Mapping[str, VaultEngine] | None = None,
 ) -> dict[str, list[Middleware]]:
-    """The ``profile_middleware`` mapping to hand to the gateway builder."""
+    """The ``profile_middleware`` mapping to hand to the gateway builder.
+
+    ``engines`` (``{vault key: engine}``) lets the guard resolve where a
+    write or edit really lands (issue #603); a vault without one can still
+    be read through the profile, but its writes and edits are refused.
+    """
+    mounts = list(vaults)
+    targets = {key: EngineMutationTargets(engine) for key, engine in (engines or {}).items()}
     return {
         CURATOR_PROFILE_PATH: [
-            CuratorScopeMiddleware(curator_tool_actions(vaults), active_captures=active_captures)
+            CuratorScopeMiddleware(
+                curator_tool_actions(mounts),
+                active_captures=active_captures,
+                tool_vaults=curator_tool_vaults(mounts),
+                targets=targets,
+            )
         ]
     }
 
@@ -120,4 +145,5 @@ __all__ = [
     "curator_profile",
     "curator_profile_middleware",
     "curator_tool_actions",
+    "curator_tool_vaults",
 ]

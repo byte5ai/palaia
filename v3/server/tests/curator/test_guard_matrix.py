@@ -27,6 +27,8 @@ from palaia_hub.curator.profile import (
 from palaia_hub.gateway.build import build_gateway
 from palaia_hub.gateway.config import GatewayConfig, VaultMountConfig
 from palaia_hub.gateway.fake_vault import FakeVaultService
+from palaia_hub.gateway.wiring import EngineVaultService
+from palaia_hub.vault import VaultEngine
 
 CAPTURE_ID = "cap-3f9a1c02d4"
 PROVENANCE = provenance_line(CAPTURE_ID)
@@ -176,18 +178,21 @@ def test_provenance_is_shape_checked_when_no_session_is_registered() -> None:
 # --- the same matrix, through a real profile -------------------------------
 
 
-def _curator_gateway(mount: VaultMountConfig) -> Any:
+def _curator_gateway(mount: VaultMountConfig, engine: VaultEngine) -> Any:
+    """A curator profile over a real vault — the guard resolves targets through it."""
     config = GatewayConfig(vaults=[mount], profiles=[curator_profile([mount.key])])
-    middleware = curator_profile_middleware([mount])
-    gateway = build_gateway(config, {mount.key: FakeVaultService()}, profile_middleware=middleware)
+    middleware = curator_profile_middleware([mount], engines={mount.key: engine})
+    gateway = build_gateway(
+        config, {mount.key: EngineVaultService(engine)}, profile_middleware=middleware
+    )
     return gateway, middleware[CURATOR_PROFILE_PATH][0]
 
 
 @pytest.mark.anyio
 async def test_curator_profile_lists_only_the_allowed_tools(
-    vault_mount: VaultMountConfig,
+    vault_mount: VaultMountConfig, engine: VaultEngine
 ) -> None:
-    gateway, _middleware = _curator_gateway(vault_mount)
+    gateway, _middleware = _curator_gateway(vault_mount, engine)
     async with Client(gateway.profile_servers[CURATOR_PROFILE_PATH]) as client:
         names = {tool.name for tool in await client.list_tools()}
     expected = {
@@ -209,12 +214,13 @@ async def test_curator_profile_lists_only_the_allowed_tools(
 )
 async def test_gateway_refuses_every_forbidden_call(
     vault_mount: VaultMountConfig,
+    engine: VaultEngine,
     label: str,
     action: str,
     arguments: dict[str, Any],
     expected: str,
 ) -> None:
-    gateway, middleware = _curator_gateway(vault_mount)
+    gateway, middleware = _curator_gateway(vault_mount, engine)
     middleware.active_captures.acquire(CAPTURE_ID)
     tool = f"{vault_mount.namespace}_{action}"
     async with Client(gateway.profile_servers[CURATOR_PROFILE_PATH]) as client:
@@ -224,8 +230,10 @@ async def test_gateway_refuses_every_forbidden_call(
 
 
 @pytest.mark.anyio
-async def test_allowed_write_reaches_the_vault(vault_mount: VaultMountConfig) -> None:
-    gateway, middleware = _curator_gateway(vault_mount)
+async def test_allowed_write_reaches_the_vault(
+    vault_mount: VaultMountConfig, engine: VaultEngine
+) -> None:
+    gateway, middleware = _curator_gateway(vault_mount, engine)
     middleware.active_captures.acquire(CAPTURE_ID)
     async with Client(gateway.profile_servers[CURATOR_PROFILE_PATH]) as client:
         result = await client.call_tool(
@@ -243,10 +251,10 @@ async def test_allowed_write_reaches_the_vault(vault_mount: VaultMountConfig) ->
 
 @pytest.mark.anyio
 async def test_a_released_session_loses_its_capture_binding(
-    vault_mount: VaultMountConfig,
+    vault_mount: VaultMountConfig, engine: VaultEngine
 ) -> None:
     """The binding lives exactly as long as the session it was acquired for."""
-    gateway, middleware = _curator_gateway(vault_mount)
+    gateway, middleware = _curator_gateway(vault_mount, engine)
     middleware.active_captures.acquire(CAPTURE_ID)
     assert middleware.active_captures.current() == {CAPTURE_ID}
     middleware.active_captures.release(CAPTURE_ID)
@@ -278,3 +286,33 @@ def test_renamed_tools_are_still_classified_by_their_action() -> None:
     mapping = curator_tool_actions([mount])
     assert mapping[f"{mount.namespace}_remember"] == "write"
     assert f"{mount.namespace}_write" not in mapping
+
+
+@pytest.mark.anyio
+async def test_without_vault_resolution_writes_and_edits_are_refused(
+    vault_mount: VaultMountConfig,
+) -> None:
+    """Fail-closed (issue #603): a guard that cannot resolve where a call lands refuses it."""
+    config = GatewayConfig(vaults=[vault_mount], profiles=[curator_profile([vault_mount.key])])
+    middleware = curator_profile_middleware([vault_mount])
+    gateway = build_gateway(
+        config, {vault_mount.key: FakeVaultService()}, profile_middleware=middleware
+    )
+    async with Client(gateway.profile_servers[CURATOR_PROFILE_PATH]) as client:
+        write = await client.call_tool(
+            f"{vault_mount.namespace}_write",
+            {"title": "Ingest rate limit", "body": PROVENANCE, "folder": "projects"},
+            raise_on_error=False,
+        )
+        edit = await client.call_tool(
+            f"{vault_mount.namespace}_edit",
+            {"permalink": "projects/api-gateway", "append": PROVENANCE},
+            raise_on_error=False,
+        )
+        search = await client.call_tool(
+            f"{vault_mount.namespace}_search", {"query": "rate"}, raise_on_error=False
+        )
+    for result in (write, edit):
+        assert result.is_error
+        assert "cannot tell which note" in result.content[0].text  # type: ignore[union-attr]
+    assert not search.is_error
