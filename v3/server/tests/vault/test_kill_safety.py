@@ -35,7 +35,9 @@ from palaia_hub.vault import VaultDoctor, VaultEngine
 from palaia_hub.vault import frontmatter as fm
 from palaia_hub.vault.atomic import sha256_file
 
-pytestmark = pytest.mark.anyio
+# Kills real writer processes: deselected on pull requests, run in v3-ci-batch.yml
+# (the `integration` marker, v3/pyproject.toml).
+pytestmark = [pytest.mark.anyio, pytest.mark.integration]
 
 WORKER = Path(__file__).parent / "support" / "write_burst.py"
 

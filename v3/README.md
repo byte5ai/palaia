@@ -69,11 +69,16 @@ cd v3/web && npm ci && npm test && npm run build
 ```
 
 CI: [`.github/workflows/v3-ci.yml`](../.github/workflows/v3-ci.yml) runs the
-Python and web checks above on any push/PR to `main` that touches `v3/**`;
-the workflow itself starts on every push/PR to `main` so its `v3-ci-required`
-gate always reports (the check `main` requires), and lanes whose area is
-untouched are skipped. It is independent of the v2 `ci.yml` (repo root), whose
-lanes skip when only `v3/**` changed.
+light checks on every PR that touches `v3/**`: lint, typecheck and the unit
+tests (the server suite without the tests marked `integration`). The workflow
+itself starts on every PR so its `v3-ci-required` gate always reports (the
+check `main` requires), and lanes whose area is untouched are skipped.
+[`.github/workflows/v3-ci-batch.yml`](../.github/workflows/v3-ci-batch.yml)
+runs everything else — the full server suite, the e2e scenarios, the
+dashboard and docs-site builds, the signed MCP bundle and the dependency
+audits — when dispatched on `main` after a series of merges; a release needs
+a green batch on its commit. Both are independent of the v2 `ci.yml` (repo
+root), whose lanes skip when only `v3/**` changed.
 
 ### Running the packaged hub locally
 

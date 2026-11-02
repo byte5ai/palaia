@@ -33,6 +33,10 @@ from pathlib import Path
 
 import pytest
 
+# Runs the real setup-page helper process: deselected on pull requests, run in v3-ci-batch.yml
+# (the `integration` marker, v3/pyproject.toml).
+pytestmark = pytest.mark.integration
+
 DEPLOY_ROOT = Path(__file__).resolve().parents[3] / "deploy"
 SETUP_PAGE = DEPLOY_ROOT / "setup-page.py"
 LOGIN_URL = "https://login.tailscale.com/a/test0123456789"

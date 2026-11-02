@@ -41,3 +41,8 @@ dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "palaia-hub[embeddings]"]
 
 [tool.pytest.ini_options]
 testpaths = ["server/tests"]
+# Issue #544: pull requests run `-m "not integration"` (v3-ci.yml); the batch
+# (v3-ci-batch.yml) runs everything. Keep in sync with server/pyproject.toml.
+markers = [
+    "integration: starts real processes or containers, needs the network, or is a stress or performance run; deselected on pull requests, run in the CI batch",
+]

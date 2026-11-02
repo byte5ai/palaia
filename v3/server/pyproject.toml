@@ -96,3 +96,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Same marker as v3/pyproject.toml (issue #544), for runs from v3/server.
+markers = [
+    "integration: starts real processes or containers, needs the network, or is a stress or performance run; deselected on pull requests, run in the CI batch",
+]

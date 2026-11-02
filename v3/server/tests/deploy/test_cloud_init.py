@@ -204,6 +204,9 @@ def test_hub_port_is_bound_to_the_tailnet_address_only() -> None:
     assert "export PALAIA_FIREWALL=on" in _setup_script()
 
 
+# Installs cloud-init from git through uvx (network, a native build):
+# deselected on pull requests, run in v3-ci-batch.yml.
+@pytest.mark.integration
 def test_cloud_init_schema_validates() -> None:
     """SPEC-601 acceptance: 'cloud-init file passes `cloud-init schema
     --config-file` validation in CI'.

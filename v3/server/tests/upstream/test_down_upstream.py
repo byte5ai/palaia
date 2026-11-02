@@ -22,7 +22,9 @@ from palaia_hub.upstream.service import UpstreamService
 
 from .conftest import HttpUpstream
 
-pytestmark = pytest.mark.anyio
+# Real upstream MCP server processes: deselected on pull requests, run in v3-ci-batch.yml
+# (the `integration` marker, v3/pyproject.toml).
+pytestmark = [pytest.mark.anyio, pytest.mark.integration]
 
 #: Port 9 ("discard") refuses connections immediately on every platform the
 #: hub targets — a fast, dependency-free "this endpoint is down".

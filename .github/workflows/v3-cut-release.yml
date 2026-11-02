@@ -8,8 +8,9 @@
 # Actions token does what the session cannot (v3/RELEASING.md §3).
 #
 # Every guard here re-checks what v3/RELEASING.md's preflight already
-# requires, so a dispatch against the wrong ref or a half-bumped VERSION
-# fails loudly instead of tagging it.
+# requires, so a dispatch against the wrong ref, a half-bumped VERSION or a
+# commit without a green `v3-ci-batch.yml` run fails loudly instead of
+# tagging it.
 
 name: v3 cut release
 
@@ -34,11 +35,12 @@ on:
 
 permissions:
   contents: write # create the tag + release
-  actions: write # dispatch the hub image + Pi appliance image workflows on the new tag
+  actions: write # read the batch run (release gate); dispatch the hub image + Pi appliance image workflows on the new tag
 
 jobs:
   cut:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -108,6 +110,19 @@ jobs:
             echo "prerelease_flag=${prerelease_flag}"
             echo "create=true"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Guard — green v3 CI batch on this main commit
+        # Issue #544 (CI standard, cost rule 12): a release comes only from a
+        # `main` commit on which `v3-ci-batch.yml` ran green, every one of its
+        # jobs passed. Pull requests run only the light checks, so this is
+        # where the full suite, the e2e scenarios, the builds and the signed
+        # bundle are required. The script starts no batch; without one it
+        # fails and names what to dispatch. Not re-checked on a
+        # redispatch_only recovery: that tag already passed this gate.
+        if: steps.guard.outputs.create == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 v3/tools/release_batch_gate.py --repo "${GITHUB_REPOSITORY}" --sha "${GITHUB_SHA}"
 
       - name: Create tag + release
         if: steps.guard.outputs.create == 'true'

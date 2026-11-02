@@ -114,7 +114,8 @@ is not involved.
 
 ### PR Requirements
 
-- `just test` passes and `just lint` is clean (`v3-ci.yml` runs the same checks on every PR that touches `v3/`)
+- `just test` passes and `just lint` is clean (`v3-ci.yml` runs the light part of them on every PR
+  that touches `v3/`: lint, typecheck and the unit tests; the rest runs in the batch, see below)
 - The two gate checks are green: `ci-required` (from `ci.yml`) and `v3-ci-required` (from `v3-ci.yml`).
   Both run on every PR to `main`; each fails if one of its lanes failed or was cancelled, and
   passes when the lanes passed or were skipped because their area was untouched
@@ -147,9 +148,10 @@ ClawHub, npm) live in `CONTRIBUTING.md` on `v2-maintenance`.
 
 | Workflow | Trigger | What it does |
 |----------|---------|-------------|
-| `v3-ci.yml` | Every push/PR to `main`; lanes run only when `v3/**` or a `v3-*` workflow changed (per area) | Python (ruff, mypy, pytest), web, SDK, e2e, MCP bundle, docs site; gate check `v3-ci-required` |
-| `v3-release.yml` | Push to `main`, `v3.*` tags | Hub container image (`edge` on `main`, `stable`/`beta` on tags) |
-| `v3-cut-release.yml` | Manual dispatch | Tags a v3 release and triggers the image builds |
+| `v3-ci.yml` | Every PR; lanes run only when `v3/**` or a `v3-*` workflow changed (per area) | Light checks: lockfile, ruff, mypy, server unit tests (`-m "not integration"`), web/docs-site lint, typecheck and unit tests, SDK, bundle proxy tests; gate check `v3-ci-required` |
+| `v3-ci-batch.yml` | Manual dispatch on `main`, after a series of merges and before every release | Everything: full server suite, e2e scenarios, dashboard and docs-site builds, signed MCP bundle, dependency audits. A red batch is fixed or reverted before further merges |
+| `v3-release.yml` | `v3.*` tags, manual dispatch | Hub container image (`edge` by dispatch on `main`, `stable`/`beta` on tags) |
+| `v3-cut-release.yml` | Manual dispatch | Tags a v3 release and triggers the image builds; refuses a commit that is not on `main` or has no green `v3-ci-batch.yml` run |
 | `v3-pi-image.yml` | `v3.*` tags, manual dispatch | Raspberry Pi appliance image |
 | `ci.yml` | Every push/PR to `main` or `v2-maintenance`; on `main` the lanes skip when only `v3/**` changed | v2: ruff + pytest (3.9-3.12) + plugin vitest; gate check `ci-required` |
 | `publish.yml` | `v2.*` tags | v2 PyPI publish (all v2 tags) + npm publish (stable only) |

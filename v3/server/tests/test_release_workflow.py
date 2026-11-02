@@ -9,7 +9,9 @@ checked structurally instead: the workflow YAML actually wires what
 
 from __future__ import annotations
 
+import importlib.util
 import os
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -256,6 +258,7 @@ def test_the_changelog_header_test_accepts_exactly_the_documented_forms(
 # ---------------------------------------------------------------------------
 
 _CI_WORKFLOW_PATH = _WORKFLOW_PATH.with_name("v3-ci.yml")
+_BATCH_WORKFLOW_PATH = _WORKFLOW_PATH.with_name("v3-ci-batch.yml")
 _CI_GATE_JOB = "required"
 
 
@@ -269,15 +272,17 @@ def _ci_filters(workflow: dict) -> dict:
     return yaml.safe_load(step["with"]["filters"])
 
 
-@pytest.mark.parametrize("trigger", ["push", "pull_request"])
-def test_v3_ci_triggers_on_every_change_to_main(trigger: str) -> None:
-    on = _load_ci_workflow()[True][trigger]
-    assert on["branches"] == ["main"]
-    assert "paths" not in on and "paths-ignore" not in on, (
-        f"v3-ci.yml `{trigger}` must not filter paths at the workflow level: the "
-        "required gate would then never report on PRs outside the filter "
-        "(issue #487). Gate lanes through the `changes` job instead."
-    )
+def test_v3_ci_runs_on_every_pull_request_and_nothing_else() -> None:
+    """Issue #544: the light checks run once per change — on the PR, not again
+    on the push of the merge (CI standard, cost rule 13). No `branches:`
+    filter (stacked PRs get checks too, trigger rule 1) and no workflow-level
+    path filter: the required gate would then never report on PRs outside
+    the filter (issue #487). Lanes are gated through the `changes` job."""
+    on = _load_ci_workflow()[True]
+    assert set(on) == {"pull_request"}, f"v3-ci.yml triggers on {sorted(on)}"
+    pull_request = on["pull_request"] or {}
+    for key in ("branches", "branches-ignore", "paths", "paths-ignore", "types"):
+        assert key not in pull_request, f"v3-ci.yml `pull_request` must not set `{key}`"
 
 
 def test_v3_ci_runs_for_changes_to_the_v3_workflow_files_themselves() -> None:
@@ -308,6 +313,117 @@ def test_the_v3_ci_gate_needs_every_lane_and_always_reports() -> None:
     script = " ".join(step.get("run", "") + str(step.get("env", "")) for step in gate["steps"])
     assert "contains(needs.*.result, 'failure')" in script
     assert "contains(needs.*.result, 'cancelled')" in script
+
+
+# ---------------------------------------------------------------------------
+# Issue #544: light checks on the PR, heavy work in a dispatched batch, and a
+# release only from a `main` commit with a green batch (CI standard, cost
+# rules 9, 12, 13; test rule 5).
+# ---------------------------------------------------------------------------
+
+
+def _load_batch_workflow() -> dict:
+    return yaml.safe_load(_BATCH_WORKFLOW_PATH.read_text(encoding="utf-8"))
+
+
+def _runs(workflow: dict, job: str) -> list[str]:
+    return [step["run"] for step in workflow["jobs"][job]["steps"] if "run" in step]
+
+
+def _all_runs(workflow: dict) -> str:
+    return "\n".join(run for job in workflow["jobs"] for run in _runs(workflow, job))
+
+
+def test_the_batch_is_dispatch_only() -> None:
+    on = _load_batch_workflow()[True]
+    assert set(on) == {"workflow_dispatch"}, (
+        f"v3-ci-batch.yml must start only by dispatch, not on {sorted(on)} "
+        "(no heavy CI on push/PR, no schedule)"
+    )
+
+
+def test_heavy_work_stays_off_the_pull_request_workflow() -> None:
+    """What builds, packs, signs, audits or starts real hubs belongs to the
+    batch. A step copied back into v3-ci.yml turns this red."""
+    runs = _all_runs(_load_ci_workflow())
+    assert "npm run build" not in runs, "builds run in v3-ci-batch.yml"
+    assert "pip-audit" not in runs and "npm audit" not in runs, "audits run in the batch"
+    pytest_calls = [line for line in runs.splitlines() if "pytest" in line]
+    assert pytest_calls, "the PR workflow must still run tests"
+    for call in pytest_calls:
+        targets = [t for t in shlex.split(call) if t.startswith("server/tests/e2e")]
+        assert not targets, f"the e2e scenarios run in the batch, not on the PR: {call}"
+    server_calls = [call for call in pytest_calls if "--ignore=server/tests/e2e" in call]
+    assert server_calls, "the python lane runs the server suite"
+    for call in server_calls:
+        assert '-m "not integration"' in call, (
+            "the PR lane runs the server suite without the `integration` tests"
+        )
+
+
+def test_the_batch_runs_everything_the_pull_request_leaves_out() -> None:
+    """The other half of the split: nothing moved off the PR is dropped."""
+    batch = _load_batch_workflow()
+    assert "uv run pytest server/tests/e2e" in "\n".join(_runs(batch, "e2e"))
+    full = [r for r in _runs(batch, "python") if "pytest" in r]
+    assert full and all("-m " not in r for r in full), "the batch runs the full server suite"
+    for job in ("web", "docs-site", "mcpb"):
+        assert "npm run build" in "\n".join(_runs(batch, job)), f"batch `{job}` must build"
+    audits = "\n".join(_runs(batch, "dependency-audit"))
+    assert "pip-audit" in audits and "npm audit" in audits and "uv lock --check" in audits
+
+
+def test_the_pull_request_lane_still_gates_the_lockfile() -> None:
+    assert "uv lock --check" in "\n".join(_runs(_load_ci_workflow(), "python"))
+
+
+def test_the_integration_marker_is_registered_and_used() -> None:
+    """The PR lane deselects `integration`; an unregistered marker or one no
+    test carries would make that selection meaningless."""
+    config = (_V3_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert '"integration:' in config, "register the marker in v3/pyproject.toml"
+    tests = _V3_ROOT / "server" / "tests"
+    marked = [p for p in tests.rglob("test_*.py") if "pytest.mark.integration" in p.read_text()]
+    assert marked, "no test carries the `integration` marker"
+
+
+def test_pr_runs_cancel_superseded_runs_and_the_batch_never_does() -> None:
+    assert _load_ci_workflow()["concurrency"]["cancel-in-progress"] is True
+    assert _load_batch_workflow()["concurrency"]["cancel-in-progress"] is False
+
+
+@pytest.mark.parametrize("path", [_CI_WORKFLOW_PATH, _BATCH_WORKFLOW_PATH], ids=lambda p: p.name)
+def test_every_v3_ci_job_has_a_hang_timeout(path: Path) -> None:
+    jobs = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"]
+    missing = [name for name, job in jobs.items() if "timeout-minutes" not in job]
+    assert not missing, f"{path.name}: jobs without timeout-minutes: {missing}"
+
+
+def test_the_release_gate_requires_every_batch_job() -> None:
+    spec = importlib.util.spec_from_file_location(
+        "release_batch_gate", _V3_ROOT / "tools" / "release_batch_gate.py"
+    )
+    assert spec is not None and spec.loader is not None
+    gate = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gate)
+    jobs = _load_batch_workflow()["jobs"]
+    names = {job.get("name", key) for key, job in jobs.items()}
+    assert set(gate.REQUIRED_JOBS) == names, (
+        "release_batch_gate.REQUIRED_JOBS must list exactly the jobs of v3-ci-batch.yml"
+    )
+    assert gate.BATCH_WORKFLOW == _BATCH_WORKFLOW_PATH.name
+
+
+def test_the_cut_checks_the_batch_before_it_creates_anything() -> None:
+    steps = _cut_workflow()["jobs"]["cut"]["steps"]
+    names = [s.get("name", "") for s in steps]
+    gate_index = next(i for i, s in enumerate(steps) if "release_batch_gate.py" in s.get("run", ""))
+    assert gate_index < names.index("Create tag + release")
+    gate_step = steps[gate_index]
+    assert gate_step["if"] == "steps.guard.outputs.create == 'true'"
+    assert gate_step["env"]["GH_TOKEN"] == "${{ github.token }}"
+    assert '--sha "${GITHUB_SHA}"' in gate_step["run"]
+    assert '--repo "${GITHUB_REPOSITORY}"' in gate_step["run"]
 
 
 # ---------------------------------------------------------------------------
@@ -397,8 +513,9 @@ def test_the_cut_offers_a_redispatch_only_recovery() -> None:
     assert "redispatch_only=true" in _cut_guard_script()
 
 
-def test_ci_runs_the_sdk_tests_and_its_own_mypy() -> None:
-    workflow = yaml.safe_load(_CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+@pytest.mark.parametrize("path", [_CI_WORKFLOW_PATH, _BATCH_WORKFLOW_PATH], ids=lambda p: p.name)
+def test_ci_runs_the_sdk_tests_and_its_own_mypy(path: Path) -> None:
+    workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
     sdk = workflow["jobs"]["sdk"]
     assert sdk["defaults"]["run"]["working-directory"] == "v3/sdk"
     runs = [s.get("run", "") for s in sdk["steps"]]
@@ -407,7 +524,7 @@ def test_ci_runs_the_sdk_tests_and_its_own_mypy() -> None:
 
 
 def test_dependency_audits_report_into_the_job_summary() -> None:
-    workflow = yaml.safe_load(_CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    workflow = yaml.safe_load(_BATCH_WORKFLOW_PATH.read_text(encoding="utf-8"))
     audits = [
         s
         for s in workflow["jobs"]["dependency-audit"]["steps"]
@@ -427,15 +544,16 @@ def test_dependency_audits_report_into_the_job_summary() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_every_uv_setup_in_ci_caches_its_environment() -> None:
-    workflow = yaml.safe_load(_CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+@pytest.mark.parametrize("path", [_CI_WORKFLOW_PATH, _BATCH_WORKFLOW_PATH], ids=lambda p: p.name)
+def test_every_uv_setup_in_ci_caches_its_environment(path: Path) -> None:
+    workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
     setups = [
         step
         for job in workflow["jobs"].values()
         for step in job["steps"]
         if step.get("uses", "").startswith("astral-sh/setup-uv")
     ]
-    assert len(setups) >= 4
+    assert len(setups) >= 2
     for step in setups:
         assert step["with"]["enable-cache"] is True
         assert step["with"]["cache-dependency-glob"].endswith("uv.lock")
