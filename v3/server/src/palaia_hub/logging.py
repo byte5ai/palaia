@@ -3,7 +3,9 @@
 Two output formats (human-readable default, JSON opt-in), per-component log
 levels via the standard logging hierarchy (``palaia_hub.<component>``), and
 a filter that redacts anything that looks like a token/key/secret/password
-before it reaches a handler — tokens must never appear in log output.
+before it reaches a handler — tokens must never appear in log output. A
+second filter drops the MCP library's false error report for a session a
+client ended (:class:`SessionEndFilter`).
 """
 
 from __future__ import annotations
@@ -13,6 +15,8 @@ import logging
 import re
 import sys
 from typing import Any
+
+import anyio
 
 from .config import HubConfig
 
@@ -119,6 +123,45 @@ class RedactionFilter(logging.Filter):
         return True
 
 
+#: The MCP library's streamable-HTTP transport, which every ``/mcp/...``
+#: mount runs on.
+MCP_TRANSPORT_LOGGER_NAME = "mcp.server.streamable_http"
+
+_SESSION_END_MESSAGE = "Error in standalone SSE writer"
+
+
+class SessionEndFilter(logging.Filter):
+    """Drops the MCP library's error report for a session a client ended (issue #627).
+
+    A client that ends its session sends ``DELETE``. In ``mcp`` 1.x the
+    transport's ``terminate()`` then closes the stream that feeds the
+    client's open event stream (``GET``) while that stream's writer task is
+    still waiting on it, so the writer's ``async for`` raises
+    :class:`anyio.ClosedResourceError` instead of ending, and the library
+    logs "Error in standalone SSE writer" with a traceback at ERROR. That
+    is one error and one traceback in the hub's log for every session a
+    client ends normally.
+
+    ``mcp`` 2.x treats exactly this case as session teardown and logs
+    nothing (modelcontextprotocol/python-sdk#2838, not on the 1.x line).
+    ``fastmcp`` 3.x requires ``mcp`` < 2, so the hub drops the same record
+    here. Only this pairing of message and exception is dropped; the same
+    message with any other exception still reaches the log.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.msg != _SESSION_END_MESSAGE or record.exc_info is None:
+            return True
+        return not isinstance(record.exc_info[1], anyio.ClosedResourceError)
+
+
+def _install_session_end_filter() -> None:
+    transport_logger = logging.getLogger(MCP_TRANSPORT_LOGGER_NAME)
+    for existing in [f for f in transport_logger.filters if isinstance(f, SessionEndFilter)]:
+        transport_logger.removeFilter(existing)
+    transport_logger.addFilter(SessionEndFilter())
+
+
 class JsonFormatter(logging.Formatter):
     """Renders a log record as a single JSON object per line."""
 
@@ -171,3 +214,5 @@ def setup_logging(config: HubConfig, *, component_levels: dict[str, str] | None 
 
     for component, level in (component_levels or {}).items():
         logging.getLogger(f"{ROOT_LOGGER_NAME}.{component}").setLevel(_LEVELS[level])
+
+    _install_session_end_filter()

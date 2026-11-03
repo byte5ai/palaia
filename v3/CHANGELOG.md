@@ -10,6 +10,16 @@ ADRs, phase-gate records, SPEC index docs, CI and release plumbing) are left
 out on purpose; they moved the project forward but nothing in them is a
 capability a user would notice.
 
+## Unreleased
+
+### Fixed
+
+- **No error in the log when an AI app ends its session.** Every time a
+  connected app ended its session normally, the hub's log showed "Error in
+  standalone SSE writer" with a stack trace, which made real errors harder
+  to spot. That report came from the MCP library and meant nothing was
+  wrong; the hub now leaves it out. (#627)
+
 ## 3.0.0-rc8 — 2026-11-02 (release candidate)
 
 palaia opens by name, like other boxes at home do. Still a pre-release —
