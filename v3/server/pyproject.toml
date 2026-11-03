@@ -37,6 +37,15 @@ palaia = "palaia_hub.cli:main"
 embeddings = [
     "fastembed>=0.4",
 ]
+# The mDNS announcer behind `palaia.local` (deploy/mdns_announce.py), which
+# the container image runs next to the hub. A deploy concern rather than a
+# hub feature, so an extra; declared here so the lockfile pins it and the
+# release check audits it like every other runtime dependency (issue #626).
+# The announcer imports ifaddr directly, so it is named too.
+mdns = [
+    "zeroconf>=0.140,<1",
+    "ifaddr>=0.1.7",
+]
 
 [dependency-groups]
 # Issue #396: a dependency *group* (PEP 735), not a wheel extra — the

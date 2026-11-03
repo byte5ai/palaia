@@ -10,6 +10,17 @@ ADRs, phase-gate records, SPEC index docs, CI and release plumbing) are left
 out on purpose; they moved the project forward but nothing in them is a
 capability a user would notice.
 
+## Unreleased
+
+### Security
+
+- **The library behind `palaia.local` is checked like every other one.**
+  The image installed python-zeroconf (and its dependency `ifaddr`)
+  separately, in whatever version was newest at build time, so the release
+  check's security audit never covered them. Both are now pinned in the
+  lockfile and audited before every release. No known security holes were
+  found in either. (#626)
+
 ## 3.0.0-rc8 — 2026-11-02 (release candidate)
 
 palaia opens by name, like other boxes at home do. Still a pre-release —

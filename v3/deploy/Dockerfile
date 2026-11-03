@@ -73,14 +73,14 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/palaia/venv
 COPY v3/pyproject.toml v3/uv.lock ./
 COPY v3/server/pyproject.toml ./server/pyproject.toml
 COPY v3/sdk/pyproject.toml ./sdk/pyproject.toml
-RUN uv sync --frozen --no-dev --no-editable --package palaia --extra embeddings --no-install-project
+# The `mdns` extra is python-zeroconf for the mDNS announcer (see
+# mdns_announce.py in the runtime stage): a deploy concern, not a hub
+# feature, so it stays out of `palaia`'s default dependencies but comes from
+# the lockfile like everything else (issue #626). Nothing in this image is
+# installed outside the lockfile; the CI batch audits exactly these extras.
+RUN uv sync --frozen --no-dev --no-editable --package palaia --extra embeddings --extra mdns --no-install-project
 COPY v3/server/ ./server/
-RUN uv sync --frozen --no-dev --no-editable --package palaia --extra embeddings
-# python-zeroconf for the mDNS announcer (see mdns_announce.py in the
-# runtime stage). Pure Python, no extra system deps — installed straight
-# into the hub's venv but kept out of `palaia`'s own dependency set
-# since it is a deploy-only concern, not a hub feature.
-RUN uv pip install --python "${UV_PROJECT_ENVIRONMENT}" "zeroconf>=0.140,<1"
+RUN uv sync --frozen --no-dev --no-editable --package palaia --extra embeddings --extra mdns
 
 # ---------------------------------------------------------------------------
 # Stage 3: Claude Desktop extension tooling
