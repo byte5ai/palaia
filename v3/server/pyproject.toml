@@ -24,6 +24,10 @@ dependencies = [
     "cryptography>=42",
     # SPEC-201: outbound webhook delivery (palaia_hub.hooks.delivery).
     "httpx>=0.27",
+    # palaia_hub.logging recognises the MCP library's session-end error by
+    # its anyio exception type (issue #627); anyio already arrives with
+    # starlette and mcp.
+    "anyio>=4",
 ]
 
 [project.scripts]

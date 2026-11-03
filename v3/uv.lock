@@ -1581,6 +1581,7 @@ wheels = [
 name = "palaia"
 source = { editable = "server" }
 dependencies = [
+    { name = "anyio" },
     { name = "argon2-cffi" },
     { name = "cryptography" },
     { name = "fastapi" },
@@ -1617,6 +1618,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anyio", specifier = ">=4" },
     { name = "argon2-cffi", specifier = ">=23.1" },
     { name = "cryptography", specifier = ">=42" },
     { name = "fastapi", specifier = ">=0.115" },
