@@ -27,7 +27,7 @@ machine.
 | Check | Command | Where |
 |---|---|---|
 | The lockfile matches the manifests | `uv lock --check` | CI, every pull request and every batch run |
-| Python advisories | `pip-audit` against the exported lockfile, once for what the image installs (`--package palaia --extra embeddings`, no dev groups) and once for the whole workspace | CI batch run (advisory job); an empty runtime export fails the run |
+| Python advisories | `pip-audit` against the exported lockfile, once for what the image installs (`--package palaia --extra embeddings --extra mdns`, no dev groups) and once for the whole workspace | CI batch run (advisory job); an empty runtime export fails the run |
 | Node advisories, dashboard | `npm audit` in `v3/web` | CI batch run (advisory job) |
 | Node advisories, extension tooling | `npm audit` in `v3/tools/build-mcpb` | CI batch run (advisory job) |
 | Node advisories, docs site | `npm audit` in `v3/site/docs` | By hand, at each dependency sweep (not in the CI advisory job yet) |
@@ -80,6 +80,14 @@ uv version CI and the Dockerfile use) moves them to `authlib` 1.9.2, `pyjwt`
 2.9.1, `filelock` 4.2.7, `urllib3` 2.8.0, `mcp` 1.30.0 and
 `opentelemetry-api` 1.45.2. What is left is one moderate advisory in
 `fastmcp` (below).
+
+Still outside that set was python-zeroconf, which the Dockerfile installed
+with `uv pip install` in whatever version was newest at build time (issue
+#626). It is now the hub's `mdns` extra, locked like everything else: the
+image installs it with `uv sync --extra mdns`, the runtime audit exports the
+same extra (97 packages), and `test_release_workflow.py` fails when the two
+disagree or the Dockerfile installs a package outside the lockfile.
+`zeroconf` 0.153.0 and `ifaddr` 0.2.0 have no known advisories.
 
 ### Open: fastmcp, GHSA-7xgj-8392-5q4r (moderate)
 
@@ -195,7 +203,7 @@ carry into 3.0 on a review trigger.
 ```bash
 cd v3
 uv lock --check
-uv export --no-hashes --no-dev --package palaia --extra embeddings \
+uv export --no-hashes --no-dev --package palaia --extra embeddings --extra mdns \
   --no-emit-project -o /tmp/runtime-reqs.txt
 uv run --with pip-audit pip-audit --no-deps --disable-pip -r /tmp/runtime-reqs.txt
 

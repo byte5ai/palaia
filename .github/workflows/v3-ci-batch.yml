@@ -325,7 +325,8 @@ jobs:
       # buried in a green job's log (issue #401): they go into the job
       # summary and raise a workflow warning annotation.
       # The runtime set is what deploy/Dockerfile installs: the hub package
-      # with its embeddings extra, no dev groups. The workspace root is
+      # with its embeddings and mdns extras, no dev groups
+      # (test_release_workflow.py keeps the two in step). The workspace root is
       # virtual and depends on nothing outside its dev group, so a bare
       # `uv export --no-dev` lists no package at all, and the audit then
       # reported a clean runtime while the image shipped high and critical
@@ -334,7 +335,7 @@ jobs:
       - name: the runtime export lists what the image installs
         working-directory: v3
         run: |
-          uv export --no-hashes --no-dev --package palaia --extra embeddings \
+          uv export --no-hashes --no-dev --package palaia --extra embeddings --extra mdns \
             --no-emit-project -o /tmp/runtime-reqs.txt
           count=$(grep -c '==' /tmp/runtime-reqs.txt || true)
           if [ "${count:-0}" -eq 0 ]; then

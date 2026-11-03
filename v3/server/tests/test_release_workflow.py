@@ -582,6 +582,40 @@ def test_the_dockerfile_installs_dependencies_before_the_project_sources() -> No
     assert no_project < sources < full_sync
 
 
+def _install_flags(command: str) -> tuple[str, frozenset[str]]:
+    """``--package`` and the set of ``--extra`` values of a uv command."""
+    words = shlex.split(command.replace("\\\n", " "))
+    package = words[words.index("--package") + 1]
+    extras = frozenset(words[i + 1] for i, word in enumerate(words) if word == "--extra")
+    return package, extras
+
+
+def test_the_runtime_audit_checks_what_the_image_installs() -> None:
+    """Issue #626: python-zeroconf was installed with ``uv pip install``,
+    outside the lockfile, so the batch's runtime audit never saw it. Every
+    Python package in the image now comes from ``uv sync`` against the
+    lockfile, and the audit exports the same package with the same extras."""
+    dockerfile = (_V3_ROOT / "deploy" / "Dockerfile").read_text(encoding="utf-8")
+    assert "pip install" not in dockerfile, "the image installs a package outside the lockfile"
+
+    syncs = {
+        _install_flags(line) for line in dockerfile.splitlines() if line.startswith("RUN uv sync")
+    }
+    assert len(syncs) == 1, f"the image's uv sync steps disagree: {syncs}"
+
+    jobs = yaml.safe_load(_BATCH_WORKFLOW_PATH.read_text(encoding="utf-8"))["jobs"]
+    exports = [
+        step["run"]
+        for job in jobs.values()
+        for step in job.get("steps", [])
+        if "uv export" in step.get("run", "") and "--no-dev" in step["run"]
+    ]
+    assert len(exports) == 1, "expected exactly one runtime export in v3-ci-batch.yml"
+    (export,) = exports
+    export_command = export[export.index("uv export") :].split("-o ")[0]
+    assert {_install_flags(export_command)} == syncs
+
+
 _WORKFLOWS_DIR = _WORKFLOW_PATH.parent
 #: Every workflow the v3 line runs (v3-*.yml) plus the track-label workflow
 #: that labels v3 items; ci.yml and publish.yml are v2's and out of scope.
