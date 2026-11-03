@@ -58,6 +58,15 @@ the `:beta` channel.
   of its own that keeps each device's address for palaia's ports, and loads
   it at every boot; Tailscale's own settings stay as they are. Earlier
   candidates had this too. (#621)
+- **Libraries with known security holes updated.** The image shipped
+  versions of `authlib`, `pyjwt`, `certifi`, `pillow`, `joserfc`,
+  `dnspython`, `filelock` and `urllib3` with published high and critical
+  advisories. palaia checks its tokens with `joserfc`, whose two advisories
+  let a crafted token cost a lot of CPU; the forged-signature advisories are
+  in `authlib` and `pyjwt`, which come with the MCP libraries. All are on
+  fixed versions now, and the release check audits what the image really
+  installs: before, it checked an empty list. `3.0.0-rc7` and earlier
+  shipped with these versions. (#625)
 
 ## 3.0.0-rc7 — 2026-11-02 (release candidate)
 

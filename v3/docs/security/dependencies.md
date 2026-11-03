@@ -27,7 +27,7 @@ machine.
 | Check | Command | Where |
 |---|---|---|
 | The lockfile matches the manifests | `uv lock --check` | CI, every pull request and every batch run |
-| Python advisories | `pip-audit` against the exported lockfile | CI batch run (advisory job) |
+| Python advisories | `pip-audit` against the exported lockfile, once for what the image installs (`--package palaia --extra embeddings`, no dev groups) and once for the whole workspace | CI batch run (advisory job); an empty runtime export fails the run |
 | Node advisories, dashboard | `npm audit` in `v3/web` | CI batch run (advisory job) |
 | Node advisories, extension tooling | `npm audit` in `v3/tools/build-mcpb` | CI batch run (advisory job) |
 | Node advisories, docs site | `npm audit` in `v3/site/docs` | By hand, at each dependency sweep (not in the CI advisory job yet) |
@@ -58,13 +58,47 @@ suite. Bumping `fastmcp` is never part of a sweep — it gets its own PR.
 
 ## Audit results at the time of this pass
 
+### Python, 2026-11-03 (issue #625, before rc8)
+
+The batch's runtime audit had exported `uv export --no-dev` from the
+workspace root. The root is virtual and depends on nothing outside its dev
+group, so that list was empty: the runtime audit checked no package and
+reported a clean runtime, which is what the 2026-11-02 pass recorded. The
+whole-workspace audit of the same batch run already listed the advisories
+below, and `3.0.0-rc7` shipped with them. The audit now exports what
+`deploy/Dockerfile` installs (95 packages) and the run fails when that list
+is empty.
+
+On that set, before the sweep: 89 advisories in 11 packages, among them
+critical ones in `authlib` 1.7.2 (JWS signatures with an empty signature
+accepted), `pyjwt` 2.13.0 (public keys accepted as HMAC secrets), `certifi`
+2026.7.22 (emSign roots with compromised intermediates) and `pillow` 12.3.0
+(heap overflows in image decoders), and high ones in `joserfc`, `dnspython`,
+`filelock` and `urllib3`. A full sweep (`uv lock --upgrade`, locked with the
+uv version CI and the Dockerfile use) moves them to `authlib` 1.9.2, `pyjwt`
+2.15.1, `certifi` 2026.10.23, `pillow` 13.0.0, `joserfc` 1.7.7, `dnspython`
+2.9.1, `filelock` 4.2.7, `urllib3` 2.8.0, `mcp` 1.30.0 and
+`opentelemetry-api` 1.45.2. What is left is one moderate advisory in
+`fastmcp` (below).
+
+### Open: fastmcp, GHSA-7xgj-8392-5q4r (moderate)
+
+A server transform can change what a component's authorization policy
+checks, and direct calls return the transformed component without checking
+it again; fixed in 3.4.10. It needs component-level authorization
+(`AuthCheck`), and palaia has none: every gateway authenticates the whole
+server, and its only transform is `Provider.disable()` for hidden tools.
+`fastmcp` keeps its exact pin and moves to 3.4.10 in its own pull request,
+as the pinning rules above say, by the next minor release.
+
+### Node, 2026-11-02
+
 Run on 2026-11-02 (issue #610, from the pre-build review #601), with `npm
 audit` against the committed lockfiles. Counts are vulnerable package
 entries as `npm audit` reports them, not distinct advisories.
 
 | Target | Before | After | What is left |
 |---|---|---|---|
-| Python, runtime and dev | No known vulnerabilities | — | — |
 | `v3/web` | 20 (8 high, 12 moderate) | **11 moderate** | One advisory, minimatch (below) |
 | `v3/site/docs` | 25 (1 critical, 9 high, 15 moderate) | **11 moderate** | The same minimatch advisory |
 | `v3/tools/build-mcpb` | 3 high | **2 high** | One advisory, zod (below) |
@@ -161,7 +195,8 @@ carry into 3.0 on a review trigger.
 ```bash
 cd v3
 uv lock --check
-uv export --no-hashes --no-dev -o /tmp/runtime-reqs.txt
+uv export --no-hashes --no-dev --package palaia --extra embeddings \
+  --no-emit-project -o /tmp/runtime-reqs.txt
 uv run --with pip-audit pip-audit --no-deps --disable-pip -r /tmp/runtime-reqs.txt
 
 cd web && npm ci && npm audit
