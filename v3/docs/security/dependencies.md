@@ -155,6 +155,21 @@ entries as `npm audit` reports them, not distinct advisories.
   The signing path still works: the build signs the bundle, and the hub's
   builder tests run `mcpb validate`, `pack` and `sign` with the real CLI.
 
+### Node, 2026-11-14: node-forge 1.4.3 (extension tooling)
+
+The batch run on the `3.0.0-rc9` merge commit (run 43613496607) reported four
+new advisories in `node-forge` ≤ 1.4.2, all published 2026-11-10 and fixed in
+1.4.3: Ed25519 verification accepting small-order public keys
+(GHSA-6889-vf6x-f3g5, low), a ReDoS in `forge.http` header trimming
+(GHSA-6cv4-p8m7-4r25) and two TLS client crashes (GHSA-j8rw-jp99-435v,
+GHSA-w4xr-hqv8-ch44), all moderate. This tree ships in the runtime image, but
+`@anthropic-ai/mcpb` uses only forge's X.509, PKCS#7, ASN.1 and SHA-256 code to
+sign bundles, none of the affected parts, so the hub was not exposed.
+`npm audit fix` moves `node-forge` to 1.4.3 within the declared ranges; nothing
+else in the lockfile changes. The build still signs the bundle, the tooling's
+own tests and the hub's builder tests pass, and what is left is the zod
+advisory below.
+
 ### Open: minimatch, GHSA-g3hv-75wg-m249 (moderate) — dashboard and docs site
 
 Denial of service through glob-part amplification for an attacker-controlled

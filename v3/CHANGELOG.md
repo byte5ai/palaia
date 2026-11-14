@@ -10,6 +10,16 @@ ADRs, phase-gate records, SPEC index docs, CI and release plumbing) are left
 out on purpose; they moved the project forward but nothing in them is a
 capability a user would notice.
 
+## Unreleased
+
+### Security
+
+- **The signing library behind the Claude Desktop extension is updated.**
+  `node-forge`, which palaia's image uses to sign the extension download,
+  had four new published advisories. They affect parts palaia does not use
+  (TLS, HTTP helpers and Ed25519 checks), so palaia was not exposed; the
+  library is still updated to the fixed release 1.4.3.
+
 ## 3.0.0-rc9 — 2026-11-14 (release candidate)
 
 Setting palaia up on an existing server without saving its password, the
