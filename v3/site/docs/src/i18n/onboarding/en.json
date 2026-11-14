@@ -8,7 +8,7 @@
     "h2": "Let your AI set it up",
     "intro": "You do not have to touch a terminal. Copy the prompt below, paste it into an AI assistant you already use, and it reads the setup guide and walks you through it — one step at a time, in plain language.",
     "promptLabel": "Paste this into your AI assistant",
-    "prompt": "Set palaia up for me. First read get.palaia.ai/skill, then walk me through it step by step — I'm not technical, so explain everything simply.",
+    "prompt": "Set palaia up for me. First read all of get.palaia.ai/skill — if you can run commands, use curl, since a web fetch may only give you a summary. Then walk me through it step by step — I'm not technical, so explain everything simply.",
     "copy": "Copy prompt",
     "copied": "Copied — now paste it",
     "worksWith": "Works in",

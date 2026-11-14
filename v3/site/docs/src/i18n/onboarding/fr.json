@@ -8,7 +8,7 @@
     "h2": "Laissez votre IA l'installer",
     "intro": "Vous n'avez pas besoin de toucher à un terminal. Copiez l'instruction ci-dessous, collez-la dans un assistant IA que vous utilisez déjà, et il lit le guide d'installation et vous accompagne — une étape à la fois, en langage simple.",
     "promptLabel": "Collez ceci dans votre assistant IA",
-    "prompt": "Installe palaia pour moi. Lis d'abord get.palaia.ai/skill, puis guide-moi étape par étape — je ne suis pas technique, alors explique-moi tout simplement.",
+    "prompt": "Installe palaia pour moi. Lis d'abord get.palaia.ai/skill en entier — si tu peux exécuter des commandes, utilise curl, car une récupération web ne te donnera peut-être qu'un résumé. Puis guide-moi étape par étape — je ne suis pas technique, alors explique-moi tout simplement.",
     "copy": "Copier l'instruction",
     "copied": "Copié — collez-la maintenant",
     "worksWith": "Fonctionne dans",

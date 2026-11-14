@@ -23,6 +23,14 @@ capability a user would notice.
 
 ### Fixed
 
+- **The setup prompt gets the whole install guide into Claude Code.** In
+  Claude Code, the prompt on the "Get palaia running" page only gave the
+  assistant a summary of get.palaia.ai/skill, because its web fetch
+  summarises pages; it then explained the first memory's "What it's for"
+  field wrongly and asked several questions at once. The prompt now asks an
+  assistant that can run commands to read the guide in full with curl. Chat
+  apps without commands read it as before. (#615)
+
 - **Setting palaia up on an existing server no longer saves its password.**
   When an AI assistant sets palaia up on a server you log in to with a
   password, the install guide now uses that password only once, to let in a
