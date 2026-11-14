@@ -8,7 +8,7 @@
     "h2": "Lass Deine KI es einrichten",
     "intro": "Du musst kein Terminal anfassen. Kopier den Prompt unten, füg ihn in einen KI-Assistenten ein, den Du schon nutzt, und er liest die Anleitung und führt Dich durch — Schritt für Schritt, in einfacher Sprache.",
     "promptLabel": "Füg das in Deinen KI-Assistenten ein",
-    "prompt": "Richte palaia für mich ein. Lies zuerst get.palaia.ai/skill und führ mich dann Schritt für Schritt durch — ich bin kein Techniker, erklär mir alles einfach.",
+    "prompt": "Richte palaia für mich ein. Lies zuerst get.palaia.ai/skill vollständig — wenn du Befehle ausführen kannst, mit curl, denn ein Web-Abruf liefert dir womöglich nur eine Zusammenfassung. Führ mich dann Schritt für Schritt durch — ich bin kein Techniker, erklär mir alles einfach.",
     "copy": "Prompt kopieren",
     "copied": "Kopiert — jetzt einfügen",
     "worksWith": "Funktioniert in",

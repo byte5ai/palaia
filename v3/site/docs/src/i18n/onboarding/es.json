@@ -8,7 +8,7 @@
     "h2": "Deja que tu IA lo configure",
     "intro": "No tienes que tocar ninguna terminal. Copia el mensaje de abajo, pégalo en un asistente de IA que ya uses, y él lee la guía de instalación y te acompaña paso a paso, con palabras sencillas.",
     "promptLabel": "Pega esto en tu asistente de IA",
-    "prompt": "Configúrame palaia. Primero lee get.palaia.ai/skill y luego guíame paso a paso. No soy una persona técnica, así que explícamelo todo de forma sencilla.",
+    "prompt": "Configúrame palaia. Primero lee get.palaia.ai/skill entero; si puedes ejecutar comandos, usa curl, porque una consulta web quizá solo te dé un resumen. Luego guíame paso a paso. No soy una persona técnica, así que explícamelo todo de forma sencilla.",
     "copy": "Copiar mensaje",
     "copied": "Copiado: ahora pégalo",
     "worksWith": "Funciona en",
