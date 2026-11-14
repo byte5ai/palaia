@@ -110,7 +110,7 @@ def _disable_inbound_header_forwarding(transport: ClientTransport) -> None:
     """Keep the connecting client's own headers off the upstream's wire.
 
     ``create_proxy`` flips ``forward_incoming_headers`` on for every HTTP/SSE
-    transport it is handed (fastmcp 3.4.7, ``server/providers/proxy.py``),
+    transport it is handed (fastmcp 3.4.11, ``server/providers/proxy.py``),
     and the transport then sends the *inbound* request's ``Authorization``
     header — the client's palaia ``plt_`` token or OAuth JWT — plus every
     other non-hop-by-hop inbound header to the upstream, unless a configured
@@ -437,7 +437,7 @@ class UpstreamService:
             return
         try:
             # `ClientTransport.close()` carries no annotations in fastmcp
-            # 3.4.7 (it is `async def close(self):`), so mypy's strict mode
+            # 3.4.11 (it is `async def close(self):`), so mypy's strict mode
             # calls this an untyped call. It is the documented teardown —
             # for a StdioTransport it is what terminates the child process.
             await connection.transport.close()  # type: ignore[no-untyped-call]

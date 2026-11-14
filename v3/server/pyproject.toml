@@ -11,7 +11,7 @@ dependencies = [
     "pydantic>=2.7",
     "pyyaml>=6.0",
     "platformdirs>=4.2",
-    "fastmcp==3.4.7",
+    "fastmcp==3.4.11",
     "watchfiles>=0.22",
     "argon2-cffi>=23.1",
     "sqlite-vec>=0.1.6",

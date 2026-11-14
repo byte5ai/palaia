@@ -277,7 +277,7 @@ Two deployment notes from real-client validation (issue #233):
   zero-flag `claude mcp login` depends on this.
 
 Access tokens are signed **ES256** rather than the Ed25519 the SPEC names:
-fastmcp 3.4.7's `JWTVerifier` — which deliverable #4 requires the resource
+fastmcp 3.4.11's `JWTVerifier` — which deliverable #4 requires the resource
 side to use — accepts no `EdDSA`, and reimplementing JWT validation here is
 exactly what that deliverable forbids. See `oauth/keys.py`'s module docstring.
 
