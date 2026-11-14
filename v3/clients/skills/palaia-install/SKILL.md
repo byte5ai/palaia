@@ -62,9 +62,7 @@ Then ask whether the server exists already or is about to be created:
 
 - **Not yet created** — the easiest path: a setup file pasted into one field when
   creating the server. No commands. Go to Step 2a.
-- **Already created** — Step 3. If it is still empty and they cannot give you a
-  way in, recreating it with the setup file (Step 2a) avoids the provider's
-  console; offer that.
+- **Already created** — Step 3.
 
 **The setup code.** The setup page (Step 4) opens only with a one-time code. Make
 one up: 12 capital letters and digits without 0, O, 1 or I, in three groups like
@@ -85,19 +83,20 @@ is done.
 
 ## Step 3 — An existing server: set it up remotely
 
-Ask in one go: the server's address, and how they log in — a key already on this
-computer, or a password the provider showed or emailed. Never ask for a password
-in the chat: what is written there stays in the conversation. A server that
-already runs Docker or is already on their Tailscale network is fine; the
-installer keeps both.
+**First, where do your commands run?** On their computer (your shell has their
+home folder and user name, e.g. Claude Code in their terminal), 3a and 3b can
+work. In a sandbox or VM that sees only folders they connected, or with no shell,
+their keys are not there and nothing they type reaches you: use 3c. A key you
+cannot see does not mean they have none; never move a secret via such a folder.
 
-The installer line is the first one in `v3/deploy/get-palaia.sh`:
+Then ask in one go: the address, and how they log in — a key on their computer,
+or a password the provider showed or emailed. Try no login before they answer and
+never guess a user name: root, unless the provider gave another. Never ask for a
+password in the chat: it would stay in the conversation. Docker or Tailscale
+already on the server is fine; the installer keeps both.
 
-```
-curl -fsSL https://get.palaia.ai | sh
-```
-
-Run it with your setup code, so you know it:
+The installer line is the first one in `v3/deploy/get-palaia.sh`,
+`curl -fsSL https://get.palaia.ai | sh`. Run it with your setup code:
 
 ```
 curl -fsSL https://get.palaia.ai | PALAIA_SETUP_CODE=<code> sh
@@ -109,45 +108,47 @@ to 30 minutes for them. Start it so it keeps running after your command returns
 (your tool's background mode, for example), keep reading its output, and go to
 Step 4. It ends with a line starting `done ✓  Open` and palaia's address.
 
-The logins below use root, which most providers set up; use their user name if
-the provider gave another. "Run the installer line through it" means: put the
-line, in single quotes, in place of the final word true.
-
-**3a — With a key.** No output means you are in; then run the installer line:
+**3a — With a key.** No output means you are in; then run the installer line
+through it (in single quotes, in place of the final word true):
 
 ```
 ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 root@<address> true
 ```
 
-**3b — With a password, and you can run commands on their computer** (a Run
-button, or a terminal next to the chat). The password goes into a private file on
-their computer, never through the chat. Show this line and say: "Click Run (or
-paste it into the terminal), type your server password and press Enter. You see a
-star for each character." Wait until it printed "Saved".
+**3b — With a password, only with a Run button or a terminal inside the chat**
+(never send them to a Terminal app). The password is used once to let in a setup
+key for this install and is never saved. Make the key and its login helper:
+
+```
+[ -f ~/.palaia-setup/key ] || (mkdir -p ~/.palaia-setup && chmod 700 ~/.palaia-setup && ssh-keygen -q -t ed25519 -N "" -C palaia-setup -f ~/.palaia-setup/key)
+printf '#!/bin/sh\nprintf "%%s\\n" "$SETUP_PW"\n' > ~/.palaia-setup/askpass && chmod 700 ~/.palaia-setup/askpass
+```
+
+Show this line and say: "Click Run (or paste it into the terminal), type your
+server password and press Enter. You see a star for each character." Wait until
+it printed "Key added".
 
 ```bash
-mkdir -p ~/.palaia-setup && chmod 700 ~/.palaia-setup && bash -c 'del=$(printf "\177"); s=; printf "Server password: "; while IFS= read -rsn1 c; do if [ -z "$c" ]; then break; elif [ "$c" = "$del" ]; then [ -n "$s" ] && s=${s%?} && printf "\b \b"; else s=$s$c; printf "*"; fi; done; echo; (umask 077; printf "%s\n" "$s" > ~/.palaia-setup/pw); echo "Saved (${#s} characters)."'
+bash -c 'del=$(printf "\177"); s=; printf "Server password: "; while IFS= read -rsn1 c; do if [ -z "$c" ]; then break; elif [ "$c" = "$del" ]; then [ -n "$s" ] && s=${s%?} && printf "\b \b"; else s=$s$c; printf "*"; fi; done; echo; SETUP_PW=$s SSH_ASKPASS="$HOME/.palaia-setup/askpass" SSH_ASKPASS_REQUIRE=force ssh -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password,keyboard-interactive -o NumberOfPasswordPrompts=1 -o ConnectTimeout=15 root@<address> "umask 077; mkdir -p .ssh && cat >> .ssh/authorized_keys" < ~/.palaia-setup/key.pub && echo "Key added. Your password was not saved." || echo "No key added. Nothing was saved."'
 ```
 
-Then create the helper that hands it to the login (it holds no secret), check you
-get in, and run the installer line through the second command:
+From now on every login uses this key. Check it and run the installer as in 3a:
 
 ```
-printf '#!/bin/sh\ncat "$HOME/.palaia-setup/pw"\n' > ~/.palaia-setup/askpass && chmod 700 ~/.palaia-setup/askpass
-SSH_ASKPASS="$HOME/.palaia-setup/askpass" SSH_ASKPASS_REQUIRE=force ssh -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password,keyboard-interactive -o NumberOfPasswordPrompts=1 -o ConnectTimeout=15 root@<address> true
+ssh -i ~/.palaia-setup/key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 root@<address> true
 ```
 
-When done, or if they stop halfway, delete the saved password for good:
+After Step 5, or if they stop halfway, remove the key from the server and here:
 
 ```
+ssh -i ~/.palaia-setup/key -o IdentitiesOnly=yes -o BatchMode=yes root@<address> 'sed -i "/ palaia-setup$/d" .ssh/authorized_keys'
 rm -rf ~/.palaia-setup
 ```
 
-**3c — You cannot run commands for them** (no Run button, no terminal). For an
-empty server, offer recreating it with the setup file (Step 2a). Otherwise give
-them the plain installer line to paste into their provider's web console (most
-have a "Console" button). The screen then shows the address to open and a setup
-code. Go to Step 4.
+**3c — Not on their computer, or no Run button for a password.** Empty server:
+offer recreating it with the setup file (Step 2a). Otherwise they paste the plain
+installer line into the provider's web console, never into a terminal on their
+computer; it shows the address to open and a setup code. Go to Step 4.
 
 ## Step 4 — The setup page: private network and cloud access
 
@@ -181,29 +182,29 @@ them run this line; it shows a star per character and checks the start:
 mkdir -p ~/.palaia-setup && chmod 700 ~/.palaia-setup && bash -c 'del=$(printf "\177"); s=; printf "Tailscale auth key: "; while IFS= read -rsn1 c; do if [ -z "$c" ]; then break; elif [ "$c" = "$del" ]; then [ -n "$s" ] && s=${s%?} && printf "\b \b"; else s=$s$c; printf "*"; fi; done; echo; case $s in tskey-auth-*) (umask 077; printf "%s" "$s" > ~/.palaia-setup/tskey); echo "Saved (${#s} characters).";; *) echo "That is not an auth key (it starts with tskey-auth-). Nothing was saved; run this line again.";; esac'
 ```
 
-Copy it to the server through the login you checked (prefix both `ssh` lines as
-in 3b for a password), run the installer there with the file — it deletes the
+Copy it to the server through the login you checked (after 3b, with the setup
+key as in its check), run the installer there with the file — it deletes the
 file — and delete the local copy. All three lines run on their computer:
 
 ```
 ssh root@<address> 'umask 077; cat > /root/.palaia-tskey' < ~/.palaia-setup/tskey
 ssh root@<address> 'curl -fsSL https://get.palaia.ai | PALAIA_TSKEY_FILE=/root/.palaia-tskey sh'
-rm -rf ~/.palaia-setup
+rm -f ~/.palaia-setup/tskey
 ```
 
-The installer deletes that file whether it finishes or stops; to retry, copy
-it again. No terminal on their computer: use the setup page instead. Never ask them to
+The installer deletes that file whether it finishes or stops; to retry, copy it
+again. No terminal on their computer: use the setup page. Never ask them to
 paste a key into the chat. With the setup file, the key goes into its
 `TAILSCALE_AUTH_KEY="tskey-REPLACE_ME"` line instead of the code.
 
 ## Step 5 — Finish setup in the browser
 
 A running server is not a finished setup: say "palaia is running", never "done",
-until an AI app has saved and found a note. They open exactly the address the setup
-page or the installer's last line showed (Tailscale app on; the first sign-in is
-tied to it); its setup opens by itself and resumes after a reload or restart. If
-you used 3b, delete the saved password now. If you cannot see the page, ask what
-it shows; never read palaia's code to guess. One step at a time, in this order:
+until an AI app has saved and found a note. They open exactly the address the
+setup page or the installer's last line showed (Tailscale app on; the first
+sign-in is tied to it); its setup opens by itself and resumes after a reload or
+restart. If you cannot see the page, ask what it shows; never read palaia's code
+to guess. One step at a time, in this order:
 
 1. **How you'll use palaia** — their choice from Step 2 ("With ChatGPT and
    Claude" is cloud access).
@@ -225,7 +226,8 @@ it shows; never read palaia's code to guess. One step at a time, in this order:
 
 Then have them ask the app to save one note and find it again. Only then say it
 works, and say what you checked. A warning box on the page comes first: read it
-in plain words and do what it says. If it does not answer at all, Step 6.
+in plain words and do what it says. If it does not answer at all, Step 6. After
+3b, remove the setup key (end of 3b).
 
 ## Step 6 — When it does not come up
 
@@ -262,17 +264,15 @@ saying what to do. Translate:
 ssh-keygen -R <address>
 ```
 
-- **"Permission denied"** — wrong password or user name: rerun the 3b line.
+- **"Permission denied"** — wrong password or user name: rerun the 3b Run line.
 - **"Password change required"** — the provider wants a new password first.
-  They run this, type the old one, choose a new one twice, type exit, then rerun
-  the 3b line:
+  They run this, type the old one, a new one twice, then exit, and rerun 3b:
 
 ```bash
 ssh -o StrictHostKeyChecking=accept-new root@<address>
 ```
 
-- **"Connection timed out" / "No route to host"** — wrong address, or the server
-  is off.
+- **"Connection timed out" / "No route to host"** — wrong address or server off.
 
 **The setup file** logs to `/var/log/cloud-init-output.log` on the server, its
 lines starting `palaia cloud-init:`. Read it over SSH or the provider's console

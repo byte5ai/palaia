@@ -23,6 +23,17 @@ capability a user would notice.
 
 ### Fixed
 
+- **Setting palaia up on an existing server no longer saves its password.**
+  When an AI assistant sets palaia up on a server you log in to with a
+  password, the install guide now uses that password only once, to let in a
+  key made just for this install, and saves it nowhere; the key is removed
+  from the server when setup is done. The assistant first checks whether its
+  commands really run on your computer: if it works in a sandbox, it no longer
+  concludes you have no key and no longer sends you to the Terminal, but
+  offers recreating an empty server with the setup file or one line for your
+  provider's web console. It also asks how you log in before trying any login,
+  and never guesses a user name. (#631)
+
 - **No error in the log when an AI app ends its session.** Every time a
   connected app ended its session normally, the hub's log showed "Error in
   standalone SSE writer" with a stack trace, which made real errors harder
