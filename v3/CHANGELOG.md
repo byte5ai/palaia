@@ -24,6 +24,10 @@ capability a user would notice.
   which arrives with the MCP library, could use up memory and CPU when
   reading a crafted DNS zone file. palaia never reads zone files, so it was
   not exposed; the library is still updated to the fixed release 2.9.2.
+- **The MCP library palaia builds on is at its latest 3.x release.**
+  `fastmcp` moves from 3.4.7 to 3.4.11, which closes a known security hole
+  and brings the 3.x security fixes released since. The hole needed a
+  feature palaia does not use, so palaia was not exposed.
 
 ### Fixed
 

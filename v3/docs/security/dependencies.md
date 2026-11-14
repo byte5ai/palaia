@@ -9,7 +9,7 @@ advisory lands.
 | Ecosystem | Where | How it is pinned | Why |
 |---|---|---|---|
 | Python, runtime | `v3/server/pyproject.toml` | Floors (`fastapi>=0.115`), resolved to exact versions by `v3/uv.lock` | The lockfile is the pin; floors say what the code needs |
-| Python, one exception | `fastmcp==3.4.7` | **Exact** | The protocol layer. A minor bump changes MCP behavior we assert against; upgrading it is a deliberate act with its own PR |
+| Python, one exception | `fastmcp==3.4.11` | **Exact** | The protocol layer. A minor bump changes MCP behavior we assert against; upgrading it is a deliberate act with its own PR |
 | Python, dev | `[project.optional-dependencies] dev` | Floors, resolved by the same lockfile | |
 | Node, dashboard | `v3/web/package.json` + `package-lock.json` | The lockfile is the pin; CI installs with `npm ci` | Only `react`, `react-dom` and `react-router-dom` reach the built dashboard; everything else is build and test tooling |
 | Node, extension tooling | `v3/tools/build-mcpb/package-lock.json` | Same | **Shipped in the runtime image** (issue #594): the image runs the `mcpb` CLI from this tree to build and sign each Claude Desktop extension download, so its whole tree counts as runtime, devDependency or not |
@@ -102,15 +102,20 @@ same, so it is locked to 2.9.2 (`uv lock --upgrade-package dnspython`, no other
 package moved). What is left in the runtime audit is the `fastmcp` advisory
 below.
 
-### Open: fastmcp, GHSA-7xgj-8392-5q4r (moderate)
+### Resolved: fastmcp, GHSA-7xgj-8392-5q4r (moderate)
 
 A server transform can change what a component's authorization policy
 checks, and direct calls return the transformed component without checking
 it again; fixed in 3.4.10. It needs component-level authorization
 (`AuthCheck`), and palaia has none: every gateway authenticates the whole
 server, and its only transform is `Provider.disable()` for hidden tools.
-`fastmcp` keeps its exact pin and moves to 3.4.10 in its own pull request,
-as the pinning rules above say, by the next minor release.
+
+On 2026-11-14 the exact pin moved from 3.4.7 to 3.4.11 in its own pull
+request, as the pinning rules above say; only `fastmcp` and `fastmcp-slim`
+changed in the lockfile. 3.4.8 to 3.4.10 are security and bug-fix backports
+from the 4.x line. 3.4.11 ships the same code as 3.4.10 and only requires
+`certifi` ≥ 2026.10.19 after the eMudhra CA incident; the lockfile already
+had `certifi` 2026.10.23. The runtime audit is clean after it.
 
 ### Node, 2026-11-02
 

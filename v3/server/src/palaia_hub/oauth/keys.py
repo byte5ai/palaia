@@ -3,7 +3,7 @@
 **Why ES256 and not Ed25519.** SPEC-203 deliverable #3 names Ed25519, and
 deliverable #4 requires the resource side to be fastmcp's own ``JWTVerifier``
 ("do not write your own JWT validation on the resource side"). Those two
-cannot both be honored with fastmcp 3.4.7: its ``JWTVerifier`` accepts only
+cannot both be honored with fastmcp 3.4.11: its ``JWTVerifier`` accepts only
 HS/RS/ES/PS algorithms — ``EdDSA`` is rejected by its constructor, and its
 JWKS loader explicitly skips ``OKP`` keys. Reaching EdDSA would mean
 reimplementing ``JWTVerifier.load_access_token`` (signature, ``exp``,
