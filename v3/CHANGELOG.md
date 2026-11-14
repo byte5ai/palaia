@@ -10,7 +10,10 @@ ADRs, phase-gate records, SPEC index docs, CI and release plumbing) are left
 out on purpose; they moved the project forward but nothing in them is a
 capability a user would notice.
 
-## Unreleased
+## 3.0.0-rc10 — 2026-11-14 (release candidate)
+
+Two libraries updated for newly published advisories. Still a pre-release —
+the `:beta` channel.
 
 ### Security
 
