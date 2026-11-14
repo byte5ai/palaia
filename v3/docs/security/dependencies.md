@@ -89,6 +89,19 @@ same extra (97 packages), and `test_release_workflow.py` fails when the two
 disagree or the Dockerfile installs a package outside the lockfile.
 `zeroconf` 0.153.0 and `ifaddr` 0.2.0 have no known advisories.
 
+### Python, 2026-11-14
+
+The batch run on `main` (run 43608839065) reported a new high advisory in a
+runtime dependency: `dnspython` 2.9.1, CVE-2026-128089 / GHSA-vvf4-9x63-8xvv,
+published with the fix 2.9.2 on 2026-11-04. Reading a WKS record from zone-file
+text does not bound the service number, so a crafted record can exhaust memory
+and CPU. `dnspython` arrives only through `fastmcp` → `pydantic[email]` →
+`email-validator`; palaia never imports it and never parses zone files, so the
+hub was not exposed. It is a high advisory in a runtime dependency all the
+same, so it is locked to 2.9.2 (`uv lock --upgrade-package dnspython`, no other
+package moved). What is left in the runtime audit is the `fastmcp` advisory
+below.
+
 ### Open: fastmcp, GHSA-7xgj-8392-5q4r (moderate)
 
 A server transform can change what a component's authorization policy
