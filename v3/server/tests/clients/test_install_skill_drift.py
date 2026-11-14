@@ -34,6 +34,8 @@ import re
 import select
 import shutil
 import subprocess
+import termios
+import time
 from pathlib import Path
 
 import pytest
@@ -382,9 +384,9 @@ def _run_password_line(tmp_path: Path, password: str, ssh_exit: int) -> tuple[st
     os.close(secondary)
     output = b""
 
-    def read_until(marker: bytes) -> None:
+    def read_until(marker: bytes, count: int = 1) -> None:
         nonlocal output
-        while marker not in output:
+        while output.count(marker) < count:
             ready, _, _ = select.select([primary], [], [], 10)
             assert ready, f"no {marker!r} on the terminal; got {output!r}"
             try:
@@ -395,10 +397,31 @@ def _run_password_line(tmp_path: Path, password: str, ssh_exit: int) -> tuple[st
                 break
             output += chunk
 
+    def wait_until_the_line_waits_for_a_key() -> None:
+        # Each `read -rsn1` takes the terminal out of line mode only while it
+        # waits, and bash puts line mode back in between two reads. A DEL
+        # that lands in that gap only erases the empty line buffer and is
+        # lost (issue #635). A person never types that fast; a test does, so
+        # it sends a key only once the next read has switched line mode off.
+        deadline = time.monotonic() + 10
+        while termios.tcgetattr(primary)[3] & termios.ICANON:
+            assert time.monotonic() < deadline, f"the line never waited for a key; got {output!r}"
+            time.sleep(0.001)
+
     read_until(b"Server password: ")
-    # Typed one key at a time, with a correction, as a person would.
+    # Typed one key at a time, with a correction, as a person would: each key
+    # after the line shows the previous one (a star, or a star taken back).
+    stars = corrections = 0
     for char in password[:-1] + "x\x7f" + password[-1]:
+        wait_until_the_line_waits_for_a_key()
         os.write(primary, char.encode())
+        if char == "\x7f":
+            corrections += 1
+            read_until(b"\b \b", corrections)
+        else:
+            stars += 1
+            read_until(b"*", stars)
+    wait_until_the_line_waits_for_a_key()
     os.write(primary, b"\r")
     read_until(b"saved.")
     process.wait(timeout=30)
