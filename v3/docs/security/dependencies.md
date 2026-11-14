@@ -170,6 +170,21 @@ else in the lockfile changes. The build still signs the bundle, the tooling's
 own tests and the hub's builder tests pass, and what is left is the zod
 advisory below.
 
+### Node, 2026-11-14: Astro 7.4.12 (docs site)
+
+The audit before `3.0.0-rc10` reported two new Astro advisories against the
+docs site's 7.4.4: attribute injection through a dynamic tag name
+(GHSA-mh32-jxcr-mh9f, low, fixed in 7.4.5) and the `@astrojs/node` image
+endpoint reading a case-variant sibling of the output directory
+(GHSA-r3h5-4585-7x3w, moderate, fixed in 7.4.7). The docs site was exposed to
+neither: it builds static pages from the repo's own content, with no server
+and no `@astrojs/node`. `npm audit fix` moves `astro` to 7.4.12 (floor raised
+to `^7.4.12`) and, within their declared ranges, rolldown 1.2.19, Vite 8.3.8,
+eslint 10.15.0 and typescript-eslint 8.72.2. Lint, typecheck, the
+generated-page check, the tests and the build pass; the build still logs the
+two Astro content notices. What is left in the docs site is the minimatch
+advisory below (7 moderate entries).
+
 ### Open: minimatch, GHSA-g3hv-75wg-m249 (moderate) — dashboard and docs site
 
 Denial of service through glob-part amplification for an attacker-controlled
