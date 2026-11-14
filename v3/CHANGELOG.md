@@ -10,7 +10,11 @@ ADRs, phase-gate records, SPEC index docs, CI and release plumbing) are left
 out on purpose; they moved the project forward but nothing in them is a
 capability a user would notice.
 
-## Unreleased
+## 3.0.0-rc9 — 2026-11-14 (release candidate)
+
+Setting palaia up on an existing server without saving its password, the
+whole setup guide for Claude Code, a quieter log and updated libraries.
+Still a pre-release — the `:beta` channel.
 
 ### Security
 

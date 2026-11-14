@@ -1652,7 +1652,7 @@ dev = [
 
 [[package]]
 name = "palaia-addon-sdk"
-version = "3.0.0rc8"
+version = "3.0.0rc9"
 source = { directory = "sdk" }
 dependencies = [
     { name = "pydantic" },
