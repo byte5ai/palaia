@@ -20,6 +20,10 @@ capability a user would notice.
   check's security audit never covered them. Both are now pinned in the
   lockfile and audited before every release. No known security holes were
   found in either. (#626)
+- **A DNS library with a known security hole is updated.** `dnspython`,
+  which arrives with the MCP library, could use up memory and CPU when
+  reading a crafted DNS zone file. palaia never reads zone files, so it was
+  not exposed; the library is still updated to the fixed release 2.9.2.
 
 ### Fixed
 
