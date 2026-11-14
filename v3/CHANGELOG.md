@@ -19,6 +19,9 @@ capability a user would notice.
   had four new published advisories. They affect parts palaia does not use
   (TLS, HTTP helpers and Ed25519 checks), so palaia was not exposed; the
   library is still updated to the fixed release 1.4.3.
+- **The docs site's framework is updated.** Astro had two new published
+  advisories. The docs site is plain static pages and was exposed to
+  neither; it now builds with Astro 7.4.12.
 
 ## 3.0.0-rc9 — 2026-11-14 (release candidate)
 
