@@ -28,7 +28,10 @@ about a file that can change underneath it, so this module checks every one:
 
 from __future__ import annotations
 
+import os
+import pty
 import re
+import select
 import shutil
 import subprocess
 from pathlib import Path
@@ -68,6 +71,21 @@ _CODE_LINE = 'PALAIA_SETUP_CODE="setup-code-REPLACE_ME"'
 _CODE_LINE_FILLED = 'PALAIA_SETUP_CODE="<code>"'
 _SETUP_SCRIPT_PATH = "/opt/palaia/cloud-init-setup.sh"
 
+#: Step 3b's Run line (#631): the one line a person runs with their server
+#: password. Named so the allow-list and the executable test below share it.
+_PASSWORD_RUN_LINE = (
+    'bash -c \'del=$(printf "\\177"); s=; printf "Server password: "; while IFS= read -rsn1 c; '
+    'do if [ -z "$c" ]; then break; elif [ "$c" = "$del" ]; then [ -n "$s" ] && s=${s%?} && '
+    'printf "\\b \\b"; else s=$s$c; printf "*"; fi; done; echo; SETUP_PW=$s '
+    'SSH_ASKPASS="$HOME/.palaia-setup/askpass" SSH_ASKPASS_REQUIRE=force ssh '
+    "-o StrictHostKeyChecking=accept-new "
+    "-o PreferredAuthentications=password,keyboard-interactive "
+    "-o NumberOfPasswordPrompts=1 -o ConnectTimeout=15 root@<address> "
+    '"umask 077; mkdir -p .ssh && cat >> .ssh/authorized_keys" < ~/.palaia-setup/key.pub '
+    '&& echo "Key added. Your password was not saved." || echo "No key added. Nothing was '
+    "saved.\"'"
+)
+
 #: Literals the skill quotes that are not palaia's own to ship, so they
 #: cannot be found in ``v3/deploy`` — each with the reason it may stand.
 #: Their palaia-specific parts (paths, container name) are still anchored,
@@ -82,17 +100,32 @@ _NOT_FROM_DEPLOY: dict[str, str] = {
         "a generic way to read a container's log; the container name is anchored below"
     ),
     # Step 3 — reaching an existing server over SSH. Plain OpenSSH, nothing
-    # palaia ships; the password path keeps the password out of the chat by
-    # saving it in a file only the user can read and handing it to ssh
-    # through SSH_ASKPASS (works without sshpass, OpenSSH 8.4+).
+    # palaia ships. A password is used exactly once, to let in a setup key made
+    # for this install (#631): it lives only in the Run line's shell variable
+    # and reaches ssh through SSH_ASKPASS as an environment variable of that
+    # one command (OpenSSH 8.4+, no sshpass) — never in a file, the chat or a
+    # command line. test_the_password_line_* runs these lines.
     "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 "
     "root@<address> true": "key login check that can never hang on a prompt",
-    'mkdir -p ~/.palaia-setup && chmod 700 ~/.palaia-setup && bash -c \'del=$(printf "\\177"); '
-    's=; printf "Server password: "; while IFS= read -rsn1 c; do if [ -z "$c" ]; then break; '
-    'elif [ "$c" = "$del" ]; then [ -n "$s" ] && s=${s%?} && printf "\\b \\b"; else '
-    's=$s$c; printf "*"; fi; done; echo; (umask 077; printf "%s\\n" "$s" > '
-    '~/.palaia-setup/pw); echo "Saved (${#s} characters)."\'': (
-        "the user's Run line that saves the password privately, a star per character (#558)"
+    "[ -f ~/.palaia-setup/key ] || (mkdir -p ~/.palaia-setup && chmod 700 ~/.palaia-setup "
+    '&& ssh-keygen -q -t ed25519 -N "" -C palaia-setup -f ~/.palaia-setup/key)': (
+        "makes the setup key once; it holds no password"
+    ),
+    'printf \'#!/bin/sh\\nprintf "%%s\\\\n" "$SETUP_PW"\\n\' > '
+    "~/.palaia-setup/askpass && chmod 700 ~/.palaia-setup/askpass": (
+        "askpass helper: prints the variable it is given, holds no secret itself"
+    ),
+    _PASSWORD_RUN_LINE: (
+        "the user's Run line: reads the password with a star per character (#558) and "
+        "uses it once to add the setup key; nothing is saved (#631)"
+    ),
+    "ssh -i ~/.palaia-setup/key -o IdentitiesOnly=yes -o BatchMode=yes "
+    "-o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 root@<address> true": (
+        "login check with the setup key, after the password was used once"
+    ),
+    "ssh -i ~/.palaia-setup/key -o IdentitiesOnly=yes -o BatchMode=yes root@<address> "
+    "'sed -i \"/ palaia-setup$/d\" .ssh/authorized_keys'": (
+        "removes the setup key from the server when setup is done"
     ),
     'mkdir -p ~/.palaia-setup && chmod 700 ~/.palaia-setup && bash -c \'del=$(printf "\\177"); '
     's=; printf "Tailscale auth key: "; while IFS= read -rsn1 c; do if [ -z "$c" ]; then '
@@ -106,15 +139,8 @@ _NOT_FROM_DEPLOY: dict[str, str] = {
     "ssh root@<address> 'umask 077; cat > /root/.palaia-tskey' < ~/.palaia-setup/tskey": (
         "copies the key file over the login's stdin — never a command-line argument (#564)"
     ),
-    "printf '#!/bin/sh\\ncat \"$HOME/.palaia-setup/pw\"\\n' > ~/.palaia-setup/askpass "
-    "&& chmod 700 ~/.palaia-setup/askpass": "askpass helper; holds no secret itself",
-    'SSH_ASKPASS="$HOME/.palaia-setup/askpass" SSH_ASKPASS_REQUIRE=force ssh '
-    "-o StrictHostKeyChecking=accept-new "
-    "-o PreferredAuthentications=password,keyboard-interactive "
-    "-o NumberOfPasswordPrompts=1 -o ConnectTimeout=15 root@<address> true": (
-        "password login check through the askpass helper"
-    ),
-    "rm -rf ~/.palaia-setup": "deletes the saved password or key when setup is done",
+    "rm -f ~/.palaia-setup/tskey": "deletes the local copy of the Tailscale key",
+    "rm -rf ~/.palaia-setup": "deletes the setup key here when setup is done",
     "ssh-keygen -R <address>": "forgets a reset server's old host key",
     # The hub's own tunnel guidance generates this line for the cloud entry the
     # installer publishes; test_the_funnel_line_is_the_hubs_own_guidance pins it.
@@ -300,6 +326,121 @@ def test_the_skill_never_puts_a_key_into_a_command_line() -> None:
     body = _skill_body()
     assert "PALAIA_TSKEY=" not in body
     assert "PALAIA_TSKEY_FILE=/root/.palaia-tskey" in body
+
+
+# --- Step 3b: the password is used once and never saved (#631) -------------
+
+_FAKE_SSH = """#!/bin/sh
+# Stands in for ssh: records how the password and the key would reach it.
+printf '%s\n' "$@" > "$CAPTURE/args"
+printf '%s' "$SSH_ASKPASS_REQUIRE" > "$CAPTURE/require"
+"$SSH_ASKPASS" "root@198.51.100.7's password: " > "$CAPTURE/askpass"
+cat > "$CAPTURE/stdin"
+exit "${FAKE_SSH_EXIT:-0}"
+"""
+
+
+def _setup_key_lines() -> list[str]:
+    literals = _quoted_literals(_skill_body())
+    return [
+        next(line for line in literals if line.startswith("[ -f ~/.palaia-setup/key ]")),
+        next(line for line in literals if line.startswith("printf '#!/bin/sh")),
+    ]
+
+
+def _run_password_line(tmp_path: Path, password: str, ssh_exit: int) -> tuple[str, Path, Path]:
+    """Run 3b exactly as the skill prescribes, in a throwaway home: the
+    assistant's two setup lines, then the person's Run line on a real
+    terminal, typing ``password`` — against a stand-in ssh."""
+    home, capture, fake_bin = tmp_path / "home", tmp_path / "capture", tmp_path / "bin"
+    for directory in (home, capture, fake_bin):
+        directory.mkdir()
+    (fake_bin / "ssh").write_text(_FAKE_SSH, encoding="utf-8")
+    (fake_bin / "ssh").chmod(0o755)
+    env = {
+        "HOME": str(home),
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "CAPTURE": str(capture),
+        "FAKE_SSH_EXIT": str(ssh_exit),
+    }
+    for line in _setup_key_lines():
+        subprocess.run(["sh", "-c", line], env=env, check=True, timeout=30)
+
+    run_line = _PASSWORD_RUN_LINE.replace("<address>", "198.51.100.7")
+    assert run_line in [
+        line.replace("<address>", "198.51.100.7") for line in _quoted_literals(_skill_body())
+    ]
+    primary, secondary = pty.openpty()
+    process = subprocess.Popen(
+        ["sh", "-c", run_line],
+        stdin=secondary,
+        stdout=secondary,
+        stderr=secondary,
+        env=env,
+        start_new_session=True,
+    )
+    os.close(secondary)
+    output = b""
+
+    def read_until(marker: bytes) -> None:
+        nonlocal output
+        while marker not in output:
+            ready, _, _ = select.select([primary], [], [], 10)
+            assert ready, f"no {marker!r} on the terminal; got {output!r}"
+            try:
+                chunk = os.read(primary, 1024)
+            except OSError:  # the terminal closed: the line has ended
+                break
+            if not chunk:
+                break
+            output += chunk
+
+    read_until(b"Server password: ")
+    # Typed one key at a time, with a correction, as a person would.
+    for char in password[:-1] + "x\x7f" + password[-1]:
+        os.write(primary, char.encode())
+    os.write(primary, b"\r")
+    read_until(b"saved.")
+    process.wait(timeout=30)
+    os.close(primary)
+    return output.decode(errors="replace"), home, capture
+
+
+@pytest.mark.skipif(
+    shutil.which("bash") is None or shutil.which("ssh-keygen") is None,
+    reason="needs bash and ssh-keygen",
+)
+def test_the_password_line_uses_the_password_once_and_saves_nothing(tmp_path: Path) -> None:
+    password = 'pa ss"w$rd\\1'
+    output, home, capture = _run_password_line(tmp_path, password, ssh_exit=0)
+
+    # ssh got the password through the helper, and the setup key on stdin
+    # to add on the server — the key, not the password.
+    assert (capture / "askpass").read_text(encoding="utf-8") == password + "\n"
+    assert (capture / "require").read_text(encoding="utf-8") == "force"
+    key_pub = (home / ".palaia-setup" / "key.pub").read_text(encoding="utf-8")
+    assert key_pub.rstrip().endswith(" palaia-setup")
+    assert (capture / "stdin").read_text(encoding="utf-8") == key_pub
+    # Never in a command line, never on the screen, never in a file.
+    assert password not in (capture / "args").read_text(encoding="utf-8")
+    assert password not in output
+    assert "\b \b" in output  # the correction took a star back
+    saved = [p for p in home.rglob("*") if p.is_file() and password.encode() in p.read_bytes()]
+    assert saved == [], saved
+    assert "Key added. Your password was not saved." in output
+
+
+@pytest.mark.skipif(
+    shutil.which("bash") is None or shutil.which("ssh-keygen") is None,
+    reason="needs bash and ssh-keygen",
+)
+def test_the_password_line_says_so_when_the_login_fails(tmp_path: Path) -> None:
+    output, home, _ = _run_password_line(tmp_path, "wrong-one", ssh_exit=255)
+    assert "No key added. Nothing was saved." in output
+    assert "Key added." not in output.replace("No key added.", "")
+    assert not [
+        path for path in home.rglob("*") if path.is_file() and b"wrong-one" in path.read_bytes()
+    ]
 
 
 # --- the setup-code substitution, applied to the real file ------------------
