@@ -688,6 +688,7 @@ _PAGE_COLORS: dict[str, tuple[str, str]] = {
     "surface": ("#FFFFFF", "#161D2A"),
     "surface-muted": ("#EEF1F5", "#1C2433"),
     "border": ("#E3E7ED", "#263043"),
+    "border-control": ("#808B9B", "#6F7B8C"),
     "text": ("#1D232C", "#E8ECF1"),
     "text-2": ("#4B5563", "#AEB6C2"),
     "text-3": ("#667080", "#8B95A3"),
@@ -718,26 +719,27 @@ _PAGE_STYLE = f"""
             font: 400 20px/28px "Days One", "Inter", system-ui, sans-serif; }}
   .card {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
            padding: 24px; box-shadow: 0 1px 2px rgba(15, 21, 32, .06); }}
-  h1 {{ font-size: 28px; line-height: 34px; font-weight: 700; margin: 0 0 20px; }}
+  h1 {{ font-size: 24px; line-height: 30px; font-weight: 600; margin: 0 0 20px; }}
   p {{ margin: 0 0 12px; }}
   ul {{ margin: 0 0 16px; padding-left: 20px; }}
   li {{ margin: 4px 0; }}
   label {{ display: block; margin: 0 0 16px; font-weight: 600; }}
-  input {{ display: block; width: 100%; height: 40px; margin-top: 8px; padding: 0 12px;
-           border: 1px solid var(--text-3); border-radius: 8px; background: var(--surface);
+  input {{ display: block; width: 100%; height: 36px; margin-top: 8px; padding: 0 12px;
+           border: 1px solid var(--border-control); border-radius: 8px; background: var(--surface);
            color: var(--text); font: inherit; font-weight: 400; }}
   .actions {{ display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }}
-  button {{ height: 40px; padding: 0 20px; border-radius: 8px; border: 1px solid var(--action);
+  button {{ height: 36px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--action);
             background: var(--action); color: var(--on-action); font: inherit; font-weight: 600;
             cursor: pointer; }}
   button:hover {{ background: var(--action-hover); border-color: var(--action-hover); }}
   button.secondary {{ background: var(--surface); color: var(--text);
-                      border-color: var(--border); }}
+                      border-color: var(--border-control); }}
   button.secondary:hover {{ background: var(--surface-muted); }}
   :focus-visible {{ outline: 2px solid var(--focus); outline-offset: 2px; }}
   .err {{ padding: 12px 16px; border-radius: 10px; background: var(--error-bg); color: var(--error);
-          font-size: 13px; line-height: 20px; font-weight: 600; }}
-  .hint {{ font-size: 13px; line-height: 20px; color: var(--text-2); }}
+          font-size: 13px; line-height: 18px; font-weight: 600; }}
+  .hint {{ font-size: 13px; line-height: 18px; color: var(--text-2); }}
+  @media (max-width: 767px) {{ input, button {{ height: 44px; }} }}
   details {{ margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }}
   summary {{ cursor: pointer; color: var(--action); font-size: 13px; font-weight: 600; }}
   details[open] summary {{ margin-bottom: 12px; }}
