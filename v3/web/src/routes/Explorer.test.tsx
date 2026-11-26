@@ -201,6 +201,29 @@ describe("Memories › Browse", () => {
     );
   });
 
+  it("an empty memory says how it fills, with the one step that starts it", async () => {
+    stubVault(WORK, []);
+    vi.spyOn(api, "listTokens").mockResolvedValue([]);
+
+    mount();
+
+    expect(await screen.findByRole("heading", { name: "No notes in work yet" })).toBeInTheDocument();
+    expect(screen.queryByText("Pick a note from the list, or search.")).not.toBeInTheDocument();
+    // One filled button, not a second one in the side pane.
+    const links = await screen.findAllByRole("link", { name: "Connect an AI app" });
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveClass("btn--primary");
+  });
+
+  it("an empty memory with an AI app connected offers nothing to click", async () => {
+    stubVault(WORK, []);
+
+    mount();
+
+    expect(await screen.findByRole("heading", { name: "No notes in work yet" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Connect an AI app" })).not.toBeInTheDocument();
+  });
+
   it("does not suggest connecting an AI app when one is", async () => {
     stubVault();
 

@@ -99,15 +99,16 @@ export function ConnectStep({
               role="radio"
               aria-checked={item.id === client.id}
               key={item.id}
-              className={["clientcard", item.id === client.id ? "clientcard--on" : ""]
+              className={[
+                "clientcard",
+                item.id === client.id ? "clientcard--on" : "",
+                needsCloud ? "clientcard--later" : "",
+              ]
                 .filter(Boolean)
                 .join(" ")}
               onClick={() => setPicked(item.id)}
             >
-              <span className="row">
-                <item.icon className="icon--sm" />
-                <span className="clientcard__name">{item.name}</span>
-              </span>
+              <span className="clientcard__name">{item.name}</span>
               <span className="t-sm t-muted">
                 {item.kind === "notYet"
                   ? needsCloud

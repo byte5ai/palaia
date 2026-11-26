@@ -548,12 +548,15 @@ span.brand__mark, .brand__ver { display: none; }
 .radiocard--on .radiocard__pick { border-color: var(--action); border-width: 6px; }
 .radiocard__name { font-size: var(--type-body-strong-size); line-height: var(--type-body-strong-lh); font-weight: var(--type-body-strong-weight); }
 .radiocard__when { display: block; font-size: var(--type-secondary-size); line-height: var(--type-secondary-lh); color: var(--text-2); margin-top: 2px; }
-.clientgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+.clientgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: var(--space-3); }
 .clientcard { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); cursor: pointer; text-align: left; }
 .clientcard:hover { border-color: var(--text-3); }
 .clientcard--on, .clientcard--on:hover { border-color: var(--action); box-shadow: 0 0 0 1px var(--action); }
 .clientcard__name { font-size: var(--type-body-strong-size); font-weight: 600; }
+/* An app that needs a setting first: still a choice, visibly not ready. */
+.clientcard--later { background: var(--surface-muted); }
+.clientcard--later .clientcard__name { color: var(--text-2); }
 .switchgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
 .preview { padding: var(--space-3) var(--space-4); border: 1px dashed var(--border); border-radius: var(--radius-md); background: var(--surface-muted); }
 
@@ -661,15 +664,23 @@ span.brand__mark, .brand__ver { display: none; }
 .verdict__sub { color: var(--text-2); margin-top: var(--space-1); max-width: 65ch; }
 .verdict__pills { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-3); }
 .verdict__aside { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-end; flex: none; }
-.overview-cards { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-items: start; }
+/* The summary cards share one height; each one's link sits on its bottom edge. */
+.overview-cards { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-items: stretch; }
 .overview-cards .card { display: flex; flex-direction: column; }
+.overview-cards .card__foot { margin-top: auto; }
+/* The foot draws the line under the last row; rows only divide each other. */
+.overview-cards .listrow { border-bottom: 0; }
+.overview-cards .listrow + .listrow { border-top: 1px solid var(--border); }
 .feed { display: flex; flex-direction: column; }
 .feed__item { display: flex; gap: var(--space-3); padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--border); }
 .feed__item:last-child { border-bottom: 0; }
 .feed__mark { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
   flex: none; background: var(--surface-muted); color: var(--text-2); }
-.feed__text { font-size: var(--type-body-size); line-height: var(--type-body-strong-lh); overflow-wrap: anywhere; }
-.feed__meta { display: flex; align-items: center; gap: var(--space-2); margin-top: 2px; flex-wrap: wrap; }
+/* What changed on the left, where and when on the right, so the times line
+   up down the feed; on a phone the second line goes back under the first. */
+.feed__item .grow { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
+.feed__text { font-size: var(--type-body-size); line-height: var(--type-body-strong-lh); overflow-wrap: anywhere; min-width: 0; }
+.feed__meta { display: flex; align-items: center; gap: var(--space-2); flex: none; }
 @media (max-width: 1023px) {
   .verdict__aside { align-items: flex-start; }
   }
@@ -677,6 +688,7 @@ span.brand__mark, .brand__ver { display: none; }
   .verdict { padding: var(--space-5); }
   .verdict__line { font-size: 22px; line-height: 28px; }
   .feed__item { padding: var(--space-3) var(--space-4); }
+  .feed__item .grow { flex-direction: column; align-items: flex-start; gap: 2px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

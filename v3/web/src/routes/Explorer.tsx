@@ -563,6 +563,9 @@ function VaultView({
   }
 
   const groups = useMemo(() => groupByFolder(notes ?? []), [notes]);
+  // Loaded, and nothing in it: the middle pane explains instead of asking
+  // to pick a note.
+  const isEmpty = notes !== null && notes.length === 0 && !notesError;
   const vault = vaults.find((v) => v.key === vaultKey) ?? null;
   const description =
     vault && !isGeneratedDescription(vault.purpose, vault.key) ? vault.purpose : null;
@@ -693,9 +696,7 @@ function VaultView({
                 <Skeleton height={16} width="85%" />
               </div>
             ) : groups.length === 0 ? (
-              <p className="t-sm t-muted">
-                No notes yet. Notes appear here as your AI apps save them.
-              </p>
+              <p className="t-sm t-muted">No notes yet.</p>
             ) : (
               <div className="tree">
                 {groups.map((group) => (
@@ -718,9 +719,29 @@ function VaultView({
         ) : (
           <>
             <div className="pane">
-              <div className="pane__body memories-pick">
-                <p className="t-muted">Pick a note from the list, or search.</p>
-              </div>
+              {isEmpty ? (
+                // An empty memory says how it fills, and holds the one step
+                // that starts it when no AI app is connected yet.
+                <EmptyState
+                  mark={<VaultsIcon className="icon icon--xl" />}
+                  title={`No notes in ${vaultKey} yet`}
+                  actions={
+                    hasApps === false ? (
+                      <LinkButton variant="primary" to="/apps">
+                        Connect an AI app
+                      </LinkButton>
+                    ) : undefined
+                  }
+                >
+                  {hasApps === false
+                    ? "Notes appear here as your AI apps save them. Connect one to start."
+                    : "Notes appear here as your AI apps save them."}
+                </EmptyState>
+              ) : (
+                <div className="pane__body memories-pick">
+                  <p className="t-muted">Pick a note from the list, or search.</p>
+                </div>
+              )}
             </div>
             <div className="pane pane--ctx">
               <div className="pane__head">
@@ -736,7 +757,7 @@ function VaultView({
                   {count(vault?.note_count ?? 0, "note", "notes")}
                   {vault?.writable === false ? " · read-only" : ""}
                 </p>
-                {hasApps === false ? (
+                {hasApps === false && !isEmpty ? (
                   <div>
                     <LinkButton size="sm" variant="primary" to="/apps">
                       Connect an AI app
