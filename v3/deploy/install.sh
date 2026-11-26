@@ -7,7 +7,12 @@
 # would rather paste one command than read the README.
 set -euo pipefail
 
-IMAGE="${PALAIA_IMAGE:-ghcr.io/byte5ai/palaia:stable}"
+# rc-channel-note — this release is a release candidate, so the default image
+# is the `beta` channel (no `stable` image exists until 3.0.0 is final), the
+# same default get-palaia.sh has. server/tests/test_version_drift.py keeps
+# this line in step with v3/VERSION.
+DEFAULT_CHANNEL="beta"
+IMAGE="${PALAIA_IMAGE:-ghcr.io/byte5ai/palaia:${PALAIA_CHANNEL:-$DEFAULT_CHANNEL}}"
 CONTAINER_NAME="${PALAIA_CONTAINER_NAME:-palaia}"
 PORT="${PALAIA_INSTALL_PORT:-8420}"
 VOLUME="${PALAIA_VOLUME:-palaia_home}"

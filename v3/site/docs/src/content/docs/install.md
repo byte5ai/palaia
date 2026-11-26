@@ -20,22 +20,17 @@ docker run -d --name palaia \
   --restart unless-stopped \
   --security-opt no-new-privileges:true --cap-drop ALL \
   --read-only --tmpfs /tmp --tmpfs /run \
-  ghcr.io/byte5ai/palaia:stable
+  ghcr.io/byte5ai/palaia:beta
 ```
 
-With Docker Desktop on macOS or Windows:
+With Docker Desktop on macOS or Windows — one line, so it pastes the same into
+Terminal, PowerShell or Command Prompt:
 
 ```bash
-docker run -d --name palaia \
-  -p 8420:8420 \
-  -v palaia_home:/data \
-  --restart unless-stopped \
-  --security-opt no-new-privileges:true --cap-drop ALL \
-  --read-only --tmpfs /tmp --tmpfs /run \
-  ghcr.io/byte5ai/palaia:stable
+docker run -d --name palaia -p 8420:8420 -v palaia_home:/data --restart unless-stopped --security-opt no-new-privileges:true --cap-drop ALL --read-only --tmpfs /tmp --tmpfs /run ghcr.io/byte5ai/palaia:beta
 ```
 
-The two differ in one line only. On Linux the container shares the
+The two differ only in their network part. On Linux the container shares the
 machine's own network, so its name, `palaia.local`, reaches your other
 devices (see [below](#finding-it-on-your-network-palaialocal)), and
 `PALAIA_CLOUD_BIND` keeps the entrance for cloud AI apps on the machine
@@ -43,9 +38,9 @@ itself. Docker Desktop runs containers inside a hidden virtual machine, so
 there the port is handed out instead.
 
 <!-- rc-channel-note -->
-> **Release candidate:** until `3.0.0` is final there is no `stable` image yet. Where a
-> command or file on this page says `ghcr.io/byte5ai/palaia:stable`, use
-> `ghcr.io/byte5ai/palaia:beta` for now.
+> **Release candidate:** until `3.0.0` is final there is no `stable` image yet. The two
+> commands and the script below already pull `beta`; the compose file still says
+> `ghcr.io/byte5ai/palaia:stable` — use `ghcr.io/byte5ai/palaia:beta` there for now.
 
 The five extra flags close off what a non-root container process could
 otherwise still reach — nothing about the install changes if you leave

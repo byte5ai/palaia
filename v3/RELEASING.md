@@ -43,14 +43,19 @@ no dates filled in before the release.
       other artifact disagrees; fix forward until it's green again).
 - [ ] Remove every `rc-channel-note` (the "until 3.0.0 is final, use `:beta`"
       notes in the install docs, `deploy/README.md`, `deploy/docker-compose.yml`,
-      `deploy/get-palaia.sh`, the root README and the generated Synology page
+      `deploy/get-palaia.sh`, `deploy/install.sh`, the root README and the generated Synology page
       — regenerate it with `npm run gen:synology`).
       `server/tests/test_version_drift.py` requires the notes while `VERSION`
       is a pre-release and refuses them once it is not, so a forgotten one
       fails CI rather than shipping.
-- [ ] Flip the installer's default channel from `beta` to `stable`:
-      `deploy/get-palaia.sh`'s `DEFAULT_CHANNEL=` line (and drop its
-      `rc-channel-note`). `curl -fsSL https://get.palaia.ai | sh` and the
+- [ ] Flip the installers' default channel from `beta` to `stable`:
+      the `DEFAULT_CHANNEL=` lines in `deploy/get-palaia.sh` and
+      `deploy/install.sh` (and drop their `rc-channel-note`s), and the image
+      tag of the two `docker run` commands under "Quick start" in
+      `deploy/README.md` (`test_the_readme_quick_start_commands_pull_a_tag_that_exists_now`
+      fails until they say `stable`; the onboarding page and the install
+      skill hand them out as they are, issue #651), and the same two in the
+      docs site's `install.md` (`tests/onboarding.test.ts` keeps them equal). `curl -fsSL https://get.palaia.ai | sh` and the
       server-creation file (`deploy/cloud-init.yaml`, which runs that
       installer) install without anyone adjusting the command, so during the
       RC the installer pins `beta` — a tag that exists — rather than a

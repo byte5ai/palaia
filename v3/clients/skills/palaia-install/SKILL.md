@@ -38,15 +38,17 @@ setup file pick the right palaia image for their release: never add or change on
 
 Ask this first, in plain words:
 
-- **A rented cloud server (VPS)** — Hetzner, DigitalOcean, Netcup and similar.
-  The most common answer. Go to Step 2.
-- **A home NAS** — Synology, Umbrel, TrueNAS, CasaOS: palaia's listing in its app
-  store; skip the rest of this skill.
-- **A Raspberry Pi** — the ready-made palaia image attached to the latest release
-  and its flashing guide; skip the rest.
-- **Their own computer** — fine for a quick try. Linux: treat it like an existing
-  server (Step 3). Mac or Windows: Docker Desktop and the first command under
-  "Quick start" in `v3/deploy/README.md`.
+- **A rented server (VPS)** — Hetzner, DigitalOcean, Netcup or similar; most common. Step 2.
+- **A home NAS** — no NAS app store lists palaia yet (Synology, Umbrel, TrueNAS, CasaOS):
+  say so and recommend a rented server (Step 2).
+- **A Raspberry Pi** — a release candidate (`v3/VERSION` with a suffix, like 3.0.0-rc10)
+  has no working Pi image yet: say so and recommend a rented server (Step 2). From 3.0.0
+  on: Raspberry Pi Imager with `palaia-appliance-v<version>.img.xz` from
+  `https://github.com/byte5ai/palaia/releases/tag/v3.<version>`, then Step 5 at
+  http://palaia.local/.
+- **Their own computer** — a quick try, private only. Linux: Step 3. Mac or Windows:
+  Docker Desktop, then the Docker Desktop line of "Quick start" in `v3/deploy/README.md`,
+  as it is, in Terminal or PowerShell; then `http://localhost:8420/` and Step 5.
 
 ## Step 2 — How will they use it? Then: does the server exist?
 
@@ -63,25 +65,22 @@ things up; Plus, Go and Free are not listed. On those, recommend the Claude app 
 
 Then ask whether the server exists already or is about to be created:
 
-- **Not yet created** — the easiest path: a setup file pasted into one field when
-  creating the server. No commands. Go to Step 2a.
+- **Not yet created** — easiest: a setup file pasted into one field when creating it, no
+  commands. Step 2a.
 - **Already created** — Step 3.
 
-**The setup code.** The setup page (Step 4) opens only with a one-time code. Make
-one up: 12 capital letters and digits without 0, O, 1 or I, in three groups like
-`K7QM-R2XD-9FTP`. Tell them; it is not a password and stops working once setup
-is done.
+**The setup code.** The setup page (Step 4) opens only with a one-time code. Make one
+up: 12 capital letters and digits without 0, O, 1 or I, in three groups like
+`K7QM-R2XD-9FTP`. Tell them; it is not a password and stops working once setup is done.
 
 ### Step 2a — Not yet created: the setup file
 
 1. Take `v3/deploy/cloud-init.yaml` exactly as it is and change one line:
-   `PALAIA_SETUP_CODE="setup-code-REPLACE_ME"` becomes
-   `PALAIA_SETUP_CODE="<code>"` with your code — the text appears twice (the
-   explanation at the top and where it is set); change both.
+   `PALAIA_SETUP_CODE="setup-code-REPLACE_ME"` becomes `PALAIA_SETUP_CODE="<code>"`, in
+   both places it appears (the explanation at the top and where it is set).
 2. Check: the first line is still `#cloud-config`, nothing else changed.
-3. Give them the whole file as one block. They paste it into the field their
-   provider shows when creating a server (Hetzner: "Cloud config", others:
-   "User data"), then create it.
+3. Give them the whole file as one block to paste into the field their provider shows
+   when creating a server (Hetzner: "Cloud config", others: "User data"), then create it.
 4. Ask for the server's address once it shows. Go to Step 4.
 
 ## Step 3 — An existing server: set it up remotely

@@ -38,10 +38,15 @@ describe("onboarding page snippets", () => {
     const compose = readFileSync(path.join(DEPLOY_ROOT, "docker-compose.yml"), "utf8");
     const { dockerRun, dockerRunDesktop } = loadDeploySnippets();
 
-    const imageMatch = compose.match(/image:\s*(\S+)/);
+    // The same image repository as compose. The tag is the channel of this
+    // release (issue #651: `beta` while VERSION is a pre-release, when the
+    // compose file's `stable` does not exist yet), the same rule
+    // server/tests/test_version_drift.py applies to the installers.
+    const imageMatch = compose.match(/image:\s*(\S+):\S+/);
     expect(imageMatch, "docker-compose.yml has an image: line").not.toBeNull();
-    expect(dockerRun).toContain(imageMatch![1]);
-    expect(dockerRunDesktop).toContain(imageMatch![1]);
+    const image = `${imageMatch![1]}:${isPrerelease() ? "beta" : "stable"}`;
+    expect(dockerRun).toContain(image);
+    expect(dockerRunDesktop).toContain(image);
 
     // Linux: the host network, so palaia.local reaches the local network,
     // with the cloud entry kept on loopback — the same as compose.
@@ -73,9 +78,16 @@ describe("onboarding page snippets", () => {
 
   it("the two docker run commands differ only in their network line", () => {
     const { dockerRun, dockerRunDesktop } = loadDeploySnippets();
+    // Compared word by word: the Docker Desktop command is one line (it has
+    // to paste into PowerShell, which does not continue a line ending in a
+    // backslash), the Linux one is wrapped.
     const rest = (command: string) =>
-      command.split("\n").filter((line) => !/--network host|-p 8420:8420/.test(line));
+      command
+        .replace(/--network host -e PALAIA_CLOUD_BIND=\S+|-p 8420:8420/g, "")
+        .split(/[\s\\]+/)
+        .filter(Boolean);
     expect(rest(dockerRun)).toEqual(rest(dockerRunDesktop));
+    expect(dockerRunDesktop.trim()).not.toContain("\n");
   });
 
   it("the compose command matches the real docker-compose.yml's own usage line", () => {
