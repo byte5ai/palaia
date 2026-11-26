@@ -558,7 +558,8 @@ export function Home() {
                   </span>
                   <div className="grow">
                     <p className="feed__text">
-                      {item.verb} <strong>{item.title}</strong>
+                      {item.actor ? `${item.actor} ${item.verb.toLowerCase()}` : item.verb}{" "}
+                      <strong>{item.title}</strong>
                     </p>
                     <p className="feed__meta t-meta">
                       {[item.vault, item.at !== null ? timeAgo(item.at) : null].filter(Boolean).join(" · ")}

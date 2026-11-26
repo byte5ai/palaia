@@ -231,6 +231,36 @@ def test_recent_activity_lists_changed_notes_across_vaults_newest_first(
     assert all(change["permalink"] for change in changes)
 
 
+def test_recent_activity_says_who_made_each_notes_last_change(tmp_path: Path) -> None:
+    """The feed names the AI app that saved a note; palaia's own writes
+    (here: the template notes) name nobody."""
+    import asyncio
+
+    from palaia_hub.vault import Attribution
+
+    registry = VaultRegistry(tmp_path / "home")
+    client = TestClient(create_app(HubConfig(), vault_registry=registry))
+    client.post("/api/vaults", json={"key": "work", "template": True})
+
+    async def save_as_an_app() -> None:
+        engine = await registry.get("work")
+        await engine.write_note(
+            "billing-service.md",
+            body="Owns invoices.",
+            title="Billing service",
+            attribution=Attribution(client="Claude Code CLI"),
+        )
+
+    asyncio.run(save_as_an_app())
+
+    actors = {
+        change["title"]: change["actor"]
+        for change in client.get("/api/vaults/recent-activity").json()
+    }
+    assert actors["Billing service"] == "Claude Code CLI"
+    assert actors["Welcome to this memory"] == ""
+
+
 def test_recent_activity_honours_the_limit(tmp_path: Path) -> None:
     client = _client(tmp_path)
     client.post("/api/vaults", json={"key": "work", "template": True})

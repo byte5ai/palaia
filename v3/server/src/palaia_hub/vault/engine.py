@@ -1106,6 +1106,7 @@ class VaultEngine:
                 path=relative,
                 permalink=note.permalink,
                 checksum=note.checksum,
+                actor=attribution.actor,
             )
             if not exists
             else NoteModified(
@@ -1114,6 +1115,7 @@ class VaultEngine:
                 permalink=note.permalink,
                 checksum=note.checksum,
                 previous_checksum=existing.checksum if existing else None,
+                actor=attribution.actor,
             )
         )
         commit = self._commit_changes(
@@ -1311,6 +1313,7 @@ class VaultEngine:
             previous_path=relative,
             permalink=note.permalink,
             checksum=note.checksum,
+            actor=attribution.actor,
         )
         commit = self._commit_changes(
             [relative, destination],
@@ -1354,6 +1357,7 @@ class VaultEngine:
             vault=self.name,
             path=relative,
             permalink=entry.permalink if entry else None,
+            actor=attribution.actor,
         )
         commit = self._commit_changes(
             [relative],

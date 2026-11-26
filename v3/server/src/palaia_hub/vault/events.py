@@ -28,6 +28,9 @@ class VaultEvent:
     vault: str
     at: datetime = field(default_factory=lambda: datetime.now(tz=UTC))
     external: bool = False
+    #: The AI app (or agent) whose call caused the change, as named in the
+    #: commit; ``None`` for the engine's own writes and for external edits.
+    actor: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

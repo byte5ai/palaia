@@ -114,6 +114,9 @@ export interface RecentChange {
   title: string;
   /** ISO 8601, or empty when the note carries no `modified`. */
   modified: string;
+  /** Who made the last change: an AI app's name, "human" for an edit
+   * outside palaia, or empty for palaia itself. Absent on older hubs. */
+  actor?: string;
 }
 
 export interface VaultSummary {

@@ -51,6 +51,8 @@ def _to_public_data(event: ChangeEvent) -> dict[str, Any]:
         value = getattr(event, field, None)
         if value is not None:
             data[field] = value
+    if event.actor:
+        data["actor"] = event.actor
     if isinstance(event, EntityRenamed):
         data["previous_permalink"] = event.previous_permalink
         data["title"] = event.title
