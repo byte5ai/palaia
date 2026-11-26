@@ -8,7 +8,7 @@ to understand it before they trust it.
 ## What you get, in detail
 
 Grouped by what it does for you, not by what module it lives in. Every item below
-ships in `3.0.0-rc10` unless it says it is planned; the full list is in
+ships in `3.0.0-rc11` unless it says it is planned; the full list is in
 [`CHANGELOG.md`](../CHANGELOG.md).
 
 ### Memory that outlives the session
@@ -97,7 +97,8 @@ ships in `3.0.0-rc10` unless it says it is planned; the full list is in
 ### Operations you can live with
 
 - **A real dashboard.** Setup wizard, memory explorer, per-client connect pages,
-  marketplace, profile editor, health. Three in-chat MCP Apps (hub status, recall
+  marketplace, profile editor, health, and a command palette (Ctrl+K / ⌘K) that
+  reaches every page and finds a note in any memory. Three in-chat MCP Apps (hub status, recall
   explorer, review queue) cover the everyday checks without a browser tab.
 - **One-click backup** of the entire hub home, and a documented offline restore
   ([backup & restore](backup-restore.md)). Backups can also run **on a schedule**
