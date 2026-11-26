@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Design-token lint (v3/docs/design/system.md §1): every colour and every
- * transition duration in the dashboard comes from a custom property, and
+ * Design-token lint (v3/docs/design/system.md §1): every colour, type size,
+ * radius and transition duration in the dashboard comes from a custom
+ * property, every layout switch happens at a breakpoint of the system, and
  * every custom property the code reads exists.
  *
  * eslint has no opinion on CSS literals or on `style={{ color: "#..." }}`
@@ -15,6 +16,10 @@
  *   3. Every `var(--name)` used in a .css/.ts/.tsx file is defined in one of
  *      the stylesheets — so a token that was renamed or removed fails here
  *      instead of silently rendering nothing.
+ *   4. No literal `font-size`, `line-height` or `border-radius` in px or rem
+ *      (a type style or a radius token instead; `0`, `50%` and `em` values
+ *      relative to the surrounding text are not design values).
+ *   5. Every `@media` width is a breakpoint from v3/design/tokens.json.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { extname, join, relative } from "node:path";
@@ -28,6 +33,18 @@ const RGB_FUNC = /\brgba?\(/g;
 const HSL_FUNC = /\bhsla?\(/g;
 const RAW_DURATION = /\b\d+(?:\.\d+)?(?:ms|s)\b/g;
 const VAR_USE = /var\(\s*(--[a-zA-Z0-9_-]+)/g;
+const LITERAL_SCALE = /\b(font-size|line-height|border-radius)\s*:\s*([^;}]*)/g;
+const LENGTH = /(?<![\w.-])(\d*\.?\d+)(px|rem)\b/g;
+const MEDIA_WIDTH = /\((min|max)-width:\s*(\d+)px\)/g;
+
+const TOKENS = JSON.parse(
+  readFileSync(new URL("../../design/tokens.json", import.meta.url), "utf-8"),
+);
+/** `max-width` and `min-width` values a media query may use. */
+const BREAKPOINT_WIDTHS = {
+  max: new Set(TOKENS.breakpoints.filter((b) => b.max).map((b) => b.max)),
+  min: new Set(TOKENS.breakpoints.filter((b) => b.min).map((b) => b.min)),
+};
 const VAR_DEF = /(?:^|[{;\s])(--[a-zA-Z0-9_-]+)\s*:/g;
 
 function walk(dir, out = []) {
@@ -92,6 +109,18 @@ function checkLiterals(path) {
     }
   }
   if (isCss) {
+    for (const match of text.matchAll(LITERAL_SCALE)) {
+      if (isInsideCustomPropertyValue(text, match.index)) continue;
+      for (const length of match[2].matchAll(LENGTH)) {
+        if (Number(length[1]) === 0) continue;
+        violations.push(`${rel}: literal ${match[1]} ${length[0]} outside the type and radius tokens`);
+      }
+    }
+    for (const match of text.matchAll(MEDIA_WIDTH)) {
+      if (!BREAKPOINT_WIDTHS[match[1]].has(Number(match[2]))) {
+        violations.push(`${rel}: @media (${match[1]}-width: ${match[2]}px) is not a breakpoint of the system`);
+      }
+    }
     for (const match of text.matchAll(RAW_DURATION)) {
       // Only `transition` is checked: a state change routes through
       // --duration-quick/-smooth. Looping animations (skeleton pulse, the
@@ -127,8 +156,12 @@ if (violations.length > 0) {
   for (const violation of violations) {
     console.error(`  ${violation}`);
   }
-  console.error(`\n${violations.length} violation(s). Use a var(--...) token from tokens.css.`);
+  console.error(
+    `\n${violations.length} violation(s). Use a var(--...) token from tokens.css, or add the value to v3/design/tokens.json.`,
+  );
   process.exit(1);
 }
 
-console.log("lint-tokens: every colour, duration and custom property resolves to a token.");
+console.log(
+  "lint-tokens: every colour, type size, radius, duration, breakpoint and custom property resolves to a token.",
+);

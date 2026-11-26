@@ -352,6 +352,11 @@ Use this on any PR that adds or changes UI:
 - [ ] **Every AI app is named exactly** (§0.2).
 - [ ] **One primary action** on the page; destructive actions are red text,
       filled red only in their confirm dialog.
+- [ ] **The pattern is the one `system.md` §6 names for the job** (a table
+      for a list of one kind, a side panel for one item's details, a callout
+      for a blocked state), built from the components of §2.
+- [ ] **Every value is a token**: no colour, type size, radius, duration or
+      breakpoint outside `tokens.json` (`npm run lint`).
 - [ ] **Status is word + colour** in one of the five tones; palaia's health
       wording matches the sidebar.
 - [ ] Optional fields say "Optional"; required ones carry no marker;

@@ -11,7 +11,9 @@
   --font-display: "Days One", "Inter", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
   --type-display-size: 48px; --type-display-lh: 56px; --type-display-weight: 400;
+  --type-wordmark-size: 20px; --type-wordmark-lh: 28px; --type-wordmark-weight: 400;
   --type-title-1-size: 24px; --type-title-1-lh: 30px; --type-title-1-weight: 600;
+  --type-title-1-phone-size: 22px; --type-title-1-phone-lh: 28px; --type-title-1-phone-weight: 600;
   --type-title-2-size: 16px; --type-title-2-lh: 22px; --type-title-2-weight: 600;
   --type-body-strong-size: 14px; --type-body-strong-lh: 20px; --type-body-strong-weight: 600;
   --type-body-size: 14px; --type-body-lh: 20px; --type-body-weight: 400;
@@ -28,6 +30,8 @@
   --space-8: 32px;
   --space-12: 48px;
   --space-16: 64px;
+  --radius-xs: 4px;
+  --radius-inner: 6px;
   --radius-sm: 8px;
   --radius-md: 10px;
   --radius-pill: 999px;
@@ -40,6 +44,12 @@
   --content-width: 1120px;
   --form-width: 720px;
   --wizard-width: 640px;
+  --touch-target: 44px;
+  --appbar-height: 56px;
+  --rail-width: 64px;
+  --duration-quick: 120ms;
+  --duration-smooth: 200ms;
+  --easing-standard: cubic-bezier(0.2, 0, 0, 1);
   color-scheme: light;
   --canvas: #F5F7FA;
   --surface: #FFFFFF;
@@ -64,8 +74,16 @@
   --info-bg: #E6F0F6;
   --neutral: #4B5563;
   --neutral-bg: #EDEEEF;
+  --scrim: rgba(15,21,32,.5);
   --shadow-card: 0 1px 2px rgba(15,21,32,.06);
   --shadow-overlay: 0 12px 32px rgba(15,21,32,.18);
+}
+
+@media (max-width: 767px) {
+  :root {
+    --control-height: 44px;
+    --control-height-sm: 44px;
+  }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -94,6 +112,7 @@
     --info-bg: #1B374B;
     --neutral: #AEB6C2;
     --neutral-bg: #2E3542;
+    --scrim: rgba(15,21,32,.5);
     --shadow-card: none;
     --shadow-overlay: 0 12px 32px rgba(0,0,0,.55);
   }
@@ -124,6 +143,7 @@
   --info-bg: #1B374B;
   --neutral: #AEB6C2;
   --neutral-bg: #2E3542;
+  --scrim: rgba(15,21,32,.5);
   --shadow-card: none;
   --shadow-overlay: 0 12px 32px rgba(0,0,0,.55);
 }

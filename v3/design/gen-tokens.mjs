@@ -1,13 +1,21 @@
 #!/usr/bin/env node
 /**
- * palaia design tokens: one source, two generated stylesheets.
+ * palaia design tokens: one source, two generated stylesheets and the
+ * token tables of the specification.
  *
  * `tokens.json` (this folder) is the only place a colour, type step, space,
- * radius, shadow or layout size is written down. This script turns it into
+ * radius, shadow, size, duration or breakpoint is written down. This script
+ * turns it into
  *
  *   - `v3/web/src/styles/tokens.css`         the dashboard's custom properties
  *   - `v3/site/docs/src/styles/palaia-tokens.css`  Starlight's colour and font
  *                                             variables, mapped onto the same values
+ *   - the tables between `<!-- generated:… -->` markers in
+ *     `v3/docs/design/system.md`, so the specification states what ships
+ *
+ * It also measures every colour pair `tokens.json` lists under `contrast`,
+ * in both themes, and fails when one is below its minimum (WCAG 2.2: 4.5:1
+ * for text, 3:1 for the edge of a control and the focus ring).
  *
  * Both files are committed (the dashboard's Docker build copies `v3/web/` only,
  * so nothing may be generated at build time). Run it after editing
@@ -34,6 +42,7 @@ const V3 = join(HERE, "..");
 const SOURCE = join(HERE, "tokens.json");
 const WEB_OUT = join(V3, "web/src/styles/tokens.css");
 const DOCS_OUT = join(V3, "site/docs/src/styles/palaia-tokens.css");
+const SPEC_OUT = join(V3, "docs/design/system.md");
 
 const HEADER = (target) => `/* =============================================================
    GENERATED FILE. Do not edit by hand.
@@ -93,7 +102,17 @@ function staticLines(tokens) {
   for (const token of tokens.spacing.tokens) lines.push(`--${token.name}: ${token.value};`);
   for (const token of tokens.radius.tokens) lines.push(`--${token.name}: ${token.value};`);
   for (const token of tokens.size.tokens) lines.push(`--${token.name}: ${token.value};`);
+  for (const token of tokens.motion.tokens) lines.push(`--${token.name}: ${token.value};`);
   return lines;
+}
+
+/** The sizes that differ on a phone, as one media block. */
+function phoneBlock(tokens) {
+  const phone = tokens.breakpoints.find((b) => b.name === "phone");
+  const lines = tokens.size.tokens
+    .filter((token) => token.phone)
+    .map((token) => `--${token.name}: ${token.phone};`);
+  return `@media (max-width: ${phone.max}px) {\n${block(":root", lines, "  ")}}\n`;
 }
 
 export function renderWebCss(tokens) {
@@ -102,6 +121,7 @@ export function renderWebCss(tokens) {
   return [
     HEADER("Target: the dashboard (v3/web). Names match tokens.json one to one."),
     block(":root", [...staticLines(tokens), ...light]),
+    phoneBlock(tokens),
     "@media (prefers-color-scheme: dark) {\n" +
       block(':root:not([data-theme="light"])', dark, "  ") +
       "}\n",
@@ -161,23 +181,153 @@ export function renderDocsCss(tokens) {
   ].join("\n");
 }
 
+// ------------------------------------------------------------- contrast
+
+function luminance(hex) {
+  const channel = (offset) => {
+    const value = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+}
+
+export function contrastRatio(a, b) {
+  const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (light + 0.05) / (dark + 0.05);
+}
+
+/** Every declared pair, measured in both themes. */
+export function contrastRows(tokens) {
+  return tokens.contrast.map((pair) => ({
+    ...pair,
+    light: contrastRatio(colorValue(tokens, pair.fg, "light"), colorValue(tokens, pair.bg, "light")),
+    dark: contrastRatio(colorValue(tokens, pair.fg, "dark"), colorValue(tokens, pair.bg, "dark")),
+  }));
+}
+
+function contrastFailures(tokens) {
+  return contrastRows(tokens).flatMap((row) =>
+    ["light", "dark"]
+      .filter((theme) => row[theme] < row.min)
+      .map(
+        (theme) =>
+          `${row.fg} on ${row.bg} (${theme}): ${row[theme].toFixed(2)}:1, needs ${row.min}:1 — ${row.use}`,
+      ),
+  );
+}
+
+// --------------------------------------------- tables of the specification
+
+function table(head, rows) {
+  const line = (cells) => `| ${cells.join(" | ")} |`;
+  return [line(head), line(head.map(() => "---")), ...rows.map(line)].join("\n");
+}
+
+const code = (text) => `\`${text}\``;
+
+/** One generated block per name; `system.md` places them with markers. */
+export function specTables(tokens) {
+  const themed2 = (value) =>
+    typeof value === "object" && value !== null ? [value.light, value.dark] : [value, value];
+  const px = (token) => (token.phone ? `${token.value} (${token.phone} on a phone)` : token.value);
+  const range = (b) =>
+    b.min && b.max ? `${b.min}–${b.max} px` : b.min ? `from ${b.min} px` : `up to ${b.max} px`;
+  return {
+    color: table(
+      ["Token", "Light", "Dark", "Use"],
+      tokens.color.tokens.map((t) => [code(t.name), ...themed2(t.value), t.usage]),
+    ),
+    type: table(
+      ["Style", "Size / line", "Weight", "Family", "Use"],
+      tokens.type.groups.flatMap((group) =>
+        group.styles.map((s) => [
+          code(s.name),
+          `${parseInt(s.fontSize, 10)} / ${parseInt(s.lineHeight, 10)}`,
+          String(s.fontWeight),
+          group.family,
+          s.usage,
+        ]),
+      ),
+    ),
+    spacing: table(
+      ["Token", "Value", "Use"],
+      tokens.spacing.tokens.map((t) => [code(t.name), t.value, t.usage]),
+    ),
+    radius: table(
+      ["Token", "Value", "Use"],
+      tokens.radius.tokens.map((t) => [code(t.name), t.value, t.usage]),
+    ),
+    shadow: table(
+      ["Token", "Light", "Dark", "Use"],
+      tokens.shadow.tokens.map((t) => [code(t.name), ...themed2(t.value), t.usage]),
+    ),
+    size: table(
+      ["Token", "Value", "Use"],
+      tokens.size.tokens.map((t) => [code(t.name), px(t), t.usage]),
+    ),
+    motion: table(
+      ["Token", "Value", "Use"],
+      tokens.motion.tokens.map((t) => [code(t.name), t.value, t.usage]),
+    ),
+    breakpoints: table(
+      ["Name", "Width", "What changes"],
+      tokens.breakpoints.map((b) => [b.name, range(b), b.usage]),
+    ),
+    contrast: table(
+      ["Pair", "Light", "Dark", "Minimum", "Use"],
+      contrastRows(tokens).map((row) => [
+        `${code(row.fg)} on ${code(row.bg)}`,
+        `${row.light.toFixed(1)}:1`,
+        `${row.dark.toFixed(1)}:1`,
+        `${row.min}:1`,
+        row.use,
+      ]),
+    ),
+  };
+}
+
+const MARKER = /<!-- generated:([a-z]+):start -->[\s\S]*?<!-- generated:\1:end -->/g;
+
+/** `system.md` with every marked block replaced by its current table. */
+export function renderSpec(tokens, current) {
+  if (current === null) throw new Error("v3/docs/design/system.md is missing");
+  const tables = specTables(tokens);
+  const seen = new Set();
+  const text = current.replace(MARKER, (_, name) => {
+    if (!(name in tables)) throw new Error(`system.md: no generated table named "${name}"`);
+    seen.add(name);
+    return `<!-- generated:${name}:start -->\n${tables[name]}\n<!-- generated:${name}:end -->`;
+  });
+  const missing = Object.keys(tables).filter((name) => !seen.has(name));
+  if (missing.length > 0) {
+    throw new Error(`system.md has no <!-- generated:…:start/end --> block for: ${missing.join(", ")}`);
+  }
+  return text;
+}
+
 const OUTPUTS = [
   [WEB_OUT, renderWebCss],
   [DOCS_OUT, renderDocsCss],
+  [SPEC_OUT, renderSpec],
 ];
 
 function main() {
   const check = process.argv.includes("--check");
   const tokens = load();
   const stale = [];
+  const failures = contrastFailures(tokens);
+  if (failures.length > 0) {
+    console.error(`gen-tokens: colour pairs below their minimum contrast:\n  ${failures.join("\n  ")}`);
+    process.exit(1);
+  }
   for (const [path, render] of OUTPUTS) {
-    const wanted = render(tokens);
     let current = null;
     try {
       current = readFileSync(path, "utf-8");
     } catch {
       current = null;
     }
+    const wanted = render(tokens, current);
     if (current === wanted) continue;
     if (check) {
       stale.push(relative(V3, path));
@@ -193,7 +343,11 @@ function main() {
     );
     process.exit(1);
   }
-  if (check) console.log("gen-tokens: generated token files match tokens.json.");
+  if (check) {
+    console.log(
+      "gen-tokens: generated files match tokens.json; every colour pair reaches its minimum contrast.",
+    );
+  }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
