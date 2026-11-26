@@ -148,6 +148,9 @@ class CatalogEntry:
     checksum: str
     size: int
     mtime_ns: int
+    #: True for the vault manifest and any other ``type: meta`` note (format
+    #: spec §6): self-description, left out of what a person counts as notes.
+    meta: bool = False
 
 
 class _Lookups:
@@ -343,7 +346,7 @@ class VaultEngine:
             purpose=self._purpose,
             format_version=self._format_version,
             writable=self._writable,
-            note_count=len(self._snapshot.entries),
+            note_count=sum(1 for entry in self._snapshot.entries.values() if not entry.meta),
             ephemeral=self._ephemeral,
             expires=self._expires,
         )
@@ -590,6 +593,7 @@ class VaultEngine:
             checksum=sha256_bytes(data),
             size=stat.st_size,
             mtime_ns=stat.st_mtime_ns,
+            meta=_is_meta_type(parsed.frontmatter),
         )
 
     def _relative(self, path: Path) -> str:
@@ -1093,6 +1097,7 @@ class VaultEngine:
                 checksum=note.checksum,
                 size=len(data),
                 mtime_ns=target.stat().st_mtime_ns,
+                meta=_is_meta_type(note.frontmatter),
             )
         )
         event: ChangeEvent = (
@@ -1297,6 +1302,7 @@ class VaultEngine:
                 checksum=note.checksum,
                 size=target.stat().st_size,
                 mtime_ns=target.stat().st_mtime_ns,
+                meta=_is_meta_type(note.frontmatter),
             )
         )
         event = NoteMoved(
@@ -1663,6 +1669,7 @@ class VaultEngine:
                 checksum=entry.checksum,
                 size=entry.size,
                 mtime_ns=entry.mtime_ns,
+                meta=entry.meta,
             )
         self._catalog_put(entry)
         self._publish_catalog()
@@ -1823,6 +1830,11 @@ def _entry_from_note(note: Note, path: Path) -> CatalogEntry:
         size=stat.st_size,
         mtime_ns=stat.st_mtime_ns,
     )
+
+
+def _is_meta_type(frontmatter: Mapping[str, Any]) -> bool:
+    """True when a note's frontmatter declares ``type: meta`` (format spec §6)."""
+    return str(frontmatter.get("type", "note")) == "meta"
 
 
 def _stem(relative: str) -> str:
