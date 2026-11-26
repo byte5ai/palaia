@@ -506,6 +506,11 @@ select.input, select.vaultpick { appearance: none; -webkit-appearance: none; pad
 @media (max-width: 767px) {
   /* A finger needs more than a pointer: controls grow to touch size. */
   :root { --control-height: 44px; --control-height-sm: 44px; }
+  /* A checkbox, a radio and a switch keep their size on screen; the area
+     that takes the tap is 44 px around their centre. */
+  input[type="checkbox"], input[type="radio"] { position: relative; }
+  input[type="checkbox"]::before, input[type="radio"]::before, .switch::before { content: ""; position: absolute;
+    top: 50%; left: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
   .app { display: block; }
   .appbar { display: flex; align-items: center; gap: var(--space-2); position: sticky; top: 0; z-index: 20;
     height: var(--appbar-height); padding: 0 var(--space-2); background: var(--surface); border-bottom: 1px solid var(--border); }
