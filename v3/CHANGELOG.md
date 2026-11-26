@@ -21,6 +21,18 @@ capability a user would notice.
   confirm. Copying the address by hand still works. The link carries only
   that public address, never your dashboard's.
 
+### Fixed
+
+- **The setup guide says which ChatGPT plans can save notes.** On a ChatGPT
+  plan that can only look things up, the install guide let people pick
+  ChatGPT and then fail its last check. It now asks for the plan first and
+  says what OpenAI's help center lists (checked 2026-11-26): Business,
+  Enterprise and Edu can save; Pro can only look things up; Plus, Go and
+  Free are not listed. On a look-up-only plan the last check is a lookup.
+  The dashboard and the docs say the same, cite the same page, and the
+  ChatGPT steps follow OpenAI's current way to add palaia (Plugins, no
+  developer mode). (#648)
+
 ## 3.0.0-rc10 — 2026-11-14 (release candidate)
 
 Two libraries updated for newly published advisories. Still a pre-release —

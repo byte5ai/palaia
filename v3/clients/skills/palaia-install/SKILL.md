@@ -27,11 +27,10 @@ from memory, and never from this page alone. Read them from what palaia ships:
 | Notes on reboots, updates and backups | `v3/deploy/README.md` | `https://get.palaia.ai/deploy-notes` |
 | Which release this is | `v3/VERSION` | `https://get.palaia.ai/version` |
 
-Inside a copy of the palaia repository, read the files there; otherwise open
-each address. Read all four from the same place. These are the only addresses to
-use or show. If you cannot open files or web pages, say so; do not make
-commands up. The installer and the setup file choose the right palaia image for
-their release themselves: never add or change an image name.
+Inside a copy of the palaia repository, read the files there; otherwise open each
+address. Read all four from the same place; use or show no other addresses. If you
+cannot open files or web pages, say so; never make commands up. The installer and the
+setup file pick the right palaia image for their release: never add or change one.
 
 ## Step 1 — Where should palaia live?
 
@@ -49,14 +48,16 @@ Ask this first, in plain words:
 
 ## Step 2 — How will they use it? Then: does the server exist?
 
-Explain the usual setup and recommend it: **cloud access**. ChatGPT and Claude
-(the app on their Mac or phone, and claude.ai) connect from the internet, so
-palaia offers them one public HTTPS address for the AI connection only, where
-each app has to sign in. The dashboard — palaia's settings and their memories —
-stays on their private network (Tailscale) and is never public. The other choice
-is **private only**: just tools on their own devices (Claude Desktop, Claude
-Code, Codex). Remember their answer and their chosen AI app for every later step;
-the Claude app is not Claude Code.
+Explain the usual setup and recommend it: **cloud access**. ChatGPT and Claude (the app
+on their Mac or phone, and claude.ai) connect from the internet, so palaia gives them
+one public HTTPS address for the AI connection only, where each app signs in. The
+dashboard (settings and memories) stays on their private network (Tailscale), never
+public. The other choice is **private only**: just tools on their own devices (Claude
+Desktop, Claude Code, Codex). Remember their answer and their AI app for every later
+step; the Claude app is not Claude Code. **ChatGPT: ask their plan.** OpenAI's help
+(https://help.openai.com/en/articles/12584461, checked 2026-11-26): Business,
+Enterprise and Edu can save notes (an admin may have to add palaia); Pro can only look
+things up; Plus, Go and Free are not listed. On those, recommend the Claude app to save.
 
 Then ask whether the server exists already or is about to be created:
 
@@ -225,9 +226,10 @@ to guess. One step at a time, in this order:
    others: a command. "Connected" appears once palaia saw the first request.
 
 Then have them ask the app to save one note and find it again. Only then say it
-works, and say what you checked. A warning box on the page comes first: read it
-in plain words and do what it says. If it does not answer at all, Step 6. After
-3b, remove the setup key (end of 3b).
+works, and say what you checked. ChatGPT on a look-up-only plan (Step 2) searches
+palaia instead (no notes yet is fine) and the page says "Connected"; saving needs
+another app. A warning box on the page comes first: read it in plain words and do
+what it says. If it does not answer at all, Step 6. After 3b, remove the setup key.
 
 ## Step 6 — When it does not come up
 
@@ -290,14 +292,12 @@ with `sudo tail -n 50 /var/log/cloud-init-output.log`:
 ## What not to do
 
 - No Docker, compose or app-store jargon; never invent their provider or setup.
-- Never write the setup file or the install line from memory.
 - Use only what a Mac or Linux computer has, no helper tools of your own.
 
 ## Per-model notes
 
-The line for your family wins; the unlabelled line is the default.
+The line for your family wins.
 
-- Ask where it should live before anything else, every time.
 - [anthropic] Run the command yourself when you can reach their machine; only
   hand over a line when you cannot.
 - [openai] One question at a time, and wait for the result before the next — do

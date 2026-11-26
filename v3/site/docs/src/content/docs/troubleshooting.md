@@ -43,11 +43,23 @@ rather than turning the check off generally.
 
 ## "ChatGPT can look things up but won't save anything"
 
-This is ChatGPT's own rule, not something palaia's setup controls: a
-Plus/Pro account gets a read-only connection — lookups work exactly the
-same either way — while write access needs a Business, Enterprise or Edu
-workspace. The [ChatGPT connect page](/connect/clients/chatgpt/) says this
-inline so it isn't a surprise partway through setup.
+This is ChatGPT's own rule, not something palaia's setup controls. OpenAI's
+help page
+[Connecting custom MCP servers in ChatGPT](https://help.openai.com/en/articles/12584461)
+(checked 2026-11-26) says:
+
+- **Business, Enterprise and Edu** get full support, saving included. In a
+  Business workspace only an admin or owner can add palaia; in Enterprise
+  and Edu an admin can allow other members to.
+- **Pro** can add palaia with read/fetch permissions only: lookups work,
+  saving does not.
+- **Plus, Go and Free** are not mentioned on that page.
+
+Custom servers are added on chatgpt.com, not in the phone app. To save
+notes on a plan that cannot, connect another app as well, such as the
+Claude app; ChatGPT then finds what it saved. The
+[ChatGPT connect page](/connect/clients/chatgpt/) says this inline so it
+isn't a surprise partway through setup.
 
 ## "`palaia.local` doesn't resolve on my network"
 

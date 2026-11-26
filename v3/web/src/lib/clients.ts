@@ -94,6 +94,9 @@ export interface NotYetClient {
   subtitle: string;
   /** Truthful, mode-aware explanation — never just "not available". */
   reason: (mode: HubMode) => string;
+  /** What the vendor's plans allow, said once where the app is connected
+   * (the AI apps page and the setup's connect step) and inside `reason`. */
+  planNote: string;
   /** SPEC-205 deliverable #3: once Cloud/Open mode has sign-in actually
    * turned on and configured (Settings › Access & sign-in), a cloud connector
    * unlocks here instead of staying stuck on `reason` above — the address
@@ -108,6 +111,24 @@ export interface NotYetClient {
 
 export type ClientEntry = GuidedClient | NotYetClient | DownloadClient;
 
+/**
+ * Issue 648: which ChatGPT plans can use a custom MCP server, and how far.
+ * OpenAI's help center, "Connecting custom MCP servers in ChatGPT": full MCP
+ * (write actions) for Business and Enterprise/Edu; "Pro users can connect
+ * custom MCP servers with read/fetch permissions"; Plus, Go and Free are not
+ * mentioned. In a Business workspace only admins and owners add a server;
+ * Enterprise/Edu admins grant that by role. Custom servers are added on the
+ * web only. The install skill and the troubleshooting page cite the same
+ * source and date (test_install_skill_drift.py keeps the three in step).
+ */
+export const CHATGPT_PLANS_SOURCE = "https://help.openai.com/en/articles/12584461";
+export const CHATGPT_PLANS_CHECKED = "2026-11-26";
+
+const CHATGPT_PLAN_NOTE =
+  "Saving notes needs a ChatGPT Business, Enterprise or Edu workspace, where an admin may have " +
+  "to add palaia or allow you to. On Pro, ChatGPT can only look things up; OpenAI does not " +
+  `list Plus, Go or Free (OpenAI help center, checked ${CHATGPT_PLANS_CHECKED}).`;
+
 const CLOUD_CONNECTOR_REASON =
   (name: string, planNote: string) =>
   (mode: HubMode): string =>
@@ -116,6 +137,12 @@ const CLOUD_CONNECTOR_REASON =
         `in Settings › Access & sign-in; your dashboard stays on your private network.`
       : `${name} signs in to palaia with your account, and sign-in is not on yet. Finish ` +
         `turning on cloud access, then come back here. ${planNote}`;
+
+/** A cloud app's plan note, and the "not yet" reason that ends with it. */
+const CLOUD_CONNECTOR = (name: string, planNote: string) => ({
+  reason: CLOUD_CONNECTOR_REASON(name, planNote),
+  planNote,
+});
 
 /** The link Anthropic documents for opening Claude's "Add custom connector"
  * dialog with name and address already filled in
@@ -230,7 +257,7 @@ export const CLIENTS: ClientEntry[] = [
     icon: LinkIcon,
     subtitle:
       "The Claude app on Mac, Windows and phones, and claude.ai — a custom connector",
-    reason: CLOUD_CONNECTOR_REASON(
+    ...CLOUD_CONNECTOR(
       "Claude",
       "Every plan (including Free) can add palaia as a custom connector.",
     ),
@@ -241,12 +268,8 @@ export const CLIENTS: ClientEntry[] = [
     id: "chatgpt",
     name: "ChatGPT",
     icon: LinkIcon,
-    subtitle: "A custom connector in developer mode",
-    reason: CLOUD_CONNECTOR_REASON(
-      "ChatGPT",
-      "Write access needs a Business, Enterprise or Edu workspace — Plus/Pro get a read-only " +
-        "profile so recall still works.",
-    ),
+    subtitle: "A custom MCP server, added on chatgpt.com",
+    ...CLOUD_CONNECTOR("ChatGPT", CHATGPT_PLAN_NOTE),
     oauthConnect: OAUTH_CONNECT("ChatGPT"),
   },
   {
@@ -288,10 +311,7 @@ export const CLIENTS: ClientEntry[] = [
     name: "Grok",
     icon: ClientsIcon,
     subtitle: "Custom (bring-your-own) MCP connectors — web/iOS/Android",
-    reason: CLOUD_CONNECTOR_REASON(
-      "Grok",
-      "Connect from web, iOS or Android once it is on.",
-    ),
+    ...CLOUD_CONNECTOR("Grok", "Connect from web, iOS or Android once it is on."),
     oauthConnect: OAUTH_CONNECT("Grok"),
   },
   {
