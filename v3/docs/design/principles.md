@@ -159,7 +159,7 @@ An error the user must google is a bug. Findings come with a fix.
 
 The eye eats first, and what it should find is calm. Concretely, for this
 system (`system.md`): white cards on a light grey ground (deep navy in dark
-mode), Nunito Sans at readable sizes, one cyan mark, one action colour, and a
+mode), Inter at readable sizes, one cyan mark, one action colour, and a
 plain sentence where an admin panel would put a gauge. The models are the
 self-hosted tools people trust at home — Home Assistant's settings, umbrelOS,
 Synology DSM's health card, Hermes — not developer consoles.

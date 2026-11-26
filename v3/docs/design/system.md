@@ -14,6 +14,12 @@
 > Hermes — for an audience that includes people who otherwise only use a Mac.
 > Versions 1–2.3 of this file are in git history; [`lume/`](lume/) is kept as
 > history only.
+>
+> Version 3.1 — 2026-11-26 — after a review against its own rules, WCAG and
+> the documented design systems of leading web products (issue #642), the
+> owner chose Inter over Nunito Sans and 8 px buttons over pills; body text
+> went to 14 px, controls to 36 px, control edges to 3:1, AI apps became a
+> table and Settings got an area navigation.
 
 ## 0. What palaia looks like, in one paragraph
 
@@ -30,7 +36,7 @@ tokens.
 
 Eight principles, in order of precedence:
 
-1. **One font family.** Nunito Sans for everything. Days One only for the
+1. **One font family.** Inter for everything. Days One only for the
    wordmark (and the website's hero headlines); the system monospace only for
    commands, addresses, access keys and numeric columns.
 2. **One brand colour.** `brand` cyan marks palaia — the star, the selection,
@@ -117,7 +123,8 @@ coloured side stripes on cards. The one non-token colour is the dialog scrim
 Sentence case everywhere. No uppercase labels, no letter-spaced labels, no 10
 or 11 px text. Running text at most 65 characters per line; page and row
 descriptions fit one line (80 characters). The fonts are self-hosted (OFL,
-`v3/web/src/assets/fonts/`), byte-identical to the website's and the docs'.
+`v3/web/src/assets/fonts/`, whose README names their source); the docs site and
+the in-chat panels carry the same Inter files.
 
 ### 1.3 Space, radius, elevation, motion
 
