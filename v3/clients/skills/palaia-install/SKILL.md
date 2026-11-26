@@ -280,6 +280,9 @@ saying what to do. Translate:
 
 - The setup page closed without joining — run the line again.
 - The key was rejected (an access token, expired, used) — a fresh **auth key**.
+- `Tailscale could not join this server` — it quotes Tailscale and names the cause:
+  no tun device (TUN/TAP in the provider's panel, or a KVM server), Tailscale's own
+  settings (theirs to keep or reset), or its service not running.
 - Joined but no address yet — wait a moment, run the line again.
 - `the hub did not become ready` — it shows palaia's last log lines; translate
   them. Running the line again is safe and keeps their data.

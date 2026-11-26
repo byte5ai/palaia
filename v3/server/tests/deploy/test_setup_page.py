@@ -46,7 +46,8 @@ FAKE_TAILSCALE = textwrap.dedent(
     """\
     #!/bin/sh
     # Fake tailscale: `up` prints a login link and waits for the marker;
-    # `ip -4` answers only once the marker exists. `status` reports MagicDNS
+    # `ip -4` answers only once the marker exists; with an `up-fails` file
+    # `up` prints that file and fails. `status` reports MagicDNS
     # on only when the `magicdns` file exists (it holds the machine's name).
     # Any `serve` or `funnel` call is logged: the address step must not
     # change Tailscale's settings.
@@ -54,6 +55,10 @@ FAKE_TAILSCALE = textwrap.dedent(
     name="$(cat "$FAKE_TS_DIR/magicdns" 2>/dev/null || echo palaia.tail1234.ts.net)"
     case "$1" in
       up)
+        if [ -f "$FAKE_TS_DIR/up-fails" ]; then
+          cat "$FAKE_TS_DIR/up-fails" >&2
+          exit 1
+        fi
         printf '\\nTo authenticate, visit:\\n\\n\\t@LOGIN_URL@\\n\\n' >&2
         while [ ! -f "$marker" ]; do sleep 0.2; done
         echo Success. >&2
@@ -324,6 +329,17 @@ def test_timeout_exits_one_closes_the_port_and_drops_the_pending_login(fake_ts: 
     assert (fake_ts / "logged-out").exists()
 
 
+def test_a_timeout_is_not_reported_as_a_tailscale_failure(fake_ts: Path) -> None:
+    """#647: the page stops the waiting `tailscale up` itself on timeout;
+    that is no join failure (status 1, not 5, and no Tailscale lines)."""
+    port = _free_port()
+    proc = _start(fake_ts, port, timeout=2)
+    out, _ = proc.communicate(timeout=60)
+    assert proc.returncode == 1, out
+    assert "could not join" not in out
+    assert "nobody completed the setup page in time" in out
+
+
 def test_a_plain_kill_still_cleans_up(fake_ts: Path) -> None:
     port = _free_port()
     proc = _start(fake_ts, port)
@@ -401,6 +417,53 @@ def test_a_taken_port_ends_with_its_own_status_and_no_traceback(fake_ts: Path) -
     assert f"cannot open port {port}" in out
     # Nothing was started: no pending login to drop, no `tailscale up` left.
     assert not (fake_ts / "logged-out").exists()
+
+
+#: What `tailscale up` prints when the machine has settings of its own
+#: (tailscale/cmd/tailscale/cli/up.go, accidentalUpPrefix), with a key in the
+#: suggested command to prove keys are masked.
+SETTINGS_ERROR = (
+    "Error: changing settings via 'tailscale up' requires mentioning all\n"
+    "non-default flags. To proceed, either re-run your command with --reset or\n"
+    "use the command below to explicitly mention the current value of\n"
+    "all non-default settings:\n\n"
+    "\ttailscale up --hostname=palaia --advertise-exit-node --auth-key=tskey-auth-kSECRET0123\n"
+)
+
+
+def test_a_failing_tailscale_up_shows_what_it_said(fake_ts: Path) -> None:
+    """#647: Tailscale's own lines reach the installer's output and log
+    (stderr here), without a key, with the cause named; status 5."""
+    (fake_ts / "up-fails").write_text(SETTINGS_ERROR, encoding="utf-8")
+    proc = _start(fake_ts, _free_port())
+    out, _ = proc.communicate(timeout=60)
+    assert proc.returncode == 5, out
+    assert "requires mentioning all" in out
+    assert "tailscale up --hostname=palaia --advertise-exit-node" in out
+    assert "kSECRET0123" not in out
+    if Path("/dev/net/tun").exists():
+        assert "already has settings of its own" in out
+
+
+@pytest.mark.parametrize(
+    ("said", "tun", "cause"),
+    [
+        (SETTINGS_ERROR, True, "already has settings of its own"),
+        (SETTINGS_ERROR, False, "no /dev/net/tun"),
+        (
+            "failed to connect to local tailscaled; it doesn't appear to be running"
+            " (sudo systemctl start tailscaled ?)",
+            True,
+            "is not running",
+        ),
+        ("backend error: something new", True, ""),
+    ],
+)
+def test_the_likely_cause_of_a_failed_join_is_named(said: str, tun: bool, cause: str) -> None:
+    """The daemon message is tailscale/cmd/tailscale/cli/diag.go's; without a
+    tun device tailscaled cannot start, whatever `up` then says."""
+    found = _page_module().tailscale_cause(said.splitlines(), tun)
+    assert (cause in found) if cause else found == ""
 
 
 def test_already_joined_server_skips_the_page(fake_ts: Path) -> None:

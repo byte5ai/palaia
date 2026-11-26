@@ -1001,3 +1001,49 @@ def test_a_free_setup_port_needs_nothing(tmp_path: Path) -> None:
     result = _free_setup_port(tmp_path, {})
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "after"
+
+
+# --- #647: a failed join says what Tailscale said, and why ------------------
+
+
+def _explain(tmp_path: Path, said: str, *, tun: bool) -> subprocess.CompletedProcess[str]:
+    out = tmp_path / "ts.out"
+    out.write_text(said, encoding="utf-8")
+    tun_device = tmp_path / "tun"
+    if tun:
+        tun_device.touch()
+    return _run(
+        HELPERS + _function("explain_tailscale_failure") + f'explain_tailscale_failure "{out}"\n',
+        {"TUN_DEVICE": str(tun_device)},
+        tmp_path,
+    )
+
+
+@pytest.mark.parametrize(
+    ("said", "tun", "cause"),
+    [
+        ("backend error: invalid key: unable to validate API key\n", True, "rejected the key"),
+        ("anything\n", False, "has no "),
+        (
+            "Error: changing settings via 'tailscale up' requires mentioning all\n"
+            "non-default flags.\n",
+            True,
+            "already has settings of its own",
+        ),
+        (
+            "failed to connect to local tailscaled; it doesn't appear to be running\n",
+            True,
+            "(tailscaled) is not running",
+        ),
+    ],
+)
+def test_a_failed_key_join_shows_tailscales_words_and_the_cause(
+    tmp_path: Path, said: str, tun: bool, cause: str
+) -> None:
+    """Before #647 every failure here blamed the key, even a missing tun
+    device on an LXC server."""
+    result = _explain(tmp_path, said + "tskey-auth-kSECRET0123 was used\n", tun=tun)
+    assert said.splitlines()[0] in result.stderr
+    assert cause in result.stderr
+    assert "kSECRET0123" not in result.stderr
+    assert result.stderr.count("palaia: ERROR:") == 2

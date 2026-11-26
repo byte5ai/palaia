@@ -285,6 +285,7 @@ install_tailscale() {
 # --- Clean-up on every exit: the key file and a temporary firewall rule -------
 KEYFILE=""
 UFW_OPENED=0
+TUN_DEVICE="/dev/net/tun"
 cleanup() {
     if [ -n "$KEYFILE" ]; then
         # A secret is removed for good, never moved somewhere recoverable.
@@ -302,6 +303,23 @@ cleanup() {
 trap cleanup EXIT
 trap 'cleanup; exit 130' INT TERM HUP
 trap 'cleanup; exit 141' PIPE
+
+# `tailscale up` with a key failed: shows what Tailscale said ($1, a file;
+# any key masked) and the likely cause — the same causes the setup page
+# names (issue #647). A key Tailscale refused is the usual one.
+explain_tailscale_failure() {
+    err "Tailscale could not join this server. What it said:"
+    sed 's/tskey-[A-Za-z0-9_-]*/tskey-…/g; s/^/    /' "$1" >&2
+    if [ ! -e "$TUN_DEVICE" ]; then
+        err "this server has no ${TUN_DEVICE}, which Tailscale needs. Container-based server types (LXC, OpenVZ) often lack it: switch TUN/TAP on in the provider's control panel, or use a VM-based (KVM) server."
+    elif grep -q "requires mentioning all" "$1"; then
+        err "Tailscale on this server already has settings of its own, and palaia does not change them. Join it to your tailnet yourself with the command Tailscale names above (or 'tailscale up --reset' to drop those settings), then run this again: it then skips the join."
+    elif grep -q "doesn't appear to be running" "$1"; then
+        err "Tailscale's background service (tailscaled) is not running; 'journalctl -u tailscaled' shows why."
+    else
+        err "Tailscale rejected the key. It is likely expired, already used (non-reusable), or an access token rather than an auth key. Generate a fresh auth key and run this again."
+    fi
+}
 
 # Frees PORT for the setup page. A page an earlier run left open — its install
 # was stopped, or came from an installer before issue #646 — is closed, so
@@ -555,8 +573,9 @@ PALAIA_START_ON_TAILNET
 # shows Tailscale's own "allow" link; "Keep it private" skips the step.
 #
 # Exit status: 0 once the server is on the tailnet (cloud access on or not),
-# 1 on timeout (default 30 minutes) or when Tailscale fails, 4 when another
-# program holds the port. Either way the port is closed again the moment it
+# 1 on timeout (default 30 minutes), 4 when another program holds the port,
+# 5 when `tailscale up` fails: then Tailscale's own lines and the likely cause
+# go to stderr (issue #647). Either way the port is closed again the moment it
 # exits; the installer then starts the hub bound to the private-network
 # address only.
 #
@@ -607,6 +626,23 @@ NO_MAGICDNS_NOTE = (
     "Your Tailscale network has MagicDNS turned off, so palaia has no name there "
     "and is opened by its number; turn MagicDNS on under DNS in Tailscale's admin "
     "console to open it by name."
+)
+TUN_DEVICE = "/dev/net/tun"
+KEY_RE = re.compile(r"tskey-[\w-]+")
+NO_TUN_CAUSE = (
+    "This server has no /dev/net/tun, which Tailscale needs. Container-based server "
+    "types (LXC, OpenVZ) often lack it: switch TUN/TAP on in the provider's control "
+    "panel, or use a VM-based (KVM) server."
+)
+SETTINGS_CAUSE = (
+    "Tailscale on this server already has settings of its own, and palaia does not "
+    "change them. Join it to your tailnet yourself with the command Tailscale names "
+    "above (or 'tailscale up --reset' to drop those settings), then run the installer "
+    "again: it then skips the join."
+)
+DAEMON_CAUSE = (
+    "Tailscale's background service (tailscaled) is not running; "
+    "'journalctl -u tailscaled' shows why."
 )
 PORT_80_BUSY_NOTE = (
     "Port 80 on this server's tailnet address is already used by another program, "
@@ -837,6 +873,7 @@ class State:
         self.ip = None
         self.address = None  # (address, full address, note) once joined
         self.failed = None
+        self.stopping = False  # the page itself ends `tailscale up`
         self.proc = None
         self.cloud = None  # a Cloud while the cloud step runs
         self.finished = threading.Event()
@@ -846,8 +883,25 @@ class State:
         return hmac.compare_digest(normalise(given).encode(), self.code.encode())
 
 
+def tailscale_cause(lines, tun_present):
+    """The likely cause of a failed `tailscale up`, from its output, or ""."""
+    text = "\n".join(lines)
+    if not tun_present:
+        return NO_TUN_CAUSE
+    if "requires mentioning all" in text:
+        return SETTINGS_CAUSE
+    if "doesn't appear to be running" in text:
+        return DAEMON_CAUSE
+    return ""
+
+
 def run_tailscale(state, hostname, login_server):
-    """`tailscale up` without a key prints a login link and waits for the login."""
+    """`tailscale up` without a key prints a login link and waits for the login.
+
+    Its other lines are kept: when it fails they are the only explanation
+    (issue #647). The login link itself never reaches the log; an auth key
+    never could (none is used here), but one is masked all the same.
+    """
     cmd = ["tailscale", "up", f"--hostname={hostname}"]
     if login_server:
         cmd.append(f"--login-server={login_server}")
@@ -861,14 +915,27 @@ def run_tailscale(state, hostname, login_server):
     except OSError as exc:
         state.failed = f"could not start tailscale: {exc}"
         return
+    said = []
     for line in proc.stdout:
         match = LINK_RE.search(line)
         if match and state.login_url is None:
             with state.lock:
                 state.login_url = match.group(0)
             log("login link ready — waiting for the code on the setup page.")
-    if proc.wait() != 0 and tailnet_ip() is None:
-        state.failed = "tailscale up ended without joining (see the lines above)."
+        text = line.rstrip()
+        if state.login_url:
+            text = text.replace(state.login_url, "<login link>")
+        if text.strip():
+            said = [*said[-19:], KEY_RE.sub("tskey-…", text)]
+    if proc.wait() != 0 and not state.stopping and tailnet_ip() is None:
+        log("Tailscale could not join this server. What it said:")
+        for text in said or ["(nothing)"]:
+            print(f"    {text}", file=sys.stderr, flush=True)
+        cause = tailscale_cause(said, os.path.exists(TUN_DEVICE))
+        if cause:
+            log(cause)
+        last = next((t.strip() for t in reversed(said) if t.strip()), "no message")
+        state.failed = f"Tailscale could not join this server ({last}). {cause}".strip()
 
 
 # The design system's colours (v3/design/tokens.json), carried inline: this
@@ -1176,9 +1243,10 @@ def page_main(args):
         log(f"ERROR: cannot open port {args.port}: {exc.strerror or exc}.")
         return 4
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    threading.Thread(
+    joiner = threading.Thread(
         target=run_tailscale, args=(state, args.hostname, args.login_server), daemon=True
-    ).start()
+    )
+    joiner.start()
     print(
         "\n"
         "  ============================================================\n"
@@ -1207,6 +1275,7 @@ def page_main(args):
                 return 0
             time.sleep(2)
     finally:
+        state.stopping = True
         server.shutdown()
         server.server_close()
         if state.cloud is not None and state.cloud.proc and state.cloud.proc.poll() is None:
@@ -1217,6 +1286,9 @@ def page_main(args):
                 state.proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 state.proc.kill()
+        # Its last word first: a `tailscale up` that failed on its own says
+        # so before the page reports how it ended.
+        joiner.join(timeout=15)
         if not state.ip:
             # Drop the pending login, so the link can no longer be used by
             # anyone to pull this server into their network.
@@ -1227,7 +1299,7 @@ def page_main(args):
             except (OSError, subprocess.TimeoutExpired):
                 log("could not reset the pending Tailscale login — run 'tailscale logout'.")
     log(f"ERROR: {state.failed or 'nobody completed the setup page in time'} — the page is closed.")
-    return 1
+    return 5 if state.failed else 1
 
 
 def main(argv=None):
@@ -1280,10 +1352,14 @@ PALAIA_SETUP_PAGE
         log "already on a tailnet, skipping the join."
     elif [ -n "$KEYFILE" ]; then
         log "joining the tailnet with your auth key ..."
+        ts_out="$(mktemp)"
         # shellcheck disable=SC2086
-        if ! $SUDO tailscale up --auth-key="file:${KEYFILE}" --hostname="$HOSTNAME_TS" $LOGIN_ARG; then
-            die "Tailscale rejected the key. It is likely expired, already used (non-reusable), or an access token rather than an auth key. Generate a fresh auth key and run this again."
+        if ! $SUDO tailscale up --auth-key="file:${KEYFILE}" --hostname="$HOSTNAME_TS" $LOGIN_ARG >"$ts_out" 2>&1; then
+            explain_tailscale_failure "$ts_out"
+            rm -f "$ts_out"
+            exit 1
         fi
+        rm -f "$ts_out"
     else
         # SPEC-605: no key — a one-time setup page in the browser joins the
         # tailnet (code-protected, closes itself afterwards). Open the port
@@ -1317,6 +1393,7 @@ PALAIA_SETUP_PAGE
         case "$PAGE_STATUS" in
             0) ;;
             4) die "port ${PORT} is used by another program, so the setup page could not open. Stop that program, then run this command again." ;;
+            5) die "Tailscale could not join this server (what it said and the likely cause are above)." ;;
             *) die "the setup page closed without joining the tailnet. Run this command again for a new page and code." ;;
         esac
         CLOUD_ASKED=1

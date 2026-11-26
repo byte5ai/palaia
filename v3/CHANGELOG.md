@@ -35,6 +35,14 @@ capability a user would notice.
   fresh one, and a port taken by another program is named instead of
   ending in a Python error. (#646)
 
+- **A failed join to the private network says why.** When Tailscale cannot
+  join the server, the installer now shows Tailscale's own words (any key
+  masked) and names the likely cause: a server without the tun device
+  Tailscale needs (common on container-based server types), Tailscale
+  settings of its own that palaia leaves alone, or Tailscale's service not
+  running. Before, the setup page said only that it ended without joining,
+  and the key path always blamed the key. (#647)
+
 - **The assistant opens the setup pages itself when it can.** If the
   assistant can work a browser on the person's computer (the Claude app's
   built-in browser or Claude in Chrome, the ChatGPT app's built-in browser
