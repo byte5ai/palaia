@@ -262,7 +262,7 @@ describe("Automations copy — no jargon in the surface (system.md §3)", () => 
       ...screen.queryAllByRole("heading"),
       ...screen.queryAllByRole("button"),
       ...screen.queryAllByRole("option"),
-      ...Array.from(document.querySelectorAll(".pill, .badge, .card__title, .card__subject, .field__label")),
+      ...Array.from(document.querySelectorAll(".pill, .card__title, .card__subject, .field__label")),
     ];
     expect(controls.length).toBeGreaterThan(5);
     for (const element of controls) {

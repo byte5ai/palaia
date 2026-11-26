@@ -37,7 +37,7 @@ const DOT_CLASS: Record<BadgeVariant, string> = {
   neutral: "",
   ok: "dot--ok",
   warn: "dot--warn",
-  risk: "dot--risk",
+  risk: "dot--error",
   info: "dot--info",
 };
 

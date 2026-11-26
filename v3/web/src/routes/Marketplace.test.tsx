@@ -415,7 +415,7 @@ describe("Add-ons copy — no jargon in the surface (system.md §3 rule 0)", () 
       ...screen.queryAllByRole("option"),
       ...Array.from(
         document.querySelectorAll(
-          ".pill, .badge, .card__title, .card__subject, .field__label",
+          ".pill, .card__title, .card__subject, .field__label",
         ),
       ),
     ];
