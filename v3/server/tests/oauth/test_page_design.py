@@ -76,3 +76,23 @@ def test_the_sign_in_page_uses_the_typeface_and_the_radii_of_the_tokens() -> Non
     used = set(re.findall(r"border-radius:\s*([0-9.]+px)", page))
     assert used, "the page states no radius at all"
     assert used <= radii, f"radii outside tokens.json: {sorted(used - radii)}"
+
+
+def test_the_sign_in_page_uses_the_sizes_of_the_tokens() -> None:
+    """Title, control height and the phone control height come from
+    ``tokens.json`` like everything else on the page."""
+    data = json.loads(TOKENS.read_text(encoding="utf-8"))
+    styles = {s["name"]: s for group in data["type"]["groups"] for s in group["styles"]}
+    sizes = {token["name"]: token for token in data["size"]["tokens"]}
+    title = styles["title-1"]
+    control = sizes["control-height"]
+    phone = next(b for b in data["breakpoints"] if b["name"] == "phone")
+    page = _login_page(next_url="/", csrf="x", error="")
+    assert (
+        f"h1 {{ font-size: {title['fontSize']}; line-height: {title['lineHeight']}; "
+        f"font-weight: {title['fontWeight']};"
+    ) in page
+    assert f"height: {control['value']}; margin-top" in page
+    assert f"button {{ height: {control['value']};" in page
+    phone_rule = f"input, button {{ height: {control['phone']}; }}"
+    assert f"@media (max-width: {phone['max']}px) {{ {phone_rule} }}" in page
