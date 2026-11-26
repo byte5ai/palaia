@@ -183,7 +183,8 @@ Four restraints keep it that way:
 |---|---|
 | A dashboard of dial charts and version numbers | One verdict ("palaia is running") with a few pills underneath, each linking to its detail |
 | Twelve equal navigation items in groups named after internals | Five places named after tasks, Settings at the bottom |
-| Settings as one long page | A hub: a top card (version, state, access, address, Sign out, Restart) and one row per area with its live state in the description |
+| Settings as one long page | The areas as a navigation next to the open area; General holds the top card (version, state, access, address, Sign out, Restart) and one row per area with its live state in the description |
+| A settings area that takes a third of a wide screen, reached only through an overview page | Area navigation and area side by side; one click from any area to any other |
 | A paragraph that explains a control | A label, one helper line, and "What's included?" for the rest |
 | A footer note repeated on every page | Say it once, where the decision is |
 | Colour as decoration, accent washes, gradients, glows | Colour as state (`system.md` §1.1) |
@@ -305,9 +306,12 @@ actions. Errors never render as "No memories yet".
 
 ### 3.5 Settings
 
-A hub: the top card (version, state, access, address, who is signed in, Sign
-out, Restart where palaia can restart itself), then rows with their live state
-— Access & sign-in, Backups, Telegram, Appearance, Advanced, About & updates.
+The areas are a navigation next to the open area (a row of tabs below
+1024 px): General, Access & sign-in, Backups, Telegram, Advanced, About &
+updates. General is the hub: the top card (version, state, access, address,
+who is signed in, Sign out, Restart where palaia can restart itself), then
+rows with their live state — Access & sign-in, Backups, Telegram, Appearance,
+Advanced, About & updates.
 
 | Don't | Do |
 |---|---|
