@@ -73,6 +73,10 @@ Then ask whether the server exists already or is about to be created:
 up: 12 capital letters and digits without 0, O, 1 or I, in three groups like
 `K7QM-R2XD-9FTP`. Tell them; it is not a password and stops working once setup is done.
 
+**Tailscale first.** Before the server is created or the installer runs, they get a free
+account at tailscale.com and the Tailscale app, signed in, on the device they will open
+palaia from: the setup page waits only 30 minutes once the server is up.
+
 ### Step 2a — Not yet created: the setup file
 
 1. Take `v3/deploy/cloud-init.yaml` exactly as it is and change one line:
@@ -185,16 +189,14 @@ only choices they made, and stop at every sign-in, password and permission scree
 you never do; wait until they say it is done. Without such a browser, ask what the
 page shows.
 
-1. If they do not use Tailscale yet: a free account at tailscale.com, and the
-   Tailscale app on the device they will open palaia from.
-2. They open `http://<address>:8420/` (the server's public address). Not there
+1. They open `http://<address>:8420/` (the server's public address). Not there
    yet? Wait a minute and reload; the server is still installing.
-3. They type the setup code, click **Connect with Tailscale** and log in.
-4. **Cloud access.** For the cloud setup the page continues by itself. If it says
+2. They type the setup code, click **Connect with Tailscale** and log in.
+3. **Cloud access.** For the cloud setup the page continues by itself. If it says
    **Let ChatGPT and Claude reach palaia**, their Tailscale network must allow
    it once: **Allow in Tailscale**, confirm, come back. **Keep it private** skips
    it. Explain before they choose; it can be turned on later.
-5. The page says "Done", shows palaia's address (a name, usually http://palaia/;
+4. The page says "Done", shows palaia's address (a name, usually http://palaia/;
    a number only with MagicDNS off, and then says how to turn it on) and closes.
 
 Already on their Tailscale network: no page; for cloud access the installer may
@@ -272,8 +274,8 @@ Name the likely cause in plain words.
   them to allow port 8420 there for now (Hetzner: "Firewalls"), or use a key.
 - **"That code is not right."** — a typo; dashes and case do not matter.
 - **Closed before they finished** — it gives up after 30 minutes. Run the
-  installer line again (setup file: `sudo sh /opt/palaia/cloud-init-setup.sh`)
-  for a fresh page.
+  installer line again; setup file: they restart the server in the provider's
+  control panel. A fresh page opens a few minutes later, same code.
 
 **The installer** prints its own errors, each starting `palaia: ERROR:` and
 saying what to do. Translate:
@@ -315,8 +317,7 @@ with `sudo tail -n 50 /var/log/cloud-init-output.log`:
 
 - **`ERROR: edit this file's PALAIA_SETUP_CODE (or TAILSCALE_AUTH_KEY)`** — the
   code was never filled in; the server exists now: finish with Step 3.
-- **A download error** — usually a network hiccup: rerun
-  `sudo sh /opt/palaia/cloud-init-setup.sh`.
+- **A download error** — usually a network hiccup: they restart the server.
 - **Ends with `done ✓  Open`, yet the page does not open** — the device must be
   on the same Tailscale network with the app on. Right after a restart a minute of
   "connection refused" is normal. Still refused after five minutes: read

@@ -255,3 +255,89 @@ def test_the_key_is_written_only_once_the_installer_is_downloaded() -> None:
     download = text.index("-o /opt/palaia/get-palaia.sh")
     write = text.index("> /root/.palaia-tskey")
     assert download < write
+
+
+# --- #650: a restart brings a fresh setup page until the setup has finished --
+
+_PER_BOOT_PATH = "/var/lib/cloud/scripts/per-boot/palaia-setup.sh"
+
+
+def _files() -> dict[str, dict[str, str]]:
+    import yaml
+
+    document = yaml.safe_load(CLOUD_INIT_PATH.read_text(encoding="utf-8"))
+    return {entry["path"]: entry for entry in document["write_files"]}
+
+
+def test_the_setup_runs_from_cloud_inits_per_boot_scripts_only() -> None:
+    """cloud-init runs per-boot scripts on every start, the first included
+    (scripts_per_boot, frequency "always"). runcmd as well would run the
+    setup twice on the first start."""
+    import yaml
+
+    document = yaml.safe_load(CLOUD_INIT_PATH.read_text(encoding="utf-8"))
+    assert "runcmd" not in document
+    entry = _files()[_PER_BOOT_PATH]
+    assert entry["permissions"] == "0755"  # cloud-init executes it directly
+    assert entry["content"].startswith("#!/bin/sh\n")
+    assert "sh /opt/palaia/cloud-init-setup.sh" in entry["content"]
+
+
+def _sandboxed(text: str, root: Path) -> str:
+    return text.replace("/opt/palaia", str(root / "opt")).replace(
+        "/root/.palaia-tskey", str(root / "tskey")
+    )
+
+
+def _boot(tmp_path: Path, installer_exit: int) -> subprocess.CompletedProcess[str]:
+    """One start of the server: the per-boot script, with the real setup
+    script behind it, a filled-in code, and stand-ins for the download and
+    the installer (which records each run)."""
+    (tmp_path / "opt").mkdir(exist_ok=True)
+    setup = _sandboxed(_setup_script(), tmp_path).replace(
+        'PALAIA_SETUP_CODE="setup-code-REPLACE_ME"', 'PALAIA_SETUP_CODE="K7QM-R2XD-9FTP"'
+    )
+    (tmp_path / "opt" / "cloud-init-setup.sh").write_text(setup, encoding="utf-8")
+    bindir = tmp_path / "bin"
+    bindir.mkdir(exist_ok=True)
+    curl = bindir / "curl"
+    curl.write_text(
+        "#!/bin/sh\n"
+        'while [ "$#" -gt 0 ]; do [ "$1" = "-o" ] && out="$2"; shift; done\n'
+        f'printf \'echo run >> "{tmp_path}/runs"\\nexit {installer_exit}\\n\' > "$out"\n',
+        encoding="utf-8",
+    )
+    curl.chmod(0o755)
+    per_boot = tmp_path / "per-boot.sh"
+    per_boot.write_text(_sandboxed(_files()[_PER_BOOT_PATH]["content"], tmp_path))
+    return subprocess.run(
+        ["sh", str(per_boot)],
+        env={"PATH": f"{bindir}:/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+
+def _runs(tmp_path: Path) -> int:
+    runs = tmp_path / "runs"
+    return len(runs.read_text(encoding="utf-8").splitlines()) if runs.exists() else 0
+
+
+def test_a_restart_runs_the_setup_again_until_it_has_finished(tmp_path: Path) -> None:
+    """#650: the page closed (the installer failed) — the next start opens a
+    new one; once the setup finished, a start leaves the server alone."""
+    assert _boot(tmp_path, installer_exit=1).returncode != 0
+    assert _boot(tmp_path, installer_exit=1).returncode != 0
+    assert _runs(tmp_path) == 2
+    assert not (tmp_path / "opt" / "cloud-init-done").exists()
+
+    finished = _boot(tmp_path, installer_exit=0)
+    assert finished.returncode == 0, finished.stdout + finished.stderr
+    assert (tmp_path / "opt" / "cloud-init-done").exists()
+    assert _runs(tmp_path) == 3
+
+    later = _boot(tmp_path, installer_exit=0)
+    assert later.returncode == 0
+    assert _runs(tmp_path) == 3

@@ -74,15 +74,19 @@ SPEC-601. For a server you rent rather than a machine you already own —
 Hetzner Cloud, DigitalOcean, or similar — the vehicle is
 [`cloud-init.yaml`](cloud-init.yaml): paste the whole file into the
 provider's server-creation user-data field (Hetzner Cloud calls it "Cloud
-config"; DigitalOcean calls it "User data"; the file is about 4 KB and
+config"; DigitalOcean calls it "User data"; the file is about 5 KB and
 downloads the installer when the server starts), fill in one setup code
 first, and the server finishes its own setup with no
 terminal session needed: a few minutes after boot, open
 `http://<server-address>:8420/`, enter the code and click "Connect with
 Tailscale" — a one-time setup page (SPEC-605,
 [`setup-page.py`](setup-page.py)) joins the server to your tailnet and
-closes itself. Prefer a key? Fill in `TAILSCALE_AUTH_KEY` instead and no
-page is shown. The onboarding page's "A rented server" entry shows the same
+closes itself. The page waits 30 minutes, so have the Tailscale account and
+app ready before creating the server. Missed it? Restart the server from the
+provider's control panel: until the setup has finished once, every start runs
+it again (a cloud-init per-boot script) and opens a fresh page with the same
+code; afterwards a start leaves it alone. Prefer a key? Fill in
+`TAILSCALE_AUTH_KEY` instead and no page is shown. The onboarding page's "A rented server" entry shows the same
 file with a copy button; this is the file it copies from — never a second,
 hand-typed one.
 
@@ -186,8 +190,8 @@ palaia_home`, `docker exec palaia ls /data`, and ordinary Docker
 volume backup tooling all work exactly as they do for the compose or
 one-liner install.
 
-**Updating.** The file only runs its install step once, on first boot
-(cloud-init's own rule). To update the hub afterward, connect over the
+**Updating.** The file runs its install step only until it has finished
+once. To update the hub afterward, connect over the
 tailnet (SSH, or Tailscale SSH if you enabled it) and use the same two
 commands any other install uses — `docker pull` the new image tag, then
 recreate the container — or run `palaia update` from the dashboard's

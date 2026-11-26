@@ -43,6 +43,15 @@ capability a user would notice.
   running. Before, the setup page said only that it ended without joining,
   and the key path always blamed the key. (#647)
 
+- **A missed setup page is one restart away.** The setup guide now asks
+  for the Tailscale account and app before the server is created, so the
+  setup page's 30 minutes are spent on the page, not on signing up. A
+  server made with the setup file runs its setup again at every start until
+  it has finished once: if the page closed before anyone used it,
+  restarting the server from the provider's control panel opens a fresh
+  page with the same code — no terminal needed. Afterwards a restart leaves
+  the server alone. (#650)
+
 - **The assistant opens the setup pages itself when it can.** If the
   assistant can work a browser on the person's computer (the Claude app's
   built-in browser or Claude in Chrome, the ChatGPT app's built-in browser

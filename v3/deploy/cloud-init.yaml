@@ -14,7 +14,10 @@
 # A few minutes after the server starts, open http://<server-address>:8420/,
 # enter that code and click "Connect with Tailscale" — the server joins your
 # private network (tailnet). The same page then offers cloud access for
-# ChatGPT and Claude, and closes itself (SPEC-605).
+# ChatGPT and Claude, and closes itself (SPEC-605). Have your Tailscale
+# account and app ready first: the page waits 30 minutes. Missed it? Restart
+# the server (your provider's control panel has a button for it): until the
+# setup has finished, every start opens the page again, with the same code.
 #
 # Prefer a key? Instead fill in the TAILSCALE_AUTH_KEY line below with an
 # auth key from https://login.tailscale.com/admin/settings/keys; then no
@@ -29,7 +32,8 @@
 # devices. See v3/deploy/README.md's "Cloud-init" section for what the data
 # volume holds and how to back it up or move it.
 #
-# This runs once per server — cloud-init's own rule. Running it again by
+# It runs at every start of the server until the setup has finished once
+# (cloud-init's per-boot scripts), then never again. Running it again by
 # hand (`sudo sh /opt/palaia/cloud-init-setup.sh`) is safe: the installer
 # keeps your data and changes nothing that is already in place.
 #
@@ -87,6 +91,17 @@ write_files:
       export PALAIA_FIREWALL=on
       log "running the installer ..."
       sh /opt/palaia/get-palaia.sh </dev/null
-
-runcmd:
-  - [sh, /opt/palaia/cloud-init-setup.sh]
+      # Done: the next start of the server leaves it alone.
+      touch /opt/palaia/cloud-init-done
+      log "setup finished; later starts of the server do not run it again."
+  # cloud-init runs this at every start of the server, the first one
+  # included. Until the setup has finished, each start runs it again, so a
+  # restart from the provider's control panel opens a fresh setup page when
+  # the last one closed before anyone used it (issue #650) — no shell needed.
+  - path: /var/lib/cloud/scripts/per-boot/palaia-setup.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      #!/bin/sh
+      # Written by cloud-init.yaml: run palaia's setup until it has finished.
+      [ -e /opt/palaia/cloud-init-done ] || exec sh /opt/palaia/cloud-init-setup.sh
