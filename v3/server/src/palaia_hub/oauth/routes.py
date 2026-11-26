@@ -711,12 +711,12 @@ _PAGE_STYLE = f"""
   *, *::before, *::after {{ box-sizing: border-box; }}
   body {{ margin: 0; min-height: 100vh; display: grid; place-items: center;
           background: var(--canvas); color: var(--text);
-          font: 15px/24px "Nunito Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+          font: 14px/20px "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
           -webkit-font-smoothing: antialiased; }}
   main {{ width: min(420px, calc(100vw - 32px)); padding: 32px 0; }}
   .brand {{ display: flex; align-items: center; gap: 10px; margin: 0 0 24px 4px;
-            font: 400 20px/28px "Days One", "Nunito Sans", system-ui, sans-serif; }}
-  .card {{ background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+            font: 400 20px/28px "Days One", "Inter", system-ui, sans-serif; }}
+  .card {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
            padding: 24px; box-shadow: 0 1px 2px rgba(15, 21, 32, .06); }}
   h1 {{ font-size: 28px; line-height: 34px; font-weight: 700; margin: 0 0 20px; }}
   p {{ margin: 0 0 12px; }}
@@ -724,10 +724,10 @@ _PAGE_STYLE = f"""
   li {{ margin: 4px 0; }}
   label {{ display: block; margin: 0 0 16px; font-weight: 600; }}
   input {{ display: block; width: 100%; height: 40px; margin-top: 8px; padding: 0 12px;
-           border: 1px solid var(--text-3); border-radius: 10px; background: var(--surface);
+           border: 1px solid var(--text-3); border-radius: 8px; background: var(--surface);
            color: var(--text); font: inherit; font-weight: 400; }}
   .actions {{ display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }}
-  button {{ height: 40px; padding: 0 20px; border-radius: 999px; border: 1px solid var(--action);
+  button {{ height: 40px; padding: 0 20px; border-radius: 8px; border: 1px solid var(--action);
             background: var(--action); color: var(--on-action); font: inherit; font-weight: 600;
             cursor: pointer; }}
   button:hover {{ background: var(--action-hover); border-color: var(--action-hover); }}
@@ -735,7 +735,7 @@ _PAGE_STYLE = f"""
                       border-color: var(--border); }}
   button.secondary:hover {{ background: var(--surface-muted); }}
   :focus-visible {{ outline: 2px solid var(--focus); outline-offset: 2px; }}
-  .err {{ padding: 12px 16px; border-radius: 14px; background: var(--error-bg); color: var(--error);
+  .err {{ padding: 12px 16px; border-radius: 10px; background: var(--error-bg); color: var(--error);
           font-size: 13px; line-height: 20px; font-weight: 600; }}
   .hint {{ font-size: 13px; line-height: 20px; color: var(--text-2); }}
   details {{ margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }}
@@ -744,7 +744,7 @@ _PAGE_STYLE = f"""
   code {{ font: 13px/20px ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
           background: var(--surface-muted); padding: 1px 6px; border-radius: 6px;
           overflow-wrap: anywhere; }}
-  .cmd code {{ display: block; padding: 8px 12px; border-radius: 10px; }}
+  .cmd code {{ display: block; padding: 8px 12px; border-radius: 8px; }}
 """
 
 #: The palaia star — the website header's mark, inline (no request).
@@ -770,7 +770,7 @@ def _escape_braces(text: str) -> str:
 #: served before any session exists, so it must not depend on the dashboard
 #: build being present, and it must not load anything from a third party.
 #: Styled with the design system's tokens (v3/docs/design/system.md); fonts
-#: fall back to the system's own when Nunito Sans is not installed.
+#: fall back to the system's own when Inter is not installed.
 _PAGE_TEMPLATE = (
     "<!doctype html>\n"
     '<html lang="en"><head><meta charset="utf-8">\n'

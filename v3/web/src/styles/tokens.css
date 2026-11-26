@@ -7,8 +7,8 @@
    ============================================================= */
 
 :root {
-  --font-sans: "Nunito Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-display: "Days One", "Nunito Sans", system-ui, sans-serif;
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Days One", "Inter", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
   --type-display-size: 48px; --type-display-lh: 56px; --type-display-weight: 400;
   --type-title-1-size: 24px; --type-title-1-lh: 30px; --type-title-1-weight: 600;

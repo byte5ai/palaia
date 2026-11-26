@@ -7,9 +7,9 @@
    ============================================================= */
 
 :root {
-  --sl-font: "Nunito Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --sl-font: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --sl-font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
-  --palaia-font-display: "Days One", "Nunito Sans", system-ui, sans-serif;
+  --palaia-font-display: "Days One", "Inter", system-ui, sans-serif;
   --sl-color-white: #E8ECF1;
   --sl-color-gray-1: #E8ECF1;
   --sl-color-gray-2: #E8ECF1;

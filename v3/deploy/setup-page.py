@@ -372,7 +372,7 @@ PAGE = (
 :root{{color-scheme:light;@LIGHT@}}
 @media (prefers-color-scheme: dark){{:root{{color-scheme:dark;@DARK@}}}}
 body{{margin:0;background:var(--canvas);color:var(--text);
-font:15px/1.6 "Nunito Sans",system-ui,-apple-system,"Segoe UI",sans-serif}}
+font:15px/1.6 "Inter",system-ui,-apple-system,"Segoe UI",sans-serif}}
 main{{max-width:32rem;margin:8vh auto;padding:0 16px}}
 .brand{{display:flex;align-items:center;gap:8px;margin-bottom:16px;font-size:20px;font-weight:700}}
 .brand svg{{width:20px;height:20px}}

@@ -10,7 +10,7 @@ produces one complete, self-contained ``<!doctype html>`` document:
   values equal) plus a small set of components (card, status pill, button,
   list row, input) these compact panels actually use. An MCP App is one
   panel inside a chat, not a whole application with a sidebar.
-- **One self-hosted font file** (:func:`_fonts_css`), Nunito Sans, embedded
+- **One self-hosted font file** (:func:`_fonts_css`), Inter, embedded
   as a ``data:`` URI from the same WOFF2 file the dashboard self-hosts
   (``v3/web/src/assets/fonts``, vendored into this package under
   ``vendor/fonts`` so the server wheel does not depend on the ``web/``
@@ -59,14 +59,14 @@ def _font_data_uri(filename: str) -> str:
 
 @lru_cache(maxsize=1)
 def _fonts_css() -> str:
-    nunito = _font_data_uri("nunito-sans-normal-latin.woff2")
+    inter = _font_data_uri("inter-normal-latin.woff2")
     return f"""
 @font-face {{
-  font-family: 'Nunito Sans';
+  font-family: 'Inter';
   font-style: normal;
-  font-weight: 200 1000;
+  font-weight: 100 900;
   font-display: swap;
-  src: url('{nunito}') format('woff2');
+  src: url('{inter}') format('woff2');
 }}
 """
 
@@ -78,6 +78,7 @@ COLORS: dict[str, tuple[str, str]] = {
     "surface": ("#FFFFFF", "#161D2A"),
     "surface-muted": ("#EEF1F5", "#1C2433"),
     "border": ("#E3E7ED", "#263043"),
+    "border-control": ("#808B9B", "#6F7B8C"),
     "text": ("#1D232C", "#E8ECF1"),
     "text-2": ("#4B5563", "#AEB6C2"),
     "text-3": ("#667080", "#8B95A3"),
@@ -109,8 +110,8 @@ _DARK = _color_vars(1) + "--shadow-card:none;"
 APP_CSS = (
     ":root{color-scheme:light dark;"
     "--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;"
-    "--radius-sm:10px;--radius-md:14px;--radius-pill:999px;"
-    "--font-sans:'Nunito Sans',system-ui,-apple-system,'Segoe UI',sans-serif;"
+    "--radius-sm:8px;--radius-md:10px;--radius-pill:999px;"
+    "--font-sans:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;"
     "--font-mono:ui-monospace,'SF Mono','Cascadia Code',Menlo,Consolas,monospace;"
     + _LIGHT
     + "}\n"
@@ -164,8 +165,8 @@ button{cursor:pointer}
 .badge--risk{background:var(--error-bg);color:var(--error)}
 
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
-  min-height:32px;padding:0 var(--space-4);border-radius:var(--radius-pill);
-  border:1px solid var(--border);background:var(--surface);color:var(--text);
+  min-height:32px;padding:0 var(--space-4);border-radius:var(--radius-sm);
+  border:1px solid var(--border-control);background:var(--surface);color:var(--text);
   font-size:13px;font-weight:600;white-space:nowrap}
 .btn:hover{background:var(--surface-muted)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
@@ -173,7 +174,7 @@ button{cursor:pointer}
 .btn--primary:hover{background:var(--action-hover);border-color:var(--action-hover)}
 .btn--risk{color:var(--error)}
 
-.input{width:100%;min-height:36px;padding:0 var(--space-3);border:1px solid var(--border);
+.input{width:100%;min-height:36px;padding:0 var(--space-3);border:1px solid var(--border-control);
   border-radius:var(--radius-sm);background:var(--surface);color:var(--text)}
 .field__error{color:var(--error);font-size:13px}
 
