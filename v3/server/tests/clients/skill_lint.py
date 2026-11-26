@@ -74,6 +74,13 @@ MIN_DESCRIPTION_LENGTH = 60
 #: Body length ceiling. Past this, a skill should be splitting detail into
 #: reference files rather than growing its always-loaded half.
 MAX_BODY_LINES = 300
+#: The one exception, and why. palaia-install is served as a single page
+#: (get.palaia.ai/skill) to chat apps that open exactly one address, so it
+#: cannot move detail into reference files the way the ceiling above asks;
+#: everything it needs has to be in that page. It reached 300 lines with the
+#: desktop-app and Windows routes of issue #653 and the local-browser route
+#: of #654 still to add; this leaves room for those and no more.
+MAX_BODY_LINES_FOR: dict[str, int] = {"palaia-install": 330}
 
 _FRONTMATTER_RE = re.compile(r"\A---\n(?P<yaml>.*?)\n---\n(?P<body>.*)\Z", re.DOTALL)
 
@@ -187,8 +194,9 @@ def lint_skill(skill: Skill) -> list[Issue]:
     if not body:
         issues.append(Issue(where, "body is empty — frontmatter alone teaches nothing"))
     line_count = len(skill.body.splitlines())
-    if line_count > MAX_BODY_LINES:
-        issues.append(Issue(where, f"body is {line_count} lines, over the {MAX_BODY_LINES} max"))
+    max_lines = MAX_BODY_LINES_FOR.get(skill.slug, MAX_BODY_LINES)
+    if line_count > max_lines:
+        issues.append(Issue(where, f"body is {line_count} lines, over the {max_lines} max"))
     for word in find_jargon(skill.body):
         issues.append(Issue(where, f"body uses in-house word {word!r}"))
 

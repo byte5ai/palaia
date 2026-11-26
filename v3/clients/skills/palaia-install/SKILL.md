@@ -11,7 +11,7 @@ questions, then do the work: run the commands yourself if you can reach their
 machine, otherwise give them exactly one line to paste. One step at a time; wait
 for each to finish before the next. Never paste raw error output at them, use no
 Docker or app-store jargon, never invent their provider or setup, and use only what
-a Mac or Linux computer has, no helper tools of your own.
+a Mac, Linux or Windows computer has, no helper tools of your own.
 
 palaia runs on a machine they own and is used in a browser. It is almost always a
 separate always-on box (a rented server, a NAS, a small Pi): a hub that only
@@ -87,15 +87,21 @@ up: 12 capital letters and digits without 0, O, 1 or I, in three groups like
 
 **First, where do your commands run?** On their computer (your shell has their
 home folder and user name, e.g. Claude Code in their terminal), 3a and 3b can
-work. In a sandbox or VM that sees only folders they connected, or with no shell,
-their keys are not there and nothing they type reaches you: use 3c. A key you
-cannot see does not mean they have none; never move a secret via such a folder.
+work. With no shell, or in a sandbox or VM that sees only folders they connected,
+their keys are not there and nothing they type reaches you. Then move the server
+part to a desktop app that runs commands on their computer (checked 2026-11-26):
+the Claude app's **Code** tab, at the top of the sidebar, in a local session (Pro
+plan or higher), or **Codex** in the ChatGPT app for Mac or Windows, working
+locally (every plan, Free included). Give them one message to paste there: read
+`https://get.palaia.ai/skill` and continue at Step 3, with the server address, your
+setup code and their Step 2 choice. Neither app: 3c. A key you cannot see does not
+mean they have none; never move a secret via such a folder.
 
-Then ask in one go: the address, and how they log in — a key on their computer,
-or a password the provider showed or emailed. Try no login before they answer and
-never guess a user name: root, unless the provider gave another. Never ask for a
-password in the chat: it would stay in the conversation. Docker or Tailscale
-already on the server is fine; the installer keeps both.
+Then ask, one question at a time: the address, then how they log in — a key on their
+computer, or a password the provider showed or emailed. Try no login before they
+answer and never guess a user name: root, unless the provider gave another. Never
+ask for a password in the chat: it would stay in the conversation. Docker or
+Tailscale already on the server is fine; the installer keeps both.
 
 The installer line is the first one in `v3/deploy/get-palaia.sh`,
 `curl -fsSL https://get.palaia.ai | sh`. Run it with your setup code:
@@ -138,6 +144,16 @@ From now on every login uses this key. Check it and run the installer as in 3a:
 
 ```
 ssh -i ~/.palaia-setup/key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 root@<address> true
+```
+
+**On Windows** (PowerShell, as Codex and the Code tab use without Git Bash): 3a
+works as written. Instead of 3b, they run this in the app's terminal and type the
+server password at ssh's own prompt (nothing shows while typing); the installer
+then runs there, so have them tell you what it shows. No `ssh`: they add the
+optional Windows feature "OpenSSH Client" first.
+
+```
+ssh -t root@<address> 'curl -fsSL https://get.palaia.ai | PALAIA_SETUP_CODE=<code> sh'
 ```
 
 After Step 5, or if they stop halfway, remove the key from the server and here:

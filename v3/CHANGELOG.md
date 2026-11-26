@@ -12,6 +12,19 @@ capability a user would notice.
 
 ## Unreleased
 
+### Install
+
+- **The setup guide moves the server part to an app that can run it.** A
+  chat app without a shell used to leave only the provider's web console,
+  where the assistant cannot follow the installer. The guide now first
+  offers the Claude app's Code tab (Pro plan or higher) or Codex in the
+  ChatGPT app (every plan, Free included). Both run commands on the
+  person's own computer, so the assistant logs in to the server and runs
+  the installer itself. The web console stays the fallback. On Windows,
+  where these apps use PowerShell, the person types the server password at
+  ssh's own prompt in the app's terminal. The guide also asks one question
+  at a time throughout. (#653)
+
 ### Dashboard
 
 - **One click to add palaia to the Claude app.** When cloud access is on,
