@@ -20,6 +20,8 @@ In Claude, add a custom connector with this address. When it asks, sign in with 
 https://palaia.example.com/mcp/default
 ```
 
+In palaia's dashboard, the **Add to Claude** button opens Claude's Add custom connector dialog with the name and this address already filled in. Check both and confirm; Claude adds nothing before you do. The button appears once cloud access is on.
+
 ## Teach it to look things up and save things on its own
 
 Add it as a capability in your account settings.

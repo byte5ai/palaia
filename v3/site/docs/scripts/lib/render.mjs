@@ -185,6 +185,14 @@ export function renderNotYetPage(client, skillSupport) {
       fence("text", example.url).trimEnd(),
       "",
     );
+    if (example.installLink) {
+      parts.push(
+        `In palaia's dashboard, the **Add to Claude** button opens ${client.name}'s Add custom connector ` +
+          "dialog with the name and this address already filled in. Check both and confirm; " +
+          `${client.name} adds nothing before you do. The button appears once cloud access is on.`,
+        "",
+      );
+    }
   }
   parts.push(
     renderSkillSection(skillSupport),

@@ -536,3 +536,14 @@ def test_the_funnel_line_is_the_hubs_own_guidance() -> None:
     guidance = tailscale_guidance(mode="cloud", local_port=DEFAULT_CLOUD_HOST_PORT)
     assert guidance.commands == ("sudo tailscale funnel --bg http://127.0.0.1:8422",)
     assert 'CLOUD_PORT="${PALAIA_CLOUD_PORT:-8422}"' in GET_PALAIA_PATH.read_text(encoding="utf-8")
+
+
+def test_the_skill_names_the_add_to_claude_button_the_dashboard_shows() -> None:
+    """Step 5 tells the person to look for a button by its label; the label
+    is the dashboard's own, so renaming one without the other turns this red."""
+    label = "Add to Claude"
+    assert f"**{label}**" in _skill_body()
+    button = V3_ROOT / "web" / "src" / "components" / "AddToClaudeButton.tsx"
+    assert f"{label}\n" in button.read_text(encoding="utf-8"), (
+        f"the dashboard's button no longer says {label!r} — change the skill's Step 5 to match"
+    )

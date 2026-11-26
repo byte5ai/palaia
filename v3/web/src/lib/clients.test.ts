@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   CLIENTS,
   CODEX_TOKEN_ENV,
+  claudeInstallLink,
   TOKEN_PLACEHOLDER,
   guidedClients,
   wizardClients,
@@ -153,6 +154,51 @@ describe("client integration catalog", () => {
       expect(connect?.note).toMatch(
         new RegExp(client.name.replace(".", "\\."), "i"),
       );
+    }
+  });
+
+  it("builds Anthropic's documented install link from the public MCP address only", () => {
+    // Format: claude.com/docs/connectors/building/directory-vs-custom,
+    // "Custom connector install link" (checked 2026-11-26).
+    expect(
+      claudeInstallLink("https://hub.example.com/mcp/default", "default"),
+    ).toBe(
+      "https://claude.ai/customize/connectors?modal=add-custom-connector" +
+        "&connectorName=palaia" +
+        "&connectorUrl=https%3A%2F%2Fhub.example.com%2Fmcp%2Fdefault",
+    );
+  });
+
+  it("percent-encodes the name and the address, so nothing leaks into other parameters", () => {
+    const link = claudeInstallLink(
+      "https://hub.example.com:8443/mcp/a b&x=1?y#z",
+      "a b&x=1",
+    );
+    const params = new URL(link).searchParams;
+    expect([...params.keys()]).toEqual([
+      "modal",
+      "connectorName",
+      "connectorUrl",
+    ]);
+    expect(params.get("modal")).toBe("add-custom-connector");
+    expect(params.get("connectorName")).toBe("palaia-a b&x=1");
+    expect(params.get("connectorUrl")).toBe(
+      "https://hub.example.com:8443/mcp/a b&x=1?y#z",
+    );
+    expect(link).not.toMatch(/[ #]/);
+  });
+
+  it("only the Claude cloud connector offers the install link, built from its issuer", () => {
+    for (const client of CLIENTS) {
+      if (client.kind !== "notYet") continue;
+      const connect = client.oauthConnect?.("https://hub.example.com/", "work");
+      if (client.id === "claude-ai") {
+        expect(connect?.installLink).toBe(
+          claudeInstallLink("https://hub.example.com/mcp/work", "work"),
+        );
+      } else {
+        expect(connect?.installLink).toBeUndefined();
+      }
     }
   });
 
