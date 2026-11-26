@@ -44,11 +44,11 @@ def test_create_vault_then_list_shows_it(tmp_path: Path) -> None:
     assert body["key"] == "work"
     assert body["purpose"] == "Team knowledge."
     assert body["writable"] is True
-    # 1, not 0: the vault's own meta/vault.md manifest is itself a catalog
-    # entry (format spec §1.2) — see EngineVaultService's module docstring
-    # for why the "normal recall" surface filters `type: meta` out but this
-    # raw note_count does not.
-    assert body["note_count"] == 1
+    # 0: the vault's own meta/vault.md manifest is a catalog entry (format
+    # spec §1.2) but not a note a person sees, so the count leaves it out
+    # and agrees with the empty note list.
+    assert body["note_count"] == 0
+    assert client.get("/api/vaults/work/notes").json() == []
 
     listed = client.get("/api/vaults")
     assert listed.status_code == 200
@@ -93,7 +93,7 @@ def test_create_with_template_seeds_two_notes(tmp_path: Path) -> None:
     client = _client(tmp_path)
 
     created = client.post("/api/vaults", json={"key": "work", "template": True})
-    assert created.json()["note_count"] == 3  # 2 template notes + the manifest
+    assert created.json()["note_count"] == 2  # the 2 template notes, not the manifest
 
     notes = client.get("/api/vaults/work/notes").json()
     titles = {note["title"] for note in notes}

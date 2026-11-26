@@ -284,7 +284,7 @@ def test_close_archives_the_vault_and_unmounts_it_live(hub: _Hub) -> None:
         # The name is free again, and a new vault under it starts empty.
         again = client.post("/api/vaults", json={"key": "trip", "ephemeral": True})
         assert again.status_code == 200
-        assert again.json()["note_count"] == 1  # just the manifest
+        assert again.json()["note_count"] == 0  # the manifest is not counted
 
 
 @pytest.mark.skipif(

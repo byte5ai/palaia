@@ -216,6 +216,9 @@ class VaultInfo:
     purpose: str | None = None
     format_version: int = VAULT_FORMAT_VERSION
     writable: bool = True
+    #: Notes a person sees in this vault: every catalog entry except the
+    #: manifest and other ``type: meta`` notes, the same set ``list_notes``
+    #: returns.
     note_count: int = 0
     #: ``True`` when the manifest declares ``lifecycle: ephemeral`` — a
     #: task-bound vault that is meant to be promoted from and then closed

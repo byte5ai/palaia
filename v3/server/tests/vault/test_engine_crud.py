@@ -41,6 +41,21 @@ def git(root: Path, *args: str) -> str:
 # --------------------------------------------------------------------- opening
 
 
+async def test_note_count_leaves_out_meta_notes(make_engine: EngineFactory) -> None:
+    """The count is what a person sees: the manifest and `type: meta` notes
+    are catalog entries but not notes, on the write path and after a rescan."""
+    engine = await make_engine("work")
+    assert "meta/vault.md" in engine.catalog
+    assert engine.info().note_count == 0
+
+    await engine.write_note("decisions/a.md", body="A.", title="A")
+    await engine.write_note("meta/conventions.md", body="C.", frontmatter={"type": "meta"})
+    assert engine.info().note_count == 1
+
+    await engine.refresh()
+    assert engine.info().note_count == 1
+
+
 async def test_open_initializes_layout_manifest_and_git(make_engine: EngineFactory) -> None:
     engine = await make_engine("work")
     for reserved in ("meta", "inbox", "review"):
