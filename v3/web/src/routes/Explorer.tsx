@@ -42,6 +42,7 @@ import type {
 } from "../lib/api/client";
 import { api } from "../lib/api/client";
 import { describeApiError } from "../lib/errors";
+import { parseCapture } from "../lib/capture";
 import { isGeneratedDescription } from "../lib/description";
 import { count, exactTime, shortDateTime } from "../lib/format";
 import { SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../lib/useDebouncedValue";
@@ -828,6 +829,8 @@ function NotePane({
     );
   }
 
+  const capture = note ? parseCapture(note.body) : null;
+
   return (
     <>
       <div className="pane">
@@ -865,7 +868,23 @@ function NotePane({
                 </span>
               ) : null}
             </div>
-            <p className="note__body">{note.body}</p>
+            {capture ? (
+              // A capture's storage form has tags and a hash; a person reads
+              // the text and three plain facts about it.
+              <>
+                <p className="note__body">{capture.text}</p>
+                <dl className="fm note__facts">
+                  <dt>About</dt>
+                  <dd>{capture.about}</dd>
+                  <dt>Why it was kept</dt>
+                  <dd>{capture.why}</dd>
+                  <dt>From</dt>
+                  <dd>{capture.source}</dd>
+                </dl>
+              </>
+            ) : (
+              <p className="note__body">{note.body}</p>
+            )}
           </article>
         )}
       </div>

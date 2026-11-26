@@ -55,6 +55,10 @@ describe("Automations (SPEC-307, issue 570)", () => {
 
     const dialog = screen.getByRole("dialog", { name: "New automation" });
     expect(within(dialog).getByDisplayValue(/notify me when palaia needs a review/i)).toBeInTheDocument();
+    // The ready-made title is a sentence a person would write, not a
+    // placeholder in braces.
+    const title = within(dialog).getByLabelText(/^title$/i) as HTMLInputElement;
+    expect(title.value).toBe("A captured note needs your review");
   });
 
   it("has one primary action, and creates an automation through the dialog", async () => {

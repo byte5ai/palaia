@@ -81,7 +81,9 @@ const RECIPES: Recipe[] = [
     description: "A notification whenever a captured note is too unclear to file on its own.",
     trigger_event: "curator.capture.needs_review",
     condition: [],
-    action: { kind: "notification", title_template: "Review needed: {{data.permalink}}" },
+    // A plain sentence: the event names its note only by its path, and the
+    // person finds the note under Memories › Needs review.
+    action: { kind: "notification", title_template: "A captured note needs your review" },
   },
   {
     id: "notify-doctor",

@@ -631,6 +631,7 @@ select.input, select.vaultpick { appearance: none; -webkit-appearance: none; pad
 .note__title { font-size: var(--type-title-1-size); line-height: var(--type-title-1-lh); font-weight: var(--type-title-1-weight); }
 .note__body { font-size: var(--type-prose-size); line-height: var(--type-prose-lh); color: var(--text); max-width: 70ch;
   margin-top: var(--space-4); white-space: pre-wrap; overflow-wrap: anywhere; }
+.note__facts { margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--border); }
 .note__meta { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-2); }
 .note h3 { font-size: var(--type-body-strong-size); line-height: var(--type-body-strong-lh); font-weight: 700; color: var(--text);
   margin: var(--space-6) 0 var(--space-3); padding-bottom: var(--space-2); border-bottom: 1px solid var(--border); }

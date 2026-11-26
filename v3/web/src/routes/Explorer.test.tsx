@@ -152,6 +152,30 @@ describe("Memories › Browse", () => {
     expect(await screen.findByText(/couldn't load the links/i)).toBeInTheDocument();
   });
 
+  it("shows a captured note as its text and three plain facts, without tags or the hash", async () => {
+    stubVault();
+    vi.spyOn(api, "readNote").mockResolvedValue({
+      ...note("projects/api", "API Gateway", "projects"),
+      type: "capture",
+      body:
+        "Changes who to ask\n\n- [entity] Billing service\n- [why] Changes who to ask\n" +
+        "- [raw] The payments team owns billing from December.\n- [source] chat\n" +
+        "- [capture_hash] e2432368920442cb\n",
+      created: "2026-10-20T09:00:00Z",
+    });
+    vi.spyOn(api, "noteGraph").mockResolvedValue({ outbound: [], inbound: [] });
+    vi.spyOn(api, "noteHistory").mockResolvedValue([]);
+
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: /api gateway/i }));
+
+    expect(await screen.findByText("The payments team owns billing from December.")).toBeInTheDocument();
+    expect(screen.getByText("About").nextElementSibling).toHaveTextContent("Billing service");
+    expect(screen.getByText("Why it was kept").nextElementSibling).toHaveTextContent("Changes who to ask");
+    expect(screen.getByText("From").nextElementSibling).toHaveTextContent("chat");
+    expect(screen.queryByText(/\[entity\]|\[raw\]|capture_hash|e2432368920442cb/)).not.toBeInTheDocument();
+  });
+
   it("shows history as who saved it and when, with the commit only in the tooltip", async () => {
     stubVault();
     vi.spyOn(api, "readNote").mockResolvedValue({
