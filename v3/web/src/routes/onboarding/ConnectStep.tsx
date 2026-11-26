@@ -9,6 +9,7 @@
  */
 import { useState } from "react";
 
+import { AddToClaudeButton } from "../../components/AddToClaudeButton";
 import { Button } from "../../components/Button";
 import { Card, CardBody } from "../../components/Card";
 import { ConnectPanel } from "../../components/ConnectPanel";
@@ -188,6 +189,17 @@ function CloudConnector({
   return (
     <Card>
       <CardBody className="stack stack--3">
+        {connect.installLink ? (
+          <>
+            <div>
+              <AddToClaudeButton href={connect.installLink} />
+            </div>
+            <p className="t-sm t-muted">
+              Opens Claude with the name and address filled in; check them and
+              click Add. Or add it by hand with this address:
+            </p>
+          </>
+        ) : null}
         <div className="snippet snippet--wrap">
           <code>{connect.url}</code>
           <Button

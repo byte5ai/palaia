@@ -150,6 +150,39 @@ describe("AI apps › Apps (report §3.5)", () => {
     expect(screen.getByText("https://palaia.example.com/mcp/default")).toBeInTheDocument();
   });
 
+  it("offers an Add to Claude link with only the public address, next to the copyable address", async () => {
+    stub({ mode: "cloud", issuer: "https://palaia.example.com" });
+    mount();
+
+    const panel = await openApp("Claude");
+
+    const button = within(panel).getByRole("link", { name: "Add to Claude" });
+    expect(button).toHaveAttribute(
+      "href",
+      "https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=palaia" +
+        "&connectorUrl=https%3A%2F%2Fpalaia.example.com%2Fmcp%2Fdefault",
+    );
+    expect(button).toHaveAttribute("rel", expect.stringContaining("noreferrer"));
+    expect(decodeURIComponent(button.getAttribute("href")!)).not.toContain(window.location.origin);
+    // The copy-the-address way stays.
+    expect(within(panel).getByText("https://palaia.example.com/mcp/default")).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Copy" })).toBeInTheDocument();
+  });
+
+  it("has no Add to Claude link without cloud access, and none for ChatGPT", async () => {
+    stub({ mode: "locked" });
+    mount();
+    const panel = await openApp("Claude");
+    expect(within(panel).getByText("Claude needs Cloud mode")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Add to Claude" })).not.toBeInTheDocument();
+
+    vi.restoreAllMocks();
+    stub({ mode: "cloud", issuer: "https://palaia.example.com" });
+    mount("/apps?app=chatgpt");
+    expect(await screen.findByRole("dialog", { name: "ChatGPT" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Add to Claude" })).not.toBeInTheDocument();
+  });
+
   it("an app's panel has its own address and starts at Create access key", async () => {
     stub();
     mount("/apps?app=claude-code-cli");

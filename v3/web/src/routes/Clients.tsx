@@ -11,6 +11,7 @@ import { useSearchParams } from "react-router-dom";
 
 import "./apps.css";
 
+import { AddToClaudeButton } from "../components/AddToClaudeButton";
 import { Button, LinkButton } from "../components/Button";
 import { Callout } from "../components/Callout";
 import { Card, CardBody, CardFoot, CardHeader } from "../components/Card";
@@ -293,9 +294,14 @@ function CloudAppCard({
       <CardBody className="stack stack--4">
         {connect ? (
           <>
+            {connect.installLink ? (
+              <div>
+                <AddToClaudeButton href={connect.installLink} />
+              </div>
+            ) : null}
             <p>
-              Paste this address into {client.name}&rsquo;s custom connector settings, then sign in
-              with your palaia account when it asks.
+              {connect.installLink ? "Or paste" : "Paste"} this address into {client.name}&rsquo;s
+              custom connector settings, then sign in with your palaia account when it asks.
             </p>
             <div className="snippet snippet--wrap">
               <code>{connect.url}</code>

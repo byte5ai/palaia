@@ -103,7 +103,7 @@ export interface NotYetClient {
   oauthConnect?: (
     issuer: string,
     profile: string,
-  ) => { url: string; note: string };
+  ) => { url: string; note: string; installLink?: string };
 }
 
 export type ClientEntry = GuidedClient | NotYetClient | DownloadClient;
@@ -117,12 +117,35 @@ const CLOUD_CONNECTOR_REASON =
       : `${name} signs in to palaia with your account, and sign-in is not on yet. Finish ` +
         `turning on cloud access, then come back here. ${planNote}`;
 
-const OAUTH_CONNECT = (name: string) => (issuer: string, profile: string) => ({
-  url: `${issuer.replace(/\/$/, "")}/mcp/${profile}`,
-  note:
-    `In ${name}, add a custom connector with this address. When it asks, sign in with your ` +
-    `palaia account and allow access.`,
-});
+/** The link Anthropic documents for opening Claude's "Add custom connector"
+ * dialog with name and address already filled in
+ * (claude.com/docs/connectors/building/directory-vs-custom, "Custom
+ * connector install link"). It carries only what the user would paste by
+ * hand — a display name and the public MCP address — and claude.ai shows
+ * both for review before anything is added. */
+const CLAUDE_CONNECTORS_URL = "https://claude.ai/customize/connectors";
+
+export function claudeInstallLink(mcpUrl: string, profile: string): string {
+  const name = profile === "default" ? "palaia" : `palaia-${profile}`;
+  return (
+    `${CLAUDE_CONNECTORS_URL}?modal=add-custom-connector` +
+    `&connectorName=${encodeURIComponent(name)}` +
+    `&connectorUrl=${encodeURIComponent(mcpUrl)}`
+  );
+}
+
+const OAUTH_CONNECT =
+  (name: string, installLink?: (mcpUrl: string, profile: string) => string) =>
+  (issuer: string, profile: string) => {
+    const url = `${issuer.replace(/\/$/, "")}/mcp/${profile}`;
+    return {
+      url,
+      note:
+        `In ${name}, add a custom connector with this address. When it asks, sign in with your ` +
+        `palaia account and allow access.`,
+      ...(installLink ? { installLink: installLink(url, profile) } : {}),
+    };
+  };
 
 const tokenOr = (token?: string): string => token ?? TOKEN_PLACEHOLDER;
 
@@ -211,7 +234,7 @@ export const CLIENTS: ClientEntry[] = [
       "Claude",
       "Every plan (including Free) can add palaia as a custom connector.",
     ),
-    oauthConnect: OAUTH_CONNECT("Claude"),
+    oauthConnect: OAUTH_CONNECT("Claude", claudeInstallLink),
   },
   {
     kind: "notYet",

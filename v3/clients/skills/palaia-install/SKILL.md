@@ -219,10 +219,10 @@ to guess. One step at a time, in this order:
    and use the `https://` address it shows. Before **Turn on cloud access** and
    **Restart palaia**, say that palaia restarts once and then asks them to sign
    in with the new account — expected, not a step back. All four checks must pass.
-5. **Connect an AI app** — the app they chose. The Claude app, claude.ai and
-   ChatGPT get the address and three clicks; Claude Desktop on a private hub the
-   extension download; Claude Code and the others a command. "Connected" appears
-   once palaia saw the first request.
+5. **Connect an AI app** — the app they chose. Claude (app, claude.ai): the
+   **Add to Claude** button, prefilled; ChatGPT: the address and three clicks;
+   Claude Desktop on a private hub: the extension download; Claude Code and the
+   others: a command. "Connected" appears once palaia saw the first request.
 
 Then have them ask the app to save one note and find it again. Only then say it
 works, and say what you checked. A warning box on the page comes first: read it

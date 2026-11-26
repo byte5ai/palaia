@@ -408,6 +408,65 @@ describe("first-run setup", () => {
     expect(screen.getByText(/settings → connectors/i)).toBeInTheDocument();
   });
 
+  it("offers Add to Claude with the public address only, and not before cloud access works", async () => {
+    fakeHub(
+      freshStatus({
+        goal: "cloud",
+        vaults: ["work"],
+        profiles: ["default"],
+        owner_configured: true,
+        mode: "cloud",
+        configured_mode: "cloud",
+        sign_in_active: true,
+        configured_sign_in: true,
+        issuer: PUBLIC,
+        configured_issuer: PUBLIC,
+        public_url: PUBLIC,
+        cloud_ready: true,
+        cloud_verified: true,
+      }),
+    );
+    renderWizard();
+
+    const button = await screen.findByRole("link", { name: "Add to Claude" });
+    expect(button).toHaveAttribute(
+      "href",
+      "https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=palaia" +
+        `&connectorUrl=${encodeURIComponent(`${PUBLIC}/mcp/default`)}`,
+    );
+    expect(decodeURIComponent(button.getAttribute("href")!)).not.toContain(
+      window.location.origin,
+    );
+    // The copy-the-address way stays beside it.
+    expect(screen.getByText(`${PUBLIC}/mcp/default`)).toBeInTheDocument();
+  });
+
+  it("shows no Add to Claude link while cloud access is off", async () => {
+    fakeHub(
+      freshStatus({
+        goal: "private",
+        vaults: ["work"],
+        profiles: ["default"],
+        skipped: ["account"],
+      }),
+    );
+    renderWizard();
+
+    expect(
+      await screen.findByRole("heading", { name: /connect your ai app/i }),
+    ).toBeInTheDocument();
+    const claude = screen
+      .getAllByRole("radio")
+      .find((r) => /^Claude(?! Desktop| Code)/.test(r.textContent ?? ""));
+    fireEvent.click(claude!);
+    expect(
+      screen.getByRole("button", { name: /turn on cloud access/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Add to Claude" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps a private hub's cloud apps visible but says what they need", async () => {
     fakeHub(
       freshStatus({

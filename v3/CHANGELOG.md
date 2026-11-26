@@ -10,6 +10,17 @@ ADRs, phase-gate records, SPEC index docs, CI and release plumbing) are left
 out on purpose; they moved the project forward but nothing in them is a
 capability a user would notice.
 
+## Unreleased
+
+### Dashboard
+
+- **One click to add palaia to the Claude app.** When cloud access is on,
+  the **Connect an AI app** step and the AI apps page show an **Add to
+  Claude** button. It opens Claude's Add custom connector dialog with the
+  name and palaia's public address already filled in; you check them and
+  confirm. Copying the address by hand still works. The link carries only
+  that public address, never your dashboard's.
+
 ## 3.0.0-rc10 — 2026-11-14 (release candidate)
 
 Two libraries updated for newly published advisories. Still a pre-release —
