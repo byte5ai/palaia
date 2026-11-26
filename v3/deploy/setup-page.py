@@ -387,6 +387,7 @@ COLORS = {
     "surface": ("#FFFFFF", "#161D2A"),
     "surface-muted": ("#EEF1F5", "#1C2433"),
     "border": ("#E3E7ED", "#263043"),
+    "border-control": ("#808B9B", "#6F7B8C"),
     "text": ("#1D232C", "#E8ECF1"),
     "text-2": ("#4B5563", "#AEB6C2"),
     "brand": ("#009FE3", "#009FE3"),
@@ -422,12 +423,12 @@ PAGE = (
 :root{{color-scheme:light;@LIGHT@}}
 @media (prefers-color-scheme: dark){{:root{{color-scheme:dark;@DARK@}}}}
 body{{margin:0;background:var(--canvas);color:var(--text);
-font:15px/1.6 "Inter",system-ui,-apple-system,"Segoe UI",sans-serif}}
+font:14px/20px "Inter",system-ui,-apple-system,"Segoe UI",sans-serif}}
 main{{max-width:32rem;margin:8vh auto;padding:0 16px}}
 .brand{{display:flex;align-items:center;gap:8px;margin-bottom:16px;font-size:20px;font-weight:700}}
 .brand svg{{width:20px;height:20px}}
-.card{{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:32px}}
-h1{{font-size:24px;line-height:32px;margin:0 0 8px}}
+.card{{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:32px}}
+h1{{font-size:24px;line-height:30px;font-weight:600;margin:0 0 8px}}
 p{{margin:8px 0}}
 a{{color:var(--action)}}
 .steps{{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 20px;font-size:13px;color:var(--text-2)}}
@@ -436,15 +437,16 @@ a{{color:var(--action)}}
 label{{display:block;font-weight:600;margin-top:16px}}
 input{{font:inherit;font-size:18px;padding:10px 12px;margin-top:6px;width:100%;
 box-sizing:border-box;letter-spacing:.12em;text-transform:uppercase;
-border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text)}}
+border:1px solid var(--border-control);border-radius:8px;
+background:var(--surface);color:var(--text)}}
 .row{{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:20px}}
 .row form{{margin:0}}
 button,a.btn{{display:inline-flex;align-items:center;justify-content:center;
 min-height:44px;box-sizing:border-box;font:inherit;font-weight:600;padding:0 22px;
-border:1px solid transparent;border-radius:999px;background:var(--action);
+border:1px solid transparent;border-radius:8px;background:var(--action);
 color:var(--on-action);text-decoration:none;cursor:pointer}}
 button:hover,a.btn:hover{{background:var(--action-hover)}}
-button.ghost{{background:var(--surface);color:var(--text);border-color:var(--border)}}
+button.ghost{{background:var(--surface);color:var(--text);border-color:var(--border-control)}}
 button.ghost:hover{{background:var(--surface-muted)}}
 :focus-visible{{outline:2px solid var(--focus);outline-offset:2px}}
 .err{{color:var(--error)}} .ok{{color:var(--ok)}}

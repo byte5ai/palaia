@@ -3,7 +3,8 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
 import { routes } from "../index";
-import { SETTINGS_AREAS, SettingsLayout } from "./SettingsLayout";
+import { SETTINGS_AREAS } from "./settingsAreas";
+import { SettingsLayout } from "./SettingsLayout";
 
 function mount(at: string) {
   return render(

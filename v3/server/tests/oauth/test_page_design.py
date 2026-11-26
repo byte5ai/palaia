@@ -65,3 +65,14 @@ def test_the_error_page_leads_with_the_explanation_not_the_code() -> None:
     body = bytes(response.body).decode("utf-8")
     assert body.index("this sign-in link is invalid") < body.index("invalid_request")
     assert "<h1>Can&#x27;t continue</h1>" in body or "<h1>Can't continue</h1>" in body
+
+
+def test_the_sign_in_page_uses_the_typeface_and_the_radii_of_the_tokens() -> None:
+    data = json.loads(TOKENS.read_text(encoding="utf-8"))
+    typeface = data["type"]["families"]["sans"].split(",")[0].strip().strip('"')
+    radii = {token["value"] for token in data["radius"]["tokens"]}
+    page = _login_page(next_url="/", csrf="x", error="")
+    assert f'"{typeface}", system-ui' in page
+    used = set(re.findall(r"border-radius:\s*([0-9.]+px)", page))
+    assert used, "the page states no radius at all"
+    assert used <= radii, f"radii outside tokens.json: {sorted(used - radii)}"

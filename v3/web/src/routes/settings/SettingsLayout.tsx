@@ -7,15 +7,7 @@ import { NavLink, Outlet, useOutletContext } from "react-router-dom";
 
 import type { EventStreamState } from "../../lib/events";
 import "../settings.css";
-
-export const SETTINGS_AREAS: { to: string; label: string; end?: boolean }[] = [
-  { to: "/settings", label: "General", end: true },
-  { to: "/settings/access", label: "Access & sign-in" },
-  { to: "/settings/backups", label: "Backups" },
-  { to: "/settings/telegram", label: "Telegram" },
-  { to: "/settings/advanced", label: "Advanced" },
-  { to: "/settings/about", label: "About & updates" },
-];
+import { SETTINGS_AREAS } from "./settingsAreas";
 
 export function SettingsLayout() {
   const stream = useOutletContext<EventStreamState | undefined>();

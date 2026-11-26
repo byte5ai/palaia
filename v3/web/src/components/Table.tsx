@@ -8,8 +8,8 @@ export interface Column<Row> {
   cellClassName?: string;
 }
 
-/** Hairline rows, no zebra, mono uppercase micro-headers, horizontally
- * scrollable in its own wrapper (system.md §2, Data display). */
+/** Hairline rows, no zebra, sentence-case headers, horizontally scrollable
+ * in its own wrapper (system.md §2, Table). */
 export function Table<Row extends { id: string | number }>({
   columns,
   rows,

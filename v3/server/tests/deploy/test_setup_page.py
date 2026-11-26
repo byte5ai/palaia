@@ -519,6 +519,21 @@ def test_the_page_colours_are_the_design_tokens_of_the_same_name() -> None:
     assert "@import" not in page and "url(" not in page
 
 
+def test_the_page_typeface_and_radii_are_the_design_tokens() -> None:
+    """The page states its typeface and radii itself, like its colours."""
+    import json
+
+    tokens_file = DEPLOY_ROOT.parent / "design" / "tokens.json"
+    data = json.loads(tokens_file.read_text(encoding="utf-8"))
+    typeface = data["type"]["families"]["sans"].split(",")[0].strip().strip('"')
+    radii = {token["value"] for token in data["radius"]["tokens"]}
+    page = _page_module().PAGE.format(body="")
+    assert f'"{typeface}",system-ui' in page
+    used = set(re.findall(r"border-radius:\s*([0-9.]+px)", page))
+    assert used, "the page states no radius at all"
+    assert used <= radii, f"radii outside tokens.json: {sorted(used - radii)}"
+
+
 def test_a_waiting_page_reloads_when_the_phase_differs_from_the_one_it_shows() -> None:
     """The phase can change between rendering and the first poll (the login
     link arrives a moment later): the page must compare with what it shows,

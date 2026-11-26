@@ -157,3 +157,20 @@ def test_the_app_colours_are_the_design_tokens_of_the_same_name() -> None:
         assert tokens.get(name) == (light, dark), name
         assert f"--{name}:{light};" in APP_CSS
         assert f"--{name}:{dark};" in APP_CSS
+
+
+def test_the_app_typeface_and_radii_are_the_design_tokens() -> None:
+    """Same reason as the colours: the panels state the typeface and the
+    radii themselves, so they must be the ones ``tokens.json`` names."""
+    import json
+
+    from palaia_hub.gateway.apps.shell import APP_CSS, _fonts_css
+
+    tokens_file = Path(__file__).resolve().parents[3] / "design" / "tokens.json"
+    tokens = json.loads(tokens_file.read_text(encoding="utf-8"))
+    typeface = tokens["type"]["families"]["sans"].split(",")[0].strip().strip('"')
+    assert f"--font-sans:'{typeface}'," in APP_CSS
+    assert f"font-family: '{typeface}';" in _fonts_css()
+    for radius in tokens["radius"]["tokens"]:
+        if radius["name"] in ("radius-sm", "radius-md", "radius-pill"):
+            assert f"--{radius['name']}:{radius['value']};" in APP_CSS, radius["name"]

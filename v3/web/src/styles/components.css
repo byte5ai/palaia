@@ -1,30 +1,16 @@
 /* =============================================================
    palaia dashboard — component styles
    =============================================================
-   Every value comes from tokens.css (generated from v3/design/tokens.json)
-   or from the few component constants declared right below. Design rules:
-   v3/docs/design/system.md. In short: one font family, one brand colour
+   Every value comes from tokens.css (generated from v3/design/tokens.json).
+   The specification is v3/docs/design/system.md. In short: one font family, one brand colour
    (cyan, never behind white text), one action colour for buttons and
    links, flat surfaces, status always as word + colour, no uppercase
    labels, nothing smaller than 12px.
 
-   scripts/lint-tokens.mjs fails the build on a literal colour or a literal
-   transition duration outside a custom-property definition, and on a
-   custom property that no stylesheet defines.
+   scripts/lint-tokens.mjs fails the build on a literal colour, type size,
+   radius or transition duration, on a media query that is not at a
+   breakpoint, and on a custom property that no stylesheet defines.
    ============================================================= */
-
-/* Component constants that tokens.json does not carry: motion, the dialog
-   scrim, and two derived radii. Named once so every rule reads var(--…). */
-:root {
-  --duration-quick: 120ms;
-  --duration-smooth: 200ms;
-  --easing-standard: cubic-bezier(0.2, 0, 0, 1);
-  --radius-xs: calc(var(--radius-sm) - 4px);
-  --radius-inner: calc(var(--radius-sm) - 2px);
-  --scrim: rgba(15, 21, 32, 0.5);
-  --appbar-height: 56px;
-  --rail-width: 64px;
-}
 
 /* ---------- base ---------- */
 *, *::before, *::after { box-sizing: border-box; }
@@ -150,7 +136,7 @@ a.btn[aria-disabled="true"] { pointer-events: none; }
 .iconbtn:hover { background: var(--surface-muted); color: var(--text); }
 .iconbtn__badge { position: absolute; top: 4px; right: 4px; min-width: 16px; height: 16px; padding: 0 4px;
   border-radius: var(--radius-pill); background: var(--error); color: var(--on-action);
-  font-size: var(--type-caption-size); line-height: 16px; font-weight: 700; text-align: center; }
+  font-size: var(--type-caption-size); line-height: var(--type-caption-lh); font-weight: 700; text-align: center; }
 
 .kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px;
   border: 1px solid var(--border); border-radius: var(--radius-xs); background: var(--surface);
@@ -454,7 +440,8 @@ select.input, select.vaultpick { appearance: none; -webkit-appearance: none; pad
 .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; min-width: 0; }
 .brand:hover { color: var(--text); text-decoration: none; }
 .brand__mark { width: 20px; height: 20px; flex: none; }
-.brand__name { font-family: var(--font-display); font-size: 20px; line-height: 28px; font-weight: 400; }
+.brand__name { font-family: var(--font-display); font-size: var(--type-wordmark-size); line-height: var(--type-wordmark-lh);
+  font-weight: var(--type-wordmark-weight); }
 .nav { display: flex; flex-direction: column; gap: 2px; }
 .nav__item { display: flex; align-items: center; gap: var(--space-3); height: var(--control-height); padding: 0 var(--space-3);
   border-radius: var(--radius-sm); color: var(--text-2); font-size: var(--type-body-strong-size);
@@ -464,7 +451,8 @@ select.input, select.vaultpick { appearance: none; -webkit-appearance: none; pad
 .nav__item .icon { width: 18px; height: 18px; }
 .nav__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav__count { margin-left: auto; min-width: 22px; height: 20px; padding: 0 6px; border-radius: var(--radius-pill);
-  background: var(--info-bg); color: var(--info); font-size: var(--type-caption-size); line-height: 20px; font-weight: 700; text-align: center; }
+  background: var(--info-bg); color: var(--info); font-size: var(--type-caption-size); line-height: var(--type-caption-lh);
+  font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
 .nav__item--on .nav__count { background: var(--surface); }
 .nav__sep { height: 1px; background: var(--border); margin: var(--space-2) var(--space-3); border: 0; }
 .sidebar__foot { margin-top: auto; display: flex; flex-direction: column; gap: var(--space-2);
@@ -504,13 +492,11 @@ select.input, select.vaultpick { appearance: none; -webkit-appearance: none; pad
   .content { padding: var(--space-6); }
 }
 @media (max-width: 767px) {
-  /* A finger needs more than a pointer: controls grow to touch size. */
-  :root { --control-height: 44px; --control-height-sm: 44px; }
   /* A checkbox, a radio and a switch keep their size on screen; the area
      that takes the tap is 44 px around their centre. */
   input[type="checkbox"], input[type="radio"] { position: relative; }
   input[type="checkbox"]::before, input[type="radio"]::before, .switch::before { content: ""; position: absolute;
-    top: 50%; left: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
+    top: 50%; left: 50%; width: var(--touch-target); height: var(--touch-target); transform: translate(-50%, -50%); }
   .app { display: block; }
   .appbar { display: flex; align-items: center; gap: var(--space-2); position: sticky; top: 0; z-index: 20;
     height: var(--appbar-height); padding: 0 var(--space-2); background: var(--surface); border-bottom: 1px solid var(--border); }
@@ -522,7 +508,7 @@ select.input, select.vaultpick { appearance: none; -webkit-appearance: none; pad
   .app--drawer-open .sidebar { transform: none; visibility: visible; }
   .app--drawer-open .drawer-scrim { display: block; position: fixed; inset: 0; background: var(--scrim); z-index: 50; }
   .content { padding: var(--space-5) var(--space-4) var(--space-8); gap: var(--space-5); }
-  .pagehead__title { font-size: 22px; line-height: 28px; }
+  .pagehead__title { font-size: var(--type-title-1-phone-size); line-height: var(--type-title-1-phone-lh); }
   .card__head, .card__body, .card__foot, .listrow { padding-left: var(--space-4); padding-right: var(--space-4); }
   .toast-region { left: var(--space-4); right: var(--space-4); bottom: var(--space-4); }
   .toast { min-width: 0; max-width: none; }
@@ -668,7 +654,7 @@ select.input, select.vaultpick { appearance: none; -webkit-appearance: none; pad
   }
 @media (max-width: 767px) {
   .verdict { padding: var(--space-5); }
-  .verdict__line { font-size: 22px; line-height: 28px; }
+  .verdict__line { font-size: var(--type-title-1-phone-size); line-height: var(--type-title-1-phone-lh); }
   .feed__item { padding: var(--space-3) var(--space-4); }
   .feed__item .grow { flex-direction: column; align-items: flex-start; gap: 2px; }
 }
