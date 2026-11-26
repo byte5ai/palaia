@@ -310,13 +310,15 @@ describe("Overview — the activity feed", () => {
           permalink: "projects/website/release-process",
           title: "Release process",
           modified: new Date(Date.now() - 5 * 60_000).toISOString(),
+          actor: "Claude Code CLI",
         } as RecentChange,
       ],
     });
     mount();
 
     const feed = await screen.findByRole("list", { name: "Recent activity" });
-    expect(feed).toHaveTextContent("Saved Release process");
+    // The app that saved it leads the line.
+    expect(feed).toHaveTextContent("Claude Code CLI saved Release process");
     expect(feed).toHaveTextContent("work · 5 min ago");
     expect(feed).not.toHaveTextContent("projects/website");
   });

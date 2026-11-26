@@ -47,6 +47,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
+from .auth.attribution import AttributionSource
 from .backup import archive_holds
 from .curator.profile import CURATOR_PROFILE_PATH
 from .curator.wiring import CuratorWiring
@@ -135,6 +136,10 @@ class RecentChangeOut(BaseModel):
     #: The note's ``modified`` frontmatter (ISO 8601), or empty when the note
     #: carries none (a file written outside the engine).
     modified: str
+    #: Who made the note's last change, as its last commit names them: an AI
+    #: app ("Claude Code CLI"), ``"human"`` for an edit outside palaia, or
+    #: empty for palaia's own writes and when the history cannot say.
+    actor: str = ""
 
 
 class CreateVaultRequest(BaseModel):
@@ -316,6 +321,17 @@ class IndexStatusOut(BaseModel):
         )
 
 
+async def _last_author(engine: VaultEngine, permalink: str) -> str:
+    """The author of a note's last commit, or "" when it is palaia itself or
+    the history cannot say (a note deleted since, a vault without history)."""
+    try:
+        commits = await engine.history(permalink, limit=1)
+    except (VaultError, OSError):
+        return ""
+    author = commits[0].author_name.strip() if commits else ""
+    return "" if author == "palaia" else author
+
+
 def _vault_out(key: str, info: VaultInfo, *, home: Path) -> VaultOut:
     return VaultOut(
         key=key,
@@ -350,6 +366,7 @@ def build_dashboard_router(
     dynamic_gateway: DynamicGateway | None = None,
     curator: CuratorWiring | None = None,
     event_bus: EventBus | None = None,
+    attribution: AttributionSource | None = None,
 ) -> APIRouter:
     """Build the wizard + explorer router, bound to ``registry``.
 
@@ -429,7 +446,9 @@ def build_dashboard_router(
             watchers[body.key] = watcher
 
         if dynamic_gateway is not None:
-            service = EngineVaultService(engine, index)
+            # The same caller lookup the vaults mounted at startup got, so a
+            # memory created later attributes its writes too.
+            service = EngineVaultService(engine, index, attribution=attribution)
             mount = VaultMountConfig(
                 key=body.key,
                 name=body.key,
@@ -695,7 +714,13 @@ def build_dashboard_router(
                     )
                 )
         changes.sort(key=lambda change: change.modified, reverse=True)
-        return changes[:limit]
+        newest = changes[:limit]
+        # Who saved it: the author of each note's last commit. Asked only for
+        # the lines the feed shows, so a page load costs at most `limit`
+        # history lookups.
+        for change in newest:
+            change.actor = await _last_author(await registry.get(change.vault), change.permalink)
+        return newest
 
     @router.get("/api/vaults/{vault_key}/notes", response_model=list[NoteSummary])
     async def list_notes(vault_key: str, folder: str = "") -> list[NoteSummary]:

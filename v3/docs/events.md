@@ -74,14 +74,16 @@ deliveries carry the same JSON as the POST body (§4).
 | `hub.started` | `hub` | `version`, `mode` | The hub's ASGI app finishes starting up. |
 | `hub.mode_changed` | `hub` | `from_mode`, `to_mode`, `restart_required`, `changed_keys` | The `POST /api/mode` exposure wizard endpoint (SPEC-205) accepts and persists an operating-mode/exposure change. `restart_required` is `true` whenever the change needs a hub restart to actually take effect (a mode/host/auth change) — a pure `exposure.public_url`/`exposure.tunnel` update needs none. |
 | `client.connected` | `auth` | `token_id`, `client_name`, `profile` | A client token's *first* successful verification this process (mirrors `TokenInfo.last_used_at`'s own "resets on restart" trade — see `palaia_hub.auth.store`). |
-| `memory.entry.created` | `vault` | `path`, `checksum`, `external`, `kind` | A new note lands in a vault (including a rename target, and a `capture` call's underlying write — see also `inbox.captured` below). |
-| `memory.entry.updated` | `vault` | `path`, `checksum`, `previous_checksum`, `external`, `kind` (also carries an `EntityRenamed`'s `previous_permalink`/`title`/`previous_title`/`rewritten_links` when the update was a rename) | A note's content or identity changes in place. |
-| `memory.entry.deleted` | `vault` | `path`, `external`, `kind` | A note is removed from a vault. |
-| `memory.entry.moved` | `vault` | `path`, `previous_path`, `checksum`, `external`, `kind` | A note changes path while keeping its identity — including watcher-observed external renames. |
+| `memory.entry.created` | `vault` | `path`, `checksum`, `external`, `kind`, `actor` | A new note lands in a vault (including a rename target, and a `capture` call's underlying write — see also `inbox.captured` below). |
+| `memory.entry.updated` | `vault` | `path`, `checksum`, `previous_checksum`, `external`, `kind`, `actor` (also carries an `EntityRenamed`'s `previous_permalink`/`title`/`previous_title`/`rewritten_links` when the update was a rename) | A note's content or identity changes in place. |
+| `memory.entry.deleted` | `vault` | `path`, `external`, `kind`, `actor` | A note is removed from a vault. |
+| `memory.entry.moved` | `vault` | `path`, `previous_path`, `checksum`, `external`, `kind`, `actor` | A note changes path while keeping its identity — including watcher-observed external renames. |
 | `inbox.captured` | `inbox` | `permalink`, `capture_id`, `title`, `source`, `duplicate` | A `capture` tool call lands (or acknowledges a duplicate of) an `inbox/` note. Fires *in addition to* the `memory.entry.created` the underlying write itself produces — this event is the semantic "something was captured" signal; the other is the general "a file changed" signal. |
 | `index.reindexed` | `index` | `count` | A vault's index finishes a full rebuild from files. |
 | `index.embed_backlog_drained` | `index` | `embedded` | The embed backlog reaches zero after a batch of work (not fired on every batch — only once the backlog is actually caught up). |
 | `doctor.finding` | `index` | `code`, `severity`, `detail` | One `verify()` finding — fired once per finding, not once per `verify()` call. |
+
+`actor` on a `memory.entry.*` event is the AI app whose call made the change, as its access key names it ("Claude Code CLI"). It is absent for palaia's own writes, for an external edit, and for a connection that signed in with the owner's account instead of an access key.
 
 ### 3.1 Curator events (SPEC-206, additive)
 

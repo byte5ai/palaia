@@ -44,6 +44,17 @@ class Attribution:
     human: bool = False
 
     @property
+    def actor(self) -> str | None:
+        """The AI app or agent to name as the author of a change, if any.
+
+        ``None`` for the engine's own writes and for a person's external
+        edits: neither is an app that "saved" something.
+        """
+        if self.human:
+            return None
+        return self.agent or self.client or None
+
+    @property
     def origin(self) -> str:
         """The origin component of the commit subject."""
         if self.human:

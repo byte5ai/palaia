@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
@@ -49,7 +50,9 @@ from palaia_hub.recall.service import CALLER_ERRORS as _RECALL_CALLER_ERRORS
 from palaia_hub.recall.service import DEFAULT_RECALL_LIMIT, RecallService
 from palaia_hub.recall.traversal import DEFAULT_DEPTH
 from palaia_hub.vault import (
+    ENGINE,
     AmbiguousReferenceError,
+    Attribution,
     ChecksumConflictError,
     InvalidPathError,
     MalformedFrontmatterError,
@@ -229,6 +232,11 @@ class EngineVaultService:
     ``("inbox.captured", {...})`` — see :data:`~palaia_hub.events.schema.
     HubEventHook`. Omitted (the default), ``capture()`` behaves exactly as
     before this parameter existed.
+
+    ``attribution`` names who is calling: given, every write, edit, move and
+    delete is committed as that AI app instead of as the engine, which is
+    what a note's history and the ``actor`` of its ``memory.entry.*`` event
+    show. Omitted, or returning ``None``, the engine's own identity is used.
     """
 
     def __init__(
@@ -239,8 +247,13 @@ class EngineVaultService:
         ranking: RankingWeights = DEFAULT_WEIGHTS,
         on_event: HubEventHook | None = None,
         similar_note_threshold: float | None = DEFAULT_SIMILAR_NOTE_THRESHOLD,
+        attribution: Callable[[], Attribution | None] | None = None,
     ) -> None:
         self._engine = engine
+        #: Names the caller of the tool call in progress (see
+        #: :func:`palaia_hub.auth.attribution.client_attribution`), so a
+        #: write is committed as the app that made it.
+        self._attribution = attribution
         self._index = index
         #: Issue #187: the cosine similarity at which :meth:`similar_notes`
         #: reports an existing note; ``None`` switches the check off.
@@ -258,6 +271,11 @@ class EngineVaultService:
         self._recall = (
             RecallService(index, vault=engine.name, weights=ranking) if index is not None else None
         )
+
+    def _who(self) -> Attribution:
+        """The caller to commit the write in progress as."""
+        caller = self._attribution() if self._attribution is not None else None
+        return caller or ENGINE
 
     async def status(self) -> VaultStatus:
         """Note count from the engine's catalog; search mode from the index's
@@ -481,6 +499,7 @@ class EngineVaultService:
                 title=title,
                 frontmatter=frontmatter,
                 must_create=True,
+                attribution=self._who(),
             )
         except _ENGINE_CALLER_ERRORS as exc:
             raise VaultServiceError(str(exc)) from exc
@@ -543,6 +562,7 @@ class EngineVaultService:
                 # one minted from the title: that could fall back to a retired
                 # capture's permalink once its file is gone (issue #602).
                 permalink=permalink,
+                attribution=self._who(),
                 must_create=True,
             )
         except _ENGINE_CALLER_ERRORS as exc:
@@ -746,6 +766,7 @@ class EngineVaultService:
                 body=new_body,
                 frontmatter=frontmatter,
                 expected_checksum=current.checksum,
+                attribution=self._who(),
             )
         except _ENGINE_CALLER_ERRORS as exc:
             raise VaultServiceError(str(exc)) from exc
@@ -761,7 +782,7 @@ class EngineVaultService:
         folder = folder.strip("/")
         new_path = f"{folder}/{filename}" if folder else filename
         try:
-            result = await self._engine.move_note(permalink, new_path)
+            result = await self._engine.move_note(permalink, new_path, attribution=self._who())
         except _ENGINE_CALLER_ERRORS as exc:
             raise VaultServiceError(str(exc)) from exc
         assert result.note is not None
@@ -769,7 +790,7 @@ class EngineVaultService:
 
     async def delete(self, permalink: str) -> bool:
         try:
-            await self._engine.delete_note(permalink)
+            await self._engine.delete_note(permalink, attribution=self._who())
         except NoteNotFoundError:
             return False
         except _ENGINE_CALLER_ERRORS as exc:
@@ -847,6 +868,7 @@ class EngineVaultService:
                 permalink,
                 frontmatter={"status": decision},
                 expected_checksum=current.checksum,
+                attribution=self._who(),
             )
         except _ENGINE_CALLER_ERRORS as exc:
             raise VaultServiceError(str(exc)) from exc

@@ -1,9 +1,10 @@
 /**
  * The Overview's activity feed: live memory events, plus — on first load —
  * the notes that changed before the page was opened
- * (`GET /api/vaults/recent-activity`). Each line reads "Created **Release
- * process** · work · 2 min ago": what happened, to which note, in which
- * memory, when — never a raw path.
+ * (`GET /api/vaults/recent-activity`). Each line reads "Claude Code CLI
+ * created **Release process** · work · 2 min ago": who did it, what
+ * happened, to which note, in which memory, when — never a raw path. A
+ * change palaia made itself names nobody: "Created **Release process**".
  */
 import type { RecentChange } from "./api/client";
 import type { VaultChangeEntry } from "./events";
@@ -17,6 +18,9 @@ const CHANGE_VERB: Record<string, string> = {
 
 export interface FeedItem {
   key: string;
+  /** Who made the change: an AI app's name, "You" for an edit outside
+   * palaia, or `null` when palaia did it or nobody can say. */
+  actor: string | null;
   /** "Created", "Updated", "Deleted", "Moved". */
   verb: string;
   /** The note's title, or a readable form of its name. */
@@ -25,6 +29,13 @@ export interface FeedItem {
   vault: string | null;
   /** When it happened, in ms since the epoch; `null` when unknown. */
   at: number | null;
+}
+
+/** The name to show for the author a change carries. */
+export function actorLabel(actor: string | null | undefined): string | null {
+  const name = (actor ?? "").trim();
+  if (!name || name === "palaia") return null;
+  return name === "human" ? "You" : name;
 }
 
 /** "projects/website/release-process" → "Release process". */
@@ -39,6 +50,7 @@ export function titleFromPermalink(permalink: string): string {
 export function buildFeed(live: VaultChangeEntry[], loaded: RecentChange[], limit = 20): FeedItem[] {
   const items: FeedItem[] = live.map((entry, index) => ({
     key: `live-${entry.ts}-${index}`,
+    actor: actorLabel(entry.data.external ? "human" : entry.data.actor),
     verb: CHANGE_VERB[entry.event] ?? "Updated",
     title: titleFromPermalink(entry.permalink ?? entry.data.path ?? "a note"),
     vault: entry.vault,
@@ -50,6 +62,7 @@ export function buildFeed(live: VaultChangeEntry[], loaded: RecentChange[], limi
     const at = change.modified ? Date.parse(change.modified) : NaN;
     items.push({
       key: `loaded-${change.vault}-${change.permalink}`,
+      actor: actorLabel(change.actor),
       // The listing doesn't say whether a note is new or changed.
       verb: "Saved",
       title: change.title || titleFromPermalink(change.permalink),

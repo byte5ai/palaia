@@ -32,6 +32,21 @@ describe("buildFeed", () => {
     expect(feed[1].at).toBe(Date.parse("2026-09-28T09:00:00Z"));
   });
 
+  it("says who made a change: the app, You for an edit outside palaia, nobody for palaia itself", () => {
+    const live = (data: VaultChangeEntry["data"]): VaultChangeEntry => ({ ...LIVE, data });
+    const feed = buildFeed(
+      [live({ actor: "Claude Code CLI" }), live({ external: true }), live({})],
+      [
+        { vault: "work", permalink: "a", title: "A", modified: "", actor: "Codex" },
+        { vault: "work", permalink: "b", title: "B", modified: "", actor: "human" },
+        { vault: "work", permalink: "c", title: "C", modified: "", actor: "" },
+        // An older hub sends no actor at all.
+        { vault: "work", permalink: "d", title: "D", modified: "" },
+      ],
+    );
+    expect(feed.map((item) => item.actor)).toEqual(["Claude Code CLI", "You", null, "Codex", "You", null, null]);
+  });
+
   it("never shows a raw path: a name without a title becomes words", () => {
     expect(titleFromPermalink("inbox/invoice-numbering")).toBe("Invoice numbering");
     expect(titleFromPermalink("decisions/design_review.md")).toBe("Design review");

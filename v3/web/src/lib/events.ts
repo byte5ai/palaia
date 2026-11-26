@@ -36,6 +36,8 @@ export interface MemoryEntryEventData {
   previous_checksum?: string;
   external?: boolean;
   kind?: string;
+  /** The AI app whose call made the change, when there was one. */
+  actor?: string;
   [key: string]: unknown;
 }
 

@@ -30,6 +30,7 @@ from .admin_session import (
     sign_in_url_for,
 )
 from .auth import TokenRecord, TokenStore, build_auth_router, check_gateway_auth_policy
+from .auth.attribution import client_attribution
 from .auth.policy import check_hub_mount_auth_policy
 from .auth.usage import ClientUsageStore
 from .automations import (
@@ -1013,6 +1014,7 @@ def create_app(
                 dynamic_gateway=dynamic_gateway,
                 curator=curator_wiring,
                 event_bus=event_bus,
+                attribution=client_attribution(token_store),
             )
         )
 

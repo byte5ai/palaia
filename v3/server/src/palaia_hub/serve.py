@@ -36,6 +36,7 @@ from fastapi import FastAPI
 
 from .app import create_app
 from .auth import TokenStore
+from .auth.attribution import client_attribution
 from .auth.usage import ClientUsageStore
 from .automations import AutomationOutbox, AutomationStore
 from .automations.outbox import OUTBOX_RELATIVE_PATH as AUTOMATIONS_OUTBOX_RELATIVE_PATH
@@ -270,6 +271,7 @@ async def build_production_app(
             engine,
             index,
             similar_note_threshold=config.nudges.effective_similar_note_threshold,
+            attribution=client_attribution(token_store),
         )
         mounts.append(
             VaultMountConfig(
