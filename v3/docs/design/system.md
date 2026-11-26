@@ -259,7 +259,7 @@ limits, never cheerful about nothing. The binding rule above all others is
 | AI apps | `/apps` | Apps · Live sessions (`/apps/sessions`) | `/clients`, `/agents` |
 | Add-ons | `/add-ons` | Installed · Browse | `/marketplace` |
 | Automations | `/automations` | Automations · Webhooks | `/automations` |
-| Settings | `/settings` | Access & sign-in, Backups, Telegram, Advanced, About & updates (`/settings/…`); Appearance in the hub | `/exposure`, `/backups`, `/telegram`, `/tools` |
+| Settings | `/settings` | General (`/settings`: what this palaia is, each area's state, Appearance), Access & sign-in, Backups, Telegram, Advanced, About & updates (`/settings/…`). The areas are a navigation next to the open area from 1024 px, a row of tabs above it below that | `/exposure`, `/backups`, `/telegram`, `/tools` |
 
 Every old address redirects to its new place with its query string
 (`v3/web/src/routes/index.tsx`, `REDIRECTS`). The packaged image proxies only

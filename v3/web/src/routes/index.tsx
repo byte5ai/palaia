@@ -23,6 +23,7 @@ import {
 import { Redirect } from "./Redirect";
 import { NotFound, RouteError } from "./RouteError";
 import { ScreenLoading } from "./ScreenLoading";
+import { SettingsLayout } from "./settings/SettingsLayout";
 
 /** Old address → new address (issue 570). Bookmarks, links in older docs and the
  * MCP apps' "open in the dashboard" links keep working; the query string and
@@ -100,6 +101,7 @@ export const routes: RouteObject[] = [
           },
           {
             path: "settings",
+            element: <SettingsLayout />,
             children: [
               { index: true, element: <SettingsHub />, ...page("Settings") },
               {

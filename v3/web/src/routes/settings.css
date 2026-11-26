@@ -4,6 +4,25 @@
    component constant from components.css.
    ============================================================= */
 
+/* The areas next to the open area. The navigation stays in view while the
+   area scrolls; below 1024 px it is a row of tabs above the area. The area's
+   own "‹ Settings" link is not needed while the navigation is on screen. */
+.settings-layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: var(--space-8); align-items: start; }
+.settings-layout__area { min-width: 0; }
+.settings-layout .pagehead__back { display: none; }
+.settings-nav { display: flex; flex-direction: column; gap: 2px; position: sticky; top: var(--space-8); }
+.settings-nav__item { display: flex; align-items: center; min-height: var(--control-height); padding: 0 var(--space-3);
+  border-radius: var(--radius-pill); color: var(--text-2); font-size: var(--type-body-strong-size);
+  line-height: var(--type-body-strong-lh); font-weight: var(--type-body-strong-weight); text-decoration: none; white-space: nowrap; }
+.settings-nav__item:hover { background: var(--surface-muted); color: var(--text); text-decoration: none; }
+.settings-nav__item--on, .settings-nav__item--on:hover { background: var(--info-bg); color: var(--action); }
+@media (max-width: 1023px) {
+  .settings-layout { grid-template-columns: minmax(0, 1fr); gap: var(--space-5); }
+  .settings-nav { position: static; flex-direction: row; gap: var(--space-1); overflow-x: auto; scrollbar-width: none;
+    padding-bottom: var(--space-2); border-bottom: 1px solid var(--border); }
+  .settings-nav__item { flex: none; }
+}
+
 /* A card's stack of content, with the card's own padding. */
 .settings-body { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); }
 .settings-body + .settings-body, .settings-rows + .settings-body { border-top: 1px solid var(--border); }
