@@ -25,6 +25,14 @@ import { describeApiError } from "../../lib/errors";
 import { ArrowRightIcon } from "../../shell/icons";
 import { RestartByHand } from "./RestartByHand";
 
+/** palaia's installer line, exactly as get-palaia.sh's header documents it
+ * (test_install_skill_drift.py pins it). Run again on a server that is on the
+ * tailnet already, it keeps the data and turns on Tailscale Funnel for the
+ * cloud entry (127.0.0.1:8422, the AI connection only), then restarts palaia
+ * with the new address as its hint — no shell needed on the assistant's side,
+ * the provider's web console is enough (issue 649). */
+const INSTALLER_LINE = "curl -fsSL https://get.palaia.ai | sh";
+
 const CHECK_LABELS: Record<string, string> = {
   discovery: "Sign-in details",
   mcp: "AI connection",
@@ -181,6 +189,21 @@ function CloudTurnOn({
                         </div>
                       ))
                     : null}
+                  <p>
+                    No terminal on the server? If palaia was set up with its installer or setup
+                    file, paste this line into your provider&rsquo;s web console instead. It keeps
+                    your data, opens only the AI connection and restarts palaia; reload this page
+                    afterwards and the address is filled in.
+                  </p>
+                  <div className="snippet snippet--wrap">
+                    <code>{INSTALLER_LINE}</code>
+                  </div>
+                  <p className="t-sm t-muted">
+                    If it prints a <code>login.tailscale.com</code> link you can&rsquo;t open:
+                    in Tailscale&rsquo;s admin console, choose <strong>DNS</strong> →{" "}
+                    <strong>Enable HTTPS</strong> and <strong>Access controls</strong> →{" "}
+                    <strong>Add Funnel to policy</strong>, then run the line again.
+                  </p>
                   <p className="t-sm t-muted">
                     Cloudflare Tunnel works too: point it at <code>http://127.0.0.1:8422</code>{" "}
                     on the server.

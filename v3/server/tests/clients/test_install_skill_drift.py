@@ -591,3 +591,37 @@ def test_the_skill_quotes_the_connect_steps_status_label() -> None:
     the label the setup's connect step shows once palaia saw a request."""
     assert '"Connected"' in _skill_body()
     assert ">Connected</StatusPill>" in _CONNECT_STEP.read_text(encoding="utf-8")
+
+
+# --- cloud access without a shell on the server (#649) ----------------------
+
+_CLOUD_STEP = WEB_SRC / "routes" / "onboarding" / "CloudStep.tsx"
+
+#: What Tailscale's admin console calls the two settings Funnel needs, as the
+#: skill and the dashboard's cloud step both name them (tailscale.com/kb/1153
+#: and kb/1223, checked 2026-11-26).
+_FUNNEL_ADMIN_LABELS = ("DNS", "Enable HTTPS", "Access controls", "Add Funnel to policy")
+
+
+def test_cloud_access_without_a_shell_is_the_installer_line_in_both_places() -> None:
+    """Step 5 and the dashboard's cloud step offer the same way to turn on
+    cloud access without a shell: the installer line, run again in the
+    provider's web console. It must be the header's own command (which
+    turns Funnel on for the cloud entry by default), next to the Funnel line
+    for those who do have a shell."""
+    header = _header_command()
+    cloud_step = _CLOUD_STEP.read_text(encoding="utf-8")
+    assert f'const INSTALLER_LINE = "{header}";' in cloud_step
+    body = _skill_body()
+    step5 = body[body.index("## Step 5") : body.index("## Step 6")]
+    assert f"`{header}`" in step5
+    assert "web console" in step5
+    assert "`sudo tailscale funnel --bg http://127.0.0.1:8422`" in step5
+    for label in _FUNNEL_ADMIN_LABELS:
+        assert f"**{label}**" in step5, f"Step 5 no longer names Tailscale's {label!r}"
+        assert f"<strong>{label}</strong>" in cloud_step, f"CloudStep no longer names {label!r}"
+    # Run again, the installer turns cloud access on unless told not to, for
+    # the loopback cloud entry only.
+    get_palaia = GET_PALAIA_PATH.read_text(encoding="utf-8")
+    assert 'CLOUD="${PALAIA_CLOUD:-1}"' in get_palaia
+    assert 'CLOUD_TARGET="http://127.0.0.1:${CLOUD_PORT}"' in get_palaia

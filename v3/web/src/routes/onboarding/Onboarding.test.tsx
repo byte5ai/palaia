@@ -316,6 +316,26 @@ describe("first-run setup", () => {
     expect(hub.calls.some((c) => c.path === "/api/mode")).toBe(false);
   });
 
+  it("without an address, offers the installer line for a server without a terminal", async () => {
+    // Issue 649: the Funnel command needs a shell on the server; rerunning
+    // the installer in the provider's web console turns cloud access on too.
+    fakeHub(
+      freshStatus({
+        goal: "cloud",
+        vaults: ["work"],
+        profiles: ["default"],
+        owner_configured: true,
+        cloud_url_hint: null,
+      }),
+    );
+    renderWizard();
+
+    fireEvent.click(await screen.findByText(/i don't have an address yet/i));
+    expect(screen.getByText("curl -fsSL https://get.palaia.ai | sh")).toBeInTheDocument();
+    expect(screen.getByText(/provider’s web console/i)).toBeInTheDocument();
+    expect(screen.getByText(/add funnel to policy/i)).toBeInTheDocument();
+  });
+
   it("after the restart, checks the public address and then offers the Claude app", async () => {
     fakeHub(
       freshStatus({
