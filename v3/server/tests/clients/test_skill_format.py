@@ -302,3 +302,29 @@ def test_plugin_wrapper_lint_finds_a_skill_no_plugin_ships(
     assert any("'sample-skill' is under no listed plugin" in issue.message for issue in issues), (
         issues
     )
+
+
+def test_overlong_body_is_reported_and_only_palaia_install_gets_more_room(
+    tmp_path: Path,
+) -> None:
+    """The 300-line ceiling holds for every skill; palaia-install alone, which
+    is served as one page and cannot split into reference files, may go to
+    its own reasoned limit — and not past it."""
+    filler = "\n".join(f"Line {n} of the body." for n in range(305))
+    other = GOOD_FRONTMATTER.replace("Body text that teaches something.", filler)
+    _write(tmp_path, "sample-skill", other)
+    assert any("over the 300 max" in issue.message for issue in lint_skills(tmp_path))
+
+    install_root = tmp_path / "install"
+    install = other.replace("name: sample-skill", "name: palaia-install")
+    _write(install_root, "palaia-install", install)
+    assert not any("over the" in issue.message for issue in lint_skills(install_root))
+
+    too_long = "\n".join(f"Line {n} of the body." for n in range(340))
+    (install_root / "palaia-install" / "SKILL.md").write_text(
+        GOOD_FRONTMATTER.replace("name: sample-skill", "name: palaia-install").replace(
+            "Body text that teaches something.", too_long
+        ),
+        encoding="utf-8",
+    )
+    assert any("over the 330 max" in issue.message for issue in lint_skills(install_root))

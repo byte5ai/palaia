@@ -62,6 +62,9 @@ _CLEAN_URLS: dict[str, str] = {
     "https://get.palaia.ai/install": "v3/deploy/get-palaia.sh",
     "https://get.palaia.ai/deploy-notes": "v3/deploy/README.md",
     "https://get.palaia.ai/version": "v3/VERSION",
+    # This skill itself: Step 3 hands it to a desktop app that can run
+    # commands, to continue there (#653).
+    "https://get.palaia.ai/skill": "v3/clients/skills/palaia-install/SKILL.md",
 }
 
 #: Same header regex ``deploy-snippets.mjs``'s ``loadGetPalaiaCommand`` uses.
@@ -219,7 +222,9 @@ def _anchor_tokens(literal: str) -> list[str]:
     return tokens
 
 
-_SSH_WRAPPED_RE = re.compile(r"ssh root@<address> '(.+)'")
+#: A command run on the server through a login: the checked one, or (Windows,
+#: #653) one where the person types the password at ssh's own prompt (`-t`).
+_SSH_WRAPPED_RE = re.compile(r"ssh (?:-t )?root@<address> '(.+)'")
 
 
 def _check_literal(literal: str, corpus: str, header: str) -> str | None:
@@ -693,3 +698,40 @@ def test_the_nas_path_names_no_app_store_listing() -> None:
     nas = step1[step1.index("**A home NAS**") : step1.index("**A Raspberry Pi**")]
     assert "no NAS app store lists palaia" in nas
     assert "rented server" in nas
+
+
+# --- the server part in a desktop app that runs commands (#653) -------------
+
+
+def _step3() -> str:
+    body = _skill_body()
+    return body[body.index("## Step 3") : body.index("## Step 4")]
+
+
+def test_step3_moves_the_server_part_to_a_desktop_app_that_runs_commands() -> None:
+    """Without a shell on their computer, Step 3 first offers the Claude app's
+    Code tab and Codex in the ChatGPT app, handing over this very page to
+    continue there, and keeps the web console (3c) as the fallback."""
+    step3 = _step3()
+    assert "**Code** tab" in step3 and "**Codex**" in step3
+    assert "`https://get.palaia.ai/skill`" in step3
+    assert "continue at Step 3" in step3
+    assert "Neither app: 3c" in step3
+    # Questions come one at a time — the [openai] note says so, and Step 3
+    # must not contradict it.
+    assert "in one go" not in _skill_body()
+    assert "one question at a time" in step3
+
+
+def test_the_windows_route_never_puts_the_password_anywhere_but_ssh() -> None:
+    """On Windows the person types the server password at ssh's own prompt
+    in the app's terminal; the line carries no password and no variable for
+    one, and runs the header's installer command."""
+    step3 = _step3()
+    windows = step3[step3.index("**On Windows**") :]
+    line = next(lit for lit in _quoted_literals(windows) if lit.startswith("ssh -t "))
+    assert "PW" not in line and "ASKPASS" not in line
+    wrapped = _SSH_WRAPPED_RE.fullmatch(line)
+    assert wrapped is not None
+    assert _check_literal(wrapped.group(1), _corpus(), _header_command()) is None
+    assert "type the server password at ssh's own prompt" in " ".join(windows.split())
