@@ -21,7 +21,7 @@
  *   restarts the hub itself where it can, and continues here after the
  *   sign-in that follows.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { Button } from "../../components/Button";
@@ -63,6 +63,11 @@ export function Onboarding() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const { status, error, refresh } = useSetupStatus(3000);
+  // Setup has no shell around it, so it names its own tab; without this the
+  // tab keeps the title of the page that redirected here.
+  useEffect(() => {
+    document.title = "Set up · palaia";
+  }, []);
   // The step on screen. It starts at the step a link asked for
   // (`/onboarding?step=account`, e.g. from Backups — the step list is hidden
   // on phones, so a link is the only way back to a skipped step there), else
@@ -209,7 +214,7 @@ const GOALS: { goal: Goal; title: string; recommended?: boolean; text: string }[
     title: "Only on my own devices",
     text:
       "For AI apps on computers in your private network, such as Claude Desktop or Claude " +
-      "Code. ChatGPT and claude.ai can't connect.",
+      "Code CLI. ChatGPT and claude.ai can't connect.",
   },
 ];
 

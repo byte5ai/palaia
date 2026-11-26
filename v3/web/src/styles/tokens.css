@@ -44,6 +44,7 @@
   --surface: #FFFFFF;
   --surface-muted: #EEF1F5;
   --border: #E3E7ED;
+  --border-control: #808B9B;
   --text: #1D232C;
   --text-2: #4B5563;
   --text-3: #667080;
@@ -73,6 +74,7 @@
     --surface: #161D2A;
     --surface-muted: #1C2433;
     --border: #263043;
+    --border-control: #6F7B8C;
     --text: #E8ECF1;
     --text-2: #AEB6C2;
     --text-3: #8B95A3;
@@ -102,6 +104,7 @@
   --surface: #161D2A;
   --surface-muted: #1C2433;
   --border: #263043;
+  --border-control: #6F7B8C;
   --text: #E8ECF1;
   --text-2: #AEB6C2;
   --text-3: #8B95A3;

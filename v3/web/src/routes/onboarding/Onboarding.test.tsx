@@ -573,7 +573,15 @@ describe("first-run setup", () => {
     ).toBeInTheDocument();
   });
 
-  it("Finish without a first request saves the step for later and moves on", async () => {
+  it("names its own browser tab", async () => {
+    fakeHub(freshStatus({}));
+    document.title = "Overview · palaia";
+    renderWizard();
+    await screen.findByRole("heading", { level: 1 });
+    expect(document.title).toBe("Set up · palaia");
+  });
+
+  it("Skip for now without a first request saves the step for later and moves on", async () => {
     const hub = fakeHub(
       freshStatus({
         goal: "private",
@@ -585,7 +593,10 @@ describe("first-run setup", () => {
     renderWizard();
 
     await screen.findByRole("heading", { name: /connect your ai app/i });
-    fireEvent.click(screen.getByRole("button", { name: /^finish$/i }));
+    const skip = screen.getByRole("button", { name: /^skip for now$/i });
+    // One filled button per view: the selected app's own action is it.
+    expect(skip).not.toHaveClass("btn--primary");
+    fireEvent.click(skip);
 
     expect(await screen.findByRole("heading", { name: /you're set up/i })).toBeInTheDocument();
     expect(hub.calls).toContainEqual({

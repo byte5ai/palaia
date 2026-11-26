@@ -117,8 +117,9 @@ Target: **client connected in under two minutes.**
 ### Rule 3 — Host install is one step
 
 Target: **first memory written within five minutes of install.** First-run setup
-is five steps — your account, where you'll use palaia, your first memory, connect
-an AI app, done — and each one ends in a state the person can leave: skipping the
+is five steps — how you'll use palaia, your first memory, your account, connect
+an AI app, done, plus cloud access before connecting when the person chose
+ChatGPT and Claude — and each one ends in a state the person can leave: skipping the
 app step lands on the Overview with the same next action, not in a dead end. A
 step is ticked only when the hub confirms it, and setup resumes at the first
 unfinished step after a reload or restart.
@@ -248,8 +249,11 @@ detail, and the activity feed.
 
 ### 3.2 First-run setup
 
-Five steps on their own page (no sidebar): your account, where you'll use
-palaia, your first memory, connect an AI app, done. Restore from a backup is
+Five steps on their own page (no sidebar): how you'll use palaia, your first
+memory, your account, connect an AI app, done; cloud access is a sixth step
+before connecting when the person chose ChatGPT and Claude. The connect step has
+one filled button, the selected app's own action; until the first request
+arrives, moving on is **Skip for now**. Restore from a backup is
 offered up front. The final screen says "You're set up" with what was done and
 **Open palaia**.
 
