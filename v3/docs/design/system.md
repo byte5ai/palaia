@@ -247,13 +247,13 @@ skeleton and the live dot; all three stop under `prefers-reduced-motion`.
 ### 1.4 Layout and the shell
 
 - **Desktop**: the sidebar (`sidebar-width`) — the wordmark and the
-  notification bell, five places, a divider, Settings, and palaia's state in
+  notification bell, the search field with its shortcut, five places, a divider, Settings, and palaia's state in
   the footer ("● Running · Private", the version, who is signed in). The
   selected item has an `info-bg` ground and `action` text.
 - **Tablet**: an icon rail (`rail-width`) with the same items, labels as
-  tooltips.
-- **Phone**: an app bar (`appbar-height`: menu, wordmark, bell) and the
-  sidebar as a drawer.
+  tooltips; the search field is a search icon.
+- **Phone**: an app bar (`appbar-height`: menu, wordmark, search, bell) and
+  the sidebar as a drawer.
 - **Widths**: app content up to `content-width`; a form or a settings area up
   to `form-width`; the setup panel `wizard-width`.
 - Setup and the sign-in page have no sidebar.
@@ -326,7 +326,9 @@ themes. A pair below its minimum fails the build.
 - Every interactive element shows a solid 2 px `focus` ring with a 2 px
   offset on keyboard focus. "Skip to content" comes first; Escape closes
   dialogs, popovers and the drawer; focus stays inside an open dialog and
-  returns to whatever opened it.
+  returns to whatever opened it. The field of the command palette is the
+  one control without a ring: it holds the focus for as long as the palette
+  is open, and the highlighted row shows what Enter opens.
 - Targets are at least `control-height` with a pointer (`control-height-sm`
   for compact buttons) and at least `touch-target` on a phone. A checkbox, a
   radio and the switch keep their size there; the area that takes the tap is
@@ -356,6 +358,7 @@ not style its own buttons, pills, rows or fields.
 | `Disclosure` | "What's included?", "Advanced", "Troubleshooting" — closed by default. |
 | `EmptyState`, `InlineEmpty`, `LoadingState`, `ErrorState` | An empty page or pane (40 px icon, title, one sentence, one action); an empty section (one line); loading as skeleton lines after 300 ms; an error as a callout with the cause, **Try again** and **Details**. An error never looks empty. |
 | `Dialog`, `ConfirmDialog` | Create or confirm: title and close, the form, Cancel plus one primary. A destructive confirm names the object and the action ("Revoke access"). A bottom sheet below 768 px. `size="side"` is the same modal as a full-height panel on the right, for the details of one table row; the row's address carries it (`/apps?app=codex`). With two open, only the topmost answers Escape. |
+| `CommandPalette` (`shell/`) | One field that reaches every page, a few actions and the notes of all memories. Opened by ⌘K / Ctrl+K (which also closes it), by `/` when nothing is being typed, by the sidebar field and by the search button on the rail and the app bar. Groups in a fixed order: **Go to**, **Actions**, **Notes**; before anything is typed it lists the main places. A combobox over a listbox: focus stays in the field, the arrow keys move the highlight (`info-bg` ground, `action` text, like the selected sidebar item), Enter opens, Escape closes and focus returns. It sits near the top of the screen and is not a `Dialog`; below 768 px it fills the screen and has a Cancel button. |
 | `Toast` | A passing confirmation of something the person just did ("Copied"), with Undo where there is one. Never for an error and never the only place something is said. |
 | `Stepper`, `StepperPanel` | Full-page flows (setup): wordmark bar with "Step 2 of 5", a progress line, the step list on desktop, one panel with Back on the left and the step's action on the right. A step is `done` only when palaia confirms it; `attention` when it needs a fix or a restart. |
 | `TabLinks` | Tabs that are addresses (Memories › Needs review), so a tab can be bookmarked. |
@@ -440,6 +443,7 @@ here first.
 | **A list to move through** (Settings › General, the Overview's memories) | `ListRow`s in a card, a chevron on the right. |
 | **An attribute of an item** (what a tool set includes) | Plain words in its row or column. A pill is for a state that can change by itself or needs attention. |
 | **The details of one item** in a table | A side panel (`Dialog size="side"`) with its own address. The table stays visible behind it. |
+| **Getting somewhere, or finding a note, without the mouse** | The command palette. A new page or Settings area is listed under **Go to** when it gets its route; an action goes under **Actions** only when it is done the moment it is chosen, or opens exactly the place where it is done ("Connect Codex" opens that app's panel). A note opens in Memories under its own address (`/memories?memory=work&note=projects/api`). |
 | **Several areas of one place** | Tabs when they are views of the same thing (Memories: Browse, Needs review); a navigation beside the area when they are separate subjects (Settings). |
 | **A choice between a few exclusive options with consequences** | Choice cards (`.radiocards`): name, one line saying what follows, the current one marked. |
 | **A choice between a few short options** | `Segmented`. |

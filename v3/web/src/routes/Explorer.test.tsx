@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ToastProvider } from "../components/Toast";
@@ -65,6 +65,70 @@ function stubVault(vault: VaultSummary = WORK, notes: NoteSummary[] = [note("pro
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe("a link to one note (the command palette)", () => {
+  const HOME: VaultSummary = { ...WORK, key: "home", path: "/y" };
+
+  function Jump() {
+    const navigate = useNavigate();
+    return (
+      <button type="button" onClick={() => navigate("/memories?memory=work&note=projects/api")}>
+        jump
+      </button>
+    );
+  }
+
+  function stubTwo() {
+    vi.spyOn(api, "listVaults").mockResolvedValue([WORK, HOME]);
+    vi.spyOn(api, "listNotes").mockImplementation(async (key) =>
+      key === "home"
+        ? [note("money/tax", "Tax", "money")]
+        : [note("projects/api", "API Gateway", "projects"), note("projects/db", "Database", "projects")],
+    );
+    vi.spyOn(api, "inboxStatus").mockResolvedValue(NO_INBOX);
+    vi.spyOn(api, "listTokens").mockResolvedValue([A_TOKEN]);
+    vi.spyOn(api, "noteGraph").mockResolvedValue({ outbound: [], inbound: [] });
+    vi.spyOn(api, "noteHistory").mockResolvedValue([]);
+    return vi
+      .spyOn(api, "readNote")
+      .mockImplementation(async (_key, permalink) => ({ ...note(permalink, permalink, ""), body: "", created: "" }));
+  }
+
+  it("opens that memory and that note, not the first memory", async () => {
+    const read = stubTwo();
+    render(
+      <MemoryRouter initialEntries={["/memories?memory=home&note=money/tax"]}>
+        <ToastProvider>
+          <Explorer />
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("combobox", { name: "Memory" })).toHaveValue("home");
+    await waitFor(() => expect(read).toHaveBeenCalledWith("home", "money/tax"));
+    expect(await screen.findByRole("button", { name: "Tax" })).toHaveAttribute("aria-current", "true");
+  });
+
+  it("follows the same link again after the reader moved on", async () => {
+    stubTwo();
+    render(
+      <MemoryRouter initialEntries={["/memories?memory=work&note=projects/api"]}>
+        <ToastProvider>
+          <Jump />
+          <Explorer />
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+    const api_note = await screen.findByRole("button", { name: "API Gateway" });
+    expect(api_note).toHaveAttribute("aria-current", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Database" }));
+    expect(screen.getByRole("button", { name: "API Gateway" })).not.toHaveAttribute("aria-current");
+    fireEvent.click(screen.getByRole("button", { name: "jump" }));
+
+    expect(screen.getByRole("button", { name: "API Gateway" })).toHaveAttribute("aria-current", "true");
+  });
 });
 
 describe("Memories › Browse: loading, error and empty are different states (report §5.7)", () => {

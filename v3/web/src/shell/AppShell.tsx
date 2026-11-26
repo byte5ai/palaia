@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
-import { Outlet, useLocation, useMatches, useNavigate } from "react-router-dom";
+import { Outlet, useLocation, useMatches } from "react-router-dom";
 
 import { PageHeader } from "../components/PageHeader";
 import { useEventStream } from "../lib/events";
@@ -9,13 +9,17 @@ import { useSession } from "../lib/session";
 import { useFirstRunRedirect } from "../lib/setup";
 import { PHONE_QUERY, useMediaQuery } from "../lib/useMediaQuery";
 import { ScreenLoading } from "../routes/ScreenLoading";
-import { MenuIcon } from "./icons";
+import { CommandPalette } from "./CommandPalette";
+import { MenuIcon, SearchIcon } from "./icons";
 import { NotificationBell } from "./NotificationBell";
 import { Brand, Sidebar } from "./Sidebar";
 import { UpdateBanner } from "./UpdateBanner";
 
-/** Where ⌘K / Ctrl+K lands: Memories, search box focused. */
-export const MEMORY_SEARCH_PATH = "/memories?focus=search";
+/** A key press in a field, or in text being edited, is typing. */
+function isTyping(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+}
 
 /**
  * What a route tells the shell about its page (`handle` in the route table):
@@ -47,7 +51,6 @@ export function AppShell() {
   const { session, signOut } = useSession();
   const location = useLocation();
   const matches = useMatches();
-  const navigate = useNavigate();
   const isPhone = useMediaQuery(PHONE_QUERY);
   // The drawer remembers the page it was opened on, so it is closed again
   // as soon as the page changes (a link, Back, a redirect).
@@ -74,18 +77,30 @@ export function AppShell() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [drawerOpen, setDrawerOpen]);
 
-  // Issue 380: ⌘K / Ctrl+K anywhere opens the memory search.
-  const openSearch = useCallback(() => navigate(MEMORY_SEARCH_PATH), [navigate]);
+  // ⌘K / Ctrl+K anywhere opens the command palette and closes it again;
+  // "/" opens it when nothing is being typed.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const openPalette = useCallback(() => {
+    setDrawerPath(null);
+    setPaletteOpen(true);
+  }, []);
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        openSearch();
+        setDrawerPath(null);
+        setPaletteOpen((open) => !open);
+        return;
+      }
+      if (event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey && !isTyping(event.target)) {
+        event.preventDefault();
+        setDrawerPath(null);
+        setPaletteOpen(true);
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [openSearch]);
+  }, []);
 
   const signedInAs = session?.signed_in ? session.username : null;
   const bell = <NotificationBell />;
@@ -104,6 +119,7 @@ export function AppShell() {
         signedInAs={signedInAs}
         onSignOut={signOut}
         onNavigate={() => setDrawerOpen(false)}
+        onSearch={openPalette}
       />
       <div className="drawer-scrim" onClick={() => setDrawerOpen(false)} aria-hidden="true" />
       <div className="main">
@@ -121,6 +137,9 @@ export function AppShell() {
               <MenuIcon className="icon" />
             </button>
             <Brand />
+            <button type="button" className="iconbtn" aria-label="Search" title="Search" onClick={openPalette}>
+              <SearchIcon className="icon" />
+            </button>
             {bell}
           </header>
         ) : null}
@@ -135,6 +154,11 @@ export function AppShell() {
           </Suspense>
         </main>
       </div>
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onSignOut={signedInAs ? signOut : undefined}
+      />
     </div>
   );
 }
