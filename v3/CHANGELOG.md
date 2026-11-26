@@ -40,6 +40,16 @@ capability a user would notice.
   in the address. If Tailscale asks for permission with a link that cannot
   be opened there, they name the two switches in Tailscale's admin console
   instead. (#649)
+- **Every place the setup guide sends you to exists for this release.**
+  Mac and Windows: the guide now points to the Docker Desktop command, which
+  is a single line that pastes into PowerShell too. Both quick start
+  commands, and the `get.palaia.ai/docker` script, pull the image channel
+  that exists for the release (`beta` for a release candidate). Before, they
+  pulled `stable`, which is not published before 3.0.0. NAS: the guide says
+  plainly that no NAS app store lists palaia yet and recommends a rented
+  server. Raspberry Pi: during a release candidate it says the Pi image does
+  not work yet. From 3.0.0 on it names the image on that release's own page;
+  GitHub's "latest release" is still a v2 release. (#651)
 
 ## 3.0.0-rc10 — 2026-11-14 (release candidate)
 

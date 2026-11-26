@@ -126,6 +126,7 @@ _RC_CHANNEL_NOTE_FILES = (
     "deploy/README.md",
     "deploy/docker-compose.yml",
     "deploy/get-palaia.sh",
+    "deploy/install.sh",
     "docs/how-it-works.md",
     "site/docs/src/content/docs/install.md",
     "site/docs/src/content/docs/install-synology.md",
@@ -167,7 +168,7 @@ def test_compose_pins_the_stable_channel_tag_not_a_literal_version() -> None:
 #: ``test_home_assistant_addon_version_is_this_version`` applies to the HA
 #: add-on. `RELEASING.md` §3 flips it on the final tag; this test is what
 #: forces that flip (and forbids shipping a dead `:stable` during an RC).
-_UNATTENDED_CHANNEL_FILES = ("deploy/get-palaia.sh",)
+_UNATTENDED_CHANNEL_FILES = ("deploy/get-palaia.sh", "deploy/install.sh")
 
 _DEFAULT_CHANNEL_RE = re.compile(r'^DEFAULT_CHANNEL="([a-z]+)"$', re.M)
 
@@ -191,9 +192,47 @@ def test_cloud_init_names_no_image_of_its_own() -> None:
     assert "ghcr.io/byte5ai/palaia" not in text
 
 
-def test_install_sh_defaults_to_the_stable_channel_tag() -> None:
+def test_install_sh_pulls_its_default_channel() -> None:
+    """install.sh (`get.palaia.ai/docker`) runs unattended like get-palaia.sh,
+    so its image follows the same DEFAULT_CHANNEL, which the test above keeps
+    matching VERSION (issue #651)."""
     install_text = (V3_ROOT / "deploy" / "install.sh").read_text(encoding="utf-8")
-    assert 'IMAGE="${PALAIA_IMAGE:-ghcr.io/byte5ai/palaia:stable}"' in install_text
+    assert (
+        'IMAGE="${PALAIA_IMAGE:-ghcr.io/byte5ai/palaia:${PALAIA_CHANNEL:-$DEFAULT_CHANNEL}}"'
+        in install_text
+    )
+
+
+_QUICK_START_IMAGE_RE = re.compile(r"ghcr\.io/byte5ai/palaia:([\w.-]+)")
+
+
+def test_the_readme_quick_start_commands_pull_a_tag_that_exists_now() -> None:
+    """Issue #651: the README's two `docker run` commands are what the
+    onboarding page and the install skill hand out to paste as they are, so
+    they name the channel that exists for this release — `beta` during a
+    pre-release, `stable` once final — like the installers' DEFAULT_CHANNEL.
+    RELEASING.md §3 flips them together on the final tag."""
+    version = _read_version_file()
+    expected = "beta" if "-" in version else "stable"
+    readme = (V3_ROOT / "deploy" / "README.md").read_text(encoding="utf-8")
+    quick_start = readme[
+        readme.index("## Quick start") : readme.index("\n## ", readme.index("## Quick start") + 1)
+    ]
+    runs = [
+        fence
+        for fence in re.findall(r"```bash\n(.*?)```", quick_start, re.DOTALL)
+        if fence.startswith("docker run")
+    ]
+    assert len(runs) == 2, runs
+    for fence in runs:
+        assert _QUICK_START_IMAGE_RE.findall(fence) == [expected], (
+            f"a Quick start `docker run` pulls {_QUICK_START_IMAGE_RE.findall(fence)} but "
+            f"VERSION {version!r} has only {expected!r} — see RELEASING.md §3"
+        )
+    # The Docker Desktop one is a single line: Windows' PowerShell and Command
+    # Prompt do not continue a line ending in a backslash.
+    desktop = next(fence for fence in runs if "-p 8420:8420" in fence)
+    assert desktop.strip().count("\n") == 0, desktop
 
 
 @pytest.mark.parametrize(

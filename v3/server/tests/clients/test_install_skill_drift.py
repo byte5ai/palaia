@@ -152,6 +152,13 @@ _NOT_FROM_DEPLOY: dict[str, str] = {
     "ssh -o StrictHostKeyChecking=accept-new root@<address>": (
         "interactive first login, for a provider that forces a password change"
     ),
+    # Step 1's Raspberry Pi path (#651): the release asset and the release
+    # page, both made by palaia's workflows rather than shipped in v3/deploy;
+    # test_the_pi_path_names_what_the_release_workflows_make checks them.
+    "palaia-appliance-v<version>.img.xz": "the Pi image build.sh names for a release",
+    "https://github.com/byte5ai/palaia/releases/tag/v3.<version>": (
+        "the release page v3-cut-release.yml creates; GitHub's 'latest' is a v2 release"
+    ),
 }
 
 #: Tokens inside a quote that name something palaia ships: absolute paths,
@@ -625,3 +632,64 @@ def test_cloud_access_without_a_shell_is_the_installer_line_in_both_places() -> 
     get_palaia = GET_PALAIA_PATH.read_text(encoding="utf-8")
     assert 'CLOUD="${PALAIA_CLOUD:-1}"' in get_palaia
     assert 'CLOUD_TARGET="http://127.0.0.1:${CLOUD_PORT}"' in get_palaia
+
+
+# --- Step 1's side paths lead somewhere that exists (#651) -------------------
+
+_WORKFLOWS = REPO_ROOT / ".github" / "workflows"
+_PI_IMAGE = DEPLOY_ROOT / "pi-image"
+
+
+def test_the_pi_path_names_what_the_release_workflows_make() -> None:
+    """The Pi image is attached to the release `v3.<version>` (GitHub's
+    "latest" release is a v2 one) under the name build.sh gives it. And the
+    skill's "a release candidate has no working Pi image" holds only while
+    the image's service pulls `:stable`, which exists from the final release
+    on: if it ever follows the channel instead, this goes red so the skill
+    offers the image again."""
+    body = _skill_body()
+    step1 = body[body.index("## Step 1") : body.index("## Step 2")]
+    assert "`palaia-appliance-v<version>.img.xz`" in step1
+    assert "`https://github.com/byte5ai/palaia/releases/tag/v3.<version>`" in step1
+    build = (_PI_IMAGE / "build.sh").read_text(encoding="utf-8")
+    assert 'OUT_NAME="palaia-appliance-v${VERSION}"' in build
+    assert '> "${OUTPUT_DIR}/${OUT_NAME}.img.xz"' in build
+    cut = (_WORKFLOWS / "v3-cut-release.yml").read_text(encoding="utf-8")
+    assert 'tag="v3.${version}"' in cut
+    pi_workflow = (_WORKFLOWS / "v3-pi-image.yml").read_text(encoding="utf-8")
+    assert 'gh release upload "${tag}"' in pi_workflow
+    unit = (_PI_IMAGE / "systemd" / "palaia.service").read_text(encoding="utf-8")
+    assert "ghcr.io/byte5ai/palaia:stable" in unit
+    assert "release candidate" in step1 and "no working Pi image" in step1
+
+
+def test_the_own_computer_path_points_at_a_one_line_desktop_command() -> None:
+    """Mac or Windows: the skill sends them to the Docker Desktop line of the
+    README's Quick start, pasted as it is into Terminal or PowerShell — so it
+    must exist, be a single line (PowerShell does not continue a line ending
+    in a backslash), and publish the port the skill then opens."""
+    body = _skill_body()
+    step1 = body[body.index("## Step 1") : body.index("## Step 2")]
+    assert 'Docker Desktop line of "Quick start" in `v3/deploy/README.md`' in step1
+    assert "`http://localhost:8420/`" in step1
+    readme = (DEPLOY_ROOT / "README.md").read_text(encoding="utf-8")
+    start = readme.index("## Quick start")
+    quick_start = readme[start : readme.index("\n## ", start + 1)]
+    desktop = [
+        fence.strip()
+        for fence in re.findall(r"```bash\n(.*?)```", quick_start, re.DOTALL)
+        if fence.startswith("docker run") and "-p 8420:8420" in fence
+    ]
+    assert len(desktop) == 1, desktop
+    assert "\n" not in desktop[0], desktop[0]
+    assert "http://localhost:8420/" in quick_start
+
+
+def test_the_nas_path_names_no_app_store_listing() -> None:
+    """No NAS app store lists palaia (the packages in v3/deploy/stores are
+    unsubmitted drafts), so the skill must not send anyone to one."""
+    body = _skill_body()
+    step1 = body[body.index("## Step 1") : body.index("## Step 2")]
+    nas = step1[step1.index("**A home NAS**") : step1.index("**A Raspberry Pi**")]
+    assert "no NAS app store lists palaia" in nas
+    assert "rented server" in nas

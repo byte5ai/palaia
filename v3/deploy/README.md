@@ -15,7 +15,7 @@ docker run -d --name palaia \
   --restart unless-stopped \
   --security-opt no-new-privileges:true --cap-drop ALL \
   --read-only --tmpfs /tmp --tmpfs /run \
-  ghcr.io/byte5ai/palaia:stable
+  ghcr.io/byte5ai/palaia:beta
 ```
 
 Then open `http://palaia.local:8420/` from any device on the same network
@@ -26,25 +26,24 @@ cloud entry on the machine's loopback address, where only a tunnel on the
 machine itself reaches it.
 
 With Docker Desktop (macOS, Windows), whose containers run inside a hidden
-virtual machine, publish the port instead:
+virtual machine, publish the port instead. It is one line, so it pastes the
+same into Terminal on a Mac and into PowerShell or Command Prompt on Windows:
 
 ```bash
-docker run -d --name palaia \
-  -p 8420:8420 \
-  -v palaia_home:/data \
-  --restart unless-stopped \
-  --security-opt no-new-privileges:true --cap-drop ALL \
-  --read-only --tmpfs /tmp --tmpfs /run \
-  ghcr.io/byte5ai/palaia:stable
+docker run -d --name palaia -p 8420:8420 -v palaia_home:/data --restart unless-stopped --security-opt no-new-privileges:true --cap-drop ALL --read-only --tmpfs /tmp --tmpfs /run ghcr.io/byte5ai/palaia:beta
 ```
 
 Then open `http://localhost:8420/`. A name like `palaia.local` cannot reach
 your network from inside Docker Desktop's virtual machine.
 
+Both commands pull the image channel of this release, the same one
+`curl -fsSL https://get.palaia.ai | sh` installs: `beta` for a release
+candidate, `stable` from `3.0.0` on.
+
 <!-- rc-channel-note -->
-> **Release candidate:** until `3.0.0` is final there is no `stable` image yet. Where a
-> command or file on this page says `ghcr.io/byte5ai/palaia:stable`, use
-> `ghcr.io/byte5ai/palaia:beta` for now.
+> **Release candidate:** until `3.0.0` is final there is no `stable` image yet. The
+> commands above and the script below already pull `beta`; the compose file still says
+> `ghcr.io/byte5ai/palaia:stable` — use `ghcr.io/byte5ai/palaia:beta` there for now.
 
 The five hardening flags are explained in [`docker-compose.yml`](docker-compose.yml)
 and in [Container posture](#container-posture) below; the container runs as a
