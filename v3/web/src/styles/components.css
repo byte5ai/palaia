@@ -119,8 +119,8 @@ pre code { padding: 0; background: none; }
    red version (.btn--danger) only inside a confirm dialog. */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
-  height: var(--control-height); padding: 0 var(--space-5); border-radius: var(--radius-pill);
-  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  height: var(--control-height); padding: 0 var(--space-4); border-radius: var(--radius-sm);
+  border: 1px solid var(--border-control); background: var(--surface); color: var(--text);
   font-size: var(--type-body-strong-size); line-height: var(--type-body-strong-lh);
   font-weight: var(--type-body-strong-weight); cursor: pointer; white-space: nowrap; text-decoration: none;
   transition: background var(--duration-quick) var(--easing-standard),
@@ -134,11 +134,11 @@ pre code { padding: 0; background: none; }
 .btn--ghost:hover, .btn--plain:hover { background: var(--surface-muted); color: var(--action-hover); }
 .btn--quiet { background: var(--surface); }
 .btn--risk, .btn--destructive { color: var(--error); }
-.btn--risk:hover, .btn--destructive:hover { background: var(--error-bg); color: var(--error); border-color: var(--border); }
+.btn--risk:hover, .btn--destructive:hover { background: var(--error-bg); color: var(--error); border-color: var(--border-control); }
 .btn--danger { background: var(--error); border-color: var(--error); color: var(--on-action); }
 .btn--danger:hover { background: var(--error); border-color: var(--error); color: var(--on-action); filter: brightness(0.92); }
 .btn--sm { height: var(--control-height-sm); padding: 0 var(--space-3); font-size: var(--type-secondary-size); line-height: var(--type-secondary-lh); }
-.btn--lg { height: var(--control-height-lg); padding: 0 var(--space-6); }
+.btn--lg { height: var(--control-height-lg); padding: 0 var(--space-5); }
 .btn--block { width: 100%; }
 .btn[disabled], .btn[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
 a.btn[aria-disabled="true"] { pointer-events: none; }
@@ -147,7 +147,8 @@ a.btn[aria-disabled="true"] { pointer-events: none; }
   border-right-color: transparent; animation: spin 700ms linear infinite; flex: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .iconbtn { display: inline-flex; align-items: center; justify-content: center; position: relative;
-  width: 36px; height: 36px; border-radius: 50%; border: 0; background: none; color: var(--text-2); cursor: pointer; flex: none; }
+  width: var(--control-height); height: var(--control-height); border-radius: var(--radius-sm); border: 0; background: none;
+  color: var(--text-2); cursor: pointer; flex: none; }
 .iconbtn:hover { background: var(--surface-muted); color: var(--text); }
 .iconbtn__badge { position: absolute; top: 4px; right: 4px; min-width: 16px; height: 16px; padding: 0 4px;
   border-radius: var(--radius-pill); background: var(--error); color: var(--on-action);
@@ -247,7 +248,7 @@ a.btn[aria-disabled="true"] { pointer-events: none; }
    are as tall as list rows; a group row names a set of rows. */
 .table--flush th { padding: var(--space-3) var(--space-5); }
 .table--flush thead th { background: var(--canvas); }
-.table--flush td, .table--flush tbody th { padding: var(--space-2) var(--space-5); height: var(--row-height);
+.table--flush td, .table--flush tbody th { padding: var(--space-2) var(--space-5); height: var(--table-row-height);
   border-bottom: 1px solid var(--border); white-space: normal; }
 .table--flush tbody th { font-size: var(--type-body-strong-size); line-height: var(--type-body-strong-lh);
   font-weight: var(--type-body-strong-weight); color: var(--text); }
@@ -420,7 +421,7 @@ select.input, select.vaultpick { appearance: none; -webkit-appearance: none; pad
 .stepper__layout { flex: 1; display: grid; grid-template-columns: 232px minmax(0, var(--wizard-width)); gap: var(--space-12);
   justify-content: center; padding: var(--space-12) var(--space-6); align-items: start; }
 .stepper__steps { display: flex; flex-direction: column; gap: var(--space-1); }
-.stepper__step { display: flex; align-items: center; gap: var(--space-3); min-height: 40px; color: var(--text-2);
+.stepper__step { display: flex; align-items: center; gap: var(--space-3); min-height: var(--control-height); color: var(--text-2);
   font-size: var(--type-secondary-size); font-weight: 600; }
 .stepper__marker { width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--text-3); background: var(--surface);
   display: flex; align-items: center; justify-content: center; flex: none; font-size: var(--type-caption-size); color: var(--text-2); }
@@ -437,14 +438,14 @@ select.input, select.vaultpick { appearance: none; -webkit-appearance: none; pad
 .stepper__title { font-size: var(--type-title-1-size); line-height: var(--type-title-1-lh); font-weight: var(--type-title-1-weight); }
 .stepper__foot { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap;
   padding-top: var(--space-5); border-top: 1px solid var(--border); }
-.stepper__foot .btn--primary { margin-left: auto; height: var(--control-height-lg); padding: 0 var(--space-6); }
+.stepper__foot .btn--primary { margin-left: auto; height: var(--control-height-lg); padding: 0 var(--space-5); }
 
 /* =============================================================
    App shell: sidebar ≥1024 px, icon rail 768–1023 px, app bar and
    drawer below 768 px.
    ============================================================= */
 .skiplink { position: absolute; left: var(--space-3); top: -100px; z-index: 100; padding: var(--space-2) var(--space-4);
-  background: var(--action); color: var(--on-action); border-radius: var(--radius-pill); }
+  background: var(--action); color: var(--on-action); border-radius: var(--radius-sm); }
 .skiplink:hover { color: var(--on-action); }
 .skiplink:focus { top: var(--space-3); }
 
@@ -462,8 +463,8 @@ select.input, select.vaultpick { appearance: none; -webkit-appearance: none; pad
    the plain wordmark until the screen moves to <PalaiaMark>. */
 span.brand__mark, .brand__ver { display: none; }
 .nav { display: flex; flex-direction: column; gap: 2px; }
-.nav__item { display: flex; align-items: center; gap: var(--space-3); height: 40px; padding: 0 var(--space-3);
-  border-radius: var(--radius-pill); color: var(--text-2); font-size: var(--type-body-strong-size);
+.nav__item { display: flex; align-items: center; gap: var(--space-3); height: var(--control-height); padding: 0 var(--space-3);
+  border-radius: var(--radius-sm); color: var(--text-2); font-size: var(--type-body-strong-size);
   line-height: var(--type-body-strong-lh); font-weight: var(--type-body-strong-weight); text-decoration: none; position: relative; }
 .nav__item:hover { background: var(--surface-muted); color: var(--text); text-decoration: none; }
 .nav__item--on, .nav__item--on:hover { background: var(--info-bg); color: var(--action); }
@@ -510,6 +511,8 @@ span.brand__mark, .brand__ver { display: none; }
   .content { padding: var(--space-6); }
 }
 @media (max-width: 767px) {
+  /* A finger needs more than a pointer: controls grow to touch size. */
+  :root { --control-height: 44px; --control-height-sm: 44px; }
   .app { display: block; }
   .appbar { display: flex; align-items: center; gap: var(--space-2); position: sticky; top: 0; z-index: 20;
     height: var(--appbar-height); padding: 0 var(--space-2); background: var(--surface); border-bottom: 1px solid var(--border); }
@@ -520,9 +523,8 @@ span.brand__mark, .brand__ver { display: none; }
     visibility var(--duration-smooth) var(--easing-standard); }
   .app--drawer-open .sidebar { transform: none; visibility: visible; }
   .app--drawer-open .drawer-scrim { display: block; position: fixed; inset: 0; background: var(--scrim); z-index: 50; }
-  .nav__item { height: 44px; }
   .content { padding: var(--space-5) var(--space-4) var(--space-8); gap: var(--space-5); }
-  .pagehead__title { font-size: 24px; line-height: 30px; }
+  .pagehead__title { font-size: 22px; line-height: 28px; }
   .card__head, .card__body, .card__foot, .listrow { padding-left: var(--space-4); padding-right: var(--space-4); }
   .toast-region { left: var(--space-4); right: var(--space-4); bottom: var(--space-4); }
   .toast { min-width: 0; max-width: none; }
@@ -612,7 +614,7 @@ span.brand__mark, .brand__ver { display: none; }
 /* ---------- memories (explorer) ---------- */
 .searchrow { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .searchbox { display: flex; align-items: center; gap: var(--space-2); height: var(--control-height); padding: 0 var(--space-3); flex: 1;
-  min-width: 220px; border: 1px solid var(--border-control); border-radius: var(--radius-pill); background: var(--surface); color: var(--text-3); }
+  min-width: 220px; border: 1px solid var(--border-control); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-3); }
 .searchbox:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; border-color: var(--action); }
 .searchbox input { flex: 1; min-width: 0; border: none; background: none; font: inherit; color: var(--text); outline: none; }
 .searchbox input::placeholder { color: var(--text-3); }
