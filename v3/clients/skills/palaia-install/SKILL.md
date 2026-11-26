@@ -110,11 +110,13 @@ The installer line is the first one in `v3/deploy/get-palaia.sh`,
 curl -fsSL https://get.palaia.ai | PALAIA_SETUP_CODE=<code> sh
 ```
 
-For **private only** (Step 2), add `PALAIA_CLOUD=0` before `sh`. The installer
-sets up Docker and Tailscale if missing, then opens the setup page and waits up
-to 30 minutes for them. Start it so it keeps running after your command returns
-(your tool's background mode, for example), keep reading its output, and go to
-Step 4. It ends with a line starting `done ✓  Open` and palaia's address.
+For **private only** (Step 2), add `PALAIA_CLOUD=0` before `sh`. It installs
+what is missing, opens the setup page and waits up to 30 minutes, running on
+the server on its own: start it in your tool's background mode, read its
+output, go to Step 4. Ended early (timeout, lost connection)? The same line
+again shows the running install from its start to its end, never a second
+one; once it ended, read `/var/log/palaia-install.log`. Last: `done ✓  Open`
+and palaia's address, with MagicDNS on then a `full name:` line.
 
 **3a — With a key.** No output means you are in; then run the installer line
 through it (in single quotes, in place of the final word true):
@@ -195,9 +197,8 @@ page shows.
 5. The page says "Done", shows palaia's address (a name, usually http://palaia/;
    a number only with MagicDNS off, and then says how to turn it on) and closes.
 
-A server already on their Tailscale network shows no page. For the cloud setup
-the installer prints a `login.tailscale.com` link instead when the network still
-has to allow it: give them that link, same explanation, and wait.
+Already on their Tailscale network: no page; for cloud access the installer may
+print a `login.tailscale.com` link to allow it — give it to them, same explanation.
 
 **For technical people only — a key instead of the page.** At
 `https://login.tailscale.com/admin/settings/keys` → **Generate auth key**:
@@ -278,13 +279,12 @@ Name the likely cause in plain words.
 saying what to do. Translate:
 
 - The setup page closed without joining — run the line again.
-- The key was an access token, expired or already used — a fresh **auth key**,
-  then the line again.
+- The key was rejected (an access token, expired, used) — a fresh **auth key**.
 - Joined but no address yet — wait a moment, run the line again.
 - `the hub did not become ready` — it shows palaia's last log lines; translate
   them. Running the line again is safe and keeps their data.
-- Cloud access is off — palaia still works privately; running the line again
-  retries it.
+- Cloud access is off — palaia works privately; the line again retries it.
+- `is used by another program` — what it names holds port 8420; theirs to stop.
 
 **When the login fails** (3a or 3b):
 

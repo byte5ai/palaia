@@ -110,6 +110,16 @@ it up front). The image channel follows this release (`beta` while it is a
 release candidate), so the command above needs nothing added. Other options are
 listed in the script header.
 
+The install runs on the server on its own, as root in a service of its own
+(`systemd-run`; `setsid` where systemd is missing): closing the window or SSH
+session that started it, a dropped connection or a laptop going to sleep does
+not stop it. The command shows its progress while it runs, and the same lines
+go to `/var/log/palaia-install.log` (root only). Run the command again while an
+install is still running and it starts no second one: it shows the running
+one's progress from its start and ends with it, with its exit status. A setup
+page that an earlier, stopped run left open is closed for a fresh one; another
+program on port 8420 stops the install with its name.
+
 A key instead of the page: put the auth key in a file only root can read and
 pass `PALAIA_TSKEY_FILE=/path`. Tailscale reads it from there
 (`tailscale up --auth-key=file:…`), so the key is never a command-line argument,

@@ -10,8 +10,11 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import signal
 import stat
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -557,3 +560,444 @@ def test_without_tailscale_and_no_earlier_rule_nothing_is_touched(tmp_path: Path
     assert result.returncode == 0, result.stderr
     assert _calls(tmp_path) == []
     assert not (tmp_path / "opt").exists()
+
+
+# --- #646: the install runs on its own, apart from the session that started it
+
+
+LAUNCH_TOOLS = (
+    "sh", "cat", "tr", "grep", "sleep", "tail", "mkdir", "mv", "rm", "chmod",
+    "dirname", "sed", "setsid", "touch", "printf",
+)  # fmt: skip
+
+
+def _launcher(tmp_path: Path) -> str:
+    """get-palaia.sh's launcher part (everything before the install text),
+    with its files under ``tmp_path``."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    runner = re.search(r"^INSTALL_RUNNER='.*?'$", text, re.S | re.M)
+    variables = re.search(r'^INSTALL_VARS=".*?"$', text, re.S | re.M)
+    assert runner and variables, "get-palaia.sh no longer sets INSTALL_RUNNER and INSTALL_VARS"
+    run = tmp_path / "run"
+    run.mkdir(exist_ok=True)
+    paths = (
+        f'INSTALLER_FILE="{tmp_path}/opt/installer.sh"\n'
+        f'INSTALL_LOG="{tmp_path}/install.log"\n'
+        f'INSTALL_ENV="{run}/palaia-install.env"\n'
+        f'INSTALL_PID="{run}/palaia-install.pid"\n'
+        f'INSTALL_STATUS="{run}/palaia-install.status"\n'
+        'INSTALL_UNIT="palaia-install"\n'
+    )
+    functions = "".join(
+        _function(name)
+        for name in (
+            "launch_options",
+            "launch_running",
+            "launch_claim",
+            "launch_start",
+            "launch_follow",
+            "launch_drop_keyfile",
+            "launch_abort",
+            "launch",
+        )
+    )
+    return (
+        "set -eu\n"
+        + HELPERS
+        + 'SUDO=""\n'
+        + paths
+        + runner.group(0)
+        + "\n"
+        + variables.group(0)
+        + "\n"
+        + "LAUNCHED=0\nCLAIMED=0\n"
+        + functions
+        + 'launch < "$PAYLOAD"\n'
+    )
+
+
+def _launch_env(tmp_path: Path, payload: Path, *, systemd_run: bool) -> dict[str, str]:
+    tools = tmp_path / "tools"
+    tools.mkdir(exist_ok=True)
+    for tool in LAUNCH_TOOLS:
+        found = shutil.which(tool)
+        if found is None:
+            pytest.skip(f"{tool} is needed to run this test")
+        if not (tools / tool).exists():
+            (tools / tool).symlink_to(found)
+    if systemd_run:
+        # Stands in for systemd-run: records the call, then runs the command
+        # after the options the way the service would — apart, with no
+        # terminal, and with systemd's expansion of its command line ($$ is
+        # a $, $NAME and ${NAME} the variable's value: empty here).
+        runner = tmp_path / "systemd-run.py"
+        calls = str(tmp_path / "systemd-run.log")
+        runner.write_text(
+            "import os, re, sys\n"
+            f"open({calls!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
+            "args = sys.argv[sys.argv.index('/bin/sh'):]\n"
+            "expand = lambda a: re.sub(r'\\$(\\$|\\{\\w+\\}|\\w+)',"
+            " lambda m: '$' if m.group(1) == '$' else '', a)\n"
+            "if os.fork() == 0:\n"
+            "    os.setsid()\n"
+            "    fd = os.open(os.devnull, os.O_RDWR)\n"
+            "    for n in (0, 1, 2): os.dup2(fd, n)\n"
+            "    os.execvp(args[0], [expand(a) for a in args])\n",
+            encoding="utf-8",
+        )
+        _stub(tmp_path, "systemd-run", f'exec "{sys.executable}" "{runner}" "$@"\n')
+    (tmp_path / "bin").mkdir(exist_ok=True)
+    return {"PATH": f"{tmp_path / 'bin'}{os.pathsep}{tools}", "PAYLOAD": str(payload)}
+
+
+def _payload(tmp_path: Path, body: str, name: str = "payload.sh", *, complete: bool = True) -> Path:
+    path = tmp_path / name
+    path.write_text(
+        "#!/bin/sh\n" + body + ("# palaia installer: end\n" if complete else ""), encoding="utf-8"
+    )
+    return path
+
+
+TICKING = (
+    'echo "install started, code=${PALAIA_SETUP_CODE:-none}"\n'
+    "i=0\n"
+    'while [ "$i" -lt 40 ]; do echo "step $i"; i=$((i + 1)); sleep 0.05; done\n'
+    'echo "palaia: done ✓  Open http://palaia/ from any device on your tailnet to finish setup."\n'
+    "exit ${PAYLOAD_EXIT:-0}\n"
+)
+
+
+def _wait_for(path: Path, seconds: float = 20) -> None:
+    deadline = time.monotonic() + seconds
+    while not path.exists():
+        assert time.monotonic() < deadline, f"{path} never appeared"
+        time.sleep(0.05)
+
+
+@pytest.mark.parametrize("systemd_run", [False, True])
+def test_the_install_finishes_after_the_session_that_started_it_is_gone(
+    tmp_path: Path, systemd_run: bool
+) -> None:
+    """#646: `ssh server 'curl … | sh'` ends (timeout, dropped connection):
+    its output pipe closes. The install goes on to its end, its log has every
+    line, and its status is kept for whoever looks next."""
+    if systemd_run and not Path("/run/systemd/system").is_dir():
+        pytest.skip("the systemd-run path is taken only where systemd runs")
+    payload = _payload(tmp_path, TICKING)
+    env = {**_launch_env(tmp_path, payload, systemd_run=systemd_run)}
+    env["PALAIA_SETUP_CODE"] = "ABCD-EFGH-JKLM"
+    proc = subprocess.Popen(
+        ["sh", "-c", _launcher(tmp_path)],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    assert proc.stdout is not None
+    seen = ""
+    while "step 1" not in seen:
+        line = proc.stdout.readline()
+        assert line, f"the command ended before the install showed progress: {seen!r}"
+        seen += line
+    assert "the install runs on its own now" in seen
+    proc.stdout.close()  # the session is gone
+    proc.wait(timeout=30)
+
+    status = tmp_path / "run" / "palaia-install.status"
+    _wait_for(status)
+    assert status.read_text(encoding="utf-8").strip() == "0"
+    log = (tmp_path / "install.log").read_text(encoding="utf-8")
+    assert "install started, code=ABCD-EFGH-JKLM" in log
+    assert "step 39" in log
+    assert "palaia: done ✓  Open http://palaia/" in log
+    assert stat.S_IMODE((tmp_path / "install.log").stat().st_mode) == 0o600
+    # Nothing is left running, and the options file is gone.
+    assert not (tmp_path / "run" / "palaia-install.pid").exists()
+    assert not (tmp_path / "run" / "palaia-install.env").exists()
+    if systemd_run:
+        call = (tmp_path / "systemd-run.log").read_text(encoding="utf-8")
+        assert "--unit=palaia-install" in call
+        assert "--collect" in call
+        assert "ABCD-EFGH-JKLM" not in call  # options never on a command line
+
+
+def test_while_it_runs_the_command_shows_the_progress_and_ends_with_it(tmp_path: Path) -> None:
+    payload = _payload(tmp_path, TICKING)
+    env = {**_launch_env(tmp_path, payload, systemd_run=False), "PAYLOAD_EXIT": "0"}
+    result = subprocess.run(
+        ["sh", "-c", _launcher(tmp_path)],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.splitlines()
+    assert "step 39" in lines
+    assert lines[-1].startswith("palaia: done ✓  Open")
+
+
+def test_its_exit_status_is_the_commands(tmp_path: Path) -> None:
+    payload = _payload(tmp_path, 'echo "palaia: ERROR: something failed" >&2\nexit 1\n')
+    result = subprocess.run(
+        ["sh", "-c", _launcher(tmp_path)],
+        env=_launch_env(tmp_path, payload, systemd_run=False),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert result.returncode == 1
+    assert "palaia: ERROR: something failed" in result.stdout
+
+
+def test_a_second_command_shows_the_running_install_instead_of_starting_one(
+    tmp_path: Path,
+) -> None:
+    """#646: a rerun while an install runs attaches to it: no second install,
+    no traceback, no "run again" — and a key file given to it is not left
+    behind."""
+    first = _payload(tmp_path, TICKING.replace("sleep 0.05", "sleep 0.1"), "first.sh")
+    env = {**_launch_env(tmp_path, first, systemd_run=False), "PAYLOAD_EXIT": "3"}
+    started = subprocess.Popen(
+        ["sh", "-c", _launcher(tmp_path)],
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    pidfile = tmp_path / "run" / "palaia-install.pid"
+    deadline = time.monotonic() + 20
+    while not (pidfile.exists() and pidfile.read_text(encoding="utf-8").strip().isdigit()):
+        assert time.monotonic() < deadline, "the first install never started"
+        time.sleep(0.05)
+
+    second = _payload(tmp_path, f'touch "{tmp_path / "second-ran"}"\n', "second.sh")
+    key = tmp_path / "tskey"
+    key.write_text("tskey-auth-synthetic", encoding="utf-8")
+    result = subprocess.run(
+        ["sh", "-c", _launcher(tmp_path)],
+        env={**env, "PAYLOAD": str(second), "PALAIA_TSKEY_FILE": str(key)},
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    started.wait(timeout=30)
+    assert "still running" in result.stdout
+    assert "install started" in result.stdout  # its progress from the start
+    assert "step 39" in result.stdout
+    assert result.returncode == 3  # the running install's own result
+    assert not (tmp_path / "second-ran").exists()
+    assert "second-ran" not in (tmp_path / "opt" / "installer.sh").read_text(encoding="utf-8")
+    assert not key.exists()
+
+
+def test_after_an_install_ended_the_command_starts_a_new_one(tmp_path: Path) -> None:
+    once = _payload(tmp_path, f'echo run >> "{tmp_path / "runs"}"\n')
+    env = _launch_env(tmp_path, once, systemd_run=False)
+    for _ in range(2):
+        result = subprocess.run(
+            ["sh", "-c", _launcher(tmp_path)],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+    assert (tmp_path / "runs").read_text(encoding="utf-8") == "run\nrun\n"
+
+
+def test_a_pid_file_left_by_a_killed_install_does_not_block_the_next(tmp_path: Path) -> None:
+    (tmp_path / "run").mkdir()
+    gone = subprocess.Popen(["true"])
+    gone.wait()
+    (tmp_path / "run" / "palaia-install.pid").write_text(f"{gone.pid}\n", encoding="utf-8")
+    once = _payload(tmp_path, f'touch "{tmp_path / "ran"}"\n')
+    result = subprocess.run(
+        ["sh", "-c", _launcher(tmp_path)],
+        env=_launch_env(tmp_path, once, systemd_run=False),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (tmp_path / "ran").exists()
+
+
+def test_an_install_that_arrived_cut_short_never_runs(tmp_path: Path) -> None:
+    cut = _payload(tmp_path, f'touch "{tmp_path / "ran"}"\n', complete=False)
+    key = tmp_path / "tskey"
+    key.write_text("tskey-auth-synthetic", encoding="utf-8")
+    env = {**_launch_env(tmp_path, cut, systemd_run=False), "PALAIA_TSKEY_FILE": str(key)}
+    result = subprocess.run(
+        ["sh", "-c", _launcher(tmp_path)],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "did not arrive complete" in result.stderr
+    assert not (tmp_path / "ran").exists()
+    assert sorted(p.name for p in (tmp_path / "run").iterdir()) == []
+    assert not key.exists()
+
+
+def test_the_options_reach_the_install_unchanged(tmp_path: Path) -> None:
+    tricky = 'it\'s $HOME "quoted" `x` \\ end'
+    payload = _payload(
+        tmp_path,
+        'printf "%s\\n" "$PALAIA_TS_LOGIN_SERVER" > "$OUT"\n'
+        'printf "%s\\n" "${PALAIA_CLOUD-unset}" >> "$OUT"\n',
+    )
+    out = tmp_path / "seen"
+    env = {
+        **_launch_env(tmp_path, payload, systemd_run=False),
+        "PALAIA_TS_LOGIN_SERVER": tricky,
+    }
+    script = _launcher(tmp_path).replace("set -eu\n", f'set -eu\nOUT="{out}"\n', 1)
+    # OUT reaches the install only through the options file, like PALAIA_*.
+    script = script.replace('INSTALL_VARS="', 'INSTALL_VARS="OUT ', 1)
+    result = subprocess.run(
+        ["sh", "-c", script], env=env, capture_output=True, text=True, timeout=60, check=False
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert out.read_text(encoding="utf-8") == f"{tricky}\nunset\n"
+
+
+def _strip_heredocs(text: str) -> str:
+    """The install's own text, without the files it writes (their variables
+    are read by those files, not by the install)."""
+    return re.sub(r"<<'([A-Z_]+)'\n.*?^\1$", "", text, flags=re.S | re.M)
+
+
+def test_every_option_the_install_reads_is_passed_on() -> None:
+    """The install runs in a service of its own: an option it reads but the
+    command does not pass on would silently do nothing."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    install = re.search(r"<<'PALAIA_INSTALLER'\n(.*?)^PALAIA_INSTALLER$", text, re.S | re.M)
+    assert install, "get-palaia.sh no longer carries the install between PALAIA_INSTALLER lines"
+    read = set(re.findall(r"\$\{(PALAIA_[A-Z_]+)", _strip_heredocs(install.group(1))))
+    variables = re.search(r'^INSTALL_VARS="(.*?)"$', text, re.S | re.M)
+    assert variables
+    assert read == set(variables.group(1).split())
+
+
+def test_the_install_text_ends_with_the_line_the_command_checks() -> None:
+    text = SCRIPT.read_text(encoding="utf-8")
+    install = re.search(r"<<'PALAIA_INSTALLER'\n(.*?)^PALAIA_INSTALLER$", text, re.S | re.M)
+    assert install
+    last = install.group(1).rstrip("\n").splitlines()[-1]
+    assert f'!= "{last}" ]' in _function("launch")
+
+
+def test_a_closed_output_pipe_still_removes_the_key_file(tmp_path: Path) -> None:
+    """#646: dash ends on a closed pipe without running its EXIT trap; the
+    install's own PIPE trap runs the clean-up."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    traps = re.findall(r"^trap .*$", text.split("<<'PALAIA_INSTALLER'", 1)[1], re.M)
+    assert traps
+    key = tmp_path / "tskey"
+    key.write_text("tskey-auth-synthetic", encoding="utf-8")
+    script = (
+        HELPERS
+        + 'SUDO=""\n'
+        + _function("cleanup")
+        + "\n".join(traps)
+        + "\nwhile :; do echo still here; sleep 0.05; done\n"
+    )
+    proc = subprocess.Popen(
+        ["sh", "-c", script],
+        env={**os.environ, "KEYFILE": str(key), "UFW_OPENED": "0"},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    assert proc.stdout is not None
+    assert proc.stdout.readline().strip() == "still here"
+    proc.stdout.close()
+    proc.wait(timeout=30)
+    assert not key.exists()
+
+
+def _free_setup_port(tmp_path: Path, holders: dict[int, str]) -> subprocess.CompletedProcess[str]:
+    """free_setup_port() with `ss` listing ``holders`` (pid → its command
+    line) as listening on the port for as long as each process lives."""
+    table = tmp_path / "holders.txt"
+    table.write_text("".join(f"{pid} {args}\n" for pid, args in holders.items()), encoding="utf-8")
+    _stub(
+        tmp_path,
+        "ss",
+        f'while read -r pid args; do kill -0 "$pid" 2>/dev/null && '
+        f'echo "LISTEN 0 5 0.0.0.0:8420 0.0.0.0:* users:((\\"x\\",pid=$pid,fd=3))"; '
+        f'done < "{table}"\n',
+    )
+    _stub(
+        tmp_path,
+        "ps",
+        f'pid="$4"\ngrep "^$pid " "{table}" | cut -d" " -f2-\n',
+    )
+    return _run(
+        HELPERS + _function("free_setup_port") + "free_setup_port\necho after\n",
+        {"SUDO": "", "PORT": "8420"},
+        tmp_path,
+    )
+
+
+def _orphan_sleep() -> int:
+    """A process that is not this test's child, like a page an earlier run
+    left behind: once stopped it is reaped by init, not left as a zombie."""
+    out = subprocess.run(
+        ["sh", "-c", "sleep 300 >/dev/null 2>&1 & echo $!"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=True,
+    )
+    return int(out.stdout.strip())
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return Path(f"/proc/{pid}/status").read_text(encoding="utf-8").find("State:\tZ") < 0
+
+
+def test_a_setup_page_an_earlier_run_left_open_is_closed_for_a_new_one(tmp_path: Path) -> None:
+    """#646: a page left behind (its install gone, or an installer before
+    this fix) held port 8420, and the rerun failed with a traceback."""
+    page = _orphan_sleep()
+    try:
+        result = _free_setup_port(tmp_path, {page: "python3 /opt/palaia/setup-page.py --port 8420"})
+        assert result.returncode == 0, result.stderr
+        assert "a setup page from an earlier run is still open" in result.stdout
+        assert result.stdout.strip().endswith("after")
+        assert not _alive(page)  # it was stopped
+    finally:
+        if _alive(page):
+            os.kill(page, signal.SIGKILL)
+
+
+def test_another_program_on_the_setup_port_is_named_and_left_alone(tmp_path: Path) -> None:
+    other = _orphan_sleep()
+    try:
+        result = _free_setup_port(tmp_path, {other: "/usr/sbin/some-web-server"})
+        assert result.returncode != 0
+        assert "port 8420 is used by another program (/usr/sbin/some-web-server)" in result.stderr
+        assert "Traceback" not in result.stderr
+        assert "after" not in result.stdout
+        assert _alive(other)
+    finally:
+        os.kill(other, signal.SIGKILL)
+
+
+def test_a_free_setup_port_needs_nothing(tmp_path: Path) -> None:
+    result = _free_setup_port(tmp_path, {})
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "after"

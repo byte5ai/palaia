@@ -387,6 +387,22 @@ def test_without_a_code_it_makes_one_up_and_prints_it(fake_ts: Path) -> None:
     assert f":{port}/" in out
 
 
+def test_a_taken_port_ends_with_its_own_status_and_no_traceback(fake_ts: Path) -> None:
+    """#646: an earlier page still holding the port made a rerun fail with a
+    Python traceback; the installer needs a status it can explain."""
+    with socket.socket() as holder:
+        holder.bind(("127.0.0.1", 0))
+        holder.listen()
+        port = holder.getsockname()[1]
+        proc = _start(fake_ts, port)
+        out, _ = proc.communicate(timeout=30)
+    assert proc.returncode == 4, out
+    assert "Traceback" not in out
+    assert f"cannot open port {port}" in out
+    # Nothing was started: no pending login to drop, no `tailscale up` left.
+    assert not (fake_ts / "logged-out").exists()
+
+
 def test_already_joined_server_skips_the_page(fake_ts: Path) -> None:
     (fake_ts / "logged-in").touch()
     proc = _start(fake_ts, _free_port())

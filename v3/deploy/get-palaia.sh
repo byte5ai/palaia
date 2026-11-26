@@ -10,6 +10,13 @@
 # Plain POSIX sh, so `| sh` and `| bash` both work. Safe to run again: it keeps
 # your data and replaces only the palaia container.
 #
+# The install runs on the server on its own: closing the window or SSH
+# session that started it, a dropped connection or a laptop going to sleep
+# does not stop it. This command shows its progress while it runs; the same
+# lines go to /var/log/palaia-install.log, which only root can read. Running
+# the command again while an install is still running starts no second one:
+# it shows that one's progress from its start and ends with it.
+#
 # Joining the tailnet: without a key it opens a one-time setup page
 # (http://<server>:8420/, protected by the code it prints, or by
 # PALAIA_SETUP_CODE) where you log in to Tailscale in the browser. The same page
@@ -27,6 +34,207 @@
 #   PALAIA_FIREWALL=on                switch an inactive ufw on (SSH stays open)
 # A key in PALAIA_TSKEY still works but lands in your shell history; prefer
 # the file. The key never appears in a command line: Tailscale reads the file.
+set -eu
+# pipefail where the shell has it (bash, ksh, newer dash); plain sh carries on.
+# shellcheck disable=SC3040
+(set -o pipefail) 2>/dev/null && set -o pipefail
+
+log()  { echo "palaia: $*"; }
+err()  { echo "palaia: ERROR: $*" >&2; }
+die()  { err "$@"; exit 1; }
+
+SUDO=""
+[ "$(id -u)" = "0" ] || SUDO="sudo"
+
+# --- Run the install on its own (issue #646) ----------------------------------
+# `ssh server 'curl … | sh'` gives the installer no terminal: when that
+# session ends (a timeout, a dropped connection, a laptop going to sleep), no
+# hang-up signal arrives, but the next line written to the closed connection
+# kills the shell, often before its clean-up runs. So this part only starts
+# the install and shows it: the install itself (the text between the
+# PALAIA_INSTALLER lines below) is saved to INSTALLER_FILE and runs as root
+# in a service of its own (systemd-run; setsid where systemd is missing),
+# with no terminal and its output going to INSTALL_LOG. INSTALL_PID names it
+# while it runs, INSTALL_STATUS holds its exit status afterwards.
+INSTALLER_FILE="/opt/palaia/installer.sh"
+INSTALL_LOG="/var/log/palaia-install.log"
+INSTALL_ENV="/run/palaia-install.env"
+INSTALL_PID="/run/palaia-install.pid"
+INSTALL_STATUS="/run/palaia-install.status"
+INSTALL_UNIT="palaia-install"
+# The options the install reads. They reach it through INSTALL_ENV, a file
+# only root can read on a RAM disk, never through a command line; the install
+# deletes it as it starts.
+INSTALL_VARS="PALAIA_SETUP_CODE PALAIA_TSKEY_FILE PALAIA_TSKEY PALAIA_CLOUD PALAIA_CLOUD_WAIT
+PALAIA_CHANNEL PALAIA_IMAGE PALAIA_NO_TAILSCALE PALAIA_TS_LOGIN_SERVER PALAIA_TS_HOSTNAME
+PALAIA_FIREWALL PALAIA_CONTAINER_NAME PALAIA_INSTALL_PORT PALAIA_CLOUD_PORT PALAIA_VOLUME"
+# What runs in the service: $1 log, $2 pid file, $3 options, $4 install,
+# $5 status file. Its name (palaia-install) marks it in the process list.
+# shellcheck disable=SC2016
+INSTALL_RUNNER='exec </dev/null >>"$1" 2>&1
+echo "$$" > "$2.new"
+mv -f "$2.new" "$2"
+HOME="${HOME:-/root}"
+export HOME
+if [ -f "$3" ]; then set -a; . "$3"; set +a; rm -f "$3"; fi
+status=0
+sh "$4" || status=$?
+echo "$status" > "$5"
+rm -f "$2"
+exit "$status"'
+
+# One NAME='value' line for each option that is set.
+launch_options() {
+    for name in $INSTALL_VARS; do
+        eval "is_set=\${${name}+1}"
+        [ -n "$is_set" ] || continue
+        value=""
+        eval "value=\$${name}"
+        printf "%s='%s'\n" "$name" "$(printf '%s' "$value" | sed "s/'/'\\\\''/g")"
+    done
+}
+
+# The install that runs now, if any: prints its process id (empty while one
+# is being started) and returns 0; returns 1 when none runs. INSTALL_PID
+# holds the service's process id, or "starting <id>" while a command like
+# this one starts it.
+launch_running() {
+    held="$(cat "$INSTALL_PID" 2>/dev/null)" || return 1
+    # Empty for an instant while a command like this one creates it.
+    [ -n "$held" ] || { sleep 1; held="$(cat "$INSTALL_PID" 2>/dev/null)" || return 1; }
+    case "$held" in
+        "starting "*)
+            [ -d "/proc/${held#starting }" ] || return 1
+            echo ""
+            return 0 ;;
+        ''|*[!0-9]*) return 1 ;;
+    esac
+    tr '\0' ' ' <"/proc/${held}/cmdline" 2>/dev/null | grep -q " palaia-install " || return 1
+    echo "$held"
+}
+
+# Take INSTALL_PID for this command; fails when a live install holds it. A
+# file left by an install that is gone (stopped, killed) is taken over.
+launch_claim() {
+    for _ in 1 2; do
+        if $SUDO sh -c 'set -C; echo "starting $2" > "$1"' palaia "$INSTALL_PID" "$$" 2>/dev/null; then
+            $SUDO chmod 644 "$INSTALL_PID"
+            return 0
+        fi
+        launch_running >/dev/null && return 1
+        $SUDO rm -f "$INSTALL_PID"
+    done
+    return 1
+}
+
+launch_start() {
+    if [ -d /run/systemd/system ] && command -v systemd-run >/dev/null 2>&1; then
+        # systemd expands $NAME in a service's command line; $$ keeps a $.
+        $SUDO systemd-run --quiet --collect --unit="$INSTALL_UNIT" --description="palaia install" \
+            /bin/sh -c "$(printf '%s' "$INSTALL_RUNNER" | sed 's/[$]/$$/g')" palaia-install \
+            "$INSTALL_LOG" "$INSTALL_PID" "$INSTALL_ENV" "$INSTALLER_FILE" "$INSTALL_STATUS" </dev/null
+    elif command -v setsid >/dev/null 2>&1; then
+        $SUDO setsid sh -c "$INSTALL_RUNNER" palaia-install \
+            "$INSTALL_LOG" "$INSTALL_PID" "$INSTALL_ENV" "$INSTALLER_FILE" "$INSTALL_STATUS" \
+            </dev/null >/dev/null 2>&1 &
+    else
+        err "this server has neither systemd-run nor setsid to run the install on its own."
+        return 1
+    fi
+}
+
+# Shows the install's log from its start until it ends, then returns its exit
+# status.
+launch_follow() {
+    pid=""
+    i=0
+    while [ -z "$pid" ]; do
+        pid="$(launch_running)" || break
+        [ -n "$pid" ] && break
+        i=$((i + 1))
+        [ "$i" -lt 60 ] || break
+        sleep 1
+    done
+    if [ -n "$pid" ]; then
+        $SUDO tail -n +1 --pid="$pid" -f "$INSTALL_LOG" </dev/null
+    else
+        $SUDO cat "$INSTALL_LOG" 2>/dev/null </dev/null || true
+    fi
+    status="$(cat "$INSTALL_STATUS" 2>/dev/null)" || status=""
+    case "$status" in
+        ''|*[!0-9]*)
+            err "the install stopped before it finished (it was stopped, or the server restarted). Run this command again."
+            return 1 ;;
+    esac
+    return "$status"
+}
+
+# A key file given to a command that does not run the install is not needed:
+# deleted, as promised for every key file.
+launch_drop_keyfile() {
+    if [ -n "${PALAIA_TSKEY_FILE:-}" ]; then
+        $SUDO rm -f "$PALAIA_TSKEY_FILE" 2>/dev/null || true
+    fi
+}
+
+LAUNCHED=0
+CLAIMED=0
+launch_abort() {
+    [ "$LAUNCHED" = "0" ] || return 0
+    if [ "$CLAIMED" = "1" ]; then
+        $SUDO rm -f "$INSTALL_ENV" "${INSTALLER_FILE}.new" "$INSTALL_PID" 2>/dev/null || true
+        launch_drop_keyfile
+    fi
+}
+
+# Reads the install from stdin (the text below), then starts and shows it —
+# or shows the install that is already running, without starting another.
+launch() {
+    if ! launch_claim; then
+        cat >/dev/null
+        launch_drop_keyfile
+        log "an install started earlier is still running on this server. Showing its progress"
+        log "  from its start; no second install is started."
+        status=0
+        launch_follow || status=$?
+        return "$status"
+    fi
+    CLAIMED=1
+    trap launch_abort EXIT
+    trap 'launch_abort; exit 130' INT TERM HUP
+    $SUDO mkdir -p "$(dirname "$INSTALLER_FILE")"
+    $SUDO sh -c 'umask 077; cat > "$1"' palaia "${INSTALLER_FILE}.new"
+    # A download cut short ends before the install's last line: never run half of it.
+    if [ "$($SUDO tail -n 1 "${INSTALLER_FILE}.new")" != "# palaia installer: end" ]; then
+        die "the installer did not arrive complete (a network hiccup?). Run this command again."
+    fi
+    $SUDO mv -f "${INSTALLER_FILE}.new" "$INSTALLER_FILE"
+    $SUDO rm -f "$INSTALL_STATUS"
+    $SUDO sh -c 'umask 077; : > "$1"; chmod 600 "$1"' palaia "$INSTALL_LOG"
+    launch_options | $SUDO sh -c 'umask 077; cat > "$1"' palaia "$INSTALL_ENV"
+    launch_start || die "could not start the install. Nothing was changed; run this command again."
+    LAUNCHED=1
+    trap - EXIT
+    trap 'echo; log "stopped showing the progress; the install goes on. Run this command again to follow it."; exit 130' INT
+    trap - TERM HUP
+    log "the install runs on its own now: closing this window or losing the connection"
+    log "  does not stop it. Its progress shows below and in ${INSTALL_LOG};"
+    log "  running this command again shows it again."
+    status=0
+    launch_follow || status=$?
+    return "$status"
+}
+
+# The shell reads all of the text below before `launch` runs, so the install
+# is complete in memory however it arrived (`| sh` reads it from stdin). Its
+# exit status is this command's.
+launch <<'PALAIA_INSTALLER'
+#!/bin/sh
+# palaia v3 — the install itself (issue #646). get-palaia.sh saves this text
+# to /opt/palaia/installer.sh and runs it as root in a service of its own,
+# with no terminal and its output going to /var/log/palaia-install.log, so
+# the session that started it can end without stopping it. Start it with
+# get-palaia.sh (`curl -fsSL https://get.palaia.ai | sh`), not by hand.
 set -eu
 # pipefail where the shell has it (bash, ksh, newer dash); plain sh carries on.
 # shellcheck disable=SC3040
@@ -89,8 +297,40 @@ cleanup() {
         UFW_OPENED=0
     fi
 }
+# A signal ends sh without its EXIT trap (dash), so each one runs the clean-up
+# itself — a closed output pipe (PIPE) included.
 trap cleanup EXIT
 trap 'cleanup; exit 130' INT TERM HUP
+trap 'cleanup; exit 141' PIPE
+
+# Frees PORT for the setup page. A page an earlier run left open — its install
+# was stopped, or came from an installer before issue #646 — is closed, so
+# this run opens a new one; the earlier page drops its pending login on the
+# way out, so this waits until it is gone. Another program there stops the
+# install with its name rather than a page that cannot open.
+free_setup_port() {
+    holders="$($SUDO ss -Hltnp "sport = :${PORT}" 2>/dev/null | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u)" || holders=""
+    pages=""
+    for pid in $holders; do
+        args="$(ps -o args= -p "$pid" 2>/dev/null)" || args=""
+        case "$args" in
+            *"/opt/palaia/setup-page.py"*) pages="${pages} ${pid}" ;;
+            *) die "port ${PORT} is used by another program (${args:-process ${pid}}), so the setup page cannot open there. Stop that program, then run this command again." ;;
+        esac
+    done
+    [ -n "$pages" ] || return 0
+    log "a setup page from an earlier run is still open — closing it to open a new one ..."
+    # shellcheck disable=SC2086
+    $SUDO kill $pages 2>/dev/null || true
+    i=0
+    for pid in $pages; do
+        while $SUDO kill -0 "$pid" 2>/dev/null; do
+            i=$((i + 1))
+            [ "$i" -lt 60 ] || die "the earlier setup page (process ${pid}) does not close. Stop it, then run this command again."
+            sleep 1
+        done
+    done
+}
 
 # Does an active ufw already let everyone reach PORT/tcp? Only a rule from
 # Anywhere on every interface counts: the tailnet-only rule a previous run
@@ -315,9 +555,10 @@ PALAIA_START_ON_TAILNET
 # shows Tailscale's own "allow" link; "Keep it private" skips the step.
 #
 # Exit status: 0 once the server is on the tailnet (cloud access on or not),
-# 1 on timeout (default 30 minutes) or when Tailscale fails. Either way the
-# port is closed again the moment it exits; the installer then starts the hub
-# bound to the private-network address only.
+# 1 on timeout (default 30 minutes) or when Tailscale fails, 4 when another
+# program holds the port. Either way the port is closed again the moment it
+# exits; the installer then starts the hub bound to the private-network
+# address only.
 #
 # `setup-page.py cloud --target URL` runs only the cloud step, without a page:
 # it prints Tailscale's link if one is needed, waits, and ends with a line
@@ -928,7 +1169,12 @@ def page_main(args):
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGHUP, stop)
 
-    server = BoundedServer((args.bind, args.port), make_handler(state))
+    try:
+        server = BoundedServer((args.bind, args.port), make_handler(state))
+    except OSError as exc:
+        # Nothing was started yet, so there is nothing to clean up (#646).
+        log(f"ERROR: cannot open port {args.port}: {exc.strerror or exc}.")
+        return 4
     threading.Thread(target=server.serve_forever, daemon=True).start()
     threading.Thread(
         target=run_tailscale, args=(state, args.hostname, args.login_server), daemon=True
@@ -1043,6 +1289,7 @@ PALAIA_SETUP_PAGE
         # tailnet (code-protected, closes itself afterwards). Open the port
         # for it only if ufw is on and does not allow it already, and remove
         # only the rule this run added, also when the run is interrupted.
+        free_setup_port
         if command -v ufw >/dev/null 2>&1 && $SUDO ufw status 2>/dev/null | grep -q "Status: active" \
             && ! ufw_allows_everyone "$PORT"; then
             $SUDO ufw allow "${PORT}/tcp" comment 'palaia setup page, temporary' >/dev/null && UFW_OPENED=1
@@ -1060,17 +1307,18 @@ PALAIA_SETUP_PAGE
         if [ "$PORT" = "80" ] || port80_free ""; then
             PAGE_PORT80=1
         fi
-        SETUP_OK=1
+        # The install runs as root (get-palaia.sh starts it so), so the page
+        # gets the code from this environment directly.
+        PAGE_STATUS=0
         # shellcheck disable=SC2086
-        if [ -n "$SUDO" ]; then
-            $SUDO --preserve-env=PALAIA_SETUP_CODE python3 /opt/palaia/setup-page.py \
-                --port "$PORT" --hub-port "$PORT" --port-80 "$PAGE_PORT80" --hostname "$HOSTNAME_TS" $LOGIN_ARG $CLOUD_ARG </dev/null || SETUP_OK=0
-        else
-            python3 /opt/palaia/setup-page.py \
-                --port "$PORT" --hub-port "$PORT" --port-80 "$PAGE_PORT80" --hostname "$HOSTNAME_TS" $LOGIN_ARG $CLOUD_ARG </dev/null || SETUP_OK=0
-        fi
+        $SUDO python3 /opt/palaia/setup-page.py \
+            --port "$PORT" --hub-port "$PORT" --port-80 "$PAGE_PORT80" --hostname "$HOSTNAME_TS" $LOGIN_ARG $CLOUD_ARG </dev/null || PAGE_STATUS=$?
         cleanup
-        [ "$SETUP_OK" = "1" ] || die "the setup page closed without joining the tailnet. Run this command again for a new page and code."
+        case "$PAGE_STATUS" in
+            0) ;;
+            4) die "port ${PORT} is used by another program, so the setup page could not open. Stop that program, then run this command again." ;;
+            *) die "the setup page closed without joining the tailnet. Run this command again for a new page and code." ;;
+        esac
         CLOUD_ASKED=1
     fi
     cleanup
@@ -1330,3 +1578,5 @@ if [ "$ok" != "1" ]; then
 fi
 log "image ${DIGEST:-$IMAGE}"
 report_address
+# palaia installer: end
+PALAIA_INSTALLER
