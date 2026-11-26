@@ -245,6 +245,7 @@ detail, and the activity feed.
 | "Next step …" visible while the page is still loading or has failed | Loading is a skeleton; an error is "Couldn't load …" with Try again |
 | "0 connected · waiting" after a restart for an app that worked before | The last request survives a restart |
 | Backups explained on the Overview | One row, "Backup · Last backup 2 days ago", linking to Settings › Backups |
+| Summary cards of different heights | One height per row of cards, each card's link on its bottom edge |
 
 **Rule 8:** yes, as **Hub status** (§5.7) — the dashboard stays the fuller surface.
 
@@ -301,6 +302,7 @@ actions. Errors never render as "No memories yet".
 | Raw ISO timestamps, git hashes, "-/-/engine: write …" | "Updated 23 Oct, 15:35", "Saved by Claude Code CLI · 15:35" |
 | "1 uncurated" | "1 to file" |
 | A generated default description shown as if the person wrote it | "No description yet — Add one" |
+| "Pick a note from the list" in a memory that has none | "No notes in work yet", how notes get there, and **Connect an AI app** while none is connected |
 
 **Rule 8:** yes — the recall explorer and the review queue are the in-chat apps.
 

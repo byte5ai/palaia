@@ -527,9 +527,7 @@ export function Home() {
                 ) : undefined
               }
             />
-            <div className="card__body">
-              <p className="t-muted">{backup.line}</p>
-            </div>
+            <InlineEmpty>{backup.line}</InlineEmpty>
             <div className="card__foot">
               <Link to="/settings/backups">Open Backups</Link>
             </div>
