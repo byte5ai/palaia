@@ -52,7 +52,7 @@ export function RouteError() {
         Reload to try again.
       </EmptyState>
       {detail ? (
-        <div className="narrow" style={{ margin: "0 auto" }}>
+        <div className="narrow narrow--center">
           <Disclosure summary="Show details">
             <p className="t-mono">{detail}</p>
           </Disclosure>

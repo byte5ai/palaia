@@ -164,7 +164,7 @@ export function NotificationBell() {
               </div>
               <div className="popover__body">
                 {actionError ? (
-                  <p className="field__error" style={{ padding: "var(--space-3) var(--space-4)" }}>
+                  <p className="field__error popover__note">
                     {actionError}
                   </p>
                 ) : null}

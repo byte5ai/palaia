@@ -350,7 +350,7 @@ not style its own buttons, pills, rows or fields.
 | `Button`, `LinkButton`, `IconButton` | `primary` (action fill), `secondary` (surface with a `border-control` edge, the default), `plain` (action text), `destructive` (error text on the secondary box), `danger` (filled red — the confirm button of a destructive dialog only). Sizes `md` (default), `sm` (compact) and `lg` (setup). `loading` shows a spinner and keeps the verb ("Preparing the file…"). `IconButton` is a square of `control-height`. |
 | `StatusPill` | Dot + word, five tones, `caption` type. (`Badge` is the earlier name, kept as a thin wrapper.) |
 | `ListRow` | Optional round icon, title (`body-strong`), one line of description, and on the right a status pill, a value, a control or a chevron. `to` makes it a link, `onClick` a button, `setting` a label-and-control row. For navigation and for settings. |
-| `Table`, `.table--flush` | The list of a resource (AI apps): one row per item, a header row, group rows ("In use · 2"), the row's one action on the right. It fills its card edge to edge. Below 768 px the secondary columns go and the status moves under the name, still a table cell for a screen reader. |
+| `Table`, `.table--flush` | The list of a resource (AI apps, tool sets, live sessions, memory use): one row per item, a header row that names each column, group rows where they help ("In use · 2"), the row's one action on the right (`.table__action`). It fills its card edge to edge. A form that edits a row opens in a full-width row under it (`.table__detail`). Below 768 px the columns marked `.table__secondary` go; a status that would go with them moves under the name and stays a table cell for a screen reader. |
 | `Field`, `LabeledInput`, `Switch`, `Segmented` | Label above (`body-strong`), "Optional" after the label of optional fields only, helper below, an error replaces the helper. Placeholders are examples, never instructions. A select is an `.input` with the system's own chevron, never the browser's. |
 | `Callout` | A tinted box for a blocked or pending state: tone icon, a one-sentence title, at most one more sentence, and the button that fixes it when the dashboard can. |
 | `Disclosure` | "What's included?", "Advanced", "Troubleshooting" — closed by default. |
@@ -435,8 +435,10 @@ here first.
 
 | Job | Pattern |
 |---|---|
-| **A list of things of one kind** that have the same attributes (AI apps, tool sets, bots, backup folders) | A table in a card: name first, state as its own column, one action per row. Not a stack of cards and not rows with pills pushed to the right. |
+| **A list of things of one kind with three or more attributes** a person compares across rows (AI apps, tool sets, live sessions, how apps use their memory) | A table in a card: name first, each attribute its own column under a header that names it, state as a column, one action per row. Not a stack of cards and not rows with several pills pushed to the right. |
+| **A list of things with a name, one line and a state or a control** (bots, automations, installed add-ons, backup folders) | `ListRow`s in a card: title, one line of description, then one pill, one switch or one compact button. |
 | **A list to move through** (Settings › General, the Overview's memories) | `ListRow`s in a card, a chevron on the right. |
+| **An attribute of an item** (what a tool set includes) | Plain words in its row or column. A pill is for a state that can change by itself or needs attention. |
 | **The details of one item** in a table | A side panel (`Dialog size="side"`) with its own address. The table stays visible behind it. |
 | **Several areas of one place** | Tabs when they are views of the same thing (Memories: Browse, Needs review); a navigation beside the area when they are separate subjects (Settings). |
 | **A choice between a few exclusive options with consequences** | Choice cards (`.radiocards`): name, one line saying what follows, the current one marked. |

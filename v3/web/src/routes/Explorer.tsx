@@ -42,6 +42,7 @@ import type {
 } from "../lib/api/client";
 import { api } from "../lib/api/client";
 import { describeApiError } from "../lib/errors";
+import { isGeneratedDescription } from "../lib/description";
 import { count, exactTime, shortDateTime } from "../lib/format";
 import { SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../lib/useDebouncedValue";
 import { SearchIcon, VaultsIcon } from "../shell/icons";
@@ -106,21 +107,6 @@ function groupByFolder(notes: NoteSummary[]): FolderGroup[] {
       folder,
       notes: items.sort((a, b) => a.title.localeCompare(b.title)),
     }));
-}
-
-/**
- * The description the hub writes when nobody gave one (the engine's
- * `palaia vault '<key>'.` and the gateway's "A palaia memory vault.") is
- * not something the person wrote — show it as missing (report §3.6).
- */
-function isGeneratedDescription(purpose: string | null | undefined, key: string): boolean {
-  const text = (purpose ?? "").trim();
-  if (!text) return true;
-  return (
-    text === `palaia vault '${key}'.` ||
-    text === `palaia vault ${key}.` ||
-    text === "A palaia memory vault."
-  );
 }
 
 const HISTORY_VERB: Record<string, string> = {

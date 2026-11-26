@@ -20,6 +20,10 @@
  *      (a type style or a radius token instead; `0`, `50%` and `em` values
  *      relative to the surrounding text are not design values).
  *   5. Every `@media` width is a breakpoint from v3/design/tokens.json.
+ *   6. No inline `style={{…}}` in a screen or a component. A look belongs to
+ *      a class of the system; only a value computed at run time (a progress
+ *      width, a popover's position, a skeleton's size) is set inline, in the
+ *      files listed in INLINE_STYLE_FILES.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { extname, join, relative } from "node:path";
@@ -36,6 +40,12 @@ const VAR_USE = /var\(\s*(--[a-zA-Z0-9_-]+)/g;
 const LITERAL_SCALE = /\b(font-size|line-height|border-radius)\s*:\s*([^;}]*)/g;
 const LENGTH = /(?<![\w.-])(\d*\.?\d+)(px|rem)\b/g;
 const MEDIA_WIDTH = /\((min|max)-width:\s*(\d+)px\)/g;
+const INLINE_STYLE = /\bstyle=\{\{/g;
+const INLINE_STYLE_FILES = new Set([
+  "components/Stepper.tsx",
+  "components/Skeleton.tsx",
+  "shell/NotificationBell.tsx",
+]);
 
 const TOKENS = JSON.parse(
   readFileSync(new URL("../../design/tokens.json", import.meta.url), "utf-8"),
@@ -106,6 +116,11 @@ function checkLiterals(path) {
       if (!context.includes("color-mix")) {
         violations.push(`${rel}: hardcoded ${match[0]}...) colour function`);
       }
+    }
+  }
+  if (!isCss && !rel.endsWith(".stories.tsx") && !INLINE_STYLE_FILES.has(rel)) {
+    for (const _ of text.matchAll(INLINE_STYLE)) {
+      violations.push(`${rel}: inline style — use a class from components.css`);
     }
   }
   if (isCss) {

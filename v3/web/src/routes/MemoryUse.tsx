@@ -14,7 +14,6 @@ import "./apps.css";
 
 import { Card, CardHeader } from "../components/Card";
 import { InlineEmpty } from "../components/EmptyState";
-import { ListRow } from "../components/ListRow";
 import { StatusPill } from "../components/StatusPill";
 import type { ClientUsage } from "../lib/api/client";
 import { api } from "../lib/api/client";
@@ -33,21 +32,20 @@ function UsageRow({ usage }: { usage: ClientUsage }) {
         ? "Looks things up before saving."
         : undefined;
   return (
-    <div data-testid={`memory-use-${usage.client_id}`}>
-      <ListRow
-        title={
-          <>
-            {label}
-            {usage.revoked ? <span className="t-meta"> · access revoked</span> : null}
-          </>
-        }
-        description={`${count(usage.lookups, "lookup", "lookups")} · ${count(usage.saves, "save", "saves")}`}
-        meta={habit}
-        trailing={
-          neverLooked ? <StatusPill tone="warn">Saves without looking</StatusPill> : undefined
-        }
-      />
-    </div>
+    <tr data-testid={`memory-use-${usage.client_id}`}>
+      <th scope="row">
+        {label}
+        {usage.revoked ? <span className="t-meta"> · access revoked</span> : null}
+      </th>
+      <td className="t-num">{usage.lookups}</td>
+      <td className="t-num">{usage.saves}</td>
+      <td className="table__secondary">
+        <span className="row row--wrap row--tight">
+          {neverLooked ? <StatusPill tone="warn">Saves without looking</StatusPill> : null}
+          <span className="t-muted">{habit ?? "–"}</span>
+        </span>
+      </td>
+    </tr>
   );
 }
 
@@ -80,10 +78,25 @@ export function MemoryUseCard() {
       {usage.length === 0 ? (
         <InlineEmpty>No AI app looked anything up or saved anything in the last {DAYS} days.</InlineEmpty>
       ) : (
-        <div className="list usage-list">
-          {usage.map((entry) => (
-            <UsageRow key={entry.client_id} usage={entry} />
-          ))}
+        <div className="table-wrap">
+          <table className="table table--flush">
+            <caption className="sr-only">How your AI apps use their memory</caption>
+            <thead>
+              <tr>
+                <th scope="col">App</th>
+                <th scope="col">Looked up</th>
+                <th scope="col">Saved</th>
+                <th scope="col" className="table__secondary">
+                  Habit
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {usage.map((entry) => (
+                <UsageRow key={entry.client_id} usage={entry} />
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </Card>

@@ -27,7 +27,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
-h1, h2, h3, h4, p { margin: 0; }
+h1, h2, h3, h4, p, dl, dd { margin: 0; }
 ul, ol { margin: 0; padding: 0; list-style: none; }
 a { color: var(--action); text-decoration: none; text-underline-offset: 2px; }
 a:hover { color: var(--action-hover); text-decoration: underline; }
@@ -84,8 +84,12 @@ pre code { padding: 0; background: none; }
 /* ---------- layout helpers ---------- */
 .row { display: flex; align-items: center; gap: var(--space-3); }
 .row--wrap { flex-wrap: wrap; }
+.row--tight { gap: var(--space-2); }
+.row--top { align-items: flex-start; }
 .row--between { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 .stack { display: flex; flex-direction: column; gap: var(--space-5); }
+/* A wide child (a table) scrolls inside itself instead of widening the page. */
+.stack > * { min-width: 0; }
 .stack--1 { gap: var(--space-1); }
 .stack--2 { gap: var(--space-2); }
 .stack--3 { gap: var(--space-3); }
@@ -95,6 +99,11 @@ pre code { padding: 0; background: none; }
 .scrollpane { overflow: auto; min-height: 0; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 .sep { height: 1px; background: var(--border); border: 0; margin: 0; }
 .narrow { width: 100%; max-width: var(--form-width); }
+.narrow--center { margin-inline: auto; }
+/* Steps a person follows in order: the one list that shows its numbers. */
+ol.numbered { list-style: decimal; padding-left: var(--space-5); display: flex; flex-direction: column; gap: var(--space-2); }
+/* Label-and-value pairs side by side (what this palaia is). */
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-4); }
 
 /* ---------- buttons ----------
    primary: the one next step on a view (action fill).
@@ -156,6 +165,8 @@ a.btn[aria-disabled="true"] { pointer-events: none; }
 .card__desc { font-size: var(--type-secondary-size); line-height: var(--type-secondary-lh); color: var(--text-2); margin-top: 2px; }
 .card__body { padding: var(--space-5); }
 .card__body--tight { padding: var(--space-4) var(--space-5); }
+/* A line under a card's rows or fields: an error, a consequence. */
+.card__note { padding: 0 var(--space-5) var(--space-4); }
 .card__foot { padding: var(--space-4) var(--space-5); border-top: 1px solid var(--border);
   display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 
@@ -182,9 +193,6 @@ a.btn[aria-disabled="true"] { pointer-events: none; }
   border-radius: var(--radius-xs); background: var(--surface-muted); color: var(--text-2);
   font-size: var(--type-caption-size); line-height: var(--type-caption-lh); max-width: 100%; overflow-wrap: anywhere; }
 .chip--mono { font-family: var(--font-mono); }
-
-/* ---------- fact grid ---------- */
-.tiles { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 
 /* ---------- callout ----------
    One tinted box per blocked or notable state: tone icon, a one-sentence
@@ -240,6 +248,15 @@ a.btn[aria-disabled="true"] { pointer-events: none; }
   font-size: var(--type-caption-size); line-height: var(--type-caption-lh); font-weight: var(--type-caption-weight); color: var(--text-2); }
 .table--flush .table__group:hover { background: none; }
 .table__row--selected, .table tbody tr.table__row--selected:hover { background: var(--info-bg); }
+.table__action { text-align: right; white-space: nowrap; }
+/* The name cell can carry the row's status under the name on a phone
+   (`.table__narrow`, hidden from assistive technology), while the status
+   column (`.table__status`) leaves the screen but stays a cell to read. */
+.table__name { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0; }
+.table__narrow { display: none; font-weight: 400; }
+/* A form or a note that belongs to the row above it, over the full width. */
+.table.table--flush td.table__detail { padding: 0; height: auto; }
+.table tbody tr:has(> .table__detail):hover { background: none; }
 .monogram { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex: none;
   border-radius: var(--radius-inner); background: var(--surface-muted); color: var(--text-2);
   font-size: var(--type-caption-size); line-height: var(--type-caption-lh); font-weight: 700; }
@@ -254,6 +271,10 @@ a.btn[aria-disabled="true"] { pointer-events: none; }
 a.listrow, button.listrow { cursor: pointer; }
 a.listrow:hover, button.listrow:hover { background: var(--surface-muted); text-decoration: none; color: inherit; }
 .listrow--selected { background: var(--info-bg); }
+/* The foot draws the line under a card's last row. */
+.listrow:has(+ .card__foot) { border-bottom: 0; }
+/* A row whose parts sit under each other (a message and its replies). */
+.listrow--stack { flex-direction: column; align-items: stretch; }
 .listrow__icon { width: 32px; height: 32px; border-radius: 50%; background: var(--surface-muted); color: var(--text-2);
   display: flex; align-items: center; justify-content: center; flex: none; }
 .listrow__main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -313,6 +334,8 @@ select.input, select.vaultpick { appearance: none; -webkit-appearance: none; pad
 .input--readonly, .input[readonly] { background: var(--surface-muted); color: var(--text-2); font-family: var(--font-mono); font-size: var(--type-mono-size); }
 .input--error, .input[aria-invalid="true"] { border-color: var(--error); }
 .input--mono { font-family: var(--font-mono); font-size: var(--type-mono-size); }
+/* A field whose values are short (a name, a memory): it does not stretch. */
+.input--short { max-width: 240px; }
 
 .switch { width: 40px; height: 24px; border-radius: var(--radius-pill); background: var(--text-3); position: relative; flex: none;
   cursor: pointer; border: none; padding: 0; transition: background var(--duration-quick) var(--easing-standard); }
@@ -440,6 +463,7 @@ select.input, select.vaultpick { appearance: none; -webkit-appearance: none; pad
 .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; min-width: 0; }
 .brand:hover { color: var(--text); text-decoration: none; }
 .brand__mark { width: 20px; height: 20px; flex: none; }
+.brand__mark--lg { width: 40px; height: 40px; }
 .brand__name { font-family: var(--font-display); font-size: var(--type-wordmark-size); line-height: var(--type-wordmark-lh);
   font-weight: var(--type-wordmark-weight); }
 .nav { display: flex; flex-direction: column; gap: 2px; }
@@ -480,6 +504,7 @@ select.input, select.vaultpick { appearance: none; -webkit-appearance: none; pad
   padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); }
 .popover__title { font-size: var(--type-body-strong-size); font-weight: 700; }
 .popover__body { overflow-y: auto; }
+.popover__note { padding: var(--space-3) var(--space-4); }
 
 @media (min-width: 768px) and (max-width: 1023px) {
   .app { grid-template-columns: var(--rail-width) minmax(0, 1fr); }
@@ -514,12 +539,26 @@ select.input, select.vaultpick { appearance: none; -webkit-appearance: none; pad
   .toast { min-width: 0; max-width: none; }
   .scrim { align-items: flex-end; padding: 0; }
   .dialog { max-width: none; border-radius: var(--radius-md) var(--radius-md) 0 0; max-height: 92dvh; padding: var(--space-5); }
+  /* Columns a phone has no room for; the row keeps name, state and action. */
+  .table__secondary { display: none; }
+  .table__narrow { display: inline-flex; }
+  .table .table__status { position: absolute; width: 1px; height: 1px; padding: 0; border: 0;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
   .dialog--side { max-height: 92dvh; border-width: 1px; border-radius: var(--radius-md) var(--radius-md) 0 0; }
   .dialog__foot > .btn { flex: 1 1 auto; }
   .row, .card__foot { flex-wrap: wrap; }
   .snippet { align-items: flex-start; flex-wrap: wrap; }
   .btn { max-width: 100%; white-space: normal; text-align: center; height: auto; min-height: var(--control-height); }
   .btn--sm { min-height: var(--control-height-sm); }
+  /* A short label beside a card title stays on one line. */
+  .card__head .btn { white-space: nowrap; }
+  /* A table has to fit a phone: tighter cells, names that may break, and
+     an action label that may wrap. */
+  .table--flush th, .table--flush td, .table--flush tbody th { padding-left: var(--space-3); padding-right: var(--space-3); }
+  .table--flush tr > :first-child { padding-left: var(--space-4); }
+  .table--flush tr > :last-child { padding-right: var(--space-4); }
+  .table--flush tbody th { overflow-wrap: anywhere; width: 45%; }
+  .table__action { white-space: normal; }
   .stepper__layout { grid-template-columns: minmax(0, 1fr); padding: var(--space-5) var(--space-4); }
   .stepper__steps { display: none; }
   .stepper__panel { padding: var(--space-5); }
@@ -630,15 +669,13 @@ select.input, select.vaultpick { appearance: none; -webkit-appearance: none; pad
 .verdict__icon--info { background: var(--info-bg); color: var(--info); }
 .verdict__line { font-size: var(--type-title-1-size); line-height: var(--type-title-1-lh); font-weight: var(--type-title-1-weight); }
 .verdict__sub { color: var(--text-2); margin-top: var(--space-1); max-width: 65ch; }
+.verdict__details { margin-top: var(--space-3); }
 .verdict__pills { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-3); }
 .verdict__aside { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-end; flex: none; }
 /* The summary cards share one height; each one's link sits on its bottom edge. */
 .overview-cards { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-items: stretch; }
 .overview-cards .card { display: flex; flex-direction: column; }
 .overview-cards .card__foot { margin-top: auto; }
-/* The foot draws the line under the last row; rows only divide each other. */
-.overview-cards .listrow { border-bottom: 0; }
-.overview-cards .listrow + .listrow { border-top: 1px solid var(--border); }
 .feed { display: flex; flex-direction: column; }
 .feed__item { display: flex; gap: var(--space-3); padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--border); }
 .feed__item:last-child { border-bottom: 0; }

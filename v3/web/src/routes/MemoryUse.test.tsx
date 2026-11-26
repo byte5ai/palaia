@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ClientUsage } from "../lib/api/client";
@@ -34,7 +34,9 @@ describe("MemoryUseCard (issue 524)", () => {
 
     const row = await screen.findByTestId("memory-use-t1");
     expect(row).toHaveTextContent("Claude Code CLI");
-    expect(row).toHaveTextContent("12 lookups · 5 saves");
+    // The column says what the number counts.
+    expect(screen.getByRole("columnheader", { name: "Looked up" })).toBeInTheDocument();
+    expect(within(row).getAllByRole("cell").slice(0, 2).map((cell) => cell.textContent)).toEqual(["12", "5"]);
     expect(row).toHaveTextContent("1 of 4 sessions saved before looking anything up.");
     expect(screen.queryByText("Saves without looking")).not.toBeInTheDocument();
   });

@@ -510,13 +510,13 @@ export function Clients() {
               <thead>
                 <tr>
                   <th scope="col">App</th>
-                  <th scope="col" className="apps-table__wide">
+                  <th scope="col" className="table__secondary">
                     How it connects
                   </th>
-                  <th scope="col" className="apps-table__status">
+                  <th scope="col" className="table__status">
                     Status
                   </th>
-                  <th scope="col" className="apps-table__wide">
+                  <th scope="col" className="table__secondary">
                     Last request
                   </th>
                   <th scope="col">
@@ -552,23 +552,23 @@ export function Clients() {
                               <span className="monogram" aria-hidden="true">
                                 {monogram(client)}
                               </span>
-                              <span className="apps-table__name">
+                              <span className="table__name">
                                 {client.name}
                                 {/* On a phone the status shows under the name, so
                                     the row's button always fits. Assistive
                                     technology reads the Status cell instead. */}
-                                <span className="apps-table__narrow" aria-hidden="true">
+                                <span className="table__narrow" aria-hidden="true">
                                   {state}
                                 </span>
                               </span>
                             </span>
                           </th>
-                          <td className="apps-table__wide t-muted">{status.how}</td>
-                          <td className="apps-table__status">{state}</td>
-                          <td className="apps-table__wide t-meta" title={status.lastUsed ? exactTime(status.lastUsed) : undefined}>
+                          <td className="table__secondary t-muted">{status.how}</td>
+                          <td className="table__status">{state}</td>
+                          <td className="table__secondary t-meta" title={status.lastUsed ? exactTime(status.lastUsed) : undefined}>
                             {status.lastUsed ? capitalize(timeAgo(status.lastUsed)) : "–"}
                           </td>
-                          <td className="apps-table__action">
+                          <td className="table__action">
                             <Button size="sm" onClick={() => open(client.id)} aria-label={`${action}: ${client.name}`}>
                               {action}
                             </Button>

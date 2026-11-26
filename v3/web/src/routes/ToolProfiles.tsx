@@ -36,6 +36,7 @@ import type {
 } from "../lib/api/client";
 import { api, ApiError } from "../lib/api/client";
 import { describeApiError } from "../lib/errors";
+import { isGeneratedDescription } from "../lib/description";
 import { count } from "../lib/format";
 import { CopyIcon } from "../shell/icons";
 import "./settings.css";
@@ -137,7 +138,9 @@ function MemoryChoices({
             onChange={(event) => onToggle(vault.key, event.target.checked)}
           />
           <span className="t-sm">{vault.key}</span>
-          {vault.purpose ? <span className="t-sm t-muted">— {vault.purpose}</span> : null}
+          {isGeneratedDescription(vault.purpose, vault.key) ? null : (
+            <span className="t-sm t-muted">{vault.purpose}</span>
+          )}
         </label>
       ))}
     </div>
@@ -399,55 +402,67 @@ function ProfileRow({
   onChanged: () => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const traits = [
-    profile.vaults.length === 0
-      ? "No memories"
-      : `Memories: ${profile.vaults.join(", ")}`,
+  // What the tool set carries besides its memories, as plain words: these
+  // are attributes, not states, so they are not pills.
+  const extras = [
     profile.upstreams.length > 0 ? count(profile.upstreams.length, "add-on", "add-ons") : null,
+    profile.semantic_routing ? "Tool search" : null,
+    profile.stash ? "Scratchpad" : null,
+    profile.telegram ? "Telegram" : null,
   ].filter(Boolean);
 
   return (
-    <li data-testid={`tool-set-${profile.path}`}>
-      <ListRow
-        title={profile.label ?? profile.path}
-        description={traits.join(" · ")}
-        meta={count(profile.tool_count, "tool", "tools")}
-        trailing={
-          <>
+    <tbody data-testid={`tool-set-${profile.path}`}>
+      <tr>
+        <th scope="row">
+          <span className="row row--wrap row--tight">
+            {profile.label ?? profile.path}
             {profile.managed ? <StatusPill tone="info">Managed by the curator</StatusPill> : null}
-            {profile.semantic_routing ? <StatusPill tone="warn">Tool search</StatusPill> : null}
-            {profile.stash ? <StatusPill tone="neutral">Scratchpad</StatusPill> : null}
-            {profile.telegram ? <StatusPill tone="neutral">Telegram</StatusPill> : null}
-            {profile.managed || editing ? null : (
-              <Button size="sm" onClick={() => setEditing(true)}>
-                Edit
-              </Button>
-            )}
-          </>
-        }
-      />
+          </span>
+        </th>
+        <td>{profile.vaults.length === 0 ? "None" : profile.vaults.join(", ")}</td>
+        <td className="table__secondary t-muted">{extras.length > 0 ? extras.join(" · ") : "–"}</td>
+        <td className="table__secondary t-num">{count(profile.tool_count, "tool", "tools")}</td>
+        <td className="table__action">
+          {profile.managed || editing ? null : (
+            <Button
+              size="sm"
+              onClick={() => setEditing(true)}
+              aria-label={`Edit: ${profile.label ?? profile.path}`}
+            >
+              Edit
+            </Button>
+          )}
+        </td>
+      </tr>
       {profile.managed ? (
-        <p className="setting-note t-sm t-muted">
-          The curator's tool set follows the curator's settings in config.yaml.
-        </p>
+        <tr>
+          <td colSpan={5} className="t-sm t-muted">
+            The curator's tool set follows the curator's settings in config.yaml.
+          </td>
+        </tr>
       ) : null}
       {editing ? (
-        <ProfileEditForm
-          profile={profile}
-          vaults={vaults}
-          upstreams={upstreams}
-          onSaved={() => {
-            setEditing(false);
-            onChanged();
-          }}
-          onCancel={() => setEditing(false)}
-          onDeleted={() => {
-            setEditing(false);
-            onChanged();
-          }}
-        />
+        <tr>
+          <td colSpan={5} className="table__detail">
+            <ProfileEditForm
+              profile={profile}
+              vaults={vaults}
+              upstreams={upstreams}
+              onSaved={() => {
+                setEditing(false);
+                onChanged();
+              }}
+              onCancel={() => setEditing(false)}
+              onDeleted={() => {
+                setEditing(false);
+                onChanged();
+              }}
+            />
+          </td>
+        </tr>
       ) : null}
-    </li>
+    </tbody>
   );
 }
 
@@ -531,7 +546,7 @@ function CreateProfileDialog({
             disabled={!cleanPath || pathTaken}
             loading={creating}
           >
-            {creating ? "Creating…" : "Create"}
+            {creating ? "Creating…" : "Create tool set"}
           </Button>
         </>
       }
@@ -626,8 +641,7 @@ function VaultRenameRow({ vault, onSaved }: { vault: GatewayVaultIdentity; onSav
           return (
             <div key={action} className="row row--wrap">
               <input
-                className="input input--mono"
-                style={{ maxWidth: 220 }}
+                className="input input--mono input--short"
                 aria-label={`New name for ${action}`}
                 placeholder={action}
                 value={value}
@@ -711,7 +725,7 @@ export function ToolProfiles() {
           title="Tool sets"
           description="A tool set is a named address that limits which memories and tools an AI app sees."
           actions={
-            <Button onClick={() => setCreating(true)} disabled={profiles === null}>
+            <Button size="sm" onClick={() => setCreating(true)} disabled={profiles === null}>
               New tool set
             </Button>
           }
@@ -727,17 +741,35 @@ export function ToolProfiles() {
         ) : (
           <>
             {profiles.length > 0 ? (
-              <ul className="settings-rows">
-                {profiles.map((profile) => (
-                  <ProfileRow
-                    key={profile.path}
-                    profile={profile}
-                    vaults={vaultSummaries}
-                    upstreams={upstreams}
-                    onChanged={refresh}
-                  />
-                ))}
-              </ul>
+              <div className="table-wrap">
+                <table className="table table--flush">
+                  <caption className="sr-only">Tool sets</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Tool set</th>
+                      <th scope="col">Memories</th>
+                      <th scope="col" className="table__secondary">
+                        Also includes
+                      </th>
+                      <th scope="col" className="table__secondary">
+                        Tools
+                      </th>
+                      <th scope="col">
+                        <span className="sr-only">Action</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  {profiles.map((profile) => (
+                    <ProfileRow
+                      key={profile.path}
+                      profile={profile}
+                      vaults={vaultSummaries}
+                      upstreams={upstreams}
+                      onChanged={refresh}
+                    />
+                  ))}
+                </table>
+              </div>
             ) : null}
             {nonDefault.length === 0 ? (
               <InlineEmpty>

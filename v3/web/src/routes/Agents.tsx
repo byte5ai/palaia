@@ -102,37 +102,43 @@ function SessionRow({ session, onRemoved }: { session: SessionRecord; onRemoved:
   }
 
   return (
-    <>
-      <ListRow
-        title={<span className="t-mono">{session.handle}</span>}
-        description={session.scope || "No task reported"}
-        meta={
-          <span title={exactTime(seen)}>
-            {session.platform || "Unknown app"}
-            {session.model ? ` · ${session.model}` : ""} · seen {timeAgo(seen)}
-          </span>
-        }
-        trailing={
-          <>
+    <tr>
+      <th scope="row">
+        <span className="table__name">
+          <span className="t-mono">{session.handle}</span>
+          <span className="table__narrow" aria-hidden="true">
             <StatusPill tone={status.tone}>{status.label}</StatusPill>
-            <Button size="sm" variant="destructive" onClick={() => setConfirming(true)} disabled={busy}>
-              Remove
-            </Button>
-          </>
-        }
-      />
-      <ConfirmDialog
-        open={confirming}
-        onCancel={() => setConfirming(false)}
-        onConfirm={() => void remove()}
-        title={`Remove ${session.handle} from the list?`}
-        confirmLabel="Remove session"
-        destructive
-        busy={busy}
-      >
-        <p>If the session is still running, it shows up again the next time it checks in.</p>
-      </ConfirmDialog>
-    </>
+          </span>
+        </span>
+      </th>
+      <td>{session.scope || <span className="t-muted">No task reported</span>}</td>
+      <td className="table__secondary t-muted">
+        {session.platform || "Unknown app"}
+        {session.model ? ` · ${session.model}` : ""}
+      </td>
+      <td className="table__secondary t-meta" title={exactTime(seen)}>
+        {timeAgo(seen)}
+      </td>
+      <td className="table__status">
+        <StatusPill tone={status.tone}>{status.label}</StatusPill>
+      </td>
+      <td className="table__action">
+        <Button size="sm" variant="destructive" onClick={() => setConfirming(true)} disabled={busy}>
+          Remove
+        </Button>
+        <ConfirmDialog
+          open={confirming}
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => void remove()}
+          title={`Remove ${session.handle} from the list?`}
+          confirmLabel="Remove session"
+          destructive
+          busy={busy}
+        >
+          <p>If the session is still running, it shows up again the next time it checks in.</p>
+        </ConfirmDialog>
+      </td>
+    </tr>
   );
 }
 
@@ -182,7 +188,7 @@ function MessageRow({ flow, onEnded }: { flow: EnvelopeMetadata; onEnded: () => 
   }
 
   return (
-    <div className="listrow" style={{ flexDirection: "column", alignItems: "stretch" }}>
+    <div className="listrow listrow--stack">
       <button
         type="button"
         className="message-toggle"
@@ -274,14 +280,13 @@ function RefPicker({ refs, onChange }: { refs: string[]; onChange: (refs: string
       <span className="field__label">
         Link a note<span className="field__optional">Optional</span>
       </span>
-      <div className="row" style={{ gap: 8 }}>
+      <div className="row row--tight">
         {vaults.length > 1 ? (
           <select
-            className="input"
+            className="input input--short"
             aria-label="Memory to search"
             value={vaultKey}
             onChange={(event) => setVaultKey(event.target.value)}
-            style={{ maxWidth: 180 }}
           >
             {vaults.map((vault) => (
               <option key={vault.key} value={vault.key}>
@@ -306,7 +311,7 @@ function RefPicker({ refs, onChange }: { refs: string[]; onChange: (refs: string
         </div>
       ) : null}
       {refs.length > 0 ? (
-        <div className="row row--wrap" style={{ gap: 6 }}>
+        <div className="row row--wrap row--tight">
           {refs.map((ref) => (
             <Chip key={ref} mono>
               {ref}
@@ -315,7 +320,6 @@ function RefPicker({ refs, onChange }: { refs: string[]; onChange: (refs: string
                 className="linklike"
                 onClick={() => onChange(refs.filter((r) => r !== ref))}
                 aria-label={`Remove ${ref}`}
-                style={{ marginLeft: 6 }}
               >
                 ×
               </button>
@@ -430,7 +434,7 @@ function ComposeDialog({
           <option value="*">Every session</option>
         </datalist>
       </Field>
-      <div className="row row--wrap" style={{ gap: 12, alignItems: "flex-start" }}>
+      <div className="row row--wrap row--top">
         <Field label="Type" controlId={typeId}>
           <select
             id={typeId}
@@ -555,10 +559,33 @@ export function Agents() {
             working.
           </InlineEmpty>
         ) : (
-          <div className="list">
-            {sessions.map((session) => (
-              <SessionRow key={session.handle} session={session} onRemoved={refresh} />
-            ))}
+          <div className="table-wrap">
+            <table className="table table--flush">
+              <caption className="sr-only">Live sessions</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Session</th>
+                  <th scope="col">Working on</th>
+                  <th scope="col" className="table__secondary">
+                    App
+                  </th>
+                  <th scope="col" className="table__secondary">
+                    Last seen
+                  </th>
+                  <th scope="col" className="table__status">
+                    Status
+                  </th>
+                  <th scope="col">
+                    <span className="sr-only">Action</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {sessions.map((session) => (
+                  <SessionRow key={session.handle} session={session} onRemoved={refresh} />
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </Card>

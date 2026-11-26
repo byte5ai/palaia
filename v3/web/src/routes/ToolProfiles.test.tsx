@@ -128,7 +128,7 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     mount();
 
     expect(await screen.findByText("Managed by the curator")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^edit$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^edit/i })).not.toBeInTheDocument();
   });
 
   it("creates a profile through the form", async () => {
@@ -151,7 +151,7 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     });
     fireEvent.click(screen.getByLabelText(/^work/));
     listSpy.mockResolvedValue([{ ...DEFAULT_PROFILE, path: "codex" }]);
-    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^create tool set$/i }));
 
     await waitFor(() =>
       expect(createSpy).toHaveBeenCalledWith(
@@ -180,7 +180,7 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     });
     fireEvent.click(await screen.findByLabelText(/^fetch/i));
     listSpy.mockResolvedValue([{ ...DEFAULT_PROFILE, path: "codex", upstreams: ["fetch"] }]);
-    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^create tool set$/i }));
 
     await waitFor(() =>
       expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({ upstreams: ["fetch"] })),
@@ -199,7 +199,7 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     });
 
     mount();
-    fireEvent.click(await screen.findByRole("button", { name: /^edit$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^edit/i }));
 
     const deleteCheckbox = await screen.findByText("work_memory_delete");
     fireEvent.click(deleteCheckbox.closest("label")!.querySelector("input")!);
@@ -225,7 +225,7 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     });
 
     mount();
-    fireEvent.click(await screen.findByRole("button", { name: /^edit$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^edit/i }));
     const toggle = await screen.findByRole("switch", { name: "Include Telegram tools" });
     expect(toggle).toHaveAttribute("aria-checked", "false");
     fireEvent.click(toggle);
@@ -257,7 +257,7 @@ describe("ToolProfiles screen (SPEC-305)", () => {
       target: { value: "desk" },
     });
     fireEvent.click(screen.getByRole("switch", { name: "Include Telegram tools" }));
-    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^create tool set$/i }));
 
     await waitFor(() =>
       expect(createSpy).toHaveBeenCalledWith(
@@ -266,7 +266,7 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     );
   });
 
-  it("badges a profile that carries the Telegram tools", async () => {
+  it("names the Telegram tools in the row of a tool set that carries them, as words and not as a status", async () => {
     vi.spyOn(api, "listGatewayProfiles").mockResolvedValue([
       { ...DEFAULT_PROFILE, telegram: true },
     ]);
@@ -275,7 +275,10 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     vi.spyOn(api, "listGatewayUpstreams").mockResolvedValue([]);
 
     mount();
-    expect(await screen.findByText("Telegram", { selector: ".pill" })).toBeInTheDocument();
+    const row = await screen.findByTestId("tool-set-default");
+    expect(within(row).getByRole("cell", { name: "Telegram" })).toBeInTheDocument();
+    // A pill is for a state; what a tool set includes is an attribute.
+    expect(row.querySelector(".pill")).toBeNull();
   });
 
   it("assigns an already-connected tool to an existing profile through its checkbox", async () => {
@@ -290,7 +293,7 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     });
 
     mount();
-    fireEvent.click(await screen.findByRole("button", { name: /^edit$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^edit/i }));
     fireEvent.click(await screen.findByLabelText(/^fetch/i));
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
@@ -316,13 +319,13 @@ describe("ToolProfiles screen (SPEC-305)", () => {
     mount();
 
     const defaultRow = await screen.findByTestId("tool-set-default");
-    fireEvent.click(within(defaultRow).getByRole("button", { name: /^edit$/i }));
+    fireEvent.click(within(defaultRow).getByRole("button", { name: /^edit/i }));
     expect(within(defaultRow).queryByRole("button", { name: /delete/i })).not.toBeInTheDocument();
     // No error about it either: the action simply isn't there.
     expect(screen.queryByText(/cannot delete/i)).not.toBeInTheDocument();
 
     const codexRow = screen.getByTestId("tool-set-codex");
-    fireEvent.click(within(codexRow).getByRole("button", { name: /^edit$/i }));
+    fireEvent.click(within(codexRow).getByRole("button", { name: /^edit/i }));
     fireEvent.click(within(codexRow).getByRole("button", { name: "Delete tool set" }));
     const dialog = screen.getByRole("dialog", { name: /delete the tool set codex/i });
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete tool set" }));
@@ -385,7 +388,7 @@ describe("ToolProfiles screen copy — no jargon in the surface (system.md §3 r
 
     mount();
     await screen.findByText("default");
-    fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^edit/i }));
     await screen.findByText("work_memory_search");
 
     const controls = [
