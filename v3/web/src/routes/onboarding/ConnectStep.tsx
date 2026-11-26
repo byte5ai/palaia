@@ -75,10 +75,19 @@ export function ConnectStep({
       title="Connect your AI app"
       description="Pick the app you use most. You can add more later."
       primary={
-        <Button variant="primary" size="lg" onClick={() => void finish()}>
-          {status.client_connected ? "Continue" : "Finish"}
-          <ArrowRightIcon className="icon--sm" />
-        </Button>
+        // One filled button per view: until the first request arrives it is
+        // the selected app's own action (download, create access key), and
+        // moving on is the secondary way out.
+        status.client_connected ? (
+          <Button variant="primary" size="lg" onClick={() => void finish()}>
+            Continue
+            <ArrowRightIcon className="icon--sm" />
+          </Button>
+        ) : (
+          <Button size="lg" onClick={() => void finish()}>
+            Skip for now
+          </Button>
+        )
       }
     >
       <div className="clientgrid" role="radiogroup" aria-label="AI app">

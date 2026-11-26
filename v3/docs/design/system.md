@@ -76,7 +76,8 @@ custom-property definition, and any `var(--…)` that no stylesheet defines.
 | `canvas` | #F5F7FA | #0F1520 | Page ground behind cards |
 | `surface` | #FFFFFF | #161D2A | Cards, dialogs, sidebar, inputs |
 | `surface-muted` | #EEF1F5 | #1C2433 | Hover rows, sunken areas, code blocks |
-| `border` | #E3E7ED | #263043 | Card edges, dividers, input borders |
+| `border` | #E3E7ED | #263043 | Card edges and dividers |
+| `border-control` | #808B9B | #6F7B8C | The edge of inputs, selects, text areas and the search box |
 | `text` | #1D232C | #E8ECF1 | Titles and body |
 | `text-2` | #4B5563 | #AEB6C2 | Descriptions and helper text |
 | `text-3` | #667080 | #8B95A3 | Metadata only, 12 px or larger, on `canvas`/`surface` |
@@ -170,7 +171,10 @@ No third-party logos, no emoji. The palaia star is the website's mark
 
 - `text-3` is only 4.4:1 on `surface-muted` in light: never put metadata on
   hover rows or code blocks.
-- `border` (1.2–1.4:1) is for card edges and dividers; checkboxes, radios and
+- `border` (1.2–1.4:1) is for card edges and dividers only. The edge of a
+  control has to reach 3:1 (WCAG 1.4.11): inputs, selects, text areas and the
+  search box use `border-control` (3.4:1 on `surface`, 3.1:1 on
+  `surface-muted` in light; 3.9:1 and 3.6:1 in dark); checkboxes, radios and
   the off switch are outlined in `text-3`.
 - Every interactive element shows a solid 2 px `focus` ring with a 2 px
   offset on keyboard focus. "Skip to content" comes first; Escape closes
@@ -191,7 +195,7 @@ styles in `v3/web/src/styles/components.css`.
 | `ListRow` | Optional 32 px round icon, title (`body-strong`), one line of description, and on the right a status pill, a value, a control or a chevron. `to` makes it a link, `onClick` a button, `setting` a label-and-control row. |
 | `StatusPill` | 24 px, dot + word, five tones. (`Badge` is the earlier name, kept as a thin wrapper.) |
 | `Button`, `LinkButton`, `IconButton` | `primary` (action fill), `secondary` (surface + border, the default), `plain` (action text), `destructive` (error text on the secondary box), `danger` (filled red — inside a confirm dialog only). 40 / 48 / 32 px. `loading` shows a spinner and keeps the verb ("Preparing the file…"). `IconButton` is 36 px round. |
-| `Field`, `LabeledInput`, `Switch`, `Segmented` | Label above (`body-strong`), "Optional" after the label of optional fields only, helper below, an error replaces the helper. Placeholders are examples, never instructions. |
+| `Field`, `LabeledInput`, `Switch`, `Segmented` | Label above (`body-strong`), "Optional" after the label of optional fields only, helper below, an error replaces the helper. Placeholders are examples, never instructions. A select is an `.input` with the system's own chevron, never the browser's. |
 | `Callout` | A tinted box for a blocked or pending state: tone icon, a one-sentence title, at most one more sentence, and the button that fixes it when the dashboard can. |
 | `Disclosure` | "What's included?", "Advanced", "Troubleshooting" — closed by default. |
 | `EmptyState`, `InlineEmpty`, `LoadingState`, `ErrorState` | An empty page (40 px icon, title, one sentence, one action); an empty section (one line); loading as skeleton lines after 300 ms; an error as a callout with the cause, **Try again** and **Details**. An error never looks empty. |

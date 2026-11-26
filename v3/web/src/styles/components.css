@@ -299,12 +299,16 @@ a.listrow:hover, button.listrow:hover { background: var(--surface-muted); text-d
 .field__optional { margin-left: var(--space-2); font-size: var(--type-secondary-size); font-weight: 400; color: var(--text-2); }
 .field__hint { font-size: var(--type-secondary-size); line-height: var(--type-secondary-lh); color: var(--text-2); }
 .field__error { font-size: var(--type-secondary-size); line-height: var(--type-secondary-lh); color: var(--error); font-weight: 600; }
-.input { height: var(--control-height); padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm);
+.input { height: var(--control-height); padding: 0 var(--space-3); border: 1px solid var(--border-control); border-radius: var(--radius-sm);
   background: var(--surface); color: var(--text); font: inherit; font-size: var(--type-body-size); width: 100%; min-width: 0; }
 textarea.input { height: auto; min-height: 96px; padding: var(--space-2) var(--space-3); line-height: var(--type-body-strong-lh); resize: vertical; }
-select.input { padding-right: var(--space-2); }
+/* A select draws its own chevron from two token-coloured triangles, so it
+   looks the same in every browser and theme. */
+select.input, select.vaultpick { appearance: none; -webkit-appearance: none; padding-right: var(--space-8);
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-2) 50%), linear-gradient(135deg, var(--text-2) 50%, transparent 50%);
+  background-position: calc(100% - 17px) 50%, calc(100% - 12px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
 .input::placeholder { color: var(--text-3); }
-.input:hover { border-color: var(--text-3); }
+.input:hover { border-color: var(--text-2); }
 .input:focus, .input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-color: var(--action); }
 .input--readonly, .input[readonly] { background: var(--surface-muted); color: var(--text-2); font-family: var(--font-mono); font-size: var(--type-mono-size); }
 .input--error, .input[aria-invalid="true"] { border-color: var(--error); }
@@ -583,14 +587,14 @@ span.brand__mark, .brand__ver { display: none; }
 /* ---------- memories (explorer) ---------- */
 .searchrow { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .searchbox { display: flex; align-items: center; gap: var(--space-2); height: var(--control-height); padding: 0 var(--space-3); flex: 1;
-  min-width: 220px; border: 1px solid var(--border); border-radius: var(--radius-pill); background: var(--surface); color: var(--text-3); }
+  min-width: 220px; border: 1px solid var(--border-control); border-radius: var(--radius-pill); background: var(--surface); color: var(--text-3); }
 .searchbox:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; border-color: var(--action); }
 .searchbox input { flex: 1; min-width: 0; border: none; background: none; font: inherit; color: var(--text); outline: none; }
 .searchbox input::placeholder { color: var(--text-3); }
 .searchbox strong { color: var(--text); font-weight: 600; }
 .searchbox__hint { white-space: nowrap; overflow: hidden; color: var(--text-3); }
 .vaultpick { display: flex; align-items: center; gap: var(--space-2); height: var(--control-height); padding: 0 var(--space-3);
-  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); cursor: pointer;
+  border: 1px solid var(--border-control); border-radius: var(--radius-sm); background-color: var(--surface); cursor: pointer;
   font-size: var(--type-secondary-size); font-weight: 600; color: var(--text); }
 .explorer { --panehead-h: 48px; display: grid; grid-template-columns: 240px minmax(0, 1fr) 300px;
   border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); overflow: hidden;
