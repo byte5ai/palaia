@@ -193,7 +193,9 @@ No third-party logos, no emoji. The palaia star is the website's mark
   dialogs, popovers and the drawer; focus stays inside an open dialog and
   returns to whatever opened it.
 - Targets at least 36 px with a pointer (28 px only for compact buttons in
-  rows and card headers) and at least 44 px below 768 px.
+  rows and card headers) and at least 44 px below 768 px. Checkboxes, radios
+  and the switch keep their size there; the area that takes the tap is 44 px
+  around their centre.
 
 ## 2. Components
 
