@@ -3,17 +3,21 @@
    onboarding wizard reuses. Tokens only (scripts/lint-tokens.mjs).
    ============================================================= */
 
-/* The list on the left, the selected app on the right; usage under the
-   list. One column below 1024 px, the selected app right after the list. */
-.apps { display: grid; gap: var(--space-5); align-items: start;
-  grid-template-columns: 320px minmax(0, 1fr);
-  grid-template-areas: "list detail" "usage detail"; }
-.apps__list { grid-area: list; }
-.apps__detail { grid-area: detail; display: flex; flex-direction: column; gap: var(--space-5); min-width: 0;
-  scroll-margin-top: var(--space-4); }
-.apps__usage { grid-area: usage; }
-@media (max-width: 1023px) {
-  .apps { grid-template-columns: minmax(0, 1fr); grid-template-areas: "list" "detail" "usage"; }
+/* The table of apps. Its caption is the count, shown above the header row;
+   the two secondary columns give way on a phone. */
+.apps-table__caption { caption-side: top; text-align: left; padding: var(--space-4) var(--space-5);
+  font-size: var(--type-title-2-size); line-height: var(--type-title-2-lh); font-weight: var(--type-title-2-weight); color: var(--text); }
+.apps-table__app { display: flex; align-items: center; gap: var(--space-3); }
+.apps-table__action { text-align: right; white-space: nowrap; }
+.apps-table__name { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0; }
+.apps-table__narrow { display: none; font-weight: 400; }
+@media (max-width: 767px) {
+  .apps-table__wide { display: none; }
+  .apps-table__narrow { display: inline-flex; }
+  .apps-table__action .btn { white-space: nowrap; }
+  /* Still a cell for a screen reader, no longer a column on screen. */
+  .apps-table .apps-table__status { position: absolute; width: 1px; height: 1px; padding: 0; border: 0;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 }
 
 /* Connect steps: a number, a title, the step's content. */

@@ -61,9 +61,9 @@ function stub({
   vi.spyOn(api, "tokenUsage").mockRejectedValue(new ApiError("/api/auth/tokens/usage", 404, {}));
 }
 
-function mount() {
+function mount(at = "/apps") {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[at]}>
       <ToastProvider>
         <Clients />
       </ToastProvider>
@@ -71,8 +71,16 @@ function mount() {
   );
 }
 
-function row(name: RegExp): HTMLElement {
-  return screen.getByRole("button", { name });
+/** The table row of one app. */
+function row(name: string): HTMLElement {
+  return screen.getByRole("rowheader", { name }).closest("tr")!;
+}
+
+/** Opens an app's side panel through its row's button. */
+async function openApp(name: string): Promise<HTMLElement> {
+  await screen.findByRole("rowheader", { name });
+  fireEvent.click(within(row(name)).getByRole("button"));
+  return screen.findByRole("dialog", { name });
 }
 
 afterEach(() => {
@@ -92,21 +100,39 @@ describe("AI apps › Apps (report §3.5)", () => {
 
     expect(await screen.findByText(`1 of ${CLIENTS.length} connected`)).toBeInTheDocument();
     for (const client of CLIENTS) {
-      expect(screen.getByText(client.name, { selector: ".listrow__title" })).toBeInTheDocument();
+      expect(screen.getByRole("rowheader", { name: client.name })).toBeInTheDocument();
     }
-    expect(row(/^claude code cli/i)).toHaveTextContent("Connected");
-    expect(row(/^claude code cli/i)).toHaveTextContent("Last request 2 min ago");
-    expect(row(/^codex/i)).toHaveTextContent("Waiting for first use");
-    expect(row(/^lm studio/i)).toHaveTextContent("Ready to connect");
+    expect(row("Claude Code CLI")).toHaveTextContent("Connected");
+    expect(row("Claude Code CLI")).toHaveTextContent("2 min ago");
+    expect(row("Codex")).toHaveTextContent("Waiting for first use");
+    // An app nobody touched says so in plain text: no pill repeated per row.
+    expect(row("LM Studio")).toHaveTextContent("Not connected");
+    expect(row("LM Studio").querySelector(".pill")).toBeNull();
+  });
+
+  it("lists the apps in use first, and each row's button says what it opens", async () => {
+    stub({ tokens: [key("Codex")] });
+    mount();
+
+    await screen.findByRole("rowheader", { name: "Codex" });
+    const headers = screen.getAllByRole("rowheader");
+    expect(headers[0]).toHaveTextContent("In use · 1");
+    expect(headers[1]).toHaveAccessibleName("Codex");
+    expect(headers[2]).toHaveTextContent(`Available · ${CLIENTS.length - 1}`);
+    expect(within(row("Codex")).getByRole("button", { name: "Manage: Codex" })).toBeInTheDocument();
+    expect(within(row("LM Studio")).getByRole("button", { name: "Connect: LM Studio" })).toBeInTheDocument();
+    expect(within(row("ChatGPT")).getByRole("button", { name: "How to connect: ChatGPT" })).toBeInTheDocument();
+    // Nothing is open until a row is chosen.
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("says a cloud app needs Cloud mode in Private mode, with the way to set it up", async () => {
     stub({ mode: "locked" });
     mount();
 
-    fireEvent.click(await screen.findByRole("button", { name: /^chatgpt/i }));
+    await openApp("ChatGPT");
 
-    expect(row(/^chatgpt/i)).toHaveTextContent("Needs Cloud mode");
+    expect(row("ChatGPT")).toHaveTextContent("Needs Cloud mode");
     expect(screen.getByText("ChatGPT needs Cloud mode")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Set up Cloud mode" })).toHaveAttribute("href", "/settings/access");
     // The plan limit from the catalog is still said.
@@ -118,18 +144,21 @@ describe("AI apps › Apps (report §3.5)", () => {
     mount();
 
     // The Claude app and claude.ai share one cloud entry ("Claude", issue 565).
-    const claude = (await screen.findByText("Claude", { selector: ".listrow__title" })).closest("button")!;
-    fireEvent.click(claude);
+    await openApp("Claude");
 
-    expect(claude).toHaveTextContent("Ready to connect");
+    expect(row("Claude")).toHaveTextContent("Signs in with your palaia account");
     expect(screen.getByText("https://palaia.example.com/mcp/default")).toBeInTheDocument();
   });
 
-  it("starts the default app at Create access key", async () => {
+  it("an app's panel has its own address and starts at Create access key", async () => {
     stub();
-    mount();
+    mount("/apps?app=claude-code-cli");
 
-    expect(await screen.findByRole("button", { name: /create access key/i })).toBeInTheDocument();
+    const panel = await screen.findByRole("dialog", { name: "Claude Code CLI" });
+    expect(within(panel).getByRole("button", { name: /create access key/i })).toBeInTheDocument();
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
   it("an error loading the apps is an error, never an empty list", async () => {
@@ -146,11 +175,14 @@ describe("AI apps › Apps (report §3.5)", () => {
     vi.spyOn(api, "revokeToken").mockResolvedValue(undefined);
     mount();
 
-    await waitFor(() => expect(row(/^claude code cli/i)).toHaveTextContent("Connected"));
+    await waitFor(() => expect(row("Claude Code CLI")).toHaveTextContent("Connected"));
+    await openApp("Claude Code CLI");
     fireEvent.click(await screen.findByRole("button", { name: "Revoke access" }));
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Revoke access" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: /revoke access/i })).getByRole("button", { name: "Revoke access" }),
+    );
 
-    await waitFor(() => expect(row(/^claude code cli/i)).toHaveTextContent("Ready to connect"));
+    await waitFor(() => expect(row("Claude Code CLI")).toHaveTextContent("Not connected"));
   });
 });
 
@@ -167,7 +199,7 @@ describe("Claude Desktop — the one-click extension (SPEC-306)", () => {
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
 
     mount();
-    fireEvent.click(await screen.findByRole("button", { name: /^claude desktop/i }));
+    await openApp("Claude Desktop");
     fireEvent.change(await screen.findByLabelText("Tool set"), { target: { value: "codex-only" } });
     fireEvent.click(screen.getByRole("button", { name: /download extension/i }));
 
@@ -202,11 +234,13 @@ describe("Claude Desktop — the one-click extension (SPEC-306)", () => {
     const hub = desktopHub([key("Claude Desktop", { id: "t-old" })]);
 
     mount();
-    fireEvent.click(await screen.findByRole("button", { name: /^claude desktop/i }));
+    await openApp("Claude Desktop");
     fireEvent.click(await screen.findByRole("button", { name: /download extension/i }));
     await waitFor(() => expect(hub.keys).toHaveLength(2));
     fireEvent.click(await screen.findByRole("button", { name: "Revoke access" }));
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Revoke access" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: /revoke access/i })).getByRole("button", { name: "Revoke access" }),
+    );
 
     await waitFor(() => expect(hub.keys.every((k) => k.revoked_at !== null)).toBe(true));
     expect(hub.revoke).toHaveBeenCalledWith("t-download-1");
@@ -216,7 +250,7 @@ describe("Claude Desktop — the one-click extension (SPEC-306)", () => {
     desktopHub([]);
 
     mount();
-    fireEvent.click(await screen.findByRole("button", { name: /^claude desktop/i }));
+    await openApp("Claude Desktop");
     expect(screen.queryByRole("button", { name: "Revoke access" })).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: /download extension/i }));
 
@@ -230,7 +264,7 @@ describe("Claude Desktop — the one-click extension (SPEC-306)", () => {
     );
 
     mount();
-    fireEvent.click(await screen.findByRole("button", { name: /^claude desktop/i }));
+    await openApp("Claude Desktop");
     fireEvent.click(await screen.findByRole("button", { name: /download extension/i }));
 
     expect(await screen.findByText(/no client-authentication method is configured/i)).toBeInTheDocument();
@@ -243,14 +277,15 @@ describe("AI apps copy — no jargon in the surface", () => {
 
   it("no heading, button, pill or field label uses an implementation word", async () => {
     stub({ profiles: [DEFAULT_PROFILE, CODEX_ONLY_PROFILE] });
-    mount();
+    mount("/apps?app=claude-code-cli");
     await screen.findByRole("button", { name: /create access key/i });
 
     const controls = [
       ...screen.queryAllByRole("heading"),
       ...screen.queryAllByRole("button"),
       ...screen.queryAllByRole("tab"),
-      ...Array.from(document.querySelectorAll(".pill, .badge, .card__title, .field__label, summary, option")),
+      ...screen.queryAllByRole("columnheader"),
+      ...Array.from(document.querySelectorAll(".pill, .badge, .card__title, .field__label, summary, option, caption")),
     ];
     expect(controls.length).toBeGreaterThan(10);
     for (const element of controls) {
@@ -261,14 +296,13 @@ describe("AI apps copy — no jargon in the surface", () => {
 });
 
 describe("AI apps accessibility", () => {
-  it("the list and the connect flow have no serious axe-core violations", async () => {
+  it("the table and the connect panel have no serious axe-core violations", async () => {
     stub({
       tokens: [key("Codex")],
       profiles: [DEFAULT_PROFILE, CODEX_ONLY_PROFILE],
     });
     mount();
-    await screen.findByRole("button", { name: /create access key/i });
-    fireEvent.click(row(/^codex/i));
+    await openApp("Codex");
     await screen.findByRole("tablist");
 
     const results = await axe.run(document.body, { rules: { "color-contrast": { enabled: false } } });
