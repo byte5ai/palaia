@@ -389,7 +389,7 @@ export function Home() {
               </div>
             ) : null}
             {problemComponents.length > 0 && (verdict.tone === "warn" || verdict.tone === "error") ? (
-              <div style={{ marginTop: "var(--space-3)" }}>
+              <div className="verdict__details">
                 <Disclosure summary="Details">
                   <ul>
                     {problemComponents.map(([name, status]) => (
@@ -494,9 +494,7 @@ export function Home() {
                         <span title={exactTime(token.last_used_at)}>
                           Last request {timeAgo(token.last_used_at)}
                         </span>
-                      ) : (
-                        "Access key created, no request yet"
-                      )
+                      ) : undefined
                     }
                     trailing={
                       token.last_used_at ? (

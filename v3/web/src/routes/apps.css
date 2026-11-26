@@ -8,17 +8,6 @@
 .apps-table__caption { caption-side: top; text-align: left; padding: var(--space-4) var(--space-5);
   font-size: var(--type-title-2-size); line-height: var(--type-title-2-lh); font-weight: var(--type-title-2-weight); color: var(--text); }
 .apps-table__app { display: flex; align-items: center; gap: var(--space-3); }
-.apps-table__action { text-align: right; white-space: nowrap; }
-.apps-table__name { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0; }
-.apps-table__narrow { display: none; font-weight: 400; }
-@media (max-width: 767px) {
-  .apps-table__wide { display: none; }
-  .apps-table__narrow { display: inline-flex; }
-  .apps-table__action .btn { white-space: nowrap; }
-  /* Still a cell for a screen reader, no longer a column on screen. */
-  .apps-table .apps-table__status { position: absolute; width: 1px; height: 1px; padding: 0; border: 0;
-    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
-}
 
 /* Connect steps: a number, a title, the step's content. */
 .connect-step { display: flex; gap: var(--space-3); padding: var(--space-5); border-bottom: 1px solid var(--border); }

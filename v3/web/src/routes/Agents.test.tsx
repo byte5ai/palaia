@@ -137,10 +137,13 @@ describe("Agents screen", () => {
 
     await screen.findByText(ACTIVE_SESSION.handle);
     expect(screen.getByText(STALE_SESSION.handle)).toBeInTheDocument();
-    expect(screen.getByText("Active")).toBeInTheDocument();
+    // The status is its own column, one cell per session.
+    const statusOf = (handle: string) =>
+      within(screen.getByText(handle).closest("tr")!).getAllByRole("cell")[3];
+    expect(statusOf(ACTIVE_SESSION.handle)).toHaveTextContent("Active");
     // "stale" is never shown verbatim — the plain-language label is what a
     // person reads (system.md §3 rule 0).
-    expect(screen.getByText("Inactive")).toBeInTheDocument();
+    expect(statusOf(STALE_SESSION.handle)).toHaveTextContent("Inactive");
     expect(screen.queryByText(/\bstale\b/i)).not.toBeInTheDocument();
   });
 

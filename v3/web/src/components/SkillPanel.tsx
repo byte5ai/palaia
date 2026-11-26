@@ -97,7 +97,7 @@ export function SkillPanel({ clientId, clientName }: { clientId: string; clientN
           ) : (
             <div className="stack stack--3">
               <p className="t-strong">{support.install.headline}</p>
-              <ol className="stack stack--2" style={{ listStyle: "decimal", paddingLeft: "var(--space-5)" }}>
+              <ol className="numbered">
                 {support.install.steps.map((step) => (
                   <li key={step}>{step}</li>
                 ))}

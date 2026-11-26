@@ -56,15 +56,6 @@
   overflow-wrap: anywhere;
 }
 
-.ob__howto {
-  list-style: decimal;
-  margin: 0;
-  padding-left: 1.3em;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
 .ob__connected {
   display: flex;
   flex-wrap: wrap;

@@ -89,7 +89,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="stack stack--1">
       <dt className="t-over">{label}</dt>
-      <dd style={{ margin: 0 }}>{children}</dd>
+      <dd>{children}</dd>
     </div>
   );
 }
@@ -153,15 +153,15 @@ export function SettingsHub() {
       <PageHeader title="Settings" />
       <Card>
         <div className="card__body stack stack--4">
-          <div className="row" style={{ alignItems: "flex-start" }}>
-            <PalaiaMark className="brand__mark" style={{ width: 40, height: 40 }} />
+          <div className="row row--top">
+            <PalaiaMark className="brand__mark brand__mark--lg" />
             <div className="grow">
               <h2 className="card__title">palaia {version}</h2>
               <p className="t-sm t-muted">{channel ? `${channel} channel` : " "}</p>
             </div>
             <StatusPill tone={health.tone}>{health.label}</StatusPill>
           </div>
-          <dl className="tiles" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "var(--space-4)", margin: 0 }}>
+          <dl className="facts">
             <Fact label="Access">{runningMode}</Fact>
             <Fact label="Address">
               <span className="t-mono">{window.location.host}</span>

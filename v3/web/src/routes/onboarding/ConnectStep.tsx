@@ -217,7 +217,7 @@ function CloudConnector({
             {copied ? "Copied" : "Copy"}
           </Button>
         </div>
-        <ol className="ob__howto">
+        <ol className="numbered">
           {steps.map((line) => (
             <li key={line}>{line}</li>
           ))}
@@ -252,7 +252,7 @@ function ExtensionDownload({
   return (
     <Card>
       <CardBody className="stack stack--3">
-        <ol className="ob__howto">
+        <ol className="numbered">
           <li>Download the palaia extension for Claude Desktop.</li>
           <li>
             Open the file. Claude Desktop shows palaia's address and a new

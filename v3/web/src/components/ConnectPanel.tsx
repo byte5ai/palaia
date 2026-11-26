@@ -71,8 +71,7 @@ export function ToolSetPicker({
       </label>
       <select
         id={id}
-        className="input"
-        style={{ maxWidth: 320 }}
+        className="input input--short"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
@@ -555,7 +554,7 @@ export function ConnectPanel({
             </div>
           </div>
           {error ? (
-            <p className="field__error" role="alert" style={{ padding: "0 var(--space-5) var(--space-4)" }}>
+            <p className="field__error card__note" role="alert">
               {error}
             </p>
           ) : null}
