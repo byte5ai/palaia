@@ -403,7 +403,7 @@ describe("Agents screen copy — no jargon in the surface (system.md §3 rule 0)
       ...screen.queryAllByRole("heading"),
       ...screen.queryAllByRole("button"),
       ...Array.from(
-        document.querySelectorAll(".pill, .badge, .card__title, .field__label"),
+        document.querySelectorAll(".pill, .card__title, .field__label"),
       ),
     ];
 

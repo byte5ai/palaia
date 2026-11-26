@@ -71,7 +71,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             {toast.action ? (
               <button
                 type="button"
-                className="btn btn--sm btn--quiet toast__action"
+                className="btn btn--sm toast__action"
                 onClick={() => {
                   toast.action?.onClick();
                   dismiss(toast.id);

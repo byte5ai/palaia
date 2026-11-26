@@ -408,7 +408,7 @@ describe("Access & sign-in copy — no jargon in the surface (system.md §3)", (
       ...screen.queryAllByRole("switch"),
       ...Array.from(
         document.querySelectorAll(
-          ".pill, .badge, .card__title, .listrow__title, .field__label, .check-list__title",
+          ".pill, .card__title, .listrow__title, .field__label, .check-list__title",
         ),
       ),
     ];

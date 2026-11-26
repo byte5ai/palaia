@@ -222,7 +222,7 @@ function RemoveControl({
   const [busy, setBusy] = useState(false);
   if (!confirming) {
     return (
-      <Button variant="risk" size="sm" onClick={() => setConfirming(true)}>
+      <Button variant="destructive" size="sm" onClick={() => setConfirming(true)}>
         {label}
       </Button>
     );
@@ -230,7 +230,7 @@ function RemoveControl({
   return (
     <span className="row row--wrap">
       <Button
-        variant="ghost"
+        variant="plain"
         size="sm"
         onClick={() => setConfirming(false)}
         disabled={busy}
@@ -238,7 +238,7 @@ function RemoveControl({
         Keep it
       </Button>
       <Button
-        variant="risk"
+        variant="destructive"
         size="sm"
         disabled={busy}
         onClick={async () => {

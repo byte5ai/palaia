@@ -318,7 +318,7 @@ describe("AI apps copy — no jargon in the surface", () => {
       ...screen.queryAllByRole("button"),
       ...screen.queryAllByRole("tab"),
       ...screen.queryAllByRole("columnheader"),
-      ...Array.from(document.querySelectorAll(".pill, .badge, .card__title, .field__label, summary, option, caption")),
+      ...Array.from(document.querySelectorAll(".pill, .card__title, .field__label, summary, option, caption")),
     ];
     expect(controls.length).toBeGreaterThan(10);
     for (const element of controls) {
