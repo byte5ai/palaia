@@ -9,7 +9,9 @@ license: MIT
 You are setting palaia up for someone who may not be technical. Ask a few plain
 questions, then do the work: run the commands yourself if you can reach their
 machine, otherwise give them exactly one line to paste. One step at a time; wait
-for each to finish before the next. Never paste raw error output at them.
+for each to finish before the next. Never paste raw error output at them, use no
+Docker or app-store jargon, never invent their provider or setup, and use only what
+a Mac or Linux computer has, no helper tools of your own.
 
 palaia runs on a machine they own and is used in a browser. It is almost always a
 separate always-on box (a rented server, a NAS, a small Pi): a hub that only
@@ -207,19 +209,22 @@ sign-in is tied to it); its setup opens by itself and resumes after a reload or
 restart. If you cannot see the page, ask what it shows; never read palaia's code
 to guess. One step at a time, in this order:
 
-1. **How you'll use palaia** — their choice from Step 2 ("With ChatGPT and
-   Claude" is cloud access).
-2. **Your first memory** — *Name* is required (lowercase, e.g. `work`). *What
-   it's for* is optional: AI apps read it to pick the right memory, so ask them;
-   never invent it, empty is fine. *More options* can stay as they are.
-3. **Your account** — a username and a password of 12+ characters, typed by them
-   in the page, never in the chat. Needed for cloud access; optional on a private
-   hub (Skip).
-4. **Cloud access** — filled in when the setup page turned on Funnel; otherwise
-   run `sudo tailscale funnel --bg http://127.0.0.1:8422` on the server for them
-   and use the `https://` address it shows. Before **Turn on cloud access** and
-   **Restart palaia**, say that palaia restarts once and then asks them to sign
-   in with the new account — expected, not a step back. All four checks must pass.
+1. **How you'll use palaia** — their Step 2 choice ("With ChatGPT and Claude" = cloud).
+2. **Your first memory** — *Name* is required (lowercase, e.g. `work`). *What it's for*
+   is optional: AI apps read it to pick the right memory, so ask them; never invent it,
+   empty is fine. *More options* can stay as they are.
+3. **Your account** — a username and a password of 12+ characters, typed by them in the
+   page, never in the chat. Needed for cloud access; optional on a private hub (Skip).
+4. **Cloud access** — filled in when the setup page turned on Funnel. Otherwise, with a
+   shell on the server, run `sudo tailscale funnel --bg http://127.0.0.1:8422` and use
+   the `https://` address it shows. Without one, they paste the plain installer line,
+   `curl -fsSL https://get.palaia.ai | sh`, into the provider's web console again: it
+   keeps their data, opens only the AI connection, restarts palaia, and the address is
+   filled in after a reload. If it prints a `login.tailscale.com` link they cannot open:
+   in Tailscale's admin console, **DNS** → **Enable HTTPS**, then **Access controls** →
+   **Add Funnel to policy**, and the line again. Before **Turn on cloud access** and
+   **Restart palaia**, say palaia restarts once and then asks them to sign in with the
+   new account — expected. All four checks must pass.
 5. **Connect an AI app** — the app they chose. Claude (app, claude.ai): the
    **Add to Claude** button, prefilled; ChatGPT: the address and three clicks;
    Claude Desktop on a private hub: the extension download; Claude Code and the
@@ -288,11 +293,6 @@ with `sudo tail -n 50 /var/log/cloud-init-output.log`:
   on the same Tailscale network with the app on. Right after a restart a minute of
   "connection refused" is normal. Still refused after five minutes: read
   `sudo docker logs --tail 50 palaia` and translate it.
-
-## What not to do
-
-- No Docker, compose or app-store jargon; never invent their provider or setup.
-- Use only what a Mac or Linux computer has, no helper tools of your own.
 
 ## Per-model notes
 

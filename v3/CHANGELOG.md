@@ -32,6 +32,14 @@ capability a user would notice.
   The dashboard and the docs say the same, cite the same page, and the
   ChatGPT steps follow OpenAI's current way to add palaia (Plugins, no
   developer mode). (#648)
+- **Cloud access can be turned on without a terminal on the server.** When
+  the setup page did not turn on cloud access, the setup guide and the
+  dashboard's cloud step offered only a command to run on the server. Both
+  now also say to paste palaia's installer line into the provider's web
+  console again: it keeps the data, opens only the AI connection, and fills
+  in the address. If Tailscale asks for permission with a link that cannot
+  be opened there, they name the two switches in Tailscale's admin console
+  instead. (#649)
 
 ## 3.0.0-rc10 — 2026-11-14 (release candidate)
 
