@@ -243,6 +243,23 @@ a.btn[aria-disabled="true"] { pointer-events: none; }
 .table td { padding: var(--space-3); border-bottom: 1px solid var(--border); vertical-align: middle; }
 .table tr:last-child td { border-bottom: 0; }
 .table tbody tr:hover { background: var(--surface-muted); }
+/* A table that fills its card edge to edge: the list of a resource. Rows
+   are as tall as list rows; a group row names a set of rows. */
+.table--flush th { padding: var(--space-3) var(--space-5); }
+.table--flush thead th { background: var(--canvas); }
+.table--flush td, .table--flush tbody th { padding: var(--space-2) var(--space-5); height: var(--row-height);
+  border-bottom: 1px solid var(--border); white-space: normal; }
+.table--flush tbody th { font-size: var(--type-body-strong-size); line-height: var(--type-body-strong-lh);
+  font-weight: var(--type-body-strong-weight); color: var(--text); }
+.table.table--flush tr:last-child > * { border-bottom: 1px solid var(--border); }
+.table.table--flush tbody:last-child tr:last-child > * { border-bottom: 0; }
+.table--flush .table__group th { height: auto; padding: var(--space-2) var(--space-5); background: var(--canvas);
+  font-size: var(--type-caption-size); line-height: var(--type-caption-lh); font-weight: var(--type-caption-weight); color: var(--text-2); }
+.table--flush .table__group:hover { background: none; }
+.table__row--selected, .table tbody tr.table__row--selected:hover { background: var(--info-bg); }
+.monogram { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex: none;
+  border-radius: var(--radius-inner); background: var(--surface-muted); color: var(--text-2);
+  font-size: var(--type-caption-size); line-height: var(--type-caption-lh); font-weight: 700; }
 
 /* ---------- list rows ----------
    Name + status + one line + actions. The setting variant puts a label
@@ -368,6 +385,10 @@ select.input, select.vaultpick { appearance: none; -webkit-appearance: none; pad
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-overlay);
   padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-5); }
 .dialog--form { max-width: 560px; }
+/* The side panel: one table row's details, full height on the right. */
+.scrim--side { justify-content: flex-end; align-items: stretch; padding: 0; }
+.dialog--side { max-width: 520px; max-height: none; border-radius: 0; border-width: 0 0 0 1px; }
+.dialog--side .card { box-shadow: none; }
 .dialog__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
 .dialog__title { font-size: var(--type-title-2-size); line-height: var(--type-title-2-lh); font-weight: var(--type-title-2-weight); }
 .dialog__desc { color: var(--text-2); margin-top: var(--space-1); }
@@ -507,6 +528,7 @@ span.brand__mark, .brand__ver { display: none; }
   .toast { min-width: 0; max-width: none; }
   .scrim { align-items: flex-end; padding: 0; }
   .dialog { max-width: none; border-radius: var(--radius-md) var(--radius-md) 0 0; max-height: 92dvh; padding: var(--space-5); }
+  .dialog--side { max-height: 92dvh; border-width: 1px; border-radius: var(--radius-md) var(--radius-md) 0 0; }
   .dialog__foot > .btn { flex: 1 1 auto; }
   .row, .card__foot { flex-wrap: wrap; }
   .snippet { align-items: flex-start; flex-wrap: wrap; }

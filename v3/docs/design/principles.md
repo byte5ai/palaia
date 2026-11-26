@@ -269,17 +269,21 @@ offered up front. The final screen says "You're set up" with what was done and
 
 ### 3.3 AI apps and connecting one
 
-Apps: every supported app as a row with name, status pill, one line and an
-action ("1 of 9 connected"). Connecting one: "Choose what Claude Code CLI can
-use" (Read / Save per memory), **Create access key**, the one command, prompt
-or config file to paste, and "Test the connection", which turns green on the
-first request. Live sessions is the second tab.
+Apps: a table of every supported app, the apps in use first ("1 of 9
+connected"): name, how it connects, status, last request, and one button per
+row (**Connect**, **Manage**, **How to connect**). The button opens that app
+in a side panel: "Choose what Claude Code CLI can use" (Read / Save per
+memory), **Create access key**, the one command, prompt or config file to
+paste, and "Test the connection", which turns green on the first request. Live
+sessions is the second tab.
 
 | Don't | Do |
 |---|---|
 | Ask a newcomer to name a tool profile | Per-memory Read / Save, all checked; the tool set under Advanced |
 | Present the access key as a secret to carry around | It is already in the command; "Copy it now — palaia can't show it again" |
-| No way to take access back | **Revoke access** on the row, with a confirm that names the app |
+| No way to take access back | **Revoke access** in the app's panel, with a confirm that names the app |
+| "Ready to connect" as a pill on every row | "Not connected" in plain text; a pill only for a state that says something |
+| A different icon per app that means nothing | A two-letter monogram; no third-party logos |
 | An app that cannot work in this mode, offered anyway | "claude.ai needs Cloud mode" with **Set up Cloud mode** |
 | The skill texts printed on the page | "Recommended: install the palaia skill" collapsed, with **Install skill** |
 

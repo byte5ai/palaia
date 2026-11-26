@@ -7,6 +7,10 @@ import { Button, IconButton } from "./Button";
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+/** Open dialogs, the topmost last: a confirm opened from a side panel is the
+ * one that Escape closes and that keeps the focus. */
+const openDialogs: symbol[] = [];
+
 /**
  * A modal for one task: create something, or confirm something.
  *
@@ -14,6 +18,9 @@ const FOCUSABLE =
  * primary action. Escape and the scrim close it; focus moves into it on open,
  * stays inside while it is open, and returns to whatever opened it. Below
  * 768 px it is a bottom sheet.
+ *
+ * `size="side"` is the same modal as a panel on the right edge, for the
+ * details of one row of a table: the table stays visible behind it.
  */
 export function Dialog({
   open,
@@ -31,8 +38,9 @@ export function Dialog({
   children?: ReactNode;
   /** Usually Cancel + one primary button. */
   footer?: ReactNode;
-  /** `form` is a little wider, for dialogs with several fields. */
-  size?: "default" | "form";
+  /** `form` is a little wider, for dialogs with several fields; `side` is a
+   * full-height panel on the right. */
+  size?: "default" | "form" | "side";
 }) {
   const titleId = useId();
   const descId = useId();
@@ -52,7 +60,11 @@ export function Dialog({
       panel?.querySelector<HTMLElement>(FOCUSABLE);
     (first ?? panel)?.focus();
 
+    const self = Symbol("dialog");
+    openDialogs.push(self);
+
     function onKeyDown(event: KeyboardEvent) {
+      if (openDialogs[openDialogs.length - 1] !== self) return;
       if (event.key === "Escape") {
         event.stopPropagation();
         onCloseRef.current();
@@ -76,6 +88,7 @@ export function Dialog({
     document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", onKeyDown);
+      openDialogs.splice(openDialogs.indexOf(self), 1);
       document.body.style.overflow = overflow;
       previous?.focus?.();
     };
@@ -85,14 +98,14 @@ export function Dialog({
 
   return createPortal(
     <div
-      className="scrim"
+      className={size === "side" ? "scrim scrim--side" : "scrim"}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
       <div
         ref={panelRef}
-        className={["dialog", size === "form" ? "dialog--form" : ""].filter(Boolean).join(" ")}
+        className={["dialog", size === "default" ? "" : `dialog--${size}`].filter(Boolean).join(" ")}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
