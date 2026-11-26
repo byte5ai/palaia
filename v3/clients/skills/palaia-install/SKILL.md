@@ -173,6 +173,16 @@ computer; it shows the address to open and a setup code. Go to Step 4.
 palaia joins the person's own private network (Tailscale), reachable only from
 their devices. The setup page does that in the browser, with no key to copy.
 
+**A browser on their computer.** If you can work one (the Claude app's built-in
+browser or Claude in Chrome; the ChatGPT app's built-in browser or its browser
+extension), open this page and, in Step 5, palaia yourself and read them; never a
+browser in your vendor's cloud: it cannot reach their private network. Fill in only
+what is not secret (the setup code, the memory name and purpose they chose), click
+only choices they made, and stop at every sign-in, password and permission screen
+(Tailscale's login, palaia's password, the sign-in after the restart): they type it,
+you never do; wait until they say it is done. Without such a browser, ask what the
+page shows.
+
 1. If they do not use Tailscale yet: a free account at tailscale.com, and the
    Tailscale app on the device they will open palaia from.
 2. They open `http://<address>:8420/` (the server's public address). Not there
@@ -221,8 +231,8 @@ A running server is not a finished setup: say "palaia is running", never "done",
 until an AI app has saved and found a note. They open exactly the address the
 setup page or the installer's last line showed (Tailscale app on; the first
 sign-in is tied to it); its setup opens by itself and resumes after a reload or
-restart. If you cannot see the page, ask what it shows; never read palaia's code
-to guess. One step at a time, in this order:
+restart. Open it yourself where Step 4 says you can; otherwise ask what it shows;
+never read palaia's code to guess. One step at a time, in this order:
 
 1. **How you'll use palaia** — their Step 2 choice ("With ChatGPT and Claude" = cloud).
 2. **Your first memory** — *Name* is required (lowercase, e.g. `work`). *What it's for*
