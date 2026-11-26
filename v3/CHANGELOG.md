@@ -25,6 +25,16 @@ capability a user would notice.
   ssh's own prompt in the app's terminal. The guide also asks one question
   at a time throughout. (#653)
 
+- **The install no longer stops when the session that started it ends.**
+  It now runs on the server on its own, so a dropped connection, a closed
+  window, a laptop going to sleep or an AI assistant's command timing out
+  no longer leaves a half-done server. Its progress is also written to
+  `/var/log/palaia-install.log`. Running the install command again while
+  one is still running shows that one's progress instead of starting a
+  second; a setup page left open by an earlier, stopped run is closed for a
+  fresh one, and a port taken by another program is named instead of
+  ending in a Python error. (#646)
+
 - **The assistant opens the setup pages itself when it can.** If the
   assistant can work a browser on the person's computer (the Claude app's
   built-in browser or Claude in Chrome, the ChatGPT app's built-in browser

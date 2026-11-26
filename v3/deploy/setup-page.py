@@ -15,9 +15,10 @@
 # shows Tailscale's own "allow" link; "Keep it private" skips the step.
 #
 # Exit status: 0 once the server is on the tailnet (cloud access on or not),
-# 1 on timeout (default 30 minutes) or when Tailscale fails. Either way the
-# port is closed again the moment it exits; the installer then starts the hub
-# bound to the private-network address only.
+# 1 on timeout (default 30 minutes) or when Tailscale fails, 4 when another
+# program holds the port. Either way the port is closed again the moment it
+# exits; the installer then starts the hub bound to the private-network
+# address only.
 #
 # `setup-page.py cloud --target URL` runs only the cloud step, without a page:
 # it prints Tailscale's link if one is needed, waits, and ends with a line
@@ -628,7 +629,12 @@ def page_main(args):
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGHUP, stop)
 
-    server = BoundedServer((args.bind, args.port), make_handler(state))
+    try:
+        server = BoundedServer((args.bind, args.port), make_handler(state))
+    except OSError as exc:
+        # Nothing was started yet, so there is nothing to clean up (#646).
+        log(f"ERROR: cannot open port {args.port}: {exc.strerror or exc}.")
+        return 4
     threading.Thread(target=server.serve_forever, daemon=True).start()
     threading.Thread(
         target=run_tailscale, args=(state, args.hostname, args.login_server), daemon=True
