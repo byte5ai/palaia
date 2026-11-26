@@ -128,6 +128,11 @@ when it checks your memory before answering something on your behalf; see
 [Your first shared memory](/first-shared-memory/) for what that looks
 like from the AI's side.
 
+To search every memory at once, press Ctrl+K (⌘K on a Mac) or `/` anywhere
+in the dashboard, or use the search field at the top of the sidebar. Type a
+few letters and pick a note: it opens in its memory. The same field takes
+you to any page of the dashboard.
+
 When an AI tool looks something up and several notes answer about equally
 well, the ones your tools keep pulling up come first — and a note nobody has
 asked for in months slowly gives that place back. Nothing is deleted or

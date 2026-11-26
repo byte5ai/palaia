@@ -10,7 +10,11 @@ ADRs, phase-gate records, SPEC index docs, CI and release plumbing) are left
 out on purpose; they moved the project forward but nothing in them is a
 capability a user would notice.
 
-## Unreleased
+## 3.0.0-rc11 — 2026-11-26 (release candidate)
+
+The dashboard in a new, denser design with a command palette, and a setup
+guide that does more of the install itself. Still a pre-release — the
+`:beta` channel.
 
 ### Install
 
@@ -65,6 +69,31 @@ capability a user would notice.
 
 ### Dashboard
 
+- **Search and jump from the keyboard.** Ctrl+K (⌘K on a Mac) or `/` opens a
+  command palette on every page: type to reach any page or Settings area,
+  to connect an AI app or switch the appearance, and to find a note in any
+  of your memories. The sidebar has a search field for it, the phone's top
+  bar a search button. Before, the shortcut only jumped to the search box
+  of one memory. A note now has its own address, so a link can open it.
+  (#680)
+- **A denser, calmer look.** Inter replaces Nunito Sans on every surface:
+  the dashboard, setup, the installer's setup page, the sign-in page, the
+  docs and the panels inside a chat. Text is 14 px, controls are 36 px
+  high (44 px on a phone), and buttons have 8 px corners instead of the
+  pill shape. (#642)
+- **AI apps is a table.** One row per app with its state, how it connects
+  and when it was last used, grouped into "In use" and "Available". A
+  row opens a panel on the right with the steps to connect that app; the
+  panel has its own address. Tool sets, live sessions and the memory-use
+  list are tables as well. (#642, #672)
+- **Settings has its own navigation.** General, Access & sign-in, Backups,
+  Telegram, Advanced and About & updates sit beside the open area instead
+  of in one long page. (#642)
+- **The activity feed and a note's history say which AI app saved it.**
+  "Claude Code CLI updated Billing service" instead of "Saved Billing
+  service", and "Created by Claude Code CLI" in the history. An app that
+  signs in with the owner's account instead of an access key is still
+  shown without a name. (#677)
 - **One click to add palaia to the Claude app.** When cloud access is on,
   the **Connect an AI app** step and the AI apps page show an **Add to
   Claude** button. It opens Claude's Add custom connector dialog with the
@@ -74,6 +103,18 @@ capability a user would notice.
 
 ### Fixed
 
+- **An empty memory says it is empty.** A new memory showed "1 note"
+  because its own description file was counted. The count now holds only
+  your notes, and an empty memory explains how it fills. (#642)
+- **A captured note reads as text.** A note an AI app captured in passing
+  showed its internal markers (`[entity]`, `[raw]`, a hash). It now shows
+  what was said, what it is about, why it was kept and where it came from.
+  The ready-made automation for such notes is named in plain words too.
+  (#677)
+- **Checkboxes, radio buttons and switches can be tapped on a phone.** Each
+  takes a tap in a 44 px area around it. (#642)
+- **The edges of fields and buttons are easier to see.** Their border now
+  reaches a contrast of 3:1 against the page in both appearances. (#642)
 - **The setup guide says which ChatGPT plans can save notes.** On a ChatGPT
   plan that can only look things up, the install guide let people pick
   ChatGPT and then fail its last check. It now asks for the plan first and
