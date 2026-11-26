@@ -25,6 +25,17 @@ capability a user would notice.
   ssh's own prompt in the app's terminal. The guide also asks one question
   at a time throughout. (#653)
 
+- **The assistant opens the setup pages itself when it can.** If the
+  assistant can work a browser on the person's computer (the Claude app's
+  built-in browser or Claude in Chrome, the ChatGPT app's built-in browser
+  or its browser extension), it opens the setup page and palaia's own
+  setup, reads them and fills in what is not secret: the setup code, the
+  memory's name and purpose. It stops at every sign-in and password
+  (Tailscale's login, palaia's password, the sign-in after the restart),
+  and the person types those. It never uses a browser that runs in the
+  vendor's cloud, which cannot reach the private network. Without such a
+  browser it asks what the page shows, as before. (#654)
+
 ### Dashboard
 
 - **One click to add palaia to the Claude app.** When cloud access is on,

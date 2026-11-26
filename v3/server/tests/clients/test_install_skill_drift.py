@@ -735,3 +735,86 @@ def test_the_windows_route_never_puts_the_password_anywhere_but_ssh() -> None:
     assert wrapped is not None
     assert _check_literal(wrapped.group(1), _corpus(), _header_command()) is None
     assert "type the server password at ssh's own prompt" in " ".join(windows.split())
+
+
+# --- the assistant works the pages in a local browser (#654) ----------------
+
+#: Labels in Steps 4 and 5 that are Tailscale's, not palaia's: its admin
+#: console's key page (tailscale.com/kb/1085, checked 2026-11-26) and the two
+#: Funnel settings pinned above.
+_TAILSCALE_LABELS = frozenset({"Generate auth key", "Reusable", "Ephemeral", "auth key"}) | set(
+    _FUNNEL_ADMIN_LABELS
+)
+#: Bold lead-ins that title a paragraph or item of the skill itself.
+_SKILL_TITLES = frozenset(
+    {"A browser on their computer", "For technical people only — a key instead of the page"}
+)
+_EMPHASIS_RE = re.compile(r"(?<![*\w])(\*\*?)([^*\n]+?)\1(?![*\w])")
+
+
+def _steps_4_and_5() -> str:
+    body = _skill_body()
+    return body[body.index("## Step 4") : body.index("## Step 6")]
+
+
+_ONBOARDING = WEB_SRC / "routes" / "onboarding"
+_COMPONENT_IMPORT_RE = re.compile(r'from "\.\./\.\./components/(\w+)"')
+_COMMENT_LINE_RE = re.compile(r"^\s*(?:#|//|/?\*).*$", re.MULTILINE)
+
+
+def _ui_source() -> str:
+    """What the person and the assistant see on the two pages Steps 4 and 5
+    walk through: the setup page the installer serves, and palaia's own
+    setup (the onboarding routes and the components they import), without
+    tests, stories or comments."""
+    files = [GET_PALAIA_PATH]
+    files += [
+        path
+        for path in sorted(_ONBOARDING.glob("*.ts*"))
+        if ".test." not in path.name and ".stories." not in path.name
+    ]
+    imported = {
+        name
+        for path in files[1:]
+        for name in _COMPONENT_IMPORT_RE.findall(path.read_text(encoding="utf-8"))
+    }
+    files += [WEB_SRC / "components" / f"{name}.tsx" for name in sorted(imported)]
+    return "\n".join(_COMMENT_LINE_RE.sub("", path.read_text(encoding="utf-8")) for path in files)
+
+
+def _shows_label(label: str, source: str) -> bool:
+    """The label stands on its own as a UI string: between quotes or tags, or
+    alone on a line — not merely inside a longer sentence or identifier."""
+    pattern = rf"(?:[\"'>]|^\s*){re.escape(label)}(?:[\"'<]|\s*$)"
+    return re.search(pattern, source, re.MULTILINE) is not None
+
+
+def test_every_label_the_browser_steps_name_is_on_the_page() -> None:
+    """An assistant working the setup page and palaia in a browser clicks and
+    fills what Steps 4 and 5 name. Each bold button or step and each italic
+    field must be a label the setup page or the dashboard really shows, so
+    renaming one in the UI turns this red until the skill follows."""
+    prose = _INLINE_CODE_RE.sub("", _FENCE_RE.sub("", _steps_4_and_5()))
+    labels = {m.group(2).strip().rstrip(".") for m in _EMPHASIS_RE.finditer(prose)}
+    labels -= _TAILSCALE_LABELS | _SKILL_TITLES
+    # Guard against the regex silently matching nothing.
+    assert {"Connect with Tailscale", "Keep it private", "Name", "Your account"} <= labels
+    source = _ui_source()
+    missing = sorted(label for label in labels if not _shows_label(label, source))
+    assert not missing, f"Steps 4-5 name labels no page shows: {missing}"
+
+
+def test_the_browser_paragraph_leaves_every_secret_to_the_person() -> None:
+    """With a browser on their computer the assistant fills only what is not
+    secret and stops at every sign-in; a vendor's cloud browser is ruled out
+    because it cannot reach the private network the dashboard lives on."""
+    step4 = " ".join(_steps_4_and_5().split())
+    start = step4.index("**A browser on their computer.**")
+    paragraph = step4[start : step4.index("1. ", start)]
+    assert "built-in browser" in paragraph and "Claude in Chrome" in paragraph
+    assert "browser extension" in paragraph
+    assert "cloud: it cannot reach their private network" in paragraph
+    for sign_in in ("Tailscale's login", "palaia's password", "sign-in after the restart"):
+        assert sign_in in paragraph, f"the browser paragraph no longer stops at {sign_in!r}"
+    assert "they type it, you never do" in paragraph
+    assert "Without such a browser, ask what the page shows" in paragraph
