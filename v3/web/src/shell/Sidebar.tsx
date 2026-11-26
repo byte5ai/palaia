@@ -4,8 +4,9 @@ import { NavLink } from "react-router-dom";
 import { api } from "../lib/api/client";
 import type { HubHealth } from "../lib/health";
 import { type HubMode, MODE_LABEL } from "../lib/mode";
+import { paletteShortcut } from "../lib/palette";
 import { __version__ } from "../version";
-import { PalaiaMark } from "./icons";
+import { PalaiaMark, SearchIcon } from "./icons";
 import { NAV_ITEMS, type NavItemConfig, SETTINGS_ITEM } from "./navConfig";
 
 const TONE_DOT: Record<HubHealth["tone"], string> = {
@@ -60,6 +61,7 @@ export function Sidebar({
   signedInAs,
   onSignOut,
   onNavigate,
+  onSearch,
   id,
 }: {
   /** The hub's *running* access mode (issue 343) — `null` until known, so
@@ -73,6 +75,8 @@ export function Sidebar({
   onSignOut?: () => void;
   /** Called after a link is followed (closes the drawer on phones). */
   onNavigate?: () => void;
+  /** Opens the command palette; without it the field is not shown. */
+  onSearch?: () => void;
   id?: string;
 }) {
   // SPEC-501 #5: the hub's release channel next to the build's version.
@@ -95,12 +99,29 @@ export function Sidebar({
     .filter(Boolean)
     .join(" · ");
 
+  const shortcut = paletteShortcut();
+
   return (
     <aside className="sidebar" id={id} aria-label="Main">
       <div className="sidebar__top">
         <Brand onNavigate={onNavigate} />
         {topEnd}
       </div>
+      {onSearch ? (
+        <button
+          type="button"
+          className="sidebar__search"
+          title="Search or jump to"
+          aria-label="Search or jump to"
+          aria-keyshortcuts={shortcut.aria}
+          aria-haspopup="dialog"
+          onClick={onSearch}
+        >
+          <SearchIcon className="icon icon--sm" />
+          <span className="sidebar__search-label">Search</span>
+          <kbd className="kbd">{shortcut.label}</kbd>
+        </button>
+      ) : null}
       <nav className="nav" aria-label="Primary">
         {NAV_ITEMS.map((item) => (
           <NavItem

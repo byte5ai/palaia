@@ -15,7 +15,7 @@
  * resetting the previous one's state by hand.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 
 import {
   Button,
@@ -145,6 +145,17 @@ export function Explorer() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [vaultKey, setVaultKey] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // A link to one note (`?memory=…&note=…`, the command palette's): each
+  // arrival switches to that memory once, also when this page is already open.
+  const location = useLocation();
+  const [params] = useSearchParams();
+  const linkedMemory = params.get("memory");
+  const linkedNote = params.get("note");
+  const [followedLink, setFollowedLink] = useState<string | null>(null);
+  if (vaults && linkedMemory && followedLink !== location.key) {
+    setFollowedLink(location.key);
+    if (vaults.some((v) => v.key === linkedMemory)) setVaultKey(linkedMemory);
+  }
 
   // `select`: switch to this memory once the list is back (one just
   // created); `null` drops the current one (a temporary memory just closed)
@@ -224,6 +235,7 @@ export function Explorer() {
         key={vaultKey}
         vaultKey={vaultKey}
         vaults={vaults}
+        linkedNote={linkedMemory === vaultKey && linkedNote ? { permalink: linkedNote, arrival: location.key } : null}
         onSwitchVault={setVaultKey}
         onVaultsChanged={loadVaults}
         onCreateMemory={() => setCreating(true)}
@@ -446,12 +458,15 @@ function MemoryToolNames({ vaultKey }: { vaultKey: string }) {
 function VaultView({
   vaultKey,
   vaults,
+  linkedNote,
   onSwitchVault,
   onVaultsChanged,
   onCreateMemory,
 }: {
   vaultKey: string;
   vaults: VaultSummary[];
+  /** The note a link asked for, and which arrival of the link it was. */
+  linkedNote: { permalink: string; arrival: string } | null;
   onSwitchVault: (key: string) => void;
   onVaultsChanged: (select?: string | null) => void;
   onCreateMemory: () => void;
@@ -461,14 +476,19 @@ function VaultView({
   const [notesError, setNotesError] = useState<string | null>(null);
   const [notesAttempt, setNotesAttempt] = useState(0);
   const [inboxCount, setInboxCount] = useState<number | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(linkedNote?.permalink ?? null);
+  const [openedArrival, setOpenedArrival] = useState(linkedNote?.arrival ?? null);
+  if (linkedNote && linkedNote.arrival !== openedArrival) {
+    setOpenedArrival(linkedNote.arrival);
+    setSelected(linkedNote.permalink);
+  }
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchHit[] | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
   // `null` until known: whether any AI app has an access key at all, so the
   // empty note pane only suggests connecting one when none is.
   const [hasApps, setHasApps] = useState<boolean | null>(null);
-  // Issue 380: ⌘K / Ctrl+K arrive here with `?focus=search`.
+  // An older link (`?focus=search`) still lands in the search box.
   const [params] = useSearchParams();
   const focusSearch = params.get("focus") === "search";
   const searchInput = useRef<HTMLInputElement>(null);
