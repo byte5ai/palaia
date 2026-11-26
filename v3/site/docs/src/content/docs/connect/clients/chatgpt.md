@@ -5,12 +5,12 @@ title: "ChatGPT"
 description: "Connect ChatGPT to your shared memory."
 ---
 
-A custom connector in developer mode
+A custom `MCP` server, added on chatgpt.com
 
 ## What has to be true first
 
 - **Locked mode.** ChatGPT connects from the internet, so it needs cloud access. Turn it on in setup or in Settings › Access & sign-in; your dashboard stays on your private network.
-- **Cloud mode or Open mode.** ChatGPT signs in to palaia with your account, and sign-in is not on yet. Finish turning on cloud access, then come back here. Write access needs a Business, Enterprise or Edu workspace — Plus/Pro get a read-only profile so recall still works.
+- **Cloud mode or Open mode.** ChatGPT signs in to palaia with your account, and sign-in is not on yet. Finish turning on cloud access, then come back here. Saving notes needs a ChatGPT Business, Enterprise or Edu workspace, where an admin may have to add palaia or allow you to. On Pro, ChatGPT can only look things up; OpenAI does not list Plus, Go or Free (OpenAI help center, checked 2026-11-26).
 
 ## Once sign-in is on
 

@@ -21,7 +21,7 @@ Pick the tool you use. Each one takes a couple of minutes, and every tool you co
 These connect from a company's own service rather than from your device, so they need your hub reachable from the internet and sign-in turned on. Each page says exactly what to turn on and how.
 
 - **[Claude](/connect/clients/claude-ai/)** — The Claude app on Mac, Windows and phones, and claude.ai — a custom connector
-- **[ChatGPT](/connect/clients/chatgpt/)** — A custom connector in developer mode
+- **[ChatGPT](/connect/clients/chatgpt/)** — A custom `MCP` server, added on chatgpt.com
 - **[Grok](/connect/clients/grok/)** — Custom (bring-your-own) `MCP` connectors — web/iOS/Android
 
 Using something else? Any tool that speaks the open connector protocol works the same way — see [Any other AI app](/connect/clients/generic/).

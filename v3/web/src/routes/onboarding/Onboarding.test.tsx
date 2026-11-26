@@ -406,6 +406,13 @@ describe("first-run setup", () => {
     expect(apps.some((a) => /Claude Code CLI/.test(a))).toBe(true);
     expect(screen.getByText(`${PUBLIC}/mcp/default`)).toBeInTheDocument();
     expect(screen.getByText(/settings → connectors/i)).toBeInTheDocument();
+
+    // Issue 648: ChatGPT's steps follow OpenAI's current flow (Plugins, no
+    // developer mode) and say up front which plans can save notes.
+    fireEvent.click(screen.getAllByRole("radio").find((r) => /^ChatGPT/.test(r.textContent ?? ""))!);
+    expect(screen.getByText(/open plugins, click \+, then add custom mcp server/i)).toBeInTheDocument();
+    expect(screen.queryByText(/developer mode/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/on pro, chatgpt can only look things up/i)).toBeInTheDocument();
   });
 
   it("offers Add to Claude with the public address only, and not before cloud access works", async () => {

@@ -60,15 +60,6 @@ function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-/** clients.ts states a cloud app's plan limits inside its "not yet"
- * reason; the part after "come back here." is that note on its own. */
-function planNote(client: NotYetClient): string {
-  const reason = client.reason("cloud");
-  const marker = "come back here. ";
-  const at = reason.indexOf(marker);
-  return at >= 0 ? reason.slice(at + marker.length).trim() : "";
-}
-
 function statusOf(
   client: ClientEntry,
   keys: TokenInfo[],
@@ -282,7 +273,7 @@ function CloudAppCard({
   const [profile, setProfile] = useState(profiles[0]?.path ?? "default");
   const toolSet = profiles.some((p) => p.path === profile) ? profile : (profiles[0]?.path ?? "default");
   const connect = issuer ? client.oauthConnect?.(issuer, toolSet) : undefined;
-  const note = planNote(client);
+  const note = client.planNote;
 
   return (
     <Card>

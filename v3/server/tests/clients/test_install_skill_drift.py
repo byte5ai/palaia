@@ -547,3 +547,47 @@ def test_the_skill_names_the_add_to_claude_button_the_dashboard_shows() -> None:
     assert f"{label}\n" in button.read_text(encoding="utf-8"), (
         f"the dashboard's button no longer says {label!r} — change the skill's Step 5 to match"
     )
+
+
+# --- ChatGPT's plan limits: one source, one date, three places (#648) -------
+
+WEB_SRC = V3_ROOT / "web" / "src"
+_CLIENTS_TS = WEB_SRC / "lib" / "clients.ts"
+_CONNECT_STEP = WEB_SRC / "routes" / "onboarding" / "ConnectStep.tsx"
+_TROUBLESHOOTING = V3_ROOT / "site" / "docs" / "src" / "content" / "docs" / "troubleshooting.md"
+
+
+def _ts_constant(name: str) -> str:
+    match = re.search(
+        rf'^export const {name} = "([^"]+)";$',
+        _CLIENTS_TS.read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+    assert match, f"clients.ts no longer exports {name} as a plain string"
+    return match.group(1)
+
+
+def test_chatgpt_plan_limits_cite_one_source_and_date_everywhere() -> None:
+    """The skill, the dashboard and the docs state which ChatGPT plans can
+    save notes. They must agree on where that comes from and when it was
+    checked: re-checking it means changing all three, not one of them."""
+    source = _ts_constant("CHATGPT_PLANS_SOURCE")
+    checked = _ts_constant("CHATGPT_PLANS_CHECKED")
+    assert source.startswith("https://help.openai.com/")
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", checked)
+    for path, text in (
+        (SKILL_DIR / "SKILL.md", _skill_body()),
+        (_TROUBLESHOOTING, _TROUBLESHOOTING.read_text(encoding="utf-8")),
+    ):
+        assert source in text, f"{path.name} does not cite {source}"
+        assert f"checked {checked}" in text, f"{path.name} does not say it was checked {checked}"
+    body = _skill_body()
+    for plan in ("Business", "Enterprise", "Edu", "Pro", "Plus"):
+        assert plan in body, f"the skill no longer names ChatGPT's {plan} plan"
+
+
+def test_the_skill_quotes_the_connect_steps_status_label() -> None:
+    """Step 5's read-only check tells the person to look for "Connected" —
+    the label the setup's connect step shows once palaia saw a request."""
+    assert '"Connected"' in _skill_body()
+    assert ">Connected</StatusPill>" in _CONNECT_STEP.read_text(encoding="utf-8")

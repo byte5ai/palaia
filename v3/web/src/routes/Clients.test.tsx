@@ -136,7 +136,7 @@ describe("AI apps › Apps (report §3.5)", () => {
     expect(screen.getByText("ChatGPT needs Cloud mode")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Set up Cloud mode" })).toHaveAttribute("href", "/settings/access");
     // The plan limit from the catalog is still said.
-    expect(screen.getByText(/write access needs a business/i)).toBeInTheDocument();
+    expect(screen.getByText(/saving notes needs a chatgpt business, enterprise or edu workspace/i)).toBeInTheDocument();
   });
 
   it("gives a cloud app its address once Cloud mode has sign-in for AI apps", async () => {

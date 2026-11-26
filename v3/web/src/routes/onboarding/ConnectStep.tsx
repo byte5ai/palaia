@@ -36,10 +36,12 @@ const CONNECT_STEPS: Record<string, string[]> = {
     "Choose Add custom connector, name it palaia and paste the address.",
     "Click Connect, sign in with your palaia account and allow access.",
   ],
+  // OpenAI's help center (CHATGPT_PLANS_SOURCE, checked 2026-11-26): custom
+  // MCP servers are added under Plugins on the web, without developer mode.
   chatgpt: [
-    "In ChatGPT, turn on developer mode in the connector settings.",
-    "Create a connector named palaia with this address; choose OAuth sign-in.",
-    "Sign in with your palaia account and allow access.",
+    "On chatgpt.com (not the phone app), open Plugins, click +, then Add custom MCP server.",
+    "Name it palaia, paste this address, choose OAuth and tick I understand and want to continue.",
+    "Click Create as a plugin, sign in with your palaia account, allow access, then install it.",
   ],
 };
 
@@ -220,6 +222,7 @@ function CloudConnector({
             <li key={line}>{line}</li>
           ))}
         </ol>
+        <p className="t-sm t-muted">{client.planNote}</p>
       </CardBody>
     </Card>
   );
