@@ -105,11 +105,11 @@ coloured side stripes on cards. The one non-token colour is the dialog scrim
 | Style | Size / line | Weight | Use |
 |---|---|---|---|
 | `display` | 48 / 56, Days One | 400 | Website hero; the wordmark (20 / 28) |
-| `title-1` | 28 / 34 | 700 | Page title |
-| `title-2` | 18 / 24 | 700 | Card, section and dialog titles |
-| `body-strong` | 15 / 22 | 600 | Row titles, labels, buttons |
-| `body` | 15 / 24 | 400 | Running text |
-| `secondary` | 13 / 20 | 400 | Descriptions and helpers — the smallest size for a sentence |
+| `title-1` | 24 / 30 | 600 | Page title |
+| `title-2` | 16 / 22 | 600 | Card, section and dialog titles |
+| `body-strong` | 14 / 20 | 600 | Row titles, labels, buttons |
+| `body` | 14 / 20 | 400 | Running text |
+| `secondary` | 13 / 18 | 400 | Descriptions and helpers — the smallest size for a sentence |
 | `caption` | 12 / 16 | 600 | Status pills, timestamps — the absolute minimum |
 | `prose` | 16 / 27 | 400 | Docs, and a note's text in Memories |
 | `mono` | 13 / 20, system mono | 400 | Commands, addresses, access keys, numeric columns |
@@ -125,24 +125,29 @@ descriptions fit one line (80 characters). The fonts are self-hosted (OFL,
   `space-4` 16 · `space-5` 20 · `space-6` 24 · `space-8` 32 · `space-12` 48 ·
   `space-16` 64. Page padding 32 (16 on phones); card padding 20 (16 on phones);
   between cards 16; page header to content 24; label to control 12.
-- **Radii**: `radius-sm` 10 (inputs, selects, segmented controls), `radius-md`
-  14 (cards, grouped lists, dialogs), `radius-pill` (buttons, pills, the
-  selected nav item).
+- **Radii**: `radius-sm` 8 (buttons, inputs, selects, segmented controls,
+  navigation items), `radius-md` 10 (cards, grouped lists, dialogs),
+  `radius-pill` (status pills, the switch, count badges). Buttons are rounded
+  rectangles, not pills.
 - **Elevation**: cards get `shadow-card` in light and only their border in
   dark; dialogs, menus and the drawer get `shadow-overlay`.
-- **Controls**: 40 px (`control-height`) for buttons and inputs, 48 px in
-  onboarding and for touch, 32 px for compact buttons inside rows. List rows
-  56 px, 64 px with a description.
+- **Controls**: 36 px (`control-height`) for buttons and inputs, 44 px for
+  the step button in onboarding, 28 px for compact buttons inside rows and
+  card headers; a page header's button is the default size. Below 768 px
+  every button and input is 44 px. List rows are at least 48 px, table rows
+  44 px (`table-row-height`). Body text is 14 px, the size the leading product
+  design systems use (Primer, Atlassian, Carbon); density comes from this and
+  the row heights, never from text below 12 px.
 - **Motion**: only short state changes (120–200 ms: a switch, a chevron, the
   drawer). Nothing moves on its own except spinners and skeletons; both calm
   down under `prefers-reduced-motion`.
 
 ### 1.4 Layout and the shell
 
-- **≥ 1024 px**: a 248 px sidebar — the wordmark and the notification bell,
+- **≥ 1024 px**: a 232 px sidebar — the wordmark and the notification bell,
   five places, a divider, Settings, and the hub's state in the footer
   ("● Running · Private", the version, who is signed in). The selected item
-  is an `info-bg` pill with `action` text.
+  has an `info-bg` ground and `action` text.
 - **768–1023 px**: a 64 px icon rail with the same items (labels as tooltips).
 - **< 768 px**: a 56 px app bar (menu, wordmark, bell) and the sidebar as a
   drawer.
@@ -180,8 +185,8 @@ No third-party logos, no emoji. The palaia star is the website's mark
   offset on keyboard focus. "Skip to content" comes first; Escape closes
   dialogs, popovers and the drawer; focus stays inside an open dialog and
   returns to whatever opened it.
-- Targets at least 40 px (48 px in onboarding); 32 px only for compact row
-  buttons.
+- Targets at least 36 px with a pointer (28 px only for compact buttons in
+  rows and card headers) and at least 44 px below 768 px.
 
 ## 2. Components
 
@@ -194,7 +199,7 @@ styles in `v3/web/src/styles/components.css`.
 | `Card`, `CardHeader`, `CardBody`, `CardFoot` | One subject per card: status first, then the action, then details. Settings use one card per group of rows. |
 | `ListRow` | Optional 32 px round icon, title (`body-strong`), one line of description, and on the right a status pill, a value, a control or a chevron. `to` makes it a link, `onClick` a button, `setting` a label-and-control row. |
 | `StatusPill` | 24 px, dot + word, five tones. (`Badge` is the earlier name, kept as a thin wrapper.) |
-| `Button`, `LinkButton`, `IconButton` | `primary` (action fill), `secondary` (surface + border, the default), `plain` (action text), `destructive` (error text on the secondary box), `danger` (filled red — inside a confirm dialog only). 40 / 48 / 32 px. `loading` shows a spinner and keeps the verb ("Preparing the file…"). `IconButton` is 36 px round. |
+| `Button`, `LinkButton`, `IconButton` | `primary` (action fill), `secondary` (surface with a `border-control` edge, the default), `plain` (action text), `destructive` (error text on the secondary box), `danger` (filled red — inside a confirm dialog only). 36 / 44 / 28 px, 8 px radius. `loading` shows a spinner and keeps the verb ("Preparing the file…"). `IconButton` is a 36 px square with the same radius. |
 | `Field`, `LabeledInput`, `Switch`, `Segmented` | Label above (`body-strong`), "Optional" after the label of optional fields only, helper below, an error replaces the helper. Placeholders are examples, never instructions. A select is an `.input` with the system's own chevron, never the browser's. |
 | `Callout` | A tinted box for a blocked or pending state: tone icon, a one-sentence title, at most one more sentence, and the button that fixes it when the dashboard can. |
 | `Disclosure` | "What's included?", "Advanced", "Troubleshooting" — closed by default. |

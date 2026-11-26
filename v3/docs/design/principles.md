@@ -173,7 +173,7 @@ Four restraints keep it that way:
    word in the sidebar footer. palaia's own health has one set of words
    everywhere: the Overview verdict and the sidebar always agree.
 3. **Readable before dense.** Sentences at 13 px or more, metadata at 12 px or
-   more, nothing uppercase, rows at least 56 px tall. Density comes from
+   more, nothing uppercase, list rows at least 48 px tall. Density comes from
    showing less, not from smaller type.
 4. **Advanced is collapsed.** Tool sets, renamed tools, webhooks, tunnel
    configuration and server commands sit behind an "Advanced" or
